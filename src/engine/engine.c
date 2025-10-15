@@ -1,15 +1,19 @@
 #include "engine.h"
 
+#include "audio/media_clip.h"
 #include "audio_device.h"
 #include "audio_queue.h"
 #include "engine/graph.h"
-#include "engine_render.h"
+#include "engine/sampler.h"
+#include "engine/sources.h"
 #include "ringbuf.h"
 
 #include <SDL2/SDL.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
+#include <stdio.h>
 
 typedef enum {
     ENGINE_CMD_PLAY = 1,
@@ -36,14 +40,109 @@ struct Engine {
     atomic_bool transport_playing;
     RingBuffer command_queue;
     EngineGraph* graph;
-    EngineRenderState render_state;
+    EngineToneSource* tone_source;
+    EngineGraphSourceOps tone_ops;
+    EngineGraphSourceOps sampler_ops;
+    EngineTrack* tracks;
+    int track_count;
+    int track_capacity;
+    AudioMediaClip media_clip;
+    bool clip_loaded;
+    uint64_t transport_frame;
 };
+
+static void engine_clip_destroy(EngineClip* clip) {
+    if (!clip) {
+        return;
+    }
+    if (clip->sampler) {
+        engine_sampler_source_destroy(clip->sampler);
+        clip->sampler = NULL;
+    }
+    clip->gain = 0.0f;
+    clip->active = false;
+}
+
+static void engine_track_init(EngineTrack* track) {
+    if (!track) {
+        return;
+    }
+    track->clips = NULL;
+    track->clip_count = 0;
+    track->clip_capacity = 0;
+    track->gain = 1.0f;
+    track->active = true;
+}
+
+static void engine_track_clear(EngineTrack* track) {
+    if (!track) {
+        return;
+    }
+    for (int i = 0; i < track->clip_count; ++i) {
+        engine_clip_destroy(&track->clips[i]);
+    }
+    free(track->clips);
+    track->clips = NULL;
+    track->clip_count = 0;
+    track->clip_capacity = 0;
+    track->gain = 1.0f;
+    track->active = true;
+}
+
+static EngineClip* engine_track_append_clip(EngineTrack* track) {
+    if (!track) {
+        return NULL;
+    }
+    if (track->clip_count == track->clip_capacity) {
+        int new_cap = track->clip_capacity == 0 ? 4 : track->clip_capacity * 2;
+        EngineClip* new_clips = (EngineClip*)realloc(track->clips, sizeof(EngineClip) * (size_t)new_cap);
+        if (!new_clips) {
+            return NULL;
+        }
+        track->clips = new_clips;
+        track->clip_capacity = new_cap;
+    }
+    EngineClip* clip = &track->clips[track->clip_count++];
+    clip->sampler = NULL;
+    clip->gain = 1.0f;
+    clip->active = true;
+    return clip;
+}
 
 static bool engine_post_command(Engine* engine, const EngineCommand* cmd) {
     if (!engine || !cmd) {
         return false;
     }
     return ringbuf_write(&engine->command_queue, cmd, sizeof(*cmd)) == sizeof(*cmd);
+}
+
+static void engine_rebuild_sources(Engine* engine) {
+    if (!engine || !engine->graph) {
+        return;
+    }
+    engine_graph_clear_sources(engine->graph);
+    bool added = false;
+    for (int i = 0; i < engine->track_count; ++i) {
+        EngineTrack* track = &engine->tracks[i];
+        if (!track->active || track->clip_count == 0) {
+            continue;
+        }
+        float track_gain = track->gain != 0.0f ? track->gain : 1.0f;
+        for (int c = 0; c < track->clip_count; ++c) {
+            EngineClip* clip = &track->clips[c];
+            if (!clip->active || !clip->sampler) {
+                continue;
+            }
+            float clip_gain = clip->gain != 0.0f ? clip->gain : 1.0f;
+            if (engine_graph_add_source(engine->graph, &engine->sampler_ops, clip->sampler, track_gain * clip_gain)) {
+                added = true;
+            }
+        }
+    }
+    if (!added) {
+        engine_graph_add_source(engine->graph, &engine->tone_ops, engine->tone_source, 1.0f);
+    }
+    engine_graph_reset(engine->graph);
 }
 
 static void engine_audio_callback(float* output, int frames, int channels, void* userdata) {
@@ -58,14 +157,6 @@ static void engine_audio_callback(float* output, int frames, int channels, void*
     }
 }
 
-static void engine_graph_tone_source(void* userdata, float* interleaved_out, int frames) {
-    Engine* engine = (Engine*)userdata;
-    if (!engine) {
-        return;
-    }
-    engine_render_render(&engine->render_state, interleaved_out, (size_t)frames);
-}
-
 static void engine_process_commands(Engine* engine) {
     EngineCommand cmd;
     while (ringbuf_read(&engine->command_queue, &cmd, sizeof(cmd)) == sizeof(cmd)) {
@@ -76,7 +167,8 @@ static void engine_process_commands(Engine* engine) {
             case ENGINE_CMD_STOP:
                 atomic_store_explicit(&engine->transport_playing, false, memory_order_release);
                 audio_queue_clear(&engine->output_queue);
-                engine_render_reset(&engine->render_state);
+                engine_graph_reset(engine->graph);
+                engine->transport_frame = 0;
                 break;
             case ENGINE_CMD_GRAPH_SWAP:
                 if (cmd.payload.graph_swap.new_graph) {
@@ -85,6 +177,7 @@ static void engine_process_commands(Engine* engine) {
                     if (old) {
                         engine_graph_destroy(old);
                     }
+                    engine_graph_reset(engine->graph);
                 }
                 break;
             default:
@@ -98,9 +191,9 @@ static int engine_worker_main(void* userdata) {
     if (!engine) {
         return -1;
     }
-    int channels = engine->graph ? engine_graph_get_channels(engine->graph) : engine->render_state.channels;
+    int channels = engine_graph_get_channels(engine->graph);
     if (channels <= 0) {
-        channels = 2;
+        channels = engine->output_queue.channels > 0 ? engine->output_queue.channels : 2;
     }
     const int block = engine->config.block_size;
     float* block_buffer = (float*)malloc((size_t)block * (size_t)channels * sizeof(float));
@@ -120,9 +213,23 @@ static int engine_worker_main(void* userdata) {
             continue;
         }
 
-        engine_graph_render(engine->graph, block_buffer, block);
+        int graph_channels = engine_graph_get_channels(engine->graph);
+        if (graph_channels <= 0) {
+            graph_channels = channels;
+        }
+        if (graph_channels != channels) {
+            float* new_buffer = (float*)realloc(block_buffer, (size_t)block * (size_t)graph_channels * sizeof(float));
+            if (!new_buffer) {
+                break;
+            }
+            block_buffer = new_buffer;
+            channels = graph_channels;
+        }
+
+        engine_graph_render(engine->graph, block_buffer, block, engine->transport_frame);
 
         audio_queue_write(&engine->output_queue, block_buffer, (size_t)block);
+        engine->transport_frame += (uint64_t)block;
     }
 
     free(block_buffer);
@@ -147,14 +254,45 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         free(engine);
         return NULL;
     }
-    engine_render_init(&engine->render_state, engine->config.sample_rate, 2);
     engine->graph = engine_graph_create(engine->config.sample_rate, 2, engine->config.block_size);
     if (!engine->graph) {
         ringbuf_free(&engine->command_queue);
         free(engine);
         return NULL;
     }
-    engine_graph_set_source(engine->graph, engine_graph_tone_source, engine);
+    engine_tone_source_ops(&engine->tone_ops);
+    engine_sampler_source_ops(&engine->sampler_ops);
+    engine->tone_source = engine_tone_source_create();
+    if (!engine->tone_source) {
+        engine_graph_destroy(engine->graph);
+        ringbuf_free(&engine->command_queue);
+        free(engine);
+        return NULL;
+    }
+
+    engine->track_capacity = 4;
+    engine->tracks = (EngineTrack*)calloc((size_t)engine->track_capacity, sizeof(EngineTrack));
+    if (!engine->tracks) {
+        engine_tone_source_destroy(engine->tone_source);
+        engine_graph_destroy(engine->graph);
+        ringbuf_free(&engine->command_queue);
+        free(engine);
+        return NULL;
+    }
+    for (int i = 0; i < engine->track_capacity; ++i) {
+        engine_track_init(&engine->tracks[i]);
+    }
+    engine->track_count = 0;
+    engine->clip_loaded = false;
+    engine->media_clip.samples = NULL;
+    engine->media_clip.frame_count = 0;
+    engine->media_clip.channels = 0;
+    engine->media_clip.sample_rate = 0;
+    engine->transport_frame = 0;
+
+    engine_graph_clear_sources(engine->graph);
+    engine_graph_add_source(engine->graph, &engine->tone_ops, engine->tone_source, 1.0f);
+    engine_graph_reset(engine->graph);
     return engine;
 }
 
@@ -167,6 +305,21 @@ void engine_destroy(Engine* engine) {
     if (engine->graph) {
         engine_graph_destroy(engine->graph);
         engine->graph = NULL;
+    }
+    if (engine->tone_source) {
+        engine_tone_source_destroy(engine->tone_source);
+        engine->tone_source = NULL;
+    }
+    for (int i = 0; i < engine->track_capacity; ++i) {
+        engine_track_clear(&engine->tracks[i]);
+    }
+    free(engine->tracks);
+    engine->tracks = NULL;
+    engine->track_count = 0;
+    engine->track_capacity = 0;
+    if (engine->clip_loaded) {
+        audio_media_clip_free(&engine->media_clip);
+        engine->clip_loaded = false;
     }
     ringbuf_free(&engine->command_queue);
     audio_queue_free(&engine->output_queue);
@@ -205,12 +358,13 @@ bool engine_start(Engine* engine) {
     }
 
     ringbuf_reset(&engine->command_queue);
-    engine_render_init(&engine->render_state, have->sample_rate, have->channels);
     if (engine_graph_configure(engine->graph, have->sample_rate, have->channels, engine->config.block_size) != 0) {
         SDL_Log("engine_start: failed to configure graph");
         return false;
     }
-    engine_graph_set_source(engine->graph, engine_graph_tone_source, engine);
+    engine_rebuild_sources(engine);
+
+    engine->transport_frame = 0;
 
     atomic_store_explicit(&engine->worker_running, true, memory_order_release);
     engine->worker_thread = SDL_CreateThread(engine_worker_main, "engine_worker", engine);
@@ -250,7 +404,8 @@ void engine_stop(Engine* engine) {
         engine->worker_thread = NULL;
     }
     atomic_store_explicit(&engine->transport_playing, false, memory_order_release);
-    engine_render_reset(&engine->render_state);
+    engine_graph_reset(engine->graph);
+    engine->transport_frame = 0;
 }
 
 const EngineRuntimeConfig* engine_get_config(const Engine* engine) {
@@ -320,5 +475,143 @@ bool engine_queue_graph_swap(Engine* engine, EngineGraph* new_graph) {
         engine_graph_destroy(new_graph);
         return false;
     }
+    return true;
+}
+
+bool engine_add_clip(Engine* engine, const char* filepath, uint64_t start_frame) {
+    if (!engine || !filepath) {
+        return false;
+    }
+    AudioMediaClip clip = {0};
+    if (!audio_media_clip_load_wav(filepath, engine->config.sample_rate, &clip)) {
+        SDL_Log("engine_add_clip: failed to load %s", filepath);
+        return false;
+    }
+
+    if (clip.channels <= 0) {
+        audio_media_clip_free(&clip);
+        return false;
+    }
+
+    if (engine->clip_loaded) {
+        audio_media_clip_free(&engine->media_clip);
+        engine->clip_loaded = false;
+    }
+
+    EngineTrack* track = NULL;
+    if (engine->track_count == 0) {
+        engine->track_count = 1;
+        track = &engine->tracks[0];
+        engine_track_init(track);
+    } else {
+        track = &engine->tracks[0];
+    }
+
+    engine_track_clear(track);
+
+    engine->media_clip = clip;
+    engine->clip_loaded = true;
+
+    EngineClip* clip_slot = engine_track_append_clip(track);
+    if (!clip_slot) {
+        audio_media_clip_free(&engine->media_clip);
+        engine->clip_loaded = false;
+        return false;
+    }
+
+    clip_slot->sampler = engine_sampler_source_create();
+    if (!clip_slot->sampler) {
+        engine_track_clear(track);
+        audio_media_clip_free(&engine->media_clip);
+        engine->clip_loaded = false;
+        return false;
+    }
+
+    clip_slot->gain = 1.0f;
+    clip_slot->active = true;
+    engine_sampler_source_set_clip(clip_slot->sampler, &engine->media_clip, start_frame);
+
+    engine_rebuild_sources(engine);
+    return true;
+}
+
+const EngineTrack* engine_get_tracks(const Engine* engine) {
+    if (!engine) {
+        return NULL;
+    }
+    return engine->tracks;
+}
+
+int engine_get_track_count(const Engine* engine) {
+    if (!engine) {
+        return 0;
+    }
+    return engine->track_count;
+}
+
+uint64_t engine_get_transport_frame(const Engine* engine) {
+    if (!engine) {
+        return 0;
+    }
+    return engine->transport_frame;
+}
+
+bool engine_load_wav(Engine* engine, const char* path) {
+    if (!engine || !path) {
+        return false;
+    }
+
+    AudioMediaClip new_clip = {0};
+    if (!audio_media_clip_load_wav(path, engine->config.sample_rate, &new_clip)) {
+        SDL_Log("engine_load_wav: failed to load %s", path);
+        return false;
+    }
+
+    if (new_clip.channels <= 0) {
+        audio_media_clip_free(&new_clip);
+        return false;
+    }
+
+    EngineTrack* track = NULL;
+    if (engine->track_count == 0) {
+        engine->track_count = 1;
+        track = &engine->tracks[0];
+        engine_track_init(track);
+    } else {
+        track = &engine->tracks[0];
+    }
+
+    engine_track_clear(track);
+
+    if (engine->clip_loaded) {
+        audio_media_clip_free(&engine->media_clip);
+        engine->clip_loaded = false;
+    }
+
+    engine->media_clip = new_clip;
+    engine->clip_loaded = true;
+
+    EngineClip* clip = engine_track_append_clip(track);
+    if (!clip) {
+        audio_media_clip_free(&engine->media_clip);
+        engine->clip_loaded = false;
+        return false;
+    }
+
+    clip->sampler = engine_sampler_source_create();
+    if (!clip->sampler) {
+        engine_track_clear(track);
+        audio_media_clip_free(&engine->media_clip);
+        engine->clip_loaded = false;
+        return false;
+    }
+    clip->gain = 1.0f;
+    clip->active = true;
+    engine_sampler_source_set_clip(clip->sampler, &engine->media_clip, 0);
+
+    track->gain = 1.0f;
+    track->active = true;
+
+    engine_rebuild_sources(engine);
     return true;
 }

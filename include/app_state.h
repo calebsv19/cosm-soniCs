@@ -5,9 +5,12 @@
 
 #include "config.h"
 #include "engine.h"
+#include "input/input_manager.h"
 #include "ui/panes.h"
 #include "ui/resize.h"
 #include "ui/transport.h"
+#include "ui/timeline_view.h"
+#include "ui/library_browser.h"
 
 typedef struct {
     float transport_ratio;
@@ -18,7 +21,9 @@ typedef struct {
     UIResizeDrag drag;
 } UILayoutRuntime;
 
-typedef struct {
+typedef struct AppState AppState;
+
+struct AppState {
     Pane panes[4];
     PaneManager pane_manager;
     int pane_count;
@@ -26,10 +31,12 @@ typedef struct {
     int window_height;
     int mouse_x;
     int mouse_y;
-    Uint32 mouse_buttons;
-    bool space_down;
     EngineRuntimeConfig runtime_cfg;
     Engine* engine;
     TransportUI transport_ui;
     UILayoutRuntime layout_runtime;
-} AppState;
+    LibraryBrowser library;
+    int drag_library_index;
+    bool dragging_library;
+    InputManager input_manager;
+};

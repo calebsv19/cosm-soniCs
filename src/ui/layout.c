@@ -4,6 +4,7 @@
 #include "engine.h"
 #include "ui/font5x7.h"
 #include "ui/layout_config.h"
+#include "ui/library_browser.h"
 #include "ui/transport.h"
 
 #include <SDL2/SDL.h>
@@ -296,6 +297,10 @@ void ui_render_panes(SDL_Renderer* renderer, const AppState* state) {
     for (int i = 0; i < state->pane_count; ++i) {
         render_single_pane(renderer, &state->panes[i]);
     }
+    const Pane* library = ui_layout_get_pane(state, 3);
+    if (library) {
+        library_browser_render(&state->library, renderer, &library->rect, 20);
+    }
     render_layout_grid(renderer, state);
 }
 
@@ -315,6 +320,11 @@ void ui_render_controls(SDL_Renderer* renderer, const AppState* state) {
         playing = engine_transport_is_playing(state->engine);
     }
     transport_ui_render(renderer, &state->transport_ui, playing);
+
+    const Pane* timeline = ui_layout_get_pane(state, 1);
+    if (timeline && state->engine) {
+        timeline_view_render(renderer, &timeline->rect, state->engine);
+    }
 }
 
 void ui_layout_update_zones(AppState* state) {
@@ -421,6 +431,13 @@ static int clamp_int(int value, int min, int max) {
         return max;
     }
     return value;
+}
+
+const Pane* ui_layout_get_pane(const AppState* state, int index) {
+    if (!state || index < 0 || index >= state->pane_count) {
+        return NULL;
+    }
+    return &state->panes[index];
 }
 
 bool ui_layout_handle_pointer(AppState* state, Uint32 prev_buttons, Uint32 curr_buttons, int mouse_x, int mouse_y) {
@@ -571,4 +588,18 @@ bool ui_layout_handle_pointer(AppState* state, Uint32 prev_buttons, Uint32 curr_
     }
 
     return layout_changed;
+}
+
+void ui_layout_handle_hover(AppState* state, int mouse_x, int mouse_y) {
+    if (!state) {
+        return;
+    }
+    const Pane* library = ui_layout_get_pane(state, 3);
+    if (!library) {
+        state->library.hovered_index = -1;
+        return;
+    }
+    int line_height = 20;
+    int hit = library_browser_hit_test(&state->library, &library->rect, mouse_x, mouse_y, line_height);
+    state->library.hovered_index = hit;
 }

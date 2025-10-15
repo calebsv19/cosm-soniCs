@@ -4,6 +4,7 @@
 #include "sdl_app_framework.h"
 #include "ui/layout.h"
 #include "ui/panes.h"
+#include "ui/library_browser.h"
 #include "ui/transport.h"
 
 #include <SDL2/SDL.h>
@@ -19,39 +20,7 @@ static void handle_update(AppContext* ctx) {
         return;
     }
     ui_ensure_layout(state, ctx->renderer);
-
-    int mouse_x = 0;
-    int mouse_y = 0;
-    Uint32 buttons = SDL_GetMouseState(&mouse_x, &mouse_y);
-    ui_layout_handle_pointer(state, state->mouse_buttons, buttons, mouse_x, mouse_y);
-
-    state->mouse_x = mouse_x;
-    state->mouse_y = mouse_y;
-
-    pane_manager_update_hover(&state->pane_manager, mouse_x, mouse_y);
-    transport_ui_update_hover(&state->transport_ui, mouse_x, mouse_y);
-
-    bool left_was_down = (state->mouse_buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
-    bool left_is_down = (buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
-    if (!left_was_down && left_is_down && state->engine) {
-        if (transport_ui_click_play(&state->transport_ui, mouse_x, mouse_y)) {
-            engine_transport_play(state->engine);
-        } else if (transport_ui_click_stop(&state->transport_ui, mouse_x, mouse_y)) {
-            engine_transport_stop(state->engine);
-        }
-    }
-    state->mouse_buttons = buttons;
-
-    const Uint8* keys = SDL_GetKeyboardState(NULL);
-    bool space_now = keys[SDL_SCANCODE_SPACE] != 0;
-    if (space_now && !state->space_down && state->engine) {
-        if (engine_transport_is_playing(state->engine)) {
-            engine_transport_stop(state->engine);
-        } else {
-            engine_transport_play(state->engine);
-        }
-    }
-    state->space_down = space_now;
+    input_manager_update(&state->input_manager, state);
 }
 
 static void handle_render(AppContext* ctx) {
@@ -101,6 +70,11 @@ int main(void) {
     ui_init_panes(&state);
     ui_layout_panes(&state, window_width, window_height);
     pane_manager_init(&state.pane_manager, state.panes, state.pane_count);
+    library_browser_init(&state.library, "assets/audio");
+    library_browser_scan(&state.library);
+    state.drag_library_index = -1;
+    state.dragging_library = false;
+    input_manager_init(&state.input_manager);
 
     ctx.userData = &state;
 

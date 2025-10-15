@@ -32,7 +32,7 @@ void config_set_defaults(EngineRuntimeConfig* cfg) {
     cfg->block_size = 128;
 }
 
-static void apply_kv_pair(const char* key, const char* value, EngineRuntimeConfig* cfg) {
+static void apply_entry(EngineRuntimeConfig* cfg, const char* key, const char* value) {
     if (!cfg || !key || !value) {
         return;
     }
@@ -54,7 +54,6 @@ bool config_load_file(const char* path, EngineRuntimeConfig* cfg) {
         return false;
     }
     config_set_defaults(cfg);
-
     if (!path) {
         return false;
     }
@@ -82,14 +81,12 @@ bool config_load_file(const char* path, EngineRuntimeConfig* cfg) {
         *equals = '\0';
         char* key = trim_leading(cursor);
         trim_trailing(key);
-
         char* value = trim_leading(equals + 1);
         trim_trailing(value);
-
         if (*key == '\0' || *value == '\0') {
             continue;
         }
-        apply_kv_pair(key, value, cfg);
+        apply_entry(cfg, key, value);
     }
 
     fclose(file);

@@ -10,15 +10,20 @@ SRCS := \
 	$(SRC_DIR)/audio/device_sdl.c \
 	$(SRC_DIR)/audio/audio_queue.c \
 	$(SRC_DIR)/audio/ringbuf.c \
+	$(SRC_DIR)/audio/media_clip.c \
 	$(SRC_DIR)/engine/engine.c \
-	$(SRC_DIR)/engine/engine_render.c \
 	$(SRC_DIR)/engine/graph.c \
 	$(SRC_DIR)/engine/buffer_pool.c \
+	$(SRC_DIR)/engine/source_tone.c \
+	$(SRC_DIR)/engine/sampler.c \
 	$(SRC_DIR)/ui/panes.c \
 	$(SRC_DIR)/ui/layout.c \
 	$(SRC_DIR)/ui/layout_config.c \
+	$(SRC_DIR)/ui/library_browser.c \
+	$(SRC_DIR)/ui/timeline_view.c \
 	$(SRC_DIR)/ui/font5x7.c \
-	$(SRC_DIR)/ui/transport.c
+	$(SRC_DIR)/ui/transport.c \
+	$(SRC_DIR)/input/input_manager.c
 
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS))
 
