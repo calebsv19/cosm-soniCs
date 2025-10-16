@@ -32,7 +32,10 @@ struct EngineTrack {
     int clip_count;
     int clip_capacity;
     float gain;
+    bool muted;
+    bool solo;
     bool active;
+    char name[ENGINE_CLIP_NAME_MAX];
 };
 
 Engine* engine_create(const EngineRuntimeConfig* cfg);
@@ -45,6 +48,8 @@ size_t  engine_get_queued_frames(const Engine* engine);
 bool    engine_transport_play(Engine* engine);
 bool    engine_transport_stop(Engine* engine);
 bool    engine_transport_is_playing(const Engine* engine);
+bool    engine_transport_seek(Engine* engine, uint64_t frame);
+bool    engine_transport_set_loop(Engine* engine, bool enabled, uint64_t start_frame, uint64_t end_frame);
 bool    engine_queue_graph_swap(Engine* engine, struct EngineGraph* new_graph);
 bool    engine_load_wav(Engine* engine, const char* path);
 bool    engine_add_clip(Engine* engine, const char* filepath, uint64_t start_frame);
@@ -61,8 +66,12 @@ bool    engine_remove_clip(Engine* engine, int track_index, int clip_index);
 bool    engine_clip_set_name(Engine* engine, int track_index, int clip_index, const char* name);
 bool    engine_clip_set_gain(Engine* engine, int track_index, int clip_index, float gain);
 bool    engine_duplicate_clip(Engine* engine, int track_index, int clip_index, uint64_t start_frame_offset, int* out_clip_index);
+bool    engine_track_set_name(Engine* engine, int track_index, const char* name);
 bool    engine_add_clip_segment(Engine* engine, int track_index, const EngineClip* source_clip,
                                 uint64_t source_relative_offset_frames,
                                 uint64_t segment_length_frames,
                                 uint64_t start_frame,
                                 int* out_clip_index);
+bool    engine_track_set_muted(Engine* engine, int track_index, bool muted);
+bool    engine_track_set_solo(Engine* engine, int track_index, bool solo);
+bool    engine_track_set_muted(Engine* engine, int track_index, bool muted);

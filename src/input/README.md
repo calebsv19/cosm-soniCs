@@ -14,8 +14,8 @@ Purpose: Translate SDL events and pointer state into engine/UI actions.
   - `inspector_input_commit_if_editing/sync`: Persist edits back to the engine and pull latest clip data.
 - `timeline_input.c`
   - `timeline_input_init`: Reset timeline selection/drag state.
-  - `timeline_input_handle_event`: Capture clicks, drags, drop hints, resolve overlapping clips when new media is dropped, mirror timeline geometry for precise hit-testing, and route add/remove track button clicks.
-  - `timeline_input_update`: Advance drag operations, snap drop locations, refresh control hover state, and manage selection feedback.
+  - `timeline_input_handle_event`: Capture clicks, drags, drop hints, resolve overlapping clips when new media is dropped, mirror timeline geometry for precise hit-testing, handle track add/remove, loop toggle/handle interactions, track mute/solo buttons, track-header rename editing, and shift-click playhead jumps.
+  - `timeline_input_update`: Advance drag operations, snap drop locations, refresh control hover state, and manage selection/loop adjustments.
 - `transport_input.c`
   - `transport_input_init`: Clear slider drag flags.
   - `transport_input_handle_event`: Handle clicks that toggle grid mode or begin slider drags.

@@ -52,7 +52,22 @@ typedef struct {
     SDL_Rect remove_rect;
     bool add_hovered;
     bool remove_hovered;
+    SDL_Rect loop_toggle_rect;
+    SDL_Rect loop_start_rect;
+    SDL_Rect loop_end_rect;
+    bool loop_toggle_hovered;
+    bool loop_start_hovered;
+    bool loop_end_hovered;
+    bool adjusting_loop_start;
+    bool adjusting_loop_end;
 } TimelineControlsUI;
+
+typedef struct {
+    bool editing;
+    int track_index;
+    char buffer[ENGINE_CLIP_NAME_MAX];
+    int cursor;
+} TrackNameEditor;
 
 typedef struct AppState AppState;
 
@@ -72,11 +87,13 @@ struct AppState {
     int drag_library_index;
     bool dragging_library;
     InputManager input_manager;
+    int active_track_index;
     int selected_track_index;
     int selected_clip_index;
     TimelineDragState timeline_drag;
     ClipInspectorState inspector;
     TimelineControlsUI timeline_controls;
+    TrackNameEditor track_name_editor;
     float timeline_visible_seconds;
     float timeline_vertical_scale;
     bool timeline_drop_active;
@@ -86,4 +103,7 @@ struct AppState {
     char timeline_drop_label[LIBRARY_NAME_MAX];
     bool timeline_show_all_grid_lines;
     int timeline_drop_track_index;
+    bool loop_enabled;
+    uint64_t loop_start_frame;
+    uint64_t loop_end_frame;
 };

@@ -97,35 +97,6 @@ static void render_layout_grid(SDL_Renderer* renderer, const AppState* state) {
     }
 }
 
-static void render_engine_status(SDL_Renderer* renderer, const AppState* state) {
-    if (!state || !state->engine) {
-        return;
-    }
-    const Pane* transport = &state->panes[0];
-    SDL_Color status_color = {200, 200, 210, 255};
-    int x = transport->rect.x + transport->rect.w - 220;
-    if (x < transport->rect.x + 12) {
-        x = transport->rect.x + 12;
-    }
-    int y = transport->rect.y + 14;
-
-    char line[64];
-    bool running = engine_is_running(state->engine);
-    bool playing = engine_transport_is_playing(state->engine);
-    size_t queued = engine_get_queued_frames(state->engine);
-
-    snprintf(line, sizeof(line), "ENGINE %s", running ? "ON" : "OFF");
-    ui_draw_text(renderer, x, y, line, status_color, 2);
-    y += 16;
-
-    snprintf(line, sizeof(line), "TRANSPORT %s", playing ? "PLAY" : "STOP");
-    ui_draw_text(renderer, x, y, line, status_color, 2);
-    y += 16;
-
-    snprintf(line, sizeof(line), "QUEUED %zu", queued);
-    ui_draw_text(renderer, x, y, line, status_color, 2);
-}
-
 
 void ui_init_panes(AppState* state) {
     if (!state) {
@@ -310,7 +281,9 @@ void ui_render_overlays(SDL_Renderer* renderer, const AppState* state) {
     if (!renderer || !state) {
         return;
     }
-    render_engine_status(renderer, state);
+    ClipInspectorLayout inspector_layout;
+    clip_inspector_compute_layout(state, &inspector_layout);
+    clip_inspector_render(renderer, state, &inspector_layout);
 }
 
 void ui_render_controls(SDL_Renderer* renderer, AppState* state) {
@@ -326,12 +299,10 @@ void ui_render_controls(SDL_Renderer* renderer, AppState* state) {
 
     const Pane* timeline = ui_layout_get_pane(state, 1);
     if (timeline) {
+        SDL_RenderSetClipRect(renderer, &timeline->rect);
         timeline_view_render(renderer, &timeline->rect, state);
+        SDL_RenderSetClipRect(renderer, NULL);
     }
-
-    ClipInspectorLayout inspector_layout;
-    clip_inspector_compute_layout(state, &inspector_layout);
-    clip_inspector_render(renderer, state, &inspector_layout);
 }
 
 void ui_layout_update_zones(AppState* state) {

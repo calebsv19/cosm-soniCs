@@ -80,6 +80,7 @@ int main(void) {
     state.drag_library_index = -1;
     state.dragging_library = false;
     input_manager_init(&state.input_manager);
+    state.active_track_index = -1;
     state.selected_track_index = -1;
     state.selected_clip_index = -1;
     state.timeline_drag.active = false;
@@ -90,6 +91,9 @@ int main(void) {
     state.timeline_vertical_scale = 1.0f;
     state.timeline_show_all_grid_lines = false;
     state.timeline_drop_track_index = 0;
+    state.loop_enabled = false;
+    state.loop_start_frame = 0;
+    state.loop_end_frame = state.runtime_cfg.sample_rate > 0 ? (uint64_t)state.runtime_cfg.sample_rate : 48000;
 
     ctx.userData = &state;
 

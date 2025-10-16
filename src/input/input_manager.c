@@ -33,10 +33,19 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
     const Uint8* keys = SDL_GetKeyboardState(NULL);
     bool space_now = keys[SDL_SCANCODE_SPACE] != 0;
     if (space_now && !manager->previous_space) {
-        if (engine_transport_is_playing(state->engine)) {
-            engine_transport_stop(state->engine);
+        bool shift_down = (SDL_GetModState() & KMOD_SHIFT) != 0;
+        bool was_playing = engine_transport_is_playing(state->engine);
+        if (shift_down) {
+            engine_transport_seek(state->engine, 0);
+            if (was_playing) {
+                engine_transport_play(state->engine);
+            }
         } else {
-            engine_transport_play(state->engine);
+            if (was_playing) {
+                engine_transport_stop(state->engine);
+            } else {
+                engine_transport_play(state->engine);
+            }
         }
     }
     manager->previous_space = space_now;
@@ -83,6 +92,8 @@ void input_manager_init(InputManager* manager) {
     manager->last_click_ticks = 0;
     manager->last_click_track = -1;
     manager->last_click_clip = -1;
+    manager->last_header_click_ticks = 0;
+    manager->last_header_click_track = -1;
     manager->prev_horiz_slider_down = false;
     manager->prev_vert_slider_down = false;
 
@@ -141,4 +152,3 @@ void input_manager_update(InputManager* manager, AppState* state) {
 
     inspector_input_sync(state);
 }
-

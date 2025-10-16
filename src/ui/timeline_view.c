@@ -51,6 +51,39 @@ static void draw_timeline_button(SDL_Renderer* renderer,
     ui_draw_text(renderer, text_x, text_y, label, text_color, 2);
 }
 
+static void draw_toggle_button(SDL_Renderer* renderer,
+                               const SDL_Rect* rect,
+                               const char* label,
+                               bool active,
+                               bool hovered,
+                               SDL_Color active_col) {
+    if (!renderer || !rect || !label) {
+        return;
+    }
+    SDL_Color base = {58, 62, 70, 255};
+    SDL_Color hover = {82, 92, 110, 255};
+    SDL_Color active_color = active_col;
+    SDL_Color text = {220, 220, 230, 255};
+    SDL_Color border = {90, 95, 110, 255};
+
+    SDL_Color fill = base;
+    if (active) {
+        fill = active_color;
+    } else if (hovered) {
+        fill = hover;
+    }
+    SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
+    SDL_RenderFillRect(renderer, rect);
+
+    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+    SDL_RenderDrawRect(renderer, rect);
+
+    int text_x = rect->x + (rect->w - (int)strlen(label) * 6 * 2) / 2;
+    if (text_x < rect->x + 2) text_x = rect->x + 2;
+    int text_y = rect->y + (rect->h - 7 * 2) / 2;
+    ui_draw_text(renderer, text_x, text_y, label, text, 2);
+}
+
 static void draw_timeline_grid(SDL_Renderer* renderer, int x0, int width, int top, int height, float pixels_per_second, float visible_seconds, bool show_all_lines) {
     SDL_SetRenderDrawColor(renderer, 60, 60, 72, 255);
     SDL_RenderDrawRect(renderer, &(SDL_Rect){x0, top, width, height});
@@ -110,7 +143,9 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
     float visible_seconds = clamp_float(state->timeline_visible_seconds, TIMELINE_MIN_VISIBLE_SECONDS, TIMELINE_MAX_VISIBLE_SECONDS);
     float vertical_scale = clamp_float(state->timeline_vertical_scale, TIMELINE_MIN_VERTICAL_SCALE, TIMELINE_MAX_VERTICAL_SCALE);
 
-    const int track_y = rect->y + 16;
+    const int controls_height = TIMELINE_CONTROLS_HEIGHT;
+    const int track_top_offset = controls_height + 8;
+    const int track_y = rect->y + track_top_offset;
     int track_height = (int)(TIMELINE_BASE_TRACK_HEIGHT * vertical_scale);
     if (track_height < 32) {
         track_height = 32;
@@ -130,12 +165,21 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
     const int sample_rate = engine_get_config(engine)->sample_rate;
 
     TimelineControlsUI* controls = (TimelineControlsUI*)&state->timeline_controls;
-    controls->add_rect = (SDL_Rect){rect->x + 16, rect->y + 12, 28, 24};
-    controls->remove_rect = (SDL_Rect){rect->x + 48, rect->y + 12, 28, 24};
+    controls->add_rect = (SDL_Rect){rect->x + 16, rect->y + 8, 28, 24};
+    controls->remove_rect = (SDL_Rect){rect->x + 52, rect->y + 8, 28, 24};
+    controls->loop_toggle_rect = (SDL_Rect){rect->x + 88, rect->y + 8, 56, 24};
 
     bool remove_enabled = track_count > 0;
     draw_timeline_button(renderer, &controls->add_rect, "+", controls->add_hovered, true);
     draw_timeline_button(renderer, &controls->remove_rect, "-", controls->remove_hovered, remove_enabled);
+    draw_timeline_button(renderer, &controls->loop_toggle_rect, "LOOP", controls->loop_toggle_hovered, true);
+    if (state->loop_enabled) {
+        SDL_SetRenderDrawColor(renderer, 130, 200, 180, 255);
+        SDL_RenderDrawRect(renderer, &controls->loop_toggle_rect);
+    }
+
+    controls->loop_start_rect = (SDL_Rect){0,0,0,0};
+    controls->loop_end_rect = (SDL_Rect){0,0,0,0};
 
     const float pixels_per_second = (float)content_width / visible_seconds;
     int grid_lanes = track_count > 0 ? track_count : 1;
@@ -147,6 +191,61 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
     SDL_Color header_bg = {30, 30, 38, 255};
     SDL_Color header_border = {70, 70, 90, 255};
     SDL_Color header_text = {200, 200, 210, 255};
+    int active_track = (state->active_track_index >= 0 && state->active_track_index < track_count) ? state->active_track_index : -1;
+    const TrackNameEditor* editor = &state->track_name_editor;
+    SDL_Point mouse_point = {state->mouse_x, state->mouse_y};
+
+    if (state->loop_enabled && sample_rate > 0 && state->loop_end_frame > state->loop_start_frame) {
+        float loop_start_sec = (float)state->loop_start_frame / (float)sample_rate;
+        float loop_end_sec = (float)state->loop_end_frame / (float)sample_rate;
+        float max_sec = visible_seconds;
+        if (loop_start_sec < 0.0f) loop_start_sec = 0.0f;
+        if (loop_end_sec < 0.0f) loop_end_sec = 0.0f;
+        if (loop_start_sec > max_sec) loop_start_sec = max_sec;
+        if (loop_end_sec > max_sec) loop_end_sec = max_sec;
+        int loop_start_x = content_left + (int)roundf((loop_start_sec / max_sec) * (float)content_width);
+        int loop_end_x = content_left + (int)roundf((loop_end_sec / max_sec) * (float)content_width);
+        if (loop_start_x < content_left) loop_start_x = content_left;
+        if (loop_start_x > content_left + content_width) loop_start_x = content_left + content_width;
+        if (loop_end_x < content_left) loop_end_x = content_left;
+        if (loop_end_x > content_left + content_width) loop_end_x = content_left + content_width;
+        if (loop_end_x < loop_start_x) {
+            int tmp = loop_end_x;
+            loop_end_x = loop_start_x;
+            loop_start_x = tmp;
+        }
+        int top_zone_y = rect->y + 8;
+        int top_zone_h = track_y - rect->y - 12;
+        if (top_zone_h < 12) top_zone_h = 12;
+        int handle_width = 12;
+        controls->loop_start_rect = (SDL_Rect){loop_start_x - handle_width / 2, top_zone_y, handle_width, top_zone_h};
+        controls->loop_end_rect = (SDL_Rect){loop_end_x - handle_width / 2, top_zone_y, handle_width, top_zone_h};
+
+        SDL_Color loop_fill = {60, 120, 140, 50};
+        SDL_Color loop_border = {90, 170, 190, 180};
+        if (loop_end_x > loop_start_x) {
+            SDL_Rect loop_rect = {
+                loop_start_x,
+                track_y,
+                loop_end_x - loop_start_x,
+                grid_lanes * (track_height + track_spacing) - track_spacing
+            };
+            SDL_SetRenderDrawColor(renderer, loop_fill.r, loop_fill.g, loop_fill.b, loop_fill.a);
+            SDL_RenderFillRect(renderer, &loop_rect);
+            SDL_SetRenderDrawColor(renderer, loop_border.r, loop_border.g, loop_border.b, loop_border.a);
+            SDL_RenderDrawRect(renderer, &loop_rect);
+        }
+        SDL_Color start_color = controls->loop_start_hovered || controls->adjusting_loop_start ? (SDL_Color){200, 240, 220, 255} : (SDL_Color){170, 220, 200, 255};
+        SDL_Color end_color = controls->loop_end_hovered || controls->adjusting_loop_end ? (SDL_Color){200, 220, 250, 255} : (SDL_Color){160, 190, 230, 255};
+        SDL_SetRenderDrawColor(renderer, start_color.r, start_color.g, start_color.b, start_color.a);
+        SDL_RenderFillRect(renderer, &controls->loop_start_rect);
+        SDL_SetRenderDrawColor(renderer, 40, 70, 80, 255);
+        SDL_RenderDrawRect(renderer, &controls->loop_start_rect);
+        SDL_SetRenderDrawColor(renderer, end_color.r, end_color.g, end_color.b, end_color.a);
+        SDL_RenderFillRect(renderer, &controls->loop_end_rect);
+        SDL_SetRenderDrawColor(renderer, 40, 70, 90, 255);
+        SDL_RenderDrawRect(renderer, &controls->loop_end_rect);
+    }
 
     if (tracks && track_count > 0) {
         for (int t = 0; t < track_count; ++t) {
@@ -155,7 +254,8 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
 
             SDL_Rect header_rect = {rect->x + 8, lane_top + 4, header_width - 16, track_height - 8};
             SDL_Color header_fill = header_bg;
-            if (state->selected_track_index == t) {
+            SDL_Color label_color = header_text;
+            if (active_track == t) {
                 int r = header_fill.r + 32;
                 int g = header_fill.g + 32;
                 int b = header_fill.b + 48;
@@ -163,13 +263,71 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                 header_fill.g = (Uint8)(g > 255 ? 255 : g);
                 header_fill.b = (Uint8)(b > 255 ? 255 : b);
             }
+            if (track && track->muted) {
+                header_fill.r = (Uint8)((int)header_fill.r * 3 / 5);
+                header_fill.g = (Uint8)((int)header_fill.g * 3 / 5);
+                header_fill.b = (Uint8)((int)header_fill.b * 3 / 5);
+                label_color = (SDL_Color){160, 160, 170, 255};
+            }
             SDL_SetRenderDrawColor(renderer, header_fill.r, header_fill.g, header_fill.b, header_fill.a);
             SDL_RenderFillRect(renderer, &header_rect);
             SDL_SetRenderDrawColor(renderer, header_border.r, header_border.g, header_border.b, header_border.a);
             SDL_RenderDrawRect(renderer, &header_rect);
-            char label[32];
-            snprintf(label, sizeof(label), "Track %d", t + 1);
-            ui_draw_text(renderer, header_rect.x + 8, header_rect.y + 8, label, header_text, 2);
+            char default_label[32];
+            const char* label = NULL;
+            if (editor && editor->editing && editor->track_index == t) {
+                label = editor->buffer;
+            } else if (track && track->name[0]) {
+                label = track->name;
+            }
+            if (!label || label[0] == '\0') {
+                snprintf(default_label, sizeof(default_label), "Track %d", t + 1);
+                label = default_label;
+            }
+
+            int button_w = 18;
+            int button_h = 16;
+            int button_spacing = 4;
+            int buttons_total = button_w * 2 + button_spacing;
+            int buttons_x = header_rect.x + header_rect.w - buttons_total - 8;
+            if (buttons_x < header_rect.x + 36) {
+                buttons_x = header_rect.x + 36;
+            }
+            int button_y = header_rect.y + header_rect.h - button_h - 4;
+            SDL_Rect mute_rect = {buttons_x, button_y, button_w, button_h};
+            SDL_Rect solo_rect = {buttons_x + button_w + button_spacing, button_y, button_w, button_h};
+
+            bool mute_hover = SDL_PointInRect(&mouse_point, &mute_rect);
+            bool solo_hover = SDL_PointInRect(&mouse_point, &solo_rect);
+            SDL_Color mute_active = {170, 80, 80, 255};
+            SDL_Color solo_active = {90, 150, 220, 255};
+            draw_toggle_button(renderer, &mute_rect, "M", track ? track->muted : false, mute_hover, mute_active);
+            draw_toggle_button(renderer, &solo_rect, "S", track ? track->solo : false, solo_hover, solo_active);
+
+            int text_x = header_rect.x + 8;
+            int text_max_x = mute_rect.x - 4;
+            int available_px = text_max_x - text_x;
+            char text_buf[ENGINE_CLIP_NAME_MAX];
+            const char* display = label;
+            if (available_px > 0) {
+                int max_chars = available_px / (6 * 2);
+                if (max_chars > 0 && (int)strlen(label) > max_chars) {
+                    strncpy(text_buf, label, (size_t)max_chars);
+                    text_buf[max_chars] = '\0';
+                    display = text_buf;
+                }
+            }
+            ui_draw_text(renderer, text_x, header_rect.y + 8, display, label_color, 2);
+            if (editor && editor->editing && editor->track_index == t) {
+                int caret_limit = text_max_x;
+                if (caret_limit < text_x) caret_limit = text_x;
+                int caret_x = text_x + editor->cursor * 6 * 2;
+                if (caret_x > caret_limit) {
+                    caret_x = caret_limit;
+                }
+                SDL_SetRenderDrawColor(renderer, 220, 230, 255, 255);
+                SDL_RenderDrawLine(renderer, caret_x, header_rect.y + 6, caret_x, header_rect.y + header_rect.h - 6);
+            }
 
             if (!track || track->clip_count <= 0) {
                 continue;

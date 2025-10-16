@@ -19,6 +19,8 @@ typedef enum {
     ENGINE_CMD_PLAY = 1,
     ENGINE_CMD_STOP = 2,
     ENGINE_CMD_GRAPH_SWAP = 3,
+    ENGINE_CMD_SEEK = 4,
+    ENGINE_CMD_SET_LOOP = 5,
 } EngineCommandType;
 
 typedef struct {
@@ -27,6 +29,14 @@ typedef struct {
         struct {
             EngineGraph* new_graph;
         } graph_swap;
+        struct {
+            uint64_t frame;
+        } seek;
+        struct {
+            bool enabled;
+            uint64_t start_frame;
+            uint64_t end_frame;
+        } loop;
     } payload;
 } EngineCommand;
 
@@ -47,6 +57,9 @@ struct Engine {
     int track_count;
     int track_capacity;
     uint64_t transport_frame;
+    atomic_bool loop_enabled;
+    atomic_uint_fast64_t loop_start_frame;
+    atomic_uint_fast64_t loop_end_frame;
 };
 
 static void engine_clip_destroy(EngineClip* clip) {
@@ -107,7 +120,10 @@ static void engine_track_init(EngineTrack* track) {
     track->clip_count = 0;
     track->clip_capacity = 0;
     track->gain = 1.0f;
+    track->muted = false;
+    track->solo = false;
     track->active = true;
+    track->name[0] = '\0';
 }
 
 static void engine_track_clear(EngineTrack* track) {
@@ -122,7 +138,10 @@ static void engine_track_clear(EngineTrack* track) {
     track->clip_count = 0;
     track->clip_capacity = 0;
     track->gain = 1.0f;
+    track->muted = false;
+    track->solo = false;
     track->active = true;
+    track->name[0] = '\0';
 }
 
 static bool engine_ensure_track_capacity(Engine* engine, int required_tracks) {
@@ -229,10 +248,24 @@ static void engine_rebuild_sources(Engine* engine) {
         return;
     }
     engine_graph_clear_sources(engine->graph);
-    bool added = false;
+    bool any_solo = false;
     for (int i = 0; i < engine->track_count; ++i) {
         EngineTrack* track = &engine->tracks[i];
-        if (!track->active || track->clip_count == 0) {
+        if (!track->active || track->clip_count == 0 || track->muted) {
+            continue;
+        }
+        if (track->solo) {
+            any_solo = true;
+            break;
+        }
+    }
+
+    for (int i = 0; i < engine->track_count; ++i) {
+        EngineTrack* track = &engine->tracks[i];
+        if (!track->active || track->clip_count == 0 || track->muted) {
+            continue;
+        }
+        if (any_solo && !track->solo) {
             continue;
         }
         float track_gain = track->gain != 0.0f ? track->gain : 1.0f;
@@ -242,13 +275,8 @@ static void engine_rebuild_sources(Engine* engine) {
                 continue;
             }
             float clip_gain = clip->gain != 0.0f ? clip->gain : 1.0f;
-            if (engine_graph_add_source(engine->graph, &engine->sampler_ops, clip->sampler, track_gain * clip_gain)) {
-                added = true;
-            }
+            engine_graph_add_source(engine->graph, &engine->sampler_ops, clip->sampler, track_gain * clip_gain);
         }
-    }
-    if (!added) {
-        engine_graph_add_source(engine->graph, &engine->tone_ops, engine->tone_source, 1.0f);
     }
     engine_graph_reset(engine->graph);
 }
@@ -272,12 +300,11 @@ static void engine_process_commands(Engine* engine) {
             case ENGINE_CMD_PLAY:
                 atomic_store_explicit(&engine->transport_playing, true, memory_order_release);
                 break;
-            case ENGINE_CMD_STOP:
-                atomic_store_explicit(&engine->transport_playing, false, memory_order_release);
-                audio_queue_clear(&engine->output_queue);
-                engine_graph_reset(engine->graph);
-                engine->transport_frame = 0;
-                break;
+        case ENGINE_CMD_STOP:
+            atomic_store_explicit(&engine->transport_playing, false, memory_order_release);
+            audio_queue_clear(&engine->output_queue);
+            engine_graph_reset(engine->graph);
+            break;
             case ENGINE_CMD_GRAPH_SWAP:
                 if (cmd.payload.graph_swap.new_graph) {
                     EngineGraph* old = engine->graph;
@@ -287,6 +314,16 @@ static void engine_process_commands(Engine* engine) {
                     }
                     engine_graph_reset(engine->graph);
                 }
+                break;
+            case ENGINE_CMD_SEEK:
+                engine->transport_frame = cmd.payload.seek.frame;
+                audio_queue_clear(&engine->output_queue);
+                engine_graph_reset(engine->graph);
+                break;
+            case ENGINE_CMD_SET_LOOP:
+                atomic_store_explicit(&engine->loop_enabled, cmd.payload.loop.enabled, memory_order_release);
+                atomic_store_explicit(&engine->loop_start_frame, cmd.payload.loop.start_frame, memory_order_release);
+                atomic_store_explicit(&engine->loop_end_frame, cmd.payload.loop.end_frame, memory_order_release);
                 break;
             default:
                 break;
@@ -334,10 +371,63 @@ static int engine_worker_main(void* userdata) {
             channels = graph_channels;
         }
 
-        engine_graph_render(engine->graph, block_buffer, block, engine->transport_frame);
+        int frames_remaining = block;
+        int produced = 0;
+        while (frames_remaining > 0) {
+            bool loop_enabled = atomic_load_explicit(&engine->loop_enabled, memory_order_acquire);
+            uint64_t loop_start = atomic_load_explicit(&engine->loop_start_frame, memory_order_acquire);
+            uint64_t loop_end = atomic_load_explicit(&engine->loop_end_frame, memory_order_acquire);
+            if (loop_enabled && loop_end <= loop_start) {
+                loop_enabled = false;
+            }
+            if (loop_enabled && engine->transport_frame < loop_start) {
+                engine->transport_frame = loop_start;
+            }
+
+            int chunk = frames_remaining;
+            if (loop_enabled) {
+                uint64_t current = engine->transport_frame;
+                uint64_t loop_len = loop_end - loop_start;
+                if (loop_len == 0) {
+                    loop_enabled = false;
+                } else {
+                    uint64_t frames_until_end = (current < loop_end) ? (loop_end - current) : 0;
+                    if (frames_until_end == 0) {
+                        engine->transport_frame = loop_start;
+                        current = loop_start;
+                        engine_graph_reset(engine->graph);
+                        frames_until_end = loop_len;
+                    }
+                    if (frames_until_end > 0 && (uint64_t)chunk > frames_until_end) {
+                        chunk = (int)frames_until_end;
+                    }
+                }
+            }
+
+            if (chunk <= 0) {
+                chunk = frames_remaining;
+            }
+
+            engine_graph_render(engine->graph,
+                                block_buffer + produced * channels,
+                                chunk,
+                                engine->transport_frame);
+
+            engine->transport_frame += (uint64_t)chunk;
+            produced += chunk;
+            frames_remaining -= chunk;
+
+            if (loop_enabled) {
+                uint64_t loop_start_cur = atomic_load_explicit(&engine->loop_start_frame, memory_order_acquire);
+                uint64_t loop_end_cur = atomic_load_explicit(&engine->loop_end_frame, memory_order_acquire);
+                if (atomic_load_explicit(&engine->loop_enabled, memory_order_acquire) && loop_end_cur > loop_start_cur && engine->transport_frame >= loop_end_cur) {
+                    engine->transport_frame = loop_start_cur;
+                    engine_graph_reset(engine->graph);
+                }
+            }
+        }
 
         audio_queue_write(&engine->output_queue, block_buffer, (size_t)block);
-        engine->transport_frame += (uint64_t)block;
     }
 
     free(block_buffer);
@@ -358,6 +448,9 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
     engine->worker_thread = NULL;
     atomic_init(&engine->worker_running, false);
     atomic_init(&engine->transport_playing, false);
+    atomic_init(&engine->loop_enabled, false);
+    atomic_init(&engine->loop_start_frame, 0);
+    atomic_init(&engine->loop_end_frame, 0);
     if (!ringbuf_init(&engine->command_queue, sizeof(EngineCommand) * 64)) {
         free(engine);
         return NULL;
@@ -563,6 +656,56 @@ bool engine_transport_is_playing(const Engine* engine) {
     return atomic_load_explicit(&engine->transport_playing, memory_order_acquire);
 }
 
+bool engine_transport_seek(Engine* engine, uint64_t frame) {
+    if (!engine) {
+        return false;
+    }
+    if (!engine->device_started || !engine->worker_thread) {
+        engine->transport_frame = frame;
+        audio_queue_clear(&engine->output_queue);
+        engine_graph_reset(engine->graph);
+        return true;
+    }
+
+    EngineCommand cmd = {
+        .type = ENGINE_CMD_SEEK,
+        .payload.seek.frame = frame,
+    };
+    if (!engine_post_command(engine, &cmd)) {
+        return false;
+    }
+    return true;
+}
+
+bool engine_transport_set_loop(Engine* engine, bool enabled, uint64_t start_frame, uint64_t end_frame) {
+    if (!engine) {
+        return false;
+    }
+    if (enabled && end_frame <= start_frame) {
+        enabled = false;
+    }
+
+    if (!engine->device_started || !engine->worker_thread) {
+        atomic_store_explicit(&engine->loop_enabled, enabled, memory_order_release);
+        atomic_store_explicit(&engine->loop_start_frame, start_frame, memory_order_release);
+        atomic_store_explicit(&engine->loop_end_frame, end_frame, memory_order_release);
+        return true;
+    }
+
+    EngineCommand cmd = {
+        .type = ENGINE_CMD_SET_LOOP,
+        .payload.loop = {
+            .enabled = enabled,
+            .start_frame = start_frame,
+            .end_frame = end_frame,
+        },
+    };
+    if (!engine_post_command(engine, &cmd)) {
+        return false;
+    }
+    return true;
+}
+
 bool engine_queue_graph_swap(Engine* engine, EngineGraph* new_graph) {
     if (!engine || !new_graph) {
         return false;
@@ -592,6 +735,7 @@ int engine_add_track(Engine* engine) {
         return -1;
     }
     engine->tracks[index].active = false;
+    engine_track_set_name(engine, index, NULL);
     return index;
 }
 
@@ -618,6 +762,23 @@ bool engine_remove_track(Engine* engine, int track_index) {
     }
 
     engine_rebuild_sources(engine);
+    return true;
+}
+
+bool engine_track_set_name(Engine* engine, int track_index, const char* name) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    EngineTrack* track = &engine->tracks[track_index];
+    if (!track) {
+        return false;
+    }
+    if (name && name[0] != '\0') {
+        strncpy(track->name, name, sizeof(track->name) - 1);
+        track->name[sizeof(track->name) - 1] = '\0';
+    } else {
+        snprintf(track->name, sizeof(track->name), "Track %d", track_index + 1);
+    }
     return true;
 }
 
@@ -965,6 +1126,32 @@ bool engine_add_clip_segment(Engine* engine, int track_index, const EngineClip* 
         }
     }
 
+    engine_rebuild_sources(engine);
+    return true;
+}
+
+bool engine_track_set_muted(Engine* engine, int track_index, bool muted) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    EngineTrack* track = &engine->tracks[track_index];
+    if (!track) {
+        return false;
+    }
+    track->muted = muted;
+    engine_rebuild_sources(engine);
+    return true;
+}
+
+bool engine_track_set_solo(Engine* engine, int track_index, bool solo) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    EngineTrack* track = &engine->tracks[track_index];
+    if (!track) {
+        return false;
+    }
+    track->solo = solo;
     engine_rebuild_sources(engine);
     return true;
 }

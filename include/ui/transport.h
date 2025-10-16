@@ -10,17 +10,26 @@ typedef struct {
     SDL_Rect play_rect;
     SDL_Rect stop_rect;
     SDL_Rect grid_rect;
+    SDL_Rect time_label_rect;
+    SDL_Rect seek_track_rect;
+    SDL_Rect seek_handle_rect;
     SDL_Rect horiz_track_rect;
     SDL_Rect horiz_handle_rect;
     SDL_Rect vert_track_rect;
     SDL_Rect vert_handle_rect;
+    SDL_Rect fit_width_rect;
+    SDL_Rect fit_height_rect;
     bool play_hovered;
     bool stop_hovered;
     bool grid_hovered;
+    bool seek_hovered;
     bool horiz_hovered;
     bool vert_hovered;
     bool adjusting_horizontal;
     bool adjusting_vertical;
+    bool adjusting_seek;
+    bool fit_width_hovered;
+    bool fit_height_hovered;
 } TransportUI;
 
 void transport_ui_init(TransportUI* ui);
