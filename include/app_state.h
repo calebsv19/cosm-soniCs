@@ -25,6 +25,8 @@ typedef struct {
     bool active;
     bool trimming_left;
     bool trimming_right;
+    bool adjusting_fade_in;
+    bool adjusting_fade_out;
     int track_index;
     int clip_index;
     int start_mouse_x;
@@ -34,6 +36,8 @@ typedef struct {
     uint64_t initial_offset_frames;
     uint64_t initial_duration_frames;
     uint64_t clip_total_frames;
+    uint64_t initial_fade_in_frames;
+    uint64_t initial_fade_out_frames;
 } TimelineDragState;
 
 typedef struct {
@@ -45,6 +49,10 @@ typedef struct {
     bool editing_name;
     int name_cursor;
     bool adjusting_gain;
+    bool adjusting_fade_in;
+    bool adjusting_fade_out;
+    uint64_t fade_in_frames;
+    uint64_t fade_out_frames;
 } ClipInspectorState;
 
 typedef struct {

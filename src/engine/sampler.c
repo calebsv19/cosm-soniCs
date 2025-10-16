@@ -9,6 +9,8 @@ struct EngineSamplerSource {
     uint64_t timeline_start_frame;
     uint64_t clip_offset_frames;
     uint64_t clip_length_frames;
+    uint64_t fade_in_frames;
+    uint64_t fade_out_frames;
     int channels;
 };
 
@@ -29,6 +31,8 @@ EngineSamplerSource* engine_sampler_source_create(void) {
     sampler->timeline_start_frame = 0;
     sampler->clip_offset_frames = 0;
     sampler->clip_length_frames = 0;
+    sampler->fade_in_frames = 0;
+    sampler->fade_out_frames = 0;
     return sampler;
 }
 
@@ -39,7 +43,9 @@ void engine_sampler_source_destroy(EngineSamplerSource* sampler) {
 void engine_sampler_source_set_clip(EngineSamplerSource* sampler, const AudioMediaClip* clip,
                                     uint64_t timeline_start_frame,
                                     uint64_t clip_offset_frames,
-                                    uint64_t clip_length_frames) {
+                                    uint64_t clip_length_frames,
+                                    uint64_t fade_in_frames,
+                                    uint64_t fade_out_frames) {
     if (!sampler) {
         return;
     }
@@ -48,6 +54,8 @@ void engine_sampler_source_set_clip(EngineSamplerSource* sampler, const AudioMed
         sampler->timeline_start_frame = 0;
         sampler->clip_offset_frames = 0;
         sampler->clip_length_frames = 0;
+        sampler->fade_in_frames = 0;
+        sampler->fade_out_frames = 0;
         return;
     }
     sampler->clip = clip;
@@ -63,6 +71,18 @@ void engine_sampler_source_set_clip(EngineSamplerSource* sampler, const AudioMed
     } else {
         sampler->clip_length_frames = clip_length_frames;
     }
+    uint64_t effective_length = sampler->clip_length_frames;
+    if (effective_length == 0) {
+        effective_length = max_length;
+    }
+    if (fade_in_frames > effective_length) {
+        fade_in_frames = effective_length;
+    }
+    if (fade_out_frames > effective_length) {
+        fade_out_frames = effective_length;
+    }
+    sampler->fade_in_frames = fade_in_frames;
+    sampler->fade_out_frames = fade_out_frames;
 }
 
 void engine_sampler_source_reset(void* userdata, int sample_rate, int channels) {
@@ -95,11 +115,12 @@ void engine_sampler_source_render(void* userdata, float* interleaved, int frames
     for (int i = 0; i < frames; ++i) {
         uint64_t global_frame = transport_frame + (uint64_t)i;
         uint64_t local_frame = 0;
+        uint64_t rel = 0;
         bool in_range = false;
         if (clip) {
             if (sampler->clip_length_frames > 0 &&
                 global_frame >= sampler->timeline_start_frame) {
-                uint64_t rel = global_frame - sampler->timeline_start_frame;
+                rel = global_frame - sampler->timeline_start_frame;
                 if (rel < sampler->clip_length_frames) {
                     local_frame = sampler->clip_offset_frames + rel;
                     if (local_frame < clip->frame_count) {
@@ -112,6 +133,23 @@ void engine_sampler_source_render(void* userdata, float* interleaved, int frames
             float value = 0.0f;
             if (in_range) {
                 value = sample_from_clip(clip, local_frame, ch);
+                float gain_scale = 1.0f;
+                if (sampler->fade_in_frames > 0 && rel < sampler->fade_in_frames) {
+                    gain_scale *= (float)rel / (float)sampler->fade_in_frames;
+                }
+                if (sampler->fade_out_frames > 0 && sampler->clip_length_frames > 0) {
+                    uint64_t fade_start = sampler->clip_length_frames > sampler->fade_out_frames
+                                              ? sampler->clip_length_frames - sampler->fade_out_frames
+                                              : 0;
+                    if (rel >= fade_start) {
+                        uint64_t remaining = sampler->clip_length_frames - rel;
+                        if (remaining > sampler->fade_out_frames) {
+                            remaining = sampler->fade_out_frames;
+                        }
+                        gain_scale *= (float)remaining / (float)sampler->fade_out_frames;
+                    }
+                }
+                value *= gain_scale;
             }
             interleaved[i * sampler->channels + ch] = value;
         }

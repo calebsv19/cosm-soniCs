@@ -103,6 +103,10 @@ static void timeline_end_drag(AppState* state) {
     state->timeline_drag.active = false;
     state->timeline_drag.trimming_left = false;
     state->timeline_drag.trimming_right = false;
+    state->timeline_drag.adjusting_fade_in = false;
+    state->timeline_drag.adjusting_fade_out = false;
+    state->inspector.adjusting_fade_in = false;
+    state->inspector.adjusting_fade_out = false;
 }
 
 static void track_name_editor_stop(AppState* state, bool commit) {
@@ -791,6 +795,7 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
     }
     SDL_Keymod mods = SDL_GetModState();
     bool shift_held = (mods & KMOD_SHIFT) != 0;
+    bool alt_held = (mods & KMOD_ALT) != 0;
     if (!was_down && is_down && shift_held && over_timeline) {
         float seconds = (float)(state->mouse_x - geom.content_left) / geom.pixels_per_second;
         if (seconds < 0.0f) {
@@ -885,8 +890,28 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
                 hit_track = t;
                 hit_clip = i;
                 int local_x = state->mouse_x - rect.x;
-                hit_left = local_x <= TIMELINE_HANDLE_HIT_WIDTH;
-                hit_right = local_x >= rect.w - TIMELINE_HANDLE_HIT_WIDTH;
+                int fade_in_px = 0;
+                int fade_out_px = 0;
+                if (sample_rate > 0) {
+                    fade_in_px = (int)round((double)clip->fade_in_frames / (double)sample_rate * geom.pixels_per_second);
+                    fade_out_px = (int)round((double)clip->fade_out_frames / (double)sample_rate * geom.pixels_per_second);
+                    if (fade_in_px > rect.w) fade_in_px = rect.w;
+                    if (fade_out_px > rect.w) fade_out_px = rect.w;
+                }
+
+                bool over_left_edge = local_x <= TIMELINE_HANDLE_HIT_WIDTH;
+                bool over_right_edge = local_x >= rect.w - TIMELINE_HANDLE_HIT_WIDTH;
+
+                bool in_fade_left = (fade_in_px > 0) ? (local_x <= fade_in_px) : over_left_edge;
+                bool in_fade_right = (fade_out_px > 0) ? (local_x >= rect.w - fade_out_px) : over_right_edge;
+
+                if (alt_held) {
+                    hit_left = in_fade_left;
+                    hit_right = in_fade_right;
+                } else {
+                    hit_left = over_left_edge;
+                    hit_right = over_right_edge;
+                }
                 break;
             }
         }
@@ -984,8 +1009,12 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
             const EngineClip* clip = &track->clips[hit_clip];
 
             drag->active = true;
-            drag->trimming_left = hit_left && !hit_right;
-            drag->trimming_right = hit_right && !hit_left;
+            bool fade_left = hit_left && !hit_right && alt_held;
+            bool fade_right = hit_right && !hit_left && alt_held;
+            drag->trimming_left = hit_left && !hit_right && !alt_held;
+            drag->trimming_right = hit_right && !hit_left && !alt_held;
+            drag->adjusting_fade_in = fade_left;
+            drag->adjusting_fade_out = fade_right;
             drag->track_index = hit_track;
             drag->clip_index = hit_clip;
             drag->start_mouse_x = state->mouse_x;
@@ -1000,10 +1029,16 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
             if (drag->clip_total_frames == 0) {
                 drag->clip_total_frames = drag->initial_offset_frames + drag->initial_duration_frames;
             }
+            drag->initial_fade_in_frames = clip->fade_in_frames;
+            drag->initial_fade_out_frames = clip->fade_out_frames;
             float start_sec = (float)drag->initial_start_frames / (float)sample_rate;
             drag->start_right_seconds = start_sec + (float)drag->initial_duration_frames / (float)sample_rate;
             inspector_input_commit_if_editing(state);
             state->inspector.adjusting_gain = false;
+            if (fade_left || fade_right) {
+                state->inspector.adjusting_fade_in = fade_left;
+                state->inspector.adjusting_fade_out = fade_right;
+            }
         } else if (!hit_left && !hit_right && over_timeline) {
             timeline_clear_selection(state);
             timeline_end_drag(state);
@@ -1030,6 +1065,14 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
         timeline_end_drag(state);
         return;
     }
+    const EngineClip* drag_clip = &drag_track->clips[drag->clip_index];
+
+    if (!drag->adjusting_fade_in) {
+        state->inspector.adjusting_fade_in = false;
+    }
+    if (!drag->adjusting_fade_out) {
+        state->inspector.adjusting_fade_out = false;
+    }
 
     float mouse_seconds = (float)(state->mouse_x - geom.content_left) / geom.pixels_per_second;
     float trim_min_start_sec = (float)drag->initial_start_frames / (float)sample_rate -
@@ -1039,7 +1082,54 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
     }
     const float move_min_start_sec = 0.0f;
 
-    if (!drag->trimming_left && !drag->trimming_right) {
+    if (drag->adjusting_fade_in || drag->adjusting_fade_out) {
+        state->inspector.adjusting_fade_in = drag->adjusting_fade_in;
+        state->inspector.adjusting_fade_out = drag->adjusting_fade_out;
+
+    double clip_start_sec = (double)drag_clip->timeline_start_frames / (double)sample_rate;
+    uint64_t clip_frames = drag_clip->duration_frames;
+    if (clip_frames == 0 && drag_clip->sampler) {
+        clip_frames = engine_sampler_get_frame_count(drag_clip->sampler);
+    }
+    if (clip_frames == 0) {
+        clip_frames = 1;
+        }
+        double clip_length_sec = (double)clip_frames / (double)sample_rate;
+
+        int clip_x = geom.content_left + (int)round(clip_start_sec * geom.pixels_per_second);
+        int clip_w = (int)round(clip_length_sec * geom.pixels_per_second);
+        if (clip_w < 1) {
+            clip_w = 1;
+        }
+
+        float local_px = (float)(state->mouse_x - clip_x);
+        if (drag->adjusting_fade_out) {
+            local_px = (float)(clip_x + clip_w - state->mouse_x);
+        }
+        if (local_px < 0.0f) local_px = 0.0f;
+        if (local_px > (float)clip_w) local_px = (float)clip_w;
+        float new_seconds = local_px / geom.pixels_per_second;
+        if (new_seconds < 0.0f) new_seconds = 0.0f;
+        if (new_seconds > clip_length_sec) new_seconds = (float)clip_length_sec;
+
+        uint64_t new_frames = (uint64_t)llround(new_seconds * (float)sample_rate);
+        uint64_t target_fade_in = drag->adjusting_fade_in ? new_frames : drag_clip->fade_in_frames;
+        uint64_t target_fade_out = drag->adjusting_fade_out ? new_frames : drag_clip->fade_out_frames;
+        engine_clip_set_fades(state->engine, drag->track_index, drag->clip_index, target_fade_in, target_fade_out);
+
+        const EngineTrack* updated_tracks = engine_get_tracks(state->engine);
+        int updated_count = engine_get_track_count(state->engine);
+        if (updated_tracks && drag->track_index >= 0 && drag->track_index < updated_count) {
+            const EngineTrack* updated_track = &updated_tracks[drag->track_index];
+            if (updated_track && drag->clip_index >= 0 && drag->clip_index < updated_track->clip_count) {
+                const EngineClip* updated_clip = &updated_track->clips[drag->clip_index];
+                state->inspector.fade_in_frames = updated_clip->fade_in_frames;
+                state->inspector.fade_out_frames = updated_clip->fade_out_frames;
+            }
+        }
+        inspector_input_set_clip(state, drag->track_index, drag->clip_index);
+        return;
+    } else if (!drag->trimming_left && !drag->trimming_right) {
         float initial_start_sec = (float)drag->initial_start_frames / (float)sample_rate;
         float delta_sec = mouse_seconds - drag->start_mouse_seconds;
         float new_start_sec = clamp_scalar(initial_start_sec + delta_sec, 0.0f, geom.visible_seconds);

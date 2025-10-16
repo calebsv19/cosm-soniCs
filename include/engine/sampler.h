@@ -12,7 +12,9 @@ void engine_sampler_source_destroy(EngineSamplerSource* sampler);
 void engine_sampler_source_set_clip(EngineSamplerSource* sampler, const AudioMediaClip* clip,
                                     uint64_t timeline_start_frame,
                                     uint64_t clip_offset_frames,
-                                    uint64_t clip_length_frames);
+                                    uint64_t clip_length_frames,
+                                    uint64_t fade_in_frames,
+                                    uint64_t fade_out_frames);
 void engine_sampler_source_reset(void* userdata, int sample_rate, int channels);
 void engine_sampler_source_render(void* userdata, float* interleaved, int frames, uint64_t transport_frame);
 void engine_sampler_source_ops(EngineGraphSourceOps* ops);

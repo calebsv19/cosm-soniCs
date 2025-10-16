@@ -72,12 +72,11 @@ void library_browser_scan(LibraryBrowser* browser) {
         if (entry->d_name[0] == '.') {
             continue;
         }
-        size_t len = strlen(entry->d_name);
-        if (len < 4) {
+        const char* dot = strrchr(entry->d_name, '.');
+        if (!dot) {
             continue;
         }
-        const char* ext = entry->d_name + len - 4;
-        if (strcasecmp(ext, ".wav") != 0) {
+        if (strcasecmp(dot, ".wav") != 0 && strcasecmp(dot, ".mp3") != 0) {
             continue;
         }
         if (browser->count >= LIBRARY_MAX_ITEMS) {

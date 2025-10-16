@@ -140,6 +140,15 @@ bool engine_clip_set_name(Engine* engine, int track_index, int clip_index, const
     return true;
 }
 
+bool engine_clip_set_fades(Engine* engine, int track_index, int clip_index, uint64_t fade_in_frames, uint64_t fade_out_frames) {
+    (void)engine;
+    (void)track_index;
+    (void)clip_index;
+    (void)fade_in_frames;
+    (void)fade_out_frames;
+    return true;
+}
+
 bool engine_remove_track(Engine* engine, int track_index) {
     (void)engine;
     (void)track_index;
@@ -212,6 +221,8 @@ int main(void) {
     clip->start_frame = 0;
     clip->duration_frames = 48000;
     clip->offset_frames = 0;
+    clip->fade_in_frames = 1200;
+    clip->fade_out_frames = 2400;
     clip->gain = 1.0f;
     clip->selected = false;
 
@@ -241,7 +252,8 @@ int main(void) {
     SessionTrack* lt = &loaded.tracks[0];
     SessionClip* lc = &lt->clips[0];
     if (strcmp(lt->name, "Test Track") != 0 || strcmp(lc->name, "Test Clip") != 0 ||
-        strcmp(lc->media_path, "assets/audio/test.wav") != 0 || lc->duration_frames != 48000) {
+        strcmp(lc->media_path, "assets/audio/test.wav") != 0 || lc->duration_frames != 48000 ||
+        lc->fade_in_frames != 1200 || lc->fade_out_frames != 2400) {
         session_document_free(&doc);
         session_document_free(&loaded);
         SDL_Log("session_serialization_test: deserialised content mismatch");

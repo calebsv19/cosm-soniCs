@@ -81,6 +81,53 @@ static void inspector_update_gain_from_mouse(AppState* state, int mouse_x) {
     inspector_update_gain(state, gain);
 }
 
+static uint64_t inspector_clip_length_frames(const EngineClip* clip) {
+    if (!clip) {
+        return 0;
+    }
+    uint64_t frames = clip->duration_frames;
+    if (frames == 0 && clip->sampler) {
+        frames = engine_sampler_get_frame_count(clip->sampler);
+    }
+    return frames;
+}
+
+static void inspector_update_fade_from_mouse(AppState* state, bool is_fade_in, int mouse_x) {
+    if (!state || !state->engine) {
+        return;
+    }
+    EngineClip* clip = inspector_get_clip_mutable(state);
+    if (!clip) {
+        return;
+    }
+    ClipInspectorLayout layout;
+    clip_inspector_compute_layout(state, &layout);
+    SDL_Rect track = is_fade_in ? layout.fade_in_track_rect : layout.fade_out_track_rect;
+    if (track.w <= 0) {
+        return;
+    }
+    float t = (float)(mouse_x - track.x) / (float)track.w;
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+
+    uint64_t max_frames = inspector_clip_length_frames(clip);
+    if (max_frames == 0) {
+        max_frames = 1;
+    }
+    uint64_t new_frames = (uint64_t)llround((double)max_frames * (double)t);
+
+    uint64_t fade_in_frames = is_fade_in ? new_frames : clip->fade_in_frames;
+    uint64_t fade_out_frames = is_fade_in ? clip->fade_out_frames : new_frames;
+    engine_clip_set_fades(state->engine, state->inspector.track_index, state->inspector.clip_index,
+                          fade_in_frames, fade_out_frames);
+
+    clip = inspector_get_clip_mutable(state);
+    if (clip) {
+        state->inspector.fade_in_frames = clip->fade_in_frames;
+        state->inspector.fade_out_frames = clip->fade_out_frames;
+    }
+}
+
 void inspector_input_init(AppState* state) {
     if (!state) {
         return;
@@ -93,6 +140,10 @@ void inspector_input_init(AppState* state) {
     state->inspector.editing_name = false;
     state->inspector.name_cursor = 0;
     state->inspector.adjusting_gain = false;
+    state->inspector.adjusting_fade_in = false;
+    state->inspector.adjusting_fade_out = false;
+    state->inspector.fade_in_frames = 0;
+    state->inspector.fade_out_frames = 0;
 }
 
 void inspector_input_show(AppState* state, int track_index, int clip_index, const EngineClip* clip) {
@@ -108,6 +159,10 @@ void inspector_input_show(AppState* state, int track_index, int clip_index, cons
     state->inspector.editing_name = false;
     state->inspector.name_cursor = (int)strlen(state->inspector.name);
     state->inspector.adjusting_gain = false;
+    state->inspector.adjusting_fade_in = false;
+    state->inspector.adjusting_fade_out = false;
+    state->inspector.fade_in_frames = clip->fade_in_frames;
+    state->inspector.fade_out_frames = clip->fade_out_frames;
     SDL_StopTextInput();
 }
 
@@ -117,6 +172,15 @@ void inspector_input_set_clip(AppState* state, int track_index, int clip_index) 
     }
     state->inspector.track_index = track_index;
     state->inspector.clip_index = clip_index;
+    const EngineClip* clip = inspector_get_clip_const(state);
+    if (clip) {
+        if (!state->inspector.adjusting_fade_in) {
+            state->inspector.fade_in_frames = clip->fade_in_frames;
+        }
+        if (!state->inspector.adjusting_fade_out) {
+            state->inspector.fade_out_frames = clip->fade_out_frames;
+        }
+    }
 }
 
 void inspector_input_commit_if_editing(AppState* state) {
@@ -161,6 +225,22 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                 if (SDL_PointInRect(&p, &layout.gain_track_rect)) {
                     state->inspector.adjusting_gain = true;
                     inspector_update_gain_from_mouse(state, p.x);
+                    return;
+                }
+
+                if (SDL_PointInRect(&p, &layout.fade_in_track_rect)) {
+                    inspector_input_commit_if_editing(state);
+                    state->inspector.adjusting_fade_in = true;
+                    state->inspector.adjusting_fade_out = false;
+                    inspector_update_fade_from_mouse(state, true, p.x);
+                    return;
+                }
+                if (SDL_PointInRect(&p, &layout.fade_out_track_rect)) {
+                    inspector_input_commit_if_editing(state);
+                    state->inspector.adjusting_fade_out = true;
+                    state->inspector.adjusting_fade_in = false;
+                    inspector_update_fade_from_mouse(state, false, p.x);
+                    return;
                 }
             }
         }
@@ -168,11 +248,17 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
     case SDL_MOUSEBUTTONUP:
         if (event->button.button == SDL_BUTTON_LEFT) {
             state->inspector.adjusting_gain = false;
+            state->inspector.adjusting_fade_in = false;
+            state->inspector.adjusting_fade_out = false;
         }
         break;
     case SDL_MOUSEMOTION:
         if (state->inspector.adjusting_gain) {
             inspector_update_gain_from_mouse(state, event->motion.x);
+        } else if (state->inspector.adjusting_fade_in) {
+            inspector_update_fade_from_mouse(state, true, event->motion.x);
+        } else if (state->inspector.adjusting_fade_out) {
+            inspector_update_fade_from_mouse(state, false, event->motion.x);
         }
         break;
     case SDL_TEXTINPUT:
@@ -259,5 +345,10 @@ void inspector_input_sync(AppState* state) {
     if (!state->inspector.adjusting_gain) {
         state->inspector.gain = clip->gain;
     }
+    if (!state->inspector.adjusting_fade_in) {
+        state->inspector.fade_in_frames = clip->fade_in_frames;
+    }
+    if (!state->inspector.adjusting_fade_out) {
+        state->inspector.fade_out_frames = clip->fade_out_frames;
+    }
 }
-

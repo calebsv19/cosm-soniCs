@@ -10,5 +10,6 @@ typedef struct AudioMediaClip {
     int sample_rate;
 } AudioMediaClip;
 
+bool audio_media_clip_load(const char* path, int target_sample_rate, AudioMediaClip* out_clip);
 bool audio_media_clip_load_wav(const char* path, int target_sample_rate, AudioMediaClip* out_clip);
 void audio_media_clip_free(AudioMediaClip* clip);

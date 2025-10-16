@@ -82,6 +82,8 @@ static void engine_clip_destroy(EngineClip* clip) {
     clip->timeline_start_frames = 0;
     clip->duration_frames = 0;
     clip->offset_frames = 0;
+    clip->fade_in_frames = 0;
+    clip->fade_out_frames = 0;
     clip->selected = false;
     clip->media = NULL;
 }
@@ -206,6 +208,8 @@ static EngineClip* engine_track_append_clip(EngineTrack* track) {
     clip->timeline_start_frames = 0;
     clip->duration_frames = 0;
     clip->offset_frames = 0;
+    clip->fade_in_frames = 0;
+    clip->fade_out_frames = 0;
     clip->selected = false;
     return clip;
 }
@@ -235,7 +239,9 @@ static void engine_clip_refresh_sampler(EngineClip* clip) {
     engine_sampler_source_set_clip(clip->sampler, clip->media,
                                    clip->timeline_start_frames,
                                    clip->offset_frames,
-                                   clip->duration_frames);
+                                   clip->duration_frames,
+                                   clip->fade_in_frames,
+                                   clip->fade_out_frames);
 }
 
 static bool engine_post_command(Engine* engine, const EngineCommand* cmd) {
@@ -794,7 +800,7 @@ bool engine_add_clip_to_track(Engine* engine, int track_index, const char* filep
     }
 
     AudioMediaClip loaded = {0};
-    if (!audio_media_clip_load_wav(filepath, engine->config.sample_rate, &loaded)) {
+    if (!audio_media_clip_load(filepath, engine->config.sample_rate, &loaded)) {
         SDL_Log("engine_add_clip_to_track: failed to load %s", filepath);
         return false;
     }
@@ -837,6 +843,8 @@ bool engine_add_clip_to_track(Engine* engine, int track_index, const char* filep
     clip_slot->media_path[sizeof(clip_slot->media_path) - 1] = '\0';
     clip_slot->gain = 1.0f;
     clip_slot->active = true;
+    clip_slot->fade_in_frames = 0;
+    clip_slot->fade_out_frames = 0;
     engine_clip_refresh_sampler(clip_slot);
 
     track->active = true;
@@ -1038,6 +1046,46 @@ bool engine_clip_set_gain(Engine* engine, int track_index, int clip_index, float
     return true;
 }
 
+bool engine_clip_set_fades(Engine* engine, int track_index, int clip_index, uint64_t fade_in_frames, uint64_t fade_out_frames) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    EngineTrack* track = &engine->tracks[track_index];
+    if (!track || clip_index < 0 || clip_index >= track->clip_count) {
+        return false;
+    }
+    EngineClip* clip = &track->clips[clip_index];
+    if (!clip) {
+        return false;
+    }
+    uint64_t max_len = clip->duration_frames;
+    if (max_len == 0) {
+        max_len = engine_clip_get_total_frames(engine, track_index, clip_index);
+    }
+    if (fade_in_frames > max_len) {
+        fade_in_frames = max_len;
+    }
+    if (fade_out_frames > max_len) {
+        fade_out_frames = max_len;
+    }
+    if (fade_in_frames + fade_out_frames > max_len) {
+        uint64_t total = fade_in_frames + fade_out_frames;
+        uint64_t excess = total - max_len;
+        if (fade_out_frames >= excess) {
+            fade_out_frames -= excess;
+        } else if (fade_in_frames >= excess) {
+            fade_in_frames -= excess;
+        } else {
+            fade_out_frames = 0;
+            fade_in_frames = 0;
+        }
+    }
+    clip->fade_in_frames = fade_in_frames;
+    clip->fade_out_frames = fade_out_frames;
+    engine_clip_refresh_sampler(clip);
+    return true;
+}
+
 bool engine_add_clip_segment(Engine* engine, int track_index, const EngineClip* source_clip,
                              uint64_t source_relative_offset_frames,
                              uint64_t segment_length_frames,
@@ -1108,6 +1156,8 @@ bool engine_add_clip_segment(Engine* engine, int track_index, const EngineClip* 
     new_clip->gain = source_clip->gain;
     new_clip->active = source_clip->active;
     new_clip->selected = false;
+    new_clip->fade_in_frames = source_clip->fade_in_frames;
+    new_clip->fade_out_frames = source_clip->fade_out_frames;
 
     if (source_clip->name[0] != '\0') {
         snprintf(new_clip->name, sizeof(new_clip->name), "%s segment", source_clip->name);
@@ -1227,6 +1277,8 @@ bool engine_duplicate_clip(Engine* engine, int track_index, int clip_index, uint
     new_clip->gain = original->gain;
     new_clip->active = original->active;
     new_clip->selected = false;
+    new_clip->fade_in_frames = original->fade_in_frames;
+    new_clip->fade_out_frames = original->fade_out_frames;
 
     if (original->name[0] != '\0') {
         snprintf(new_clip->name, sizeof(new_clip->name), "%s copy", original->name);

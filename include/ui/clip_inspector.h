@@ -10,6 +10,12 @@ typedef struct {
     SDL_Rect gain_track_rect;
     SDL_Rect gain_fill_rect;
     SDL_Rect gain_handle_rect;
+    SDL_Rect fade_in_track_rect;
+    SDL_Rect fade_in_fill_rect;
+    SDL_Rect fade_in_handle_rect;
+    SDL_Rect fade_out_track_rect;
+    SDL_Rect fade_out_fill_rect;
+    SDL_Rect fade_out_handle_rect;
 } ClipInspectorLayout;
 
 void clip_inspector_compute_layout(const struct AppState* state, ClipInspectorLayout* layout);

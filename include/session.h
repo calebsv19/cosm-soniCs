@@ -16,6 +16,8 @@ typedef struct {
     uint64_t start_frame;
     uint64_t duration_frames;
     uint64_t offset_frames;
+    uint64_t fade_in_frames;
+    uint64_t fade_out_frames;
     float gain;
     bool selected;
 } SessionClip;

@@ -172,6 +172,8 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
             dst_clip->start_frame = src_clip->timeline_start_frames;
             dst_clip->duration_frames = src_clip->duration_frames;
             dst_clip->offset_frames = src_clip->offset_frames;
+            dst_clip->fade_in_frames = src_clip->fade_in_frames;
+            dst_clip->fade_out_frames = src_clip->fade_out_frames;
             dst_clip->gain = src_clip->gain;
             dst_clip->selected = src_clip->selected;
         }
@@ -241,6 +243,14 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
             }
             if (clip->duration_frames == 0) {
                 session_set_error(error_message, error_message_len, "track %d clip %d has zero duration", t, c);
+                return false;
+            }
+            if (clip->fade_in_frames > clip->duration_frames) {
+                session_set_error(error_message, error_message_len, "track %d clip %d fade-in exceeds duration", t, c);
+                return false;
+            }
+            if (clip->fade_out_frames > clip->duration_frames) {
+                session_set_error(error_message, error_message_len, "track %d clip %d fade-out exceeds duration", t, c);
                 return false;
             }
         }
@@ -429,6 +439,10 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
             fprintf(file, "\"duration_frames\": %" PRIu64 ",\n", clip->duration_frames);
             json_write_indent(file, 5);
             fprintf(file, "\"offset_frames\": %" PRIu64 ",\n", clip->offset_frames);
+            json_write_indent(file, 5);
+            fprintf(file, "\"fade_in_frames\": %" PRIu64 ",\n", clip->fade_in_frames);
+            json_write_indent(file, 5);
+            fprintf(file, "\"fade_out_frames\": %" PRIu64 ",\n", clip->fade_out_frames);
             json_write_indent(file, 5);
             fprintf(file, "\"gain\": ");
             json_write_float(file, clip->gain);
@@ -861,6 +875,18 @@ static bool parse_session_track(JsonReader* r, SessionTrack* track) {
                                 return false;
                             }
                             clip->offset_frames = (uint64_t)(val < 0 ? 0 : val);
+                        } else if (strcmp(clip_key, "fade_in_frames") == 0) {
+                            double val;
+                            if (!json_parse_number(r, &val)) {
+                                return false;
+                            }
+                            clip->fade_in_frames = (uint64_t)(val < 0 ? 0 : val);
+                        } else if (strcmp(clip_key, "fade_out_frames") == 0) {
+                            double val;
+                            if (!json_parse_number(r, &val)) {
+                                return false;
+                            }
+                            clip->fade_out_frames = (uint64_t)(val < 0 ? 0 : val);
                         } else if (strcmp(clip_key, "gain") == 0) {
                             double val;
                             if (!json_parse_number(r, &val)) {
@@ -1377,6 +1403,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
             engine_clip_set_region(state->engine, track_index, clip_index, clip_doc->offset_frames, clip_doc->duration_frames);
             engine_clip_set_gain(state->engine, track_index, clip_index, clip_doc->gain == 0.0f ? 1.0f : clip_doc->gain);
             engine_clip_set_name(state->engine, track_index, clip_index, clip_doc->name);
+            engine_clip_set_fades(state->engine, track_index, clip_index, clip_doc->fade_in_frames, clip_doc->fade_out_frames);
             if (clip_doc->selected && state->selected_track_index == -1) {
                 state->selected_track_index = track_index;
                 state->selected_clip_index = clip_index;

@@ -26,6 +26,8 @@ struct EngineClip {
     uint64_t timeline_start_frames;
     uint64_t duration_frames;
     uint64_t offset_frames;
+    uint64_t fade_in_frames;
+    uint64_t fade_out_frames;
     bool selected;
 };
 
@@ -67,6 +69,7 @@ uint64_t engine_clip_get_total_frames(const Engine* engine, int track_index, int
 bool    engine_remove_clip(Engine* engine, int track_index, int clip_index);
 bool    engine_clip_set_name(Engine* engine, int track_index, int clip_index, const char* name);
 bool    engine_clip_set_gain(Engine* engine, int track_index, int clip_index, float gain);
+bool    engine_clip_set_fades(Engine* engine, int track_index, int clip_index, uint64_t fade_in_frames, uint64_t fade_out_frames);
 bool    engine_duplicate_clip(Engine* engine, int track_index, int clip_index, uint64_t start_frame_offset, int* out_clip_index);
 bool    engine_track_set_name(Engine* engine, int track_index, const char* name);
 bool    engine_add_clip_segment(Engine* engine, int track_index, const EngineClip* source_clip,

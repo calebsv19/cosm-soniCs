@@ -38,8 +38,14 @@ CFLAGS := -std=c11 -Wall -Wextra -Wpedantic
 SDL2_CFLAGS := $(shell sdl2-config --cflags 2>/dev/null || pkg-config --cflags sdl2 2>/dev/null)
 SDL2_LIBS := $(shell sdl2-config --libs 2>/dev/null || pkg-config --libs sdl2 2>/dev/null)
 
-CPPFLAGS := -Iinclude -I$(SDLAPP_DIR) $(SDL2_CFLAGS)
+CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) $(SDL2_CFLAGS)
+
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+LDFLAGS := $(SDL2_LIBS) -framework AudioToolbox -framework CoreFoundation
+else
 LDFLAGS := $(SDL2_LIBS)
+endif
 
 APP_BIN := $(BUILD_DIR)/$(APP_NAME)
 
@@ -49,7 +55,7 @@ TEST_SRCS := \
 TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(TEST_SRCS))
 TEST_BIN := $(BUILD_DIR)/tests/session_serialization_test
 
-.PHONY: all clean run
+.PHONY: all clean run test-session
 
 all: $(APP_BIN)
 
@@ -67,7 +73,6 @@ clean:
 run: $(APP_BIN)
 	$(APP_BIN)
 
-.PHONY: test-session
 test-session: $(TEST_BIN)
 	$(TEST_BIN)
 

@@ -19,6 +19,44 @@ static void zero_layout(ClipInspectorLayout* layout) {
     SDL_zero(*layout);
 }
 
+static void draw_slider(SDL_Renderer* renderer, const SDL_Rect* track_rect, float t) {
+    if (!renderer || !track_rect || track_rect->w <= 0 || track_rect->h <= 0) {
+        return;
+    }
+    SDL_Color track_bg = {36, 36, 44, 255};
+    SDL_Color track_border = {90, 90, 110, 255};
+    SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
+    SDL_RenderFillRect(renderer, track_rect);
+    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
+    SDL_RenderDrawRect(renderer, track_rect);
+
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    SDL_Rect fill_rect = *track_rect;
+    fill_rect.w = (int)(t * (float)track_rect->w);
+    if (fill_rect.w < 0) fill_rect.w = 0;
+    SDL_Color fill_color = {120, 180, 255, 200};
+    SDL_SetRenderDrawColor(renderer, fill_color.r, fill_color.g, fill_color.b, fill_color.a);
+    SDL_RenderFillRect(renderer, &fill_rect);
+
+    SDL_Rect handle_rect = {
+        track_rect->x + fill_rect.w - 4,
+        track_rect->y - 4,
+        8,
+        track_rect->h + 8,
+    };
+    if (handle_rect.x < track_rect->x - 4) {
+        handle_rect.x = track_rect->x - 4;
+    }
+    if (handle_rect.x + handle_rect.w > track_rect->x + track_rect->w + 4) {
+        handle_rect.x = track_rect->x + track_rect->w - 4;
+    }
+    SDL_SetRenderDrawColor(renderer, 180, 210, 255, 255);
+    SDL_RenderFillRect(renderer, &handle_rect);
+    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
+    SDL_RenderDrawRect(renderer, &handle_rect);
+}
+
 void clip_inspector_compute_layout(const AppState* state, ClipInspectorLayout* layout) {
     if (!state || !layout) {
         return;
@@ -31,10 +69,10 @@ void clip_inspector_compute_layout(const AppState* state, ClipInspectorLayout* l
     layout->panel_rect = mixer->rect;
 
     int content_x = mixer->rect.x + 16;
-    int content_y = mixer->rect.y + 48;
+    int content_y = mixer->rect.y + 32;
 
     layout->name_rect = (SDL_Rect){content_x, content_y, mixer->rect.w - 32, 28};
-    content_y += 44;
+    content_y += 54;
 
     int slider_width = mixer->rect.w - 64;
     if (slider_width < 120) {
@@ -43,6 +81,16 @@ void clip_inspector_compute_layout(const AppState* state, ClipInspectorLayout* l
     layout->gain_track_rect = (SDL_Rect){content_x, content_y, slider_width, 16};
     layout->gain_fill_rect = layout->gain_track_rect;
     layout->gain_handle_rect = layout->gain_track_rect;
+    content_y += 46;
+
+    layout->fade_in_track_rect = (SDL_Rect){content_x, content_y, slider_width, 14};
+    layout->fade_in_fill_rect = layout->fade_in_track_rect;
+    layout->fade_in_handle_rect = layout->fade_in_track_rect;
+    content_y += 42;
+
+    layout->fade_out_track_rect = (SDL_Rect){content_x, content_y, slider_width, 14};
+    layout->fade_out_fill_rect = layout->fade_out_track_rect;
+    layout->fade_out_handle_rect = layout->fade_out_track_rect;
 }
 
 void clip_inspector_render(SDL_Renderer* renderer, const AppState* state, const ClipInspectorLayout* layout) {
@@ -93,6 +141,8 @@ void clip_inspector_render(SDL_Renderer* renderer, const AppState* state, const 
         SDL_RenderDrawLine(renderer, caret_x, caret_y, caret_x, caret_y + 20);
     }
 
+    const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
+
     float gain_value = clip->gain;
     if (state->inspector.adjusting_gain) {
         gain_value = state->inspector.gain;
@@ -101,39 +151,42 @@ void clip_inspector_render(SDL_Renderer* renderer, const AppState* state, const 
     if (gain_value > INSPECTOR_GAIN_MAX) gain_value = INSPECTOR_GAIN_MAX;
 
     SDL_Rect track_rect = layout->gain_track_rect;
-    SDL_Color track_bg = {36, 36, 44, 255};
-    SDL_Color track_border = {90, 90, 110, 255};
-    SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
-    SDL_RenderFillRect(renderer, &track_rect);
-    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
-    SDL_RenderDrawRect(renderer, &track_rect);
-
     float t = (gain_value - INSPECTOR_GAIN_MIN) / (INSPECTOR_GAIN_MAX - INSPECTOR_GAIN_MIN);
-    if (t < 0.0f) t = 0.0f;
-    if (t > 1.0f) t = 1.0f;
-    SDL_Rect fill_rect = track_rect;
-    fill_rect.w = (int)(track_rect.w * t);
-    if (fill_rect.w < 4) fill_rect.w = 4;
-    SDL_SetRenderDrawColor(renderer, 120, 180, 255, 200);
-    SDL_RenderFillRect(renderer, &fill_rect);
-
-    SDL_Rect handle_rect = {
-        track_rect.x + fill_rect.w - 4,
-        track_rect.y - 4,
-        8,
-        track_rect.h + 8,
-    };
-    SDL_SetRenderDrawColor(renderer, 180, 210, 255, 255);
-    SDL_RenderFillRect(renderer, &handle_rect);
-    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
-    SDL_RenderDrawRect(renderer, &handle_rect);
+    draw_slider(renderer, &track_rect, t);
 
     float gain_db = 20.0f * log10f(gain_value > 0.000001f ? gain_value : 0.000001f);
     char line[128];
     snprintf(line, sizeof(line), "Gain: %.2f (%.1f dB)", gain_value, gain_db);
     ui_draw_text(renderer, track_rect.x, track_rect.y - 18, line, label, 2);
 
-    const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
+    uint64_t clip_frames = clip->duration_frames;
+    if (clip_frames == 0 && clip->sampler) {
+        clip_frames = engine_sampler_get_frame_count(clip->sampler);
+    }
+    if (clip_frames == 0) {
+        clip_frames = 1;
+    }
+
+    uint64_t fade_in_frames = state->inspector.adjusting_fade_in ? state->inspector.fade_in_frames : clip->fade_in_frames;
+    uint64_t fade_out_frames = state->inspector.adjusting_fade_out ? state->inspector.fade_out_frames : clip->fade_out_frames;
+    if (fade_in_frames > clip_frames) fade_in_frames = clip_frames;
+    if (fade_out_frames > clip_frames) fade_out_frames = clip_frames;
+
+    float fade_in_ratio = (float)fade_in_frames / (float)clip_frames;
+    float fade_out_ratio = (float)fade_out_frames / (float)clip_frames;
+
+    draw_slider(renderer, &layout->fade_in_track_rect, fade_in_ratio);
+    draw_slider(renderer, &layout->fade_out_track_rect, fade_out_ratio);
+
+    float sample_rate = (cfg && cfg->sample_rate > 0) ? (float)cfg->sample_rate : 48000.0f;
+    float fade_in_ms = (float)fade_in_frames * 1000.0f / sample_rate;
+    float fade_out_ms = (float)fade_out_frames * 1000.0f / sample_rate;
+
+    snprintf(line, sizeof(line), "Fade In: %.1f ms", fade_in_ms);
+    ui_draw_text(renderer, layout->fade_in_track_rect.x, layout->fade_in_track_rect.y - 18, line, label, 2);
+    snprintf(line, sizeof(line), "Fade Out: %.1f ms", fade_out_ms);
+    ui_draw_text(renderer, layout->fade_out_track_rect.x, layout->fade_out_track_rect.y - 18, line, label, 2);
+
     if (cfg && cfg->sample_rate > 0) {
         double start_sec = (double)clip->timeline_start_frames / (double)cfg->sample_rate;
         double dur_sec = (double)clip->duration_frames / (double)cfg->sample_rate;
@@ -141,6 +194,6 @@ void clip_inspector_render(SDL_Renderer* renderer, const AppState* state, const 
             dur_sec = (double)engine_sampler_get_frame_count(clip->sampler) / (double)cfg->sample_rate;
         }
         snprintf(line, sizeof(line), "Start: %.3fs   Length: %.3fs", start_sec, dur_sec);
-        ui_draw_text(renderer, track_rect.x, track_rect.y + track_rect.h + 12, line, label, 2);
+        ui_draw_text(renderer, track_rect.x, track_rect.y + track_rect.h + 94, line, label, 2);
     }
 }

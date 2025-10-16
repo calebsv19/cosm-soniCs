@@ -21,7 +21,7 @@ Purpose: Real-time audio engine, graph, and source implementations.
   - `engine_graph_get_*`: Expose graph configuration (channels/sample-rate/max block/pool).
 - `sampler.c`
   - `engine_sampler_source_create/destroy`: Manage per-clip sampler instances.
-  - `engine_sampler_source_set_clip`: Map a media clip segment onto the global transport timeline.
+  - `engine_sampler_source_set_clip`: Map a media clip segment onto the global transport timeline, capturing fade-in/out spans for ramping.
   - `engine_sampler_source_render/reset`: Produce interleaved audio frames from the scheduled segment.
   - Accessors for start frame, frame counts, offsets, and underlying media.
 - `source_tone.c`

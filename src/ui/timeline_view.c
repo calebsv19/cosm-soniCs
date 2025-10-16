@@ -371,6 +371,41 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                 SDL_SetRenderDrawColor(renderer, 20, 20, 26, 255);
                 SDL_RenderDrawRect(renderer, &clip_rect);
 
+                if (sample_rate > 0) {
+                    int fade_in_px = (int)round((double)clip->fade_in_frames / (double)sample_rate * pixels_per_second);
+                    if (fade_in_px > clip_rect.w) fade_in_px = clip_rect.w;
+                    if (fade_in_px > 0) {
+                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 80);
+                        for (int fx = 0; fx < fade_in_px; ++fx) {
+                            float tf = (float)fx / (float)fade_in_px;
+                            if (tf > 1.0f) tf = 1.0f;
+                            int h = (int)((1.0f - tf) * clip_rect.h);
+                            SDL_RenderDrawLine(renderer,
+                                               clip_rect.x + fx,
+                                               clip_rect.y,
+                                               clip_rect.x + fx,
+                                               clip_rect.y + h);
+                        }
+                    }
+
+                    int fade_out_px = (int)round((double)clip->fade_out_frames / (double)sample_rate * pixels_per_second);
+                    if (fade_out_px > clip_rect.w) fade_out_px = clip_rect.w;
+                    if (fade_out_px > 0) {
+                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 80);
+                        for (int fx = 0; fx < fade_out_px; ++fx) {
+                            float tf = (float)fx / (float)fade_out_px;
+                            if (tf > 1.0f) tf = 1.0f;
+                            int h = (int)(tf * clip_rect.h);
+                            int px = clip_rect.x + clip_rect.w - fade_out_px + fx;
+                            SDL_RenderDrawLine(renderer,
+                                               px,
+                                               clip_rect.y,
+                                               px,
+                                               clip_rect.y + h);
+                        }
+                    }
+                }
+
                 SDL_Color text_color = {200, 200, 210, 255};
                 const char* name = clip->name[0] ? clip->name : "Clip";
                 ui_draw_text(renderer, clip_rect.x + 8, clip_rect.y + 8, name, text_color, 2);
