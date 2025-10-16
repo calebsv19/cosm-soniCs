@@ -46,8 +46,6 @@ struct Engine {
     EngineTrack* tracks;
     int track_count;
     int track_capacity;
-    AudioMediaClip media_clip;
-    bool clip_loaded;
     uint64_t transport_frame;
 };
 
@@ -59,8 +57,46 @@ static void engine_clip_destroy(EngineClip* clip) {
         engine_sampler_source_destroy(clip->sampler);
         clip->sampler = NULL;
     }
+    if (clip->media) {
+        audio_media_clip_free(clip->media);
+        free(clip->media);
+        clip->media = NULL;
+    }
     clip->gain = 0.0f;
     clip->active = false;
+    clip->name[0] = '\0';
+    clip->timeline_start_frames = 0;
+    clip->duration_frames = 0;
+    clip->offset_frames = 0;
+    clip->selected = false;
+    clip->media = NULL;
+}
+
+static void engine_clip_set_name_from_path(EngineClip* clip, const char* path) {
+    if (!clip) {
+        return;
+    }
+    clip->name[0] = '\0';
+    if (!path) {
+        return;
+    }
+    const char* base = strrchr(path, '/');
+#if defined(_WIN32)
+    const char* alt = strrchr(path, '\\');
+    if (!base || (alt && alt > base)) {
+        base = alt;
+    }
+#endif
+    base = base ? base + 1 : path;
+    char temp[ENGINE_CLIP_NAME_MAX];
+    strncpy(temp, base, sizeof(temp) - 1);
+    temp[sizeof(temp) - 1] = '\0';
+    char* dot = strrchr(temp, '.');
+    if (dot) {
+        *dot = '\0';
+    }
+    strncpy(clip->name, temp, sizeof(clip->name) - 1);
+    clip->name[sizeof(clip->name) - 1] = '\0';
 }
 
 static void engine_track_init(EngineTrack* track) {
@@ -89,6 +125,44 @@ static void engine_track_clear(EngineTrack* track) {
     track->active = true;
 }
 
+static bool engine_ensure_track_capacity(Engine* engine, int required_tracks) {
+    if (!engine) {
+        return false;
+    }
+    if (required_tracks <= engine->track_capacity) {
+        return true;
+    }
+    int new_capacity = engine->track_capacity;
+    while (new_capacity < required_tracks) {
+        new_capacity *= 2;
+    }
+    EngineTrack* resized = (EngineTrack*)realloc(engine->tracks, sizeof(EngineTrack) * (size_t)new_capacity);
+    if (!resized) {
+        return false;
+    }
+    engine->tracks = resized;
+    for (int i = engine->track_capacity; i < new_capacity; ++i) {
+        engine_track_init(&engine->tracks[i]);
+    }
+    engine->track_capacity = new_capacity;
+    return true;
+}
+
+static EngineTrack* engine_get_track_mutable(Engine* engine, int track_index) {
+    if (!engine || track_index < 0) {
+        return NULL;
+    }
+    if (!engine_ensure_track_capacity(engine, track_index + 1)) {
+        return NULL;
+    }
+    while (engine->track_count <= track_index) {
+        engine_track_init(&engine->tracks[engine->track_count]);
+        engine->tracks[engine->track_count].active = false;
+        ++engine->track_count;
+    }
+    return &engine->tracks[track_index];
+}
+
 static EngineClip* engine_track_append_clip(EngineTrack* track) {
     if (!track) {
         return NULL;
@@ -104,9 +178,43 @@ static EngineClip* engine_track_append_clip(EngineTrack* track) {
     }
     EngineClip* clip = &track->clips[track->clip_count++];
     clip->sampler = NULL;
+    clip->media = NULL;
     clip->gain = 1.0f;
     clip->active = true;
+    clip->name[0] = '\0';
+    clip->timeline_start_frames = 0;
+    clip->duration_frames = 0;
+    clip->offset_frames = 0;
+    clip->selected = false;
     return clip;
+}
+
+static int engine_clip_compare_timeline(const void* a, const void* b) {
+    const EngineClip* ca = (const EngineClip*)a;
+    const EngineClip* cb = (const EngineClip*)b;
+    if (ca->timeline_start_frames < cb->timeline_start_frames) {
+        return -1;
+    } else if (ca->timeline_start_frames > cb->timeline_start_frames) {
+        return 1;
+    }
+    return 0;
+}
+
+static void engine_track_sort_clips(EngineTrack* track) {
+    if (!track || track->clip_count <= 1 || !track->clips) {
+        return;
+    }
+    qsort(track->clips, (size_t)track->clip_count, sizeof(EngineClip), engine_clip_compare_timeline);
+}
+
+static void engine_clip_refresh_sampler(EngineClip* clip) {
+    if (!clip || !clip->sampler || !clip->media) {
+        return;
+    }
+    engine_sampler_source_set_clip(clip->sampler, clip->media,
+                                   clip->timeline_start_frames,
+                                   clip->offset_frames,
+                                   clip->duration_frames);
 }
 
 static bool engine_post_command(Engine* engine, const EngineCommand* cmd) {
@@ -283,16 +391,13 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         engine_track_init(&engine->tracks[i]);
     }
     engine->track_count = 0;
-    engine->clip_loaded = false;
-    engine->media_clip.samples = NULL;
-    engine->media_clip.frame_count = 0;
-    engine->media_clip.channels = 0;
-    engine->media_clip.sample_rate = 0;
     engine->transport_frame = 0;
 
     engine_graph_clear_sources(engine->graph);
     engine_graph_add_source(engine->graph, &engine->tone_ops, engine->tone_source, 1.0f);
     engine_graph_reset(engine->graph);
+
+    engine_add_track(engine);
     return engine;
 }
 
@@ -317,10 +422,6 @@ void engine_destroy(Engine* engine) {
     engine->tracks = NULL;
     engine->track_count = 0;
     engine->track_capacity = 0;
-    if (engine->clip_loaded) {
-        audio_media_clip_free(&engine->media_clip);
-        engine->clip_loaded = false;
-    }
     ringbuf_free(&engine->command_queue);
     audio_queue_free(&engine->output_queue);
     free(engine);
@@ -479,57 +580,113 @@ bool engine_queue_graph_swap(Engine* engine, EngineGraph* new_graph) {
 }
 
 bool engine_add_clip(Engine* engine, const char* filepath, uint64_t start_frame) {
+    return engine_add_clip_to_track(engine, 0, filepath, start_frame, NULL);
+}
+
+int engine_add_track(Engine* engine) {
+    if (!engine) {
+        return -1;
+    }
+    int index = engine->track_count;
+    if (!engine_get_track_mutable(engine, index)) {
+        return -1;
+    }
+    engine->tracks[index].active = false;
+    return index;
+}
+
+bool engine_remove_track(Engine* engine, int track_index) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+
+    EngineTrack* track = &engine->tracks[track_index];
+    engine_track_clear(track);
+
+    if (track_index < engine->track_count - 1) {
+        memmove(&engine->tracks[track_index],
+                &engine->tracks[track_index + 1],
+                (size_t)(engine->track_count - track_index - 1) * sizeof(EngineTrack));
+    }
+
+    engine->track_count--;
+    if (engine->track_count < 0) {
+        engine->track_count = 0;
+    }
+    if (engine->track_count >= 0 && engine->track_count < engine->track_capacity) {
+        engine_track_init(&engine->tracks[engine->track_count]);
+    }
+
+    engine_rebuild_sources(engine);
+    return true;
+}
+
+bool engine_add_clip_to_track(Engine* engine, int track_index, const char* filepath, uint64_t start_frame, int* out_clip_index) {
     if (!engine || !filepath) {
         return false;
     }
-    AudioMediaClip clip = {0};
-    if (!audio_media_clip_load_wav(filepath, engine->config.sample_rate, &clip)) {
-        SDL_Log("engine_add_clip: failed to load %s", filepath);
+
+    EngineTrack* track = engine_get_track_mutable(engine, track_index);
+    if (!track) {
         return false;
     }
 
-    if (clip.channels <= 0) {
-        audio_media_clip_free(&clip);
+    AudioMediaClip loaded = {0};
+    if (!audio_media_clip_load_wav(filepath, engine->config.sample_rate, &loaded)) {
+        SDL_Log("engine_add_clip_to_track: failed to load %s", filepath);
         return false;
     }
 
-    if (engine->clip_loaded) {
-        audio_media_clip_free(&engine->media_clip);
-        engine->clip_loaded = false;
+    if (loaded.channels <= 0) {
+        audio_media_clip_free(&loaded);
+        return false;
     }
-
-    EngineTrack* track = NULL;
-    if (engine->track_count == 0) {
-        engine->track_count = 1;
-        track = &engine->tracks[0];
-        engine_track_init(track);
-    } else {
-        track = &engine->tracks[0];
-    }
-
-    engine_track_clear(track);
-
-    engine->media_clip = clip;
-    engine->clip_loaded = true;
 
     EngineClip* clip_slot = engine_track_append_clip(track);
     if (!clip_slot) {
-        audio_media_clip_free(&engine->media_clip);
-        engine->clip_loaded = false;
+        audio_media_clip_free(&loaded);
         return false;
     }
 
     clip_slot->sampler = engine_sampler_source_create();
     if (!clip_slot->sampler) {
-        engine_track_clear(track);
-        audio_media_clip_free(&engine->media_clip);
-        engine->clip_loaded = false;
+        track->clip_count--;
+        audio_media_clip_free(&loaded);
         return false;
     }
 
+    AudioMediaClip* media = (AudioMediaClip*)malloc(sizeof(AudioMediaClip));
+    if (!media) {
+        engine_sampler_source_destroy(clip_slot->sampler);
+        clip_slot->sampler = NULL;
+        track->clip_count--;
+        audio_media_clip_free(&loaded);
+        return false;
+    }
+
+    *media = loaded;
+    clip_slot->media = media;
+    clip_slot->timeline_start_frames = start_frame;
+    clip_slot->offset_frames = 0;
+    clip_slot->duration_frames = media->frame_count;
+    clip_slot->selected = false;
+    engine_clip_set_name_from_path(clip_slot, filepath);
     clip_slot->gain = 1.0f;
     clip_slot->active = true;
-    engine_sampler_source_set_clip(clip_slot->sampler, &engine->media_clip, start_frame);
+    engine_clip_refresh_sampler(clip_slot);
+
+    track->active = true;
+    engine_track_sort_clips(track);
+
+    if (out_clip_index) {
+        *out_clip_index = 0;
+        for (int i = 0; i < track->clip_count; ++i) {
+            if (track->clips[i].sampler == clip_slot->sampler) {
+                *out_clip_index = i;
+                break;
+            }
+        }
+    }
 
     engine_rebuild_sources(engine);
     return true;
@@ -560,57 +717,331 @@ bool engine_load_wav(Engine* engine, const char* path) {
     if (!engine || !path) {
         return false;
     }
+    return engine_add_clip(engine, path, 0);
+}
 
-    AudioMediaClip new_clip = {0};
-    if (!audio_media_clip_load_wav(path, engine->config.sample_rate, &new_clip)) {
-        SDL_Log("engine_load_wav: failed to load %s", path);
+bool engine_clip_set_timeline_start(Engine* engine, int track_index, int clip_index, uint64_t start_frame, int* out_clip_index) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    EngineTrack* track = &engine->tracks[track_index];
+    if (!track || clip_index < 0 || clip_index >= track->clip_count) {
+        return false;
+    }
+    EngineClip* clip = &track->clips[clip_index];
+    if (!clip || !clip->sampler || !clip->media) {
         return false;
     }
 
-    if (new_clip.channels <= 0) {
-        audio_media_clip_free(&new_clip);
+    clip->timeline_start_frames = start_frame;
+    engine_clip_refresh_sampler(clip);
+
+    EngineSamplerSource* sampler = clip->sampler;
+    engine_track_sort_clips(track);
+
+    if (out_clip_index) {
+        *out_clip_index = clip_index;
+        for (int i = 0; i < track->clip_count; ++i) {
+            if (track->clips[i].sampler == sampler) {
+                *out_clip_index = i;
+                break;
+            }
+        }
+    }
+
+    engine_rebuild_sources(engine);
+    return true;
+}
+
+bool engine_clip_set_region(Engine* engine, int track_index, int clip_index, uint64_t offset_frames, uint64_t duration_frames) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    EngineTrack* track = &engine->tracks[track_index];
+    if (!track || clip_index < 0 || clip_index >= track->clip_count) {
+        return false;
+    }
+    EngineClip* clip = &track->clips[clip_index];
+    if (!clip || !clip->sampler || !clip->media) {
         return false;
     }
 
-    EngineTrack* track = NULL;
-    if (engine->track_count == 0) {
-        engine->track_count = 1;
-        track = &engine->tracks[0];
-        engine_track_init(track);
+    uint64_t total_frames = clip->media ? clip->media->frame_count : 0;
+    if (total_frames == 0) {
+        return false;
+    }
+
+    if (offset_frames >= total_frames) {
+        offset_frames = total_frames - 1;
+    }
+    uint64_t max_duration = total_frames - offset_frames;
+    if (max_duration == 0) {
+        max_duration = 1;
+    }
+    if (duration_frames == 0 || duration_frames > max_duration) {
+        duration_frames = max_duration;
+    }
+    if (duration_frames == 0) {
+        duration_frames = 1;
+    }
+
+    clip->offset_frames = offset_frames;
+    clip->duration_frames = duration_frames;
+    engine_clip_refresh_sampler(clip);
+
+    engine_rebuild_sources(engine);
+    return true;
+}
+
+uint64_t engine_clip_get_total_frames(const Engine* engine, int track_index, int clip_index) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return 0;
+    }
+    const EngineTrack* track = &engine->tracks[track_index];
+    if (!track || clip_index < 0 || clip_index >= track->clip_count) {
+        return 0;
+    }
+    const EngineClip* clip = &track->clips[clip_index];
+    if (!clip || !clip->media) {
+        return 0;
+    }
+    return clip->media->frame_count;
+}
+
+bool engine_remove_clip(Engine* engine, int track_index, int clip_index) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    EngineTrack* track = &engine->tracks[track_index];
+    if (!track || clip_index < 0 || clip_index >= track->clip_count) {
+        return false;
+    }
+
+    EngineClip* clip = &track->clips[clip_index];
+    engine_clip_destroy(clip);
+    int remaining = track->clip_count - clip_index - 1;
+    if (remaining > 0) {
+        memmove(&track->clips[clip_index], &track->clips[clip_index + 1], (size_t)remaining * sizeof(EngineClip));
+    }
+    track->clip_count--;
+    if (track->clip_count >= 0) {
+        memset(&track->clips[track->clip_count], 0, sizeof(EngineClip));
+    }
+    if (track->clip_count > 0) {
+        track->active = true;
     } else {
-        track = &engine->tracks[0];
+        track->active = false;
     }
 
-    engine_track_clear(track);
+    engine_rebuild_sources(engine);
+    return true;
+}
 
-    if (engine->clip_loaded) {
-        audio_media_clip_free(&engine->media_clip);
-        engine->clip_loaded = false;
+bool engine_clip_set_name(Engine* engine, int track_index, int clip_index, const char* name) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
     }
-
-    engine->media_clip = new_clip;
-    engine->clip_loaded = true;
-
-    EngineClip* clip = engine_track_append_clip(track);
+    EngineTrack* track = &engine->tracks[track_index];
+    if (!track || clip_index < 0 || clip_index >= track->clip_count) {
+        return false;
+    }
+    EngineClip* clip = &track->clips[clip_index];
     if (!clip) {
-        audio_media_clip_free(&engine->media_clip);
-        engine->clip_loaded = false;
+        return false;
+    }
+    clip->name[0] = '\0';
+    if (name) {
+        strncpy(clip->name, name, sizeof(clip->name) - 1);
+        clip->name[sizeof(clip->name) - 1] = '\0';
+    }
+    return true;
+}
+
+bool engine_clip_set_gain(Engine* engine, int track_index, int clip_index, float gain) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    EngineTrack* track = &engine->tracks[track_index];
+    if (!track || clip_index < 0 || clip_index >= track->clip_count) {
+        return false;
+    }
+    EngineClip* clip = &track->clips[clip_index];
+    if (!clip) {
+        return false;
+    }
+    clip->gain = gain;
+    engine_rebuild_sources(engine);
+    return true;
+}
+
+bool engine_add_clip_segment(Engine* engine, int track_index, const EngineClip* source_clip,
+                             uint64_t source_relative_offset_frames,
+                             uint64_t segment_length_frames,
+                             uint64_t start_frame,
+                             int* out_clip_index) {
+    if (!engine || !source_clip || !source_clip->media || segment_length_frames == 0) {
+        return false;
+    }
+    EngineTrack* track = engine_get_track_mutable(engine, track_index);
+    if (!track) {
         return false;
     }
 
-    clip->sampler = engine_sampler_source_create();
-    if (!clip->sampler) {
-        engine_track_clear(track);
-        audio_media_clip_free(&engine->media_clip);
-        engine->clip_loaded = false;
+    const AudioMediaClip* media_src = source_clip->media;
+    if (!media_src || media_src->frame_count == 0) {
         return false;
     }
-    clip->gain = 1.0f;
-    clip->active = true;
-    engine_sampler_source_set_clip(clip->sampler, &engine->media_clip, 0);
 
-    track->gain = 1.0f;
+    if (source_relative_offset_frames >= media_src->frame_count) {
+        return false;
+    }
+
+    uint64_t max_length = media_src->frame_count - source_relative_offset_frames;
+    if (segment_length_frames > max_length) {
+        segment_length_frames = max_length;
+    }
+    if (segment_length_frames == 0) {
+        return false;
+    }
+
+    AudioMediaClip* media_copy = (AudioMediaClip*)malloc(sizeof(AudioMediaClip));
+    if (!media_copy) {
+        return false;
+    }
+
+    size_t total_samples = (size_t)media_src->frame_count * (size_t)media_src->channels;
+    float* sample_copy = (float*)malloc(total_samples * sizeof(float));
+    if (!sample_copy) {
+        free(media_copy);
+        return false;
+    }
+    memcpy(sample_copy, media_src->samples, total_samples * sizeof(float));
+
+    media_copy->samples = sample_copy;
+    media_copy->frame_count = media_src->frame_count;
+    media_copy->channels = media_src->channels;
+    media_copy->sample_rate = media_src->sample_rate;
+
+    EngineClip* new_clip = engine_track_append_clip(track);
+    if (!new_clip) {
+        audio_media_clip_free(media_copy);
+        free(media_copy);
+        return false;
+    }
+
+    new_clip->sampler = engine_sampler_source_create();
+    if (!new_clip->sampler) {
+        track->clip_count--;
+        audio_media_clip_free(media_copy);
+        free(media_copy);
+        return false;
+    }
+
+    new_clip->media = media_copy;
+    new_clip->timeline_start_frames = start_frame;
+    new_clip->offset_frames = source_clip->offset_frames + source_relative_offset_frames;
+    new_clip->duration_frames = segment_length_frames;
+    new_clip->gain = source_clip->gain;
+    new_clip->active = source_clip->active;
+    new_clip->selected = false;
+
+    if (source_clip->name[0] != '\0') {
+        snprintf(new_clip->name, sizeof(new_clip->name), "%s segment", source_clip->name);
+    } else {
+        snprintf(new_clip->name, sizeof(new_clip->name), "Clip segment");
+    }
+
+    engine_clip_refresh_sampler(new_clip);
     track->active = true;
+    engine_track_sort_clips(track);
+
+    if (out_clip_index) {
+        *out_clip_index = 0;
+        for (int i = 0; i < track->clip_count; ++i) {
+            if (track->clips[i].sampler == new_clip->sampler) {
+                *out_clip_index = i;
+                break;
+            }
+        }
+    }
+
+    engine_rebuild_sources(engine);
+    return true;
+}
+
+bool engine_duplicate_clip(Engine* engine, int track_index, int clip_index, uint64_t start_frame_offset, int* out_clip_index) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    EngineTrack* track = &engine->tracks[track_index];
+    if (!track || clip_index < 0 || clip_index >= track->clip_count) {
+        return false;
+    }
+    EngineClip* original = &track->clips[clip_index];
+    if (!original || !original->media) {
+        return false;
+    }
+
+    AudioMediaClip* media = (AudioMediaClip*)malloc(sizeof(AudioMediaClip));
+    if (!media) {
+        return false;
+    }
+    size_t samples = (size_t)original->media->frame_count * (size_t)original->media->channels;
+    float* buffer = (float*)malloc(samples * sizeof(float));
+    if (!buffer) {
+        free(media);
+        return false;
+    }
+    memcpy(buffer, original->media->samples, samples * sizeof(float));
+    media->samples = buffer;
+    media->frame_count = original->media->frame_count;
+    media->channels = original->media->channels;
+    media->sample_rate = original->media->sample_rate;
+
+    EngineClip* new_clip = engine_track_append_clip(track);
+    if (!new_clip) {
+        audio_media_clip_free(media);
+        free(media);
+        return false;
+    }
+
+    new_clip->sampler = engine_sampler_source_create();
+    if (!new_clip->sampler) {
+        track->clip_count--;
+        audio_media_clip_free(media);
+        free(media);
+        return false;
+    }
+
+    new_clip->media = media;
+    uint64_t offset = start_frame_offset;
+    uint64_t new_start = original->timeline_start_frames + original->duration_frames + offset;
+    new_clip->timeline_start_frames = new_start;
+    new_clip->offset_frames = original->offset_frames;
+    new_clip->duration_frames = original->duration_frames;
+    new_clip->gain = original->gain;
+    new_clip->active = original->active;
+    new_clip->selected = false;
+
+    if (original->name[0] != '\0') {
+        snprintf(new_clip->name, sizeof(new_clip->name), "%s copy", original->name);
+    } else {
+        snprintf(new_clip->name, sizeof(new_clip->name), "Clip copy");
+    }
+
+    engine_clip_refresh_sampler(new_clip);
+    track->active = true;
+    engine_track_sort_clips(track);
+
+    if (out_clip_index) {
+        *out_clip_index = 0;
+        for (int i = 0; i < track->clip_count; ++i) {
+            if (track->clips[i].sampler == new_clip->sampler) {
+                *out_clip_index = i;
+                break;
+            }
+        }
+    }
 
     engine_rebuild_sources(engine);
     return true;

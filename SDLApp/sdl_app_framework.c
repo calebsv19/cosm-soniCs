@@ -29,6 +29,8 @@ bool App_Init(AppContext* ctx, const char* title, int width, int height, bool vs
     ctx->deltaTime = 0.0f;
     ctx->quit = false;
     ctx->userData = NULL;
+    ctx->has_event = false;
+    SDL_zero(ctx->current_event);
     ctx->renderMode = RENDER_ALWAYS;
     ctx->renderThreshold = 0.033f;     // 30 FPS by default
     ctx->timeSinceLastRender = 0.0f;
@@ -47,7 +49,10 @@ void App_Run(AppContext* ctx, AppCallbacks* callbacks) {
                 ctx->quit = true;
             }
             if (callbacks && callbacks->handleInput) {
+                ctx->current_event = event;
+                ctx->has_event = true;
                 callbacks->handleInput(ctx);
+                ctx->has_event = false;
             }
         }
 
@@ -99,4 +104,3 @@ void App_SetRenderMode(AppContext* ctx, RenderMode mode, float threshold) {
     ctx->renderMode = mode;
     ctx->renderThreshold = threshold;
 }
-

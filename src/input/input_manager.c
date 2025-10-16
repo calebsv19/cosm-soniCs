@@ -2,60 +2,15 @@
 
 #include "app_state.h"
 #include "engine.h"
+#include "input/timeline_input.h"
+#include "input/transport_input.h"
+#include "input/inspector_input.h"
 #include "ui/layout.h"
 #include "ui/library_browser.h"
 #include "ui/panes.h"
 #include "ui/transport.h"
 
 #include <SDL2/SDL.h>
-#include <stdio.h>
-
-void input_manager_init(InputManager* manager) {
-    if (!manager) {
-        return;
-    }
-    manager->previous_buttons = 0;
-    manager->current_buttons = 0;
-    manager->previous_space = false;
-    manager->previous_l = false;
-}
-
-static void handle_library_drag(AppState* state, bool was_down, bool is_down) {
-    if (!state) {
-        return;
-    }
-    if (!was_down && is_down && !state->layout_runtime.drag.active) {
-        if (state->library.hovered_index >= 0) {
-            state->library.selected_index = state->library.hovered_index;
-            state->dragging_library = true;
-            state->drag_library_index = state->library.hovered_index;
-        }
-    }
-
-    if (state->dragging_library && was_down && !is_down) {
-        const Pane* timeline = ui_layout_get_pane(state, 1);
-        const int mouse_x = state->mouse_x;
-        const int mouse_y = state->mouse_y;
-        if (timeline &&
-            mouse_x >= timeline->rect.x && mouse_x <= timeline->rect.x + timeline->rect.w &&
-            mouse_y >= timeline->rect.y && mouse_y <= timeline->rect.y + timeline->rect.h)
-        {
-            if (state->engine && state->drag_library_index >= 0 &&
-                state->drag_library_index < state->library.count) {
-                char path[512];
-                snprintf(path, sizeof(path), "%s/%s", state->library.directory,
-                         state->library.items[state->drag_library_index].name);
-                if (!engine_add_clip(state->engine, path, 0)) {
-                    SDL_Log("Failed to add clip: %s", path);
-                } else {
-                    SDL_Log("Added clip: %s", path);
-                }
-            }
-        }
-        state->dragging_library = false;
-        state->drag_library_index = -1;
-    }
-}
 
 static void handle_transport_controls(AppState* state, bool was_down, bool is_down) {
     if (!state || !state->engine) {
@@ -101,6 +56,48 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
         }
     }
     manager->previous_l = l_now;
+
+    bool delete_now = keys[SDL_SCANCODE_DELETE] != 0 || keys[SDL_SCANCODE_BACKSPACE] != 0;
+    if (!state->inspector.editing_name && delete_now && !manager->previous_delete) {
+        if (state->engine && state->selected_track_index >= 0 && state->selected_clip_index >= 0) {
+            if (engine_remove_clip(state->engine, state->selected_track_index, state->selected_clip_index)) {
+                timeline_input_init(manager);
+                inspector_input_init(state);
+                state->selected_track_index = -1;
+                state->selected_clip_index = -1;
+            }
+        }
+    }
+    manager->previous_delete = delete_now;
+}
+
+void input_manager_init(InputManager* manager) {
+    if (!manager) {
+        return;
+    }
+    manager->previous_buttons = 0;
+    manager->current_buttons = 0;
+    manager->previous_space = false;
+    manager->previous_l = false;
+    manager->previous_delete = false;
+    manager->last_click_ticks = 0;
+    manager->last_click_track = -1;
+    manager->last_click_clip = -1;
+    manager->prev_horiz_slider_down = false;
+    manager->prev_vert_slider_down = false;
+
+    timeline_input_init(manager);
+    transport_input_init(manager);
+}
+
+void input_manager_handle_event(InputManager* manager, AppState* state, const SDL_Event* event) {
+    if (!manager || !state || !event) {
+        return;
+    }
+
+    transport_input_handle_event(manager, state, event);
+    inspector_input_handle_event(manager, state, event);
+    timeline_input_handle_event(manager, state, event);
 }
 
 void input_manager_update(InputManager* manager, AppState* state) {
@@ -132,7 +129,16 @@ void input_manager_update(InputManager* manager, AppState* state) {
     bool left_was_down = (manager->previous_buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
     bool left_is_down = (manager->current_buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
 
-    handle_library_drag(state, left_was_down, left_is_down);
+    transport_input_update(manager, state);
+    timeline_input_update(manager, state, left_was_down, left_is_down);
+
     handle_transport_controls(state, left_was_down, left_is_down);
     handle_keyboard_shortcuts(manager, state);
+
+    if (state->inspector.adjusting_gain) {
+        inspector_input_handle_gain_drag(state, state->mouse_x);
+    }
+
+    inspector_input_sync(state);
 }
+

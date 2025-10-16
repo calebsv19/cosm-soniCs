@@ -2,6 +2,7 @@
 #include "config.h"
 #include "engine.h"
 #include "sdl_app_framework.h"
+#include "input/inspector_input.h"
 #include "ui/layout.h"
 #include "ui/panes.h"
 #include "ui/library_browser.h"
@@ -11,7 +12,11 @@
 #include <stdio.h>
 
 static void handle_input(AppContext* ctx) {
-    (void)ctx;
+    if (!ctx || !ctx->userData || !ctx->has_event) {
+        return;
+    }
+    AppState* state = (AppState*)ctx->userData;
+    input_manager_handle_event(&state->input_manager, state, &ctx->current_event);
 }
 
 static void handle_update(AppContext* ctx) {
@@ -75,6 +80,16 @@ int main(void) {
     state.drag_library_index = -1;
     state.dragging_library = false;
     input_manager_init(&state.input_manager);
+    state.selected_track_index = -1;
+    state.selected_clip_index = -1;
+    state.timeline_drag.active = false;
+    state.timeline_drag.trimming_left = false;
+    state.timeline_drag.trimming_right = false;
+    inspector_input_init(&state);
+    state.timeline_visible_seconds = TIMELINE_DEFAULT_VISIBLE_SECONDS;
+    state.timeline_vertical_scale = 1.0f;
+    state.timeline_show_all_grid_lines = false;
+    state.timeline_drop_track_index = 0;
 
     ctx.userData = &state;
 

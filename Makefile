@@ -23,7 +23,11 @@ SRCS := \
 	$(SRC_DIR)/ui/timeline_view.c \
 	$(SRC_DIR)/ui/font5x7.c \
 	$(SRC_DIR)/ui/transport.c \
-	$(SRC_DIR)/input/input_manager.c
+	$(SRC_DIR)/ui/clip_inspector.c \
+	$(SRC_DIR)/input/input_manager.c \
+	$(SRC_DIR)/input/timeline_input.c \
+	$(SRC_DIR)/input/inspector_input.c \
+	$(SRC_DIR)/input/transport_input.c
 
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS))
 

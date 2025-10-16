@@ -6,6 +6,7 @@
 #include "ui/layout_config.h"
 #include "ui/library_browser.h"
 #include "ui/transport.h"
+#include "ui/clip_inspector.h"
 
 #include <SDL2/SDL.h>
 #include <math.h>
@@ -125,6 +126,7 @@ static void render_engine_status(SDL_Renderer* renderer, const AppState* state) 
     ui_draw_text(renderer, x, y, line, status_color, 2);
 }
 
+
 void ui_init_panes(AppState* state) {
     if (!state) {
         return;
@@ -150,7 +152,7 @@ void ui_init_panes(AppState* state) {
         .rect = {0, 0, 0, 0},
         .border_color = {200, 200, 210, 255},
         .fill_color = {28, 28, 36, 255},
-        .title = "MIXER",
+        .title = "CLIP INSPECTOR",
         .visible = true,
         .highlighted = false,
     };
@@ -311,7 +313,7 @@ void ui_render_overlays(SDL_Renderer* renderer, const AppState* state) {
     render_engine_status(renderer, state);
 }
 
-void ui_render_controls(SDL_Renderer* renderer, const AppState* state) {
+void ui_render_controls(SDL_Renderer* renderer, AppState* state) {
     if (!renderer || !state) {
         return;
     }
@@ -319,12 +321,17 @@ void ui_render_controls(SDL_Renderer* renderer, const AppState* state) {
     if (state->engine) {
         playing = engine_transport_is_playing(state->engine);
     }
-    transport_ui_render(renderer, &state->transport_ui, playing);
+    transport_ui_sync(&state->transport_ui, state);
+    transport_ui_render(renderer, &state->transport_ui, state, playing);
 
     const Pane* timeline = ui_layout_get_pane(state, 1);
-    if (timeline && state->engine) {
-        timeline_view_render(renderer, &timeline->rect, state->engine);
+    if (timeline) {
+        timeline_view_render(renderer, &timeline->rect, state);
     }
+
+    ClipInspectorLayout inspector_layout;
+    clip_inspector_compute_layout(state, &inspector_layout);
+    clip_inspector_render(renderer, state, &inspector_layout);
 }
 
 void ui_layout_update_zones(AppState* state) {

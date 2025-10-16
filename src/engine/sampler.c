@@ -6,7 +6,9 @@
 
 struct EngineSamplerSource {
     const AudioMediaClip* clip;
-    uint64_t start_frame;
+    uint64_t timeline_start_frame;
+    uint64_t clip_offset_frames;
+    uint64_t clip_length_frames;
     int channels;
 };
 
@@ -24,7 +26,9 @@ EngineSamplerSource* engine_sampler_source_create(void) {
         return NULL;
     }
     sampler_reset_internal(sampler, 48000, 2);
-    sampler->start_frame = 0;
+    sampler->timeline_start_frame = 0;
+    sampler->clip_offset_frames = 0;
+    sampler->clip_length_frames = 0;
     return sampler;
 }
 
@@ -32,17 +36,33 @@ void engine_sampler_source_destroy(EngineSamplerSource* sampler) {
     free(sampler);
 }
 
-void engine_sampler_source_set_clip(EngineSamplerSource* sampler, const AudioMediaClip* clip, uint64_t start_frame) {
+void engine_sampler_source_set_clip(EngineSamplerSource* sampler, const AudioMediaClip* clip,
+                                    uint64_t timeline_start_frame,
+                                    uint64_t clip_offset_frames,
+                                    uint64_t clip_length_frames) {
     if (!sampler) {
         return;
     }
     if (!clip) {
         sampler->clip = NULL;
-        sampler->start_frame = 0;
+        sampler->timeline_start_frame = 0;
+        sampler->clip_offset_frames = 0;
+        sampler->clip_length_frames = 0;
         return;
     }
     sampler->clip = clip;
-    sampler->start_frame = start_frame;
+    sampler->timeline_start_frame = timeline_start_frame;
+    uint64_t offset = clip_offset_frames;
+    if (offset >= clip->frame_count) {
+        offset = clip->frame_count > 0 ? clip->frame_count - 1 : 0;
+    }
+    sampler->clip_offset_frames = offset;
+    uint64_t max_length = clip->frame_count - offset;
+    if (clip_length_frames == 0 || clip_length_frames > max_length) {
+        sampler->clip_length_frames = max_length;
+    } else {
+        sampler->clip_length_frames = clip_length_frames;
+    }
 }
 
 void engine_sampler_source_reset(void* userdata, int sample_rate, int channels) {
@@ -77,10 +97,14 @@ void engine_sampler_source_render(void* userdata, float* interleaved, int frames
         uint64_t local_frame = 0;
         bool in_range = false;
         if (clip) {
-            if (global_frame >= sampler->start_frame) {
-                local_frame = global_frame - sampler->start_frame;
-                if (local_frame < clip->frame_count) {
-                    in_range = true;
+            if (sampler->clip_length_frames > 0 &&
+                global_frame >= sampler->timeline_start_frame) {
+                uint64_t rel = global_frame - sampler->timeline_start_frame;
+                if (rel < sampler->clip_length_frames) {
+                    local_frame = sampler->clip_offset_frames + rel;
+                    if (local_frame < clip->frame_count) {
+                        in_range = true;
+                    }
                 }
             }
         }
@@ -106,10 +130,31 @@ uint64_t engine_sampler_get_start_frame(const EngineSamplerSource* sampler) {
     if (!sampler) {
         return 0;
     }
-    return sampler->start_frame;
+    return sampler->timeline_start_frame;
 }
 
 uint64_t engine_sampler_get_frame_count(const EngineSamplerSource* sampler) {
+    if (!sampler) {
+        return 0;
+    }
+    return sampler->clip_length_frames;
+}
+
+uint64_t engine_sampler_get_offset_frames(const EngineSamplerSource* sampler) {
+    if (!sampler) {
+        return 0;
+    }
+    return sampler->clip_offset_frames;
+}
+
+const AudioMediaClip* engine_sampler_get_media(const EngineSamplerSource* sampler) {
+    if (!sampler) {
+        return NULL;
+    }
+    return sampler->clip;
+}
+
+uint64_t engine_sampler_get_media_length(const EngineSamplerSource* sampler) {
     if (!sampler || !sampler->clip) {
         return 0;
     }

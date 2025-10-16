@@ -1,4 +1,6 @@
 #include "ui/transport.h"
+#include "app_state.h"
+#include "ui/timeline_view.h"
 
 #include "ui/font5x7.h"
 
@@ -13,6 +15,16 @@ void transport_ui_init(TransportUI* ui) {
     ui->stop_rect = (SDL_Rect){0, 0, 0, 0};
     ui->play_hovered = false;
     ui->stop_hovered = false;
+    ui->grid_rect = (SDL_Rect){0, 0, 0, 0};
+    ui->horiz_track_rect = (SDL_Rect){0,0,0,0};
+    ui->horiz_handle_rect = (SDL_Rect){0,0,0,0};
+    ui->vert_track_rect = (SDL_Rect){0,0,0,0};
+    ui->vert_handle_rect = (SDL_Rect){0,0,0,0};
+    ui->grid_hovered = false;
+    ui->horiz_hovered = false;
+    ui->vert_hovered = false;
+    ui->adjusting_horizontal = false;
+    ui->adjusting_vertical = false;
 }
 
 void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
@@ -30,6 +42,31 @@ void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
 
     ui->play_rect = (SDL_Rect){x, y, button_width, button_height};
     ui->stop_rect = (SDL_Rect){x + button_width + padding, y, button_width, button_height};
+
+    const int group_spacing = padding * 2;
+    int grid_width = 96;
+    int slider_width = 132;
+    int slider_height = 8;
+    int slider_y = container->y + (container->h - slider_height) / 2 - 8;
+
+    int grid_x = ui->stop_rect.x + ui->stop_rect.w + group_spacing;
+    ui->grid_rect = (SDL_Rect){grid_x, container->y + (container->h - 24) / 2, grid_width, 24};
+
+    int slider_x = grid_x + grid_width + group_spacing;
+
+    if (slider_x + slider_width > container->x + container->w - padding) {
+        slider_width = container->x + container->w - padding - slider_x;
+        if (slider_width < 80) {
+            slider_width = 80;
+        }
+    }
+
+    ui->horiz_track_rect = (SDL_Rect){slider_x, slider_y, slider_width, slider_height};
+    ui->horiz_handle_rect = (SDL_Rect){slider_x, slider_y - 4, 12, slider_height + 8};
+
+    int vert_slider_y = slider_y + 20;
+    ui->vert_track_rect = (SDL_Rect){slider_x, vert_slider_y, slider_width, slider_height};
+    ui->vert_handle_rect = (SDL_Rect){slider_x, vert_slider_y - 4, 12, slider_height + 8};
 }
 
 void transport_ui_update_hover(TransportUI* ui, int mouse_x, int mouse_y) {
@@ -39,6 +76,53 @@ void transport_ui_update_hover(TransportUI* ui, int mouse_x, int mouse_y) {
     SDL_Point p = {mouse_x, mouse_y};
     ui->play_hovered = SDL_PointInRect(&p, &ui->play_rect);
     ui->stop_hovered = SDL_PointInRect(&p, &ui->stop_rect);
+    ui->grid_hovered = SDL_PointInRect(&p, &ui->grid_rect);
+    ui->horiz_hovered = SDL_PointInRect(&p, &ui->horiz_track_rect);
+    ui->vert_hovered = SDL_PointInRect(&p, &ui->vert_track_rect);
+}
+
+void transport_ui_sync(TransportUI* ui, const AppState* state) {
+    if (!ui || !state) {
+        return;
+    }
+    if (ui->horiz_track_rect.w <= 0 || ui->vert_track_rect.w <= 0) {
+        return;
+    }
+
+    float horiz_t = 0.0f;
+    if (TIMELINE_MAX_VISIBLE_SECONDS > TIMELINE_MIN_VISIBLE_SECONDS) {
+        horiz_t = (state->timeline_visible_seconds - TIMELINE_MIN_VISIBLE_SECONDS) /
+                  (TIMELINE_MAX_VISIBLE_SECONDS - TIMELINE_MIN_VISIBLE_SECONDS);
+    }
+    if (horiz_t < 0.0f) horiz_t = 0.0f;
+    if (horiz_t > 1.0f) horiz_t = 1.0f;
+
+    float vert_t = 0.0f;
+    if (TIMELINE_MAX_VERTICAL_SCALE > TIMELINE_MIN_VERTICAL_SCALE) {
+        vert_t = (state->timeline_vertical_scale - TIMELINE_MIN_VERTICAL_SCALE) /
+                 (TIMELINE_MAX_VERTICAL_SCALE - TIMELINE_MIN_VERTICAL_SCALE);
+    }
+    if (vert_t < 0.0f) vert_t = 0.0f;
+    if (vert_t > 1.0f) vert_t = 1.0f;
+
+    int handle_w = 12;
+    ui->horiz_handle_rect.w = handle_w;
+    ui->horiz_handle_rect.h = ui->horiz_track_rect.h + 8;
+    ui->horiz_handle_rect.y = ui->horiz_track_rect.y - 4;
+    ui->horiz_handle_rect.x = ui->horiz_track_rect.x + (int)(horiz_t * ui->horiz_track_rect.w) - handle_w / 2;
+    if (ui->horiz_handle_rect.x < ui->horiz_track_rect.x)
+        ui->horiz_handle_rect.x = ui->horiz_track_rect.x;
+    if (ui->horiz_handle_rect.x + handle_w > ui->horiz_track_rect.x + ui->horiz_track_rect.w)
+        ui->horiz_handle_rect.x = ui->horiz_track_rect.x + ui->horiz_track_rect.w - handle_w;
+
+    ui->vert_handle_rect.w = handle_w;
+    ui->vert_handle_rect.h = ui->vert_track_rect.h + 8;
+    ui->vert_handle_rect.y = ui->vert_track_rect.y - 4;
+    ui->vert_handle_rect.x = ui->vert_track_rect.x + (int)(vert_t * ui->vert_track_rect.w) - handle_w / 2;
+    if (ui->vert_handle_rect.x < ui->vert_track_rect.x)
+        ui->vert_handle_rect.x = ui->vert_track_rect.x;
+    if (ui->vert_handle_rect.x + handle_w > ui->vert_track_rect.x + ui->vert_track_rect.w)
+        ui->vert_handle_rect.x = ui->vert_track_rect.x + ui->vert_track_rect.w - handle_w;
 }
 
 static void render_button(SDL_Renderer* renderer, const SDL_Rect* rect, bool hovered, bool active, const char* label, SDL_Color base_color) {
@@ -69,10 +153,11 @@ static void render_button(SDL_Renderer* renderer, const SDL_Rect* rect, bool hov
     ui_draw_text(renderer, text_x, text_y, label, text, scale);
 }
 
-void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, bool is_playing) {
+void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const AppState* state, bool is_playing) {
     if (!renderer || !ui) {
         return;
     }
+    SDL_Color label_zoom = {200, 200, 210, 255};
     SDL_Color label = {210, 210, 220, 255};
     ui_draw_text(renderer, ui->panel_rect.x + 12, ui->panel_rect.y + 8, "TRANSPORT", label, 2);
 
@@ -84,6 +169,34 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, bool is_
     SDL_Color button_base = {60, 60, 70, 255};
     render_button(renderer, &ui->play_rect, ui->play_hovered, is_playing, "PLAY", button_base);
     render_button(renderer, &ui->stop_rect, ui->stop_hovered, !is_playing, "STOP", button_base);
+
+    SDL_Color track_bg = {36, 36, 44, 255};
+    SDL_Color track_border = {90, 90, 110, 255};
+
+    bool grid_active = state ? state->timeline_show_all_grid_lines : false;
+    render_button(renderer, &ui->grid_rect, ui->grid_hovered, grid_active, grid_active ? "GRID:ALL" : "GRID:AUTO", button_base);
+
+    SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
+    SDL_RenderFillRect(renderer, &ui->horiz_track_rect);
+    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
+    SDL_RenderDrawRect(renderer, &ui->horiz_track_rect);
+
+    SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
+    SDL_RenderFillRect(renderer, &ui->vert_track_rect);
+    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
+    SDL_RenderDrawRect(renderer, &ui->vert_track_rect);
+
+    if (state) {
+        SDL_SetRenderDrawColor(renderer, 180, 210, 255, 255);
+        SDL_RenderFillRect(renderer, &ui->horiz_handle_rect);
+        SDL_RenderDrawRect(renderer, &ui->horiz_handle_rect);
+
+        SDL_RenderFillRect(renderer, &ui->vert_handle_rect);
+        SDL_RenderDrawRect(renderer, &ui->vert_handle_rect);
+    }
+
+    ui_draw_text(renderer, ui->horiz_track_rect.x, ui->horiz_track_rect.y - 18, "Timeline", label_zoom, 2);
+    ui_draw_text(renderer, ui->vert_track_rect.x, ui->vert_track_rect.y - 18, "Track Size", label_zoom, 2);
 }
 
 bool transport_ui_click_play(const TransportUI* ui, int mouse_x, int mouse_y) {

@@ -17,6 +17,8 @@ typedef struct {
     float deltaTime;
     bool quit;
     void* userData;
+    SDL_Event current_event;
+    bool has_event;
 
     // NEW: configurable render behavior
     RenderMode renderMode;
@@ -54,4 +56,3 @@ void App_Shutdown(AppContext* ctx);
 #ifdef __cplusplus
 }
 #endif
-

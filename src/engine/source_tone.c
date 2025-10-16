@@ -41,7 +41,7 @@ void engine_tone_source_render(void* userdata, float* interleaved, int frames, u
     }
     (void)transport_frame;
     double phase = tone->phase;
-    const double phase_inc = (2.0 * M_PI * 440.0) / (double)tone->sample_rate;
+    const double phase_inc = (2.0 * M_PI * 220.0) / (double)tone->sample_rate;
     const int channels = tone->channels;
 
     for (int i = 0; i < frames; ++i) {
