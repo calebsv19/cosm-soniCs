@@ -78,6 +78,7 @@ static void engine_clip_destroy(EngineClip* clip) {
     clip->gain = 0.0f;
     clip->active = false;
     clip->name[0] = '\0';
+    clip->media_path[0] = '\0';
     clip->timeline_start_frames = 0;
     clip->duration_frames = 0;
     clip->offset_frames = 0;
@@ -201,6 +202,7 @@ static EngineClip* engine_track_append_clip(EngineTrack* track) {
     clip->gain = 1.0f;
     clip->active = true;
     clip->name[0] = '\0';
+    clip->media_path[0] = '\0';
     clip->timeline_start_frames = 0;
     clip->duration_frames = 0;
     clip->offset_frames = 0;
@@ -580,7 +582,6 @@ bool engine_start(Engine* engine) {
     SDL_Log("Audio device running: %d Hz, %d channels, block size %d",
             have->sample_rate, have->channels, have->block_size);
 
-    engine_transport_play(engine);
     return true;
 }
 
@@ -832,6 +833,8 @@ bool engine_add_clip_to_track(Engine* engine, int track_index, const char* filep
     clip_slot->duration_frames = media->frame_count;
     clip_slot->selected = false;
     engine_clip_set_name_from_path(clip_slot, filepath);
+    strncpy(clip_slot->media_path, filepath, sizeof(clip_slot->media_path) - 1);
+    clip_slot->media_path[sizeof(clip_slot->media_path) - 1] = '\0';
     clip_slot->gain = 1.0f;
     clip_slot->active = true;
     engine_clip_refresh_sampler(clip_slot);
@@ -1111,6 +1114,8 @@ bool engine_add_clip_segment(Engine* engine, int track_index, const EngineClip* 
     } else {
         snprintf(new_clip->name, sizeof(new_clip->name), "Clip segment");
     }
+    strncpy(new_clip->media_path, source_clip->media_path, sizeof(new_clip->media_path) - 1);
+    new_clip->media_path[sizeof(new_clip->media_path) - 1] = '\0';
 
     engine_clip_refresh_sampler(new_clip);
     track->active = true;
@@ -1152,6 +1157,19 @@ bool engine_track_set_solo(Engine* engine, int track_index, bool solo) {
         return false;
     }
     track->solo = solo;
+    engine_rebuild_sources(engine);
+    return true;
+}
+
+bool engine_track_set_gain(Engine* engine, int track_index, float gain) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    EngineTrack* track = &engine->tracks[track_index];
+    if (!track) {
+        return false;
+    }
+    track->gain = gain;
     engine_rebuild_sources(engine);
     return true;
 }
@@ -1215,6 +1233,8 @@ bool engine_duplicate_clip(Engine* engine, int track_index, int clip_index, uint
     } else {
         snprintf(new_clip->name, sizeof(new_clip->name), "Clip copy");
     }
+    strncpy(new_clip->media_path, original->media_path, sizeof(new_clip->media_path) - 1);
+    new_clip->media_path[sizeof(new_clip->media_path) - 1] = '\0';
 
     engine_clip_refresh_sampler(new_clip);
     track->active = true;

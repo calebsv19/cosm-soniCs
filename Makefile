@@ -16,6 +16,7 @@ SRCS := \
 	$(SRC_DIR)/engine/buffer_pool.c \
 	$(SRC_DIR)/engine/source_tone.c \
 	$(SRC_DIR)/engine/sampler.c \
+	$(SRC_DIR)/session/session_serialization.c \
 	$(SRC_DIR)/ui/panes.c \
 	$(SRC_DIR)/ui/layout.c \
 	$(SRC_DIR)/ui/layout_config.c \
@@ -42,6 +43,12 @@ LDFLAGS := $(SDL2_LIBS)
 
 APP_BIN := $(BUILD_DIR)/$(APP_NAME)
 
+TEST_SRCS := \
+	tests/session_serialization_test.c
+
+TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(TEST_SRCS))
+TEST_BIN := $(BUILD_DIR)/tests/session_serialization_test
+
 .PHONY: all clean run
 
 all: $(APP_BIN)
@@ -59,3 +66,15 @@ clean:
 
 run: $(APP_BIN)
 	$(APP_BIN)
+
+.PHONY: test-session
+test-session: $(TEST_BIN)
+	$(TEST_BIN)
+
+$(TEST_BIN): $(TEST_OBJS) $(BUILD_DIR)/src/session/session_serialization.o
+	@mkdir -p $(dir $@)
+	$(CC) $^ -o $@ $(LDFLAGS)
+
+$(BUILD_DIR)/tests/%.o: tests/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@

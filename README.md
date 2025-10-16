@@ -1,6 +1,18 @@
 # Minimal DAW Prototype — Sprint Roadmap
 
-This repository hosts an in-progress, minimal C-based DAW prototype built on SDL2. The current focus is a short-term sprint that incrementally grows the engine, media pipeline, and UI. Below is the working checklist for the sprint (Phases 1–9) and their intent.
+This repository hosts an in-progress, minimal C-based DAW prototype built on SDL2. The sprint-style roadmap below tracks feature phases, while this snapshot captures the current state and near-term goals.
+
+## Project Snapshot *(Phase 6 complete)*
+- **Goal**: Multi-track DAW prototype with SDL2 front end and a lock-free, real-time-safe audio engine. Makefile builds `build/daw_app`.
+- **Architecture**: C sources under `src/` (app, engine, audio, input, UI) with matching headers in `include/`; runtime assets in `assets/`; configuration defaults in `config/`.
+- **Runtime Threads**: Real-time audio callback executes the graph; engine thread handles graph edits, transport, and command queues; background workers manage media decode.
+- **UI State**: `AppState` mediates timeline layout, transport bar, loop state, track mute/solo, clip inspector overlay, and library interactions.
+- **Current Feature Set**:
+  - Timeline supports multi-track layout, clip drag/trim with snapping, loop band, mute/solo headers, and selection aware inspector.
+  - Transport bar exposes play/stop, seek bar with MM:SS.mmm counter, loop toggles with draggable in/out handles, zoom sliders, grid toggle, and fit width/height controls.
+  - Engine honors seek/loop commands, rebuilds track sources respecting mute/solo, and emits silence when idle (no fallback tone).
+  - Session persistence auto-loads from and auto-saves to `config/last_session.json` (Phase 7 complete).
+- **Focus Ahead**: Phase 8 engine housekeeping—multi-clip scheduling polish and audio caching.
 
 ## Phase 1 — Timeline Rendering Pass *(complete)*
 - Draw timeline grid with time ruler and playhead tied to `engine_get_transport_frame`.
@@ -18,19 +30,22 @@ This repository hosts an in-progress, minimal C-based DAW prototype built on SDL
 - Double-click to open a clip inspector (rename, gain).
 - Wire per-clip gain into engine; add shortcuts for delete/duplicate.
 
-## Phase 5 — Multi-Track Foundations
-- Allow multiple `EngineTrack` instances; stack lanes in timeline UI.
-- Provide UI controls to add/remove tracks and route newly loaded clips.
+## Phase 5 — Multi-Track Foundations *(complete)*
+- Stack timeline lanes per `EngineTrack`, with headers for rename/mute/solo.
+- Support library drag/drop into tracks, track selection state, and clip rebuilds that honor mute/solo.
 
-## Phase 6 — Transport UI Upgrade
-- Add seek bar with drag-to-seek and time display.
-- Introduce loop in/out markers editable from the transport area.
+## Phase 6 — Transport UI Upgrade *(complete)*
+- Transport play/stop, seek bar with draggable handle, and real-time MM:SS.mmm display.
+- Loop toggle plus draggable loop start/end handles with tinted band and cross-track snapping.
+- Zoom sliders, grid toggle, and fit width/height controls integrated with timeline layout; inspector overlays render after track content.
 
-## Phase 7 — Session Persistence v1
-- Define JSON format for tracks, clips, layout ratios, loop settings.
-- Implement save-on-exit/load-on-start behavior.
+## Phase 7 — Session Persistence v1 *(complete)*
+- Defined the canonical session schema (`include/session.h`, `src/session/README.md`) covering tracks, clips, loop/layout/library state, and transport info.
+- Added JSON save/load helpers with validation plus a smoke test (`make test-session`) to guard round-trips.
+- Integrated autosave on shutdown and autoload on startup via `config/last_session.json`, restoring layout, loop, selection, and clip placement.
+- Updated documentation to reflect the new persistence workflow.
 
-## Phase 8 — Engine Housekeeping
+## Phase 8 — Engine Housekeeping *(up next)*
 - Support multiple clips per track (sorted schedule) with fade-in/out ramps.
 - Cache decoded/resampled audio to avoid redundant work.
 

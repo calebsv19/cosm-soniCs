@@ -14,6 +14,7 @@ typedef struct EngineClip EngineClip;
 struct EngineSamplerSource;
 
 #define ENGINE_CLIP_NAME_MAX 128
+#define ENGINE_CLIP_PATH_MAX 512
 
 struct EngineClip {
     struct EngineSamplerSource* sampler;
@@ -21,6 +22,7 @@ struct EngineClip {
     float gain;
     bool active;
     char name[ENGINE_CLIP_NAME_MAX];
+    char media_path[ENGINE_CLIP_PATH_MAX];
     uint64_t timeline_start_frames;
     uint64_t duration_frames;
     uint64_t offset_frames;
@@ -75,3 +77,4 @@ bool    engine_add_clip_segment(Engine* engine, int track_index, const EngineCli
 bool    engine_track_set_muted(Engine* engine, int track_index, bool muted);
 bool    engine_track_set_solo(Engine* engine, int track_index, bool solo);
 bool    engine_track_set_muted(Engine* engine, int track_index, bool muted);
+bool    engine_track_set_gain(Engine* engine, int track_index, float gain);

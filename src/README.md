@@ -9,3 +9,4 @@ Purpose: Engine, UI, and application implementation for the DAW prototype.
 - `engine/`: Real-time engine core, graph, and sources.
 - `input/`: Mouse/keyboard plumbing for transport, timeline, and inspector.
 - `ui/`: Rendering and layout code for on-screen panels.
+- `session/`: (Phase 7) Persistence helpers for saving/loading session documents.
