@@ -1,5 +1,6 @@
 #include "ui/library_browser.h"
 
+#include "audio/media_clip.h"
 #include "ui/font5x7.h"
 
 #include <dirent.h>
@@ -10,6 +11,8 @@
 #include <direct.h>
 #define strcasecmp _stricmp
 #endif
+
+#include <stdio.h>
 
 void library_browser_init(LibraryBrowser* browser, const char* directory) {
     if (!browser) {
@@ -53,6 +56,26 @@ static void ensure_directory(const char* path) {
 #endif
 }
 
+static float library_resolve_duration_seconds(const char* directory, const char* filename) {
+    if (!directory || !filename) {
+        return 0.0f;
+    }
+    char full_path[512];
+    snprintf(full_path, sizeof(full_path), "%s/%s", directory, filename);
+
+    AudioMediaClip clip;
+    memset(&clip, 0, sizeof(clip));
+    if (!audio_media_clip_load(full_path, 0, &clip)) {
+        return 0.0f;
+    }
+    float seconds = 0.0f;
+    if (clip.sample_rate > 0 && clip.frame_count > 0) {
+        seconds = (float)clip.frame_count / (float)clip.sample_rate;
+    }
+    audio_media_clip_free(&clip);
+    return seconds;
+}
+
 void library_browser_scan(LibraryBrowser* browser) {
     if (!browser || browser->directory[0] == '\0') {
         return;
@@ -84,6 +107,7 @@ void library_browser_scan(LibraryBrowser* browser) {
         }
         strncpy(browser->items[browser->count].name, entry->d_name, LIBRARY_NAME_MAX - 1);
         browser->items[browser->count].name[LIBRARY_NAME_MAX - 1] = '\0';
+        browser->items[browser->count].duration_seconds = library_resolve_duration_seconds(browser->directory, entry->d_name);
         browser->count++;
     }
     closedir(dir);
@@ -115,7 +139,13 @@ void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* rendere
             SDL_SetRenderDrawColor(renderer, highlight_color.r, highlight_color.g, highlight_color.b, highlight_color.a);
             SDL_RenderFillRect(renderer, &row);
         }
-        ui_draw_text(renderer, rect->x + 16, y, browser->items[i].name, text_color, 2);
+        char label[192];
+        if (browser->items[i].duration_seconds > 0.0f) {
+            snprintf(label, sizeof(label), "%s (%.1fs)", browser->items[i].name, browser->items[i].duration_seconds);
+        } else {
+            snprintf(label, sizeof(label), "%s", browser->items[i].name);
+        }
+        ui_draw_text(renderer, rect->x + 16, y, label, text_color, 2);
         y += line_height;
     }
     if (browser->count == 0) {

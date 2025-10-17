@@ -4,13 +4,22 @@
 #include <stdbool.h>
 
 #include "config.h"
-#include "engine.h"
+#include "engine/engine.h"
 #include "input/input_manager.h"
 #include "ui/panes.h"
 #include "ui/resize.h"
 #include "ui/transport.h"
 #include "ui/timeline_view.h"
 #include "ui/library_browser.h"
+
+#define TIMELINE_MAX_SELECTION 256
+
+typedef struct EngineSamplerSource EngineSamplerSource;
+
+typedef struct {
+    int track_index;
+    int clip_index;
+} TimelineSelectionEntry;
 
 typedef struct {
     float transport_ratio;
@@ -29,15 +38,23 @@ typedef struct {
     bool adjusting_fade_out;
     int track_index;
     int clip_index;
+    int destination_track_index;
     int start_mouse_x;
     float start_mouse_seconds;
     float start_right_seconds;
+    float current_start_seconds;
+    float current_duration_seconds;
     uint64_t initial_start_frames;
     uint64_t initial_offset_frames;
     uint64_t initial_duration_frames;
     uint64_t clip_total_frames;
     uint64_t initial_fade_in_frames;
     uint64_t initial_fade_out_frames;
+    bool multi_move;
+    int multi_clip_count;
+    EngineSamplerSource* multi_samplers[TIMELINE_MAX_SELECTION];
+    int multi_initial_track[TIMELINE_MAX_SELECTION];
+    uint64_t multi_initial_start[TIMELINE_MAX_SELECTION];
 } TimelineDragState;
 
 typedef struct {
@@ -98,6 +115,8 @@ struct AppState {
     int active_track_index;
     int selected_track_index;
     int selected_clip_index;
+    int selection_count;
+    TimelineSelectionEntry selection[TIMELINE_MAX_SELECTION];
     TimelineDragState timeline_drag;
     ClipInspectorState inspector;
     TimelineControlsUI timeline_controls;
@@ -114,4 +133,8 @@ struct AppState {
     bool loop_enabled;
     uint64_t loop_start_frame;
     uint64_t loop_end_frame;
+    bool loop_restart_pending;
+    bool engine_logging_enabled;
+    bool cache_logging_enabled;
+    bool timing_logging_enabled;
 };

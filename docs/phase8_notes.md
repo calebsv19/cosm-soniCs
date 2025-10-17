@@ -21,4 +21,9 @@
 1. Design fade metadata additions and update session schema / docs (Phase 8 Step 2).
 2. Implement sampler ramping respecting fade-in/out per clip; verify with overlap unit tests and render assertions.
 3. Revisit sort stability or add explicit overlap priority flag to avoid surprises with equal start times.
-4. Feed findings into caching design (following Phase 8 plan) so decoded audio reuse respects fades and segment splits.
+4. Feed findings into caching design (following Phase 8 plan) so decoded audio reuse respects fades and segment splits. *(Done — cache implemented.)*
+
+## Remaining Tasks
+1. Add optional defaults/presets for fade lengths (config + UI affordances). *(Done)*
+2. Profile new caching path under heavy overlap and add targeted tests. *(Done via `media_cache_stress_test`.)*
+3. Establish deterministic ordering for clips sharing a start frame and cover with overlap tests. *(Done via `creation_index` ordering and `test-overlap` harness.)*

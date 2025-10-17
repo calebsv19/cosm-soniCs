@@ -1,7 +1,7 @@
 #include "ui/layout.h"
 
 #include "app_state.h"
-#include "engine.h"
+#include "engine/engine.h"
 #include "ui/font5x7.h"
 #include "ui/layout_config.h"
 #include "ui/library_browser.h"
@@ -284,6 +284,14 @@ void ui_render_overlays(SDL_Renderer* renderer, const AppState* state) {
     ClipInspectorLayout inspector_layout;
     clip_inspector_compute_layout(state, &inspector_layout);
     clip_inspector_render(renderer, state, &inspector_layout);
+
+    SDL_Color status_color = {160, 170, 190, 255};
+    char log_line[96];
+    snprintf(log_line, sizeof(log_line), "Logs: Engine %s  Cache %s  Timing %s",
+             state->engine_logging_enabled ? "on" : "off",
+             state->cache_logging_enabled ? "on" : "off",
+             state->timing_logging_enabled ? "on" : "off");
+    ui_draw_text(renderer, 16, 16, log_line, status_color, 2);
 }
 
 void ui_render_controls(SDL_Renderer* renderer, AppState* state) {

@@ -1,13 +1,30 @@
 #include "ui/timeline_view.h"
 
 #include "app_state.h"
-#include "engine.h"
+#include "engine/engine.h"
 #include "engine/sampler.h"
 #include "ui/font5x7.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+
+#define MOVE_GHOST_ALPHA 140
+
+static bool timeline_clip_is_selected(const AppState* state, int track_index, int clip_index) {
+    if (!state) {
+        return false;
+    }
+    if (state->selection_count > 0) {
+        for (int i = 0; i < state->selection_count; ++i) {
+            if (state->selection[i].track_index == track_index && state->selection[i].clip_index == clip_index) {
+                return true;
+            }
+        }
+        return false;
+    }
+    return state->selected_track_index == track_index && state->selected_clip_index == clip_index;
+}
 
 #define CLIP_COLOR_R 85
 #define CLIP_COLOR_G 125
@@ -21,6 +38,12 @@ static inline float clamp_float(float value, float min, float max) {
     if (value < min) return min;
     if (value > max) return max;
     return value;
+}
+
+static inline Uint8 clamp_u8(int value) {
+    if (value < 0) return 0;
+    if (value > 255) return 255;
+    return (Uint8)value;
 }
 
 static void draw_timeline_button(SDL_Renderer* renderer,
@@ -183,19 +206,11 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
 
     const float pixels_per_second = (float)content_width / visible_seconds;
     int grid_lanes = track_count > 0 ? track_count : 1;
-    for (int lane = 0; lane < grid_lanes; ++lane) {
-        int lane_top = track_y + lane * (track_height + track_spacing);
-        draw_timeline_grid(renderer, content_left, content_width, lane_top, track_height, pixels_per_second, visible_seconds, state->timeline_show_all_grid_lines);
-    }
 
-    SDL_Color header_bg = {30, 30, 38, 255};
-    SDL_Color header_border = {70, 70, 90, 255};
-    SDL_Color header_text = {200, 200, 210, 255};
-    int active_track = (state->active_track_index >= 0 && state->active_track_index < track_count) ? state->active_track_index : -1;
-    const TrackNameEditor* editor = &state->track_name_editor;
-    SDL_Point mouse_point = {state->mouse_x, state->mouse_y};
-
-    if (state->loop_enabled && sample_rate > 0 && state->loop_end_frame > state->loop_start_frame) {
+    bool have_loop_controls = state->loop_enabled && sample_rate > 0 && state->loop_end_frame > state->loop_start_frame;
+    bool have_loop_region = false;
+    SDL_Rect loop_region_rect = {0, 0, 0, 0};
+    if (have_loop_controls) {
         float loop_start_sec = (float)state->loop_start_frame / (float)sample_rate;
         float loop_end_sec = (float)state->loop_end_frame / (float)sample_rate;
         float max_sec = visible_seconds;
@@ -221,31 +236,37 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
         controls->loop_start_rect = (SDL_Rect){loop_start_x - handle_width / 2, top_zone_y, handle_width, top_zone_h};
         controls->loop_end_rect = (SDL_Rect){loop_end_x - handle_width / 2, top_zone_y, handle_width, top_zone_h};
 
-        SDL_Color loop_fill = {60, 120, 140, 50};
-        SDL_Color loop_border = {90, 170, 190, 180};
         if (loop_end_x > loop_start_x) {
-            SDL_Rect loop_rect = {
+            have_loop_region = true;
+            loop_region_rect = (SDL_Rect){
                 loop_start_x,
                 track_y,
                 loop_end_x - loop_start_x,
                 grid_lanes * (track_height + track_spacing) - track_spacing
             };
-            SDL_SetRenderDrawColor(renderer, loop_fill.r, loop_fill.g, loop_fill.b, loop_fill.a);
-            SDL_RenderFillRect(renderer, &loop_rect);
-            SDL_SetRenderDrawColor(renderer, loop_border.r, loop_border.g, loop_border.b, loop_border.a);
-            SDL_RenderDrawRect(renderer, &loop_rect);
         }
-        SDL_Color start_color = controls->loop_start_hovered || controls->adjusting_loop_start ? (SDL_Color){200, 240, 220, 255} : (SDL_Color){170, 220, 200, 255};
-        SDL_Color end_color = controls->loop_end_hovered || controls->adjusting_loop_end ? (SDL_Color){200, 220, 250, 255} : (SDL_Color){160, 190, 230, 255};
-        SDL_SetRenderDrawColor(renderer, start_color.r, start_color.g, start_color.b, start_color.a);
-        SDL_RenderFillRect(renderer, &controls->loop_start_rect);
-        SDL_SetRenderDrawColor(renderer, 40, 70, 80, 255);
-        SDL_RenderDrawRect(renderer, &controls->loop_start_rect);
-        SDL_SetRenderDrawColor(renderer, end_color.r, end_color.g, end_color.b, end_color.a);
-        SDL_RenderFillRect(renderer, &controls->loop_end_rect);
-        SDL_SetRenderDrawColor(renderer, 40, 70, 90, 255);
-        SDL_RenderDrawRect(renderer, &controls->loop_end_rect);
     }
+
+    if (have_loop_region) {
+        SDL_Color loop_fill = {60, 120, 140, 50};
+        SDL_Color loop_border = {90, 170, 190, 180};
+        SDL_SetRenderDrawColor(renderer, loop_fill.r, loop_fill.g, loop_fill.b, loop_fill.a);
+        SDL_RenderFillRect(renderer, &loop_region_rect);
+        SDL_SetRenderDrawColor(renderer, loop_border.r, loop_border.g, loop_border.b, loop_border.a);
+        SDL_RenderDrawRect(renderer, &loop_region_rect);
+    }
+
+    for (int lane = 0; lane < grid_lanes; ++lane) {
+        int lane_top = track_y + lane * (track_height + track_spacing);
+        draw_timeline_grid(renderer, content_left, content_width, lane_top, track_height, pixels_per_second, visible_seconds, state->timeline_show_all_grid_lines);
+    }
+
+    SDL_Color header_bg = {30, 30, 38, 255};
+    SDL_Color header_border = {70, 70, 90, 255};
+    SDL_Color header_text = {200, 200, 210, 255};
+    int active_track = (state->active_track_index >= 0 && state->active_track_index < track_count) ? state->active_track_index : -1;
+    const TrackNameEditor* editor = &state->track_name_editor;
+    SDL_Point mouse_point = {state->mouse_x, state->mouse_y};
 
     if (tracks && track_count > 0) {
         for (int t = 0; t < track_count; ++t) {
@@ -360,12 +381,17 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                     track_height - 16,
                 };
 
-                bool is_selected = (state->selected_track_index == t && state->selected_clip_index == i);
-                SDL_SetRenderDrawColor(renderer,
-                                       is_selected ? 120 : CLIP_COLOR_R,
-                                       is_selected ? 170 : CLIP_COLOR_G,
-                                       is_selected ? 240 : CLIP_COLOR_B,
-                                       220);
+                bool is_selected = timeline_clip_is_selected(state, t, i);
+                Uint8 fill_r = CLIP_COLOR_R;
+                Uint8 fill_g = CLIP_COLOR_G;
+                Uint8 fill_b = CLIP_COLOR_B;
+                if (is_selected) {
+                    int boost = state->selection_count > 1 ? 60 : 35;
+                    fill_r = clamp_u8(fill_r + boost);
+                    fill_g = clamp_u8(fill_g + boost + 20);
+                    fill_b = clamp_u8(fill_b + boost + (state->selection_count > 1 ? 40 : 20));
+                }
+                SDL_SetRenderDrawColor(renderer, fill_r, fill_g, fill_b, 220);
                 SDL_RenderFillRect(renderer, &clip_rect);
 
                 SDL_SetRenderDrawColor(renderer, 20, 20, 26, 255);
@@ -408,7 +434,17 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
 
                 SDL_Color text_color = {200, 200, 210, 255};
                 const char* name = clip->name[0] ? clip->name : "Clip";
-                ui_draw_text(renderer, clip_rect.x + 8, clip_rect.y + 8, name, text_color, 2);
+                int label_padding = 8;
+                int label_width = clip_rect.w - label_padding * 2;
+                if (label_width > 0) {
+                    ui_draw_text_clipped(renderer,
+                                         clip_rect.x + label_padding,
+                                         clip_rect.y + 8,
+                                         name,
+                                         text_color,
+                                         2,
+                                         label_width);
+                }
 
                 if (is_selected) {
                     SDL_SetRenderDrawColor(renderer, 200, 220, 255, 220);
@@ -431,6 +467,23 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
         }
     }
 
+    if (have_loop_controls) {
+        SDL_Color start_color = controls->loop_start_hovered || controls->adjusting_loop_start
+                                     ? (SDL_Color){200, 240, 220, 255}
+                                     : (SDL_Color){170, 220, 200, 255};
+        SDL_Color end_color = controls->loop_end_hovered || controls->adjusting_loop_end
+                                   ? (SDL_Color){200, 220, 250, 255}
+                                   : (SDL_Color){160, 190, 230, 255};
+        SDL_SetRenderDrawColor(renderer, start_color.r, start_color.g, start_color.b, start_color.a);
+        SDL_RenderFillRect(renderer, &controls->loop_start_rect);
+        SDL_SetRenderDrawColor(renderer, 40, 70, 80, 255);
+        SDL_RenderDrawRect(renderer, &controls->loop_start_rect);
+        SDL_SetRenderDrawColor(renderer, end_color.r, end_color.g, end_color.b, end_color.a);
+        SDL_RenderFillRect(renderer, &controls->loop_end_rect);
+        SDL_SetRenderDrawColor(renderer, 40, 70, 90, 255);
+        SDL_RenderDrawRect(renderer, &controls->loop_end_rect);
+    }
+
     const uint64_t transport_frame = engine_get_transport_frame(engine);
     const double transport_sec = (double)transport_frame / (double)sample_rate;
     float playhead_offset = (float)(transport_sec / visible_seconds) * (float)content_width;
@@ -441,6 +494,73 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                                       : track_height);
     SDL_SetRenderDrawColor(renderer, 240, 110, 110, 255);
     SDL_RenderDrawLine(renderer, playhead_x, track_y - 8, playhead_x, timeline_bottom + 8);
+
+    if (state->timeline_drag.active) {
+        const TimelineDragState* drag = &state->timeline_drag;
+        int dest_track = drag->destination_track_index;
+        if (dest_track < 0) {
+            dest_track = drag->track_index;
+        }
+        if (dest_track >= track_count) {
+            dest_track = track_count > 0 ? track_count - 1 : 0;
+        }
+        if (dest_track >= 0 && dest_track < track_count && dest_track != drag->track_index) {
+            double start_sec = drag->current_start_seconds;
+            double duration_sec = drag->current_duration_seconds;
+            if (duration_sec <= 0.0) {
+                duration_sec = 1.0 / (double)sample_rate;
+            }
+            int ghost_x = content_left + (int)round(start_sec * pixels_per_second);
+            int ghost_w = (int)round(duration_sec * pixels_per_second);
+            if (ghost_w < 4) {
+                ghost_w = 4;
+            }
+            int lane_top = track_y + dest_track * (track_height + track_spacing);
+            SDL_Rect ghost_rect = {
+                ghost_x,
+                lane_top + 8,
+                ghost_w,
+                track_height - 16,
+            };
+            SDL_SetRenderDrawColor(renderer, 170, 200, 255, MOVE_GHOST_ALPHA);
+            SDL_RenderFillRect(renderer, &ghost_rect);
+            SDL_SetRenderDrawColor(renderer, 210, 230, 255, 200);
+            SDL_RenderDrawRect(renderer, &ghost_rect);
+
+            const EngineTrack* tracks = engine_get_tracks(state->engine);
+            int count = engine_get_track_count(state->engine);
+            if (tracks && drag->track_index >= 0 && drag->track_index < count) {
+                const EngineTrack* src_track = &tracks[drag->track_index];
+                if (src_track && drag->clip_index >= 0 && drag->clip_index < src_track->clip_count) {
+                    const EngineClip* clip = &src_track->clips[drag->clip_index];
+                    if (clip && clip->name[0]) {
+                        SDL_Color text_color = {220, 230, 255, 255};
+                        ui_draw_text(renderer, ghost_rect.x + 6, ghost_rect.y + 6, clip->name, text_color, 2);
+                    }
+                }
+            }
+
+            if (drag->multi_move && drag->multi_clip_count > 1) {
+                char label[64];
+                snprintf(label, sizeof(label), "Moving %d clips", drag->multi_clip_count);
+                int text_w = ui_measure_text_width(label, 2);
+                int label_x = ghost_rect.x + 6;
+                int label_y = ghost_rect.y - 18;
+                int content_right = content_left + content_width;
+                if (label_x + text_w > content_right - 4) {
+                    label_x = content_right - text_w - 4;
+                }
+                if (label_x < content_left + 4) {
+                    label_x = content_left + 4;
+                }
+                if (label_y < track_y - 12) {
+                    label_y = ghost_rect.y + ghost_rect.h + 6;
+                }
+                SDL_Color badge = {235, 240, 255, 255};
+                ui_draw_text(renderer, label_x, label_y, label, badge, 2);
+            }
+        }
+    }
 
     if (state->timeline_drop_active) {
         float start_sec = state->timeline_drop_seconds_snapped >= 0.0f

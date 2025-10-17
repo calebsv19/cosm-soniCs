@@ -1,5 +1,5 @@
 #include "session.h"
-#include "engine.h"
+#include "engine/engine.h"
 
 #include <SDL2/SDL.h>
 
@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 static const char* kTestOutputPath = "build/tests/sample_session.json";
 
@@ -170,6 +171,18 @@ int main(void) {
 
     doc.engine.sample_rate = 48000;
     doc.engine.block_size = 128;
+    doc.engine.default_fade_in_ms = 5.0f;
+    doc.engine.default_fade_out_ms = 15.0f;
+    doc.engine.fade_preset_count = 3;
+    doc.engine.fade_preset_ms[0] = 0.0f;
+    doc.engine.fade_preset_ms[1] = 12.5f;
+    doc.engine.fade_preset_ms[2] = 55.0f;
+    for (int i = doc.engine.fade_preset_count; i < CONFIG_FADE_PRESET_MAX; ++i) {
+        doc.engine.fade_preset_ms[i] = 0.0f;
+    }
+    doc.engine.enable_engine_logs = true;
+    doc.engine.enable_cache_logs = false;
+    doc.engine.enable_timing_logs = true;
 
     doc.loop.enabled = false;
     doc.loop.start_frame = 0;
@@ -249,6 +262,30 @@ int main(void) {
         SDL_Log("session_serialization_test: deserialised counts mismatch");
         return 5;
     }
+    if (fabsf(loaded.engine.default_fade_in_ms - doc.engine.default_fade_in_ms) > 0.01f ||
+        fabsf(loaded.engine.default_fade_out_ms - doc.engine.default_fade_out_ms) > 0.01f ||
+        loaded.engine.fade_preset_count != doc.engine.fade_preset_count) {
+        session_document_free(&doc);
+        session_document_free(&loaded);
+        SDL_Log("session_serialization_test: engine fade config mismatch");
+        return 6;
+    }
+    for (int i = 0; i < loaded.engine.fade_preset_count; ++i) {
+        if (fabsf(loaded.engine.fade_preset_ms[i] - doc.engine.fade_preset_ms[i]) > 0.01f) {
+            session_document_free(&doc);
+            session_document_free(&loaded);
+            SDL_Log("session_serialization_test: fade preset %d mismatch", i);
+            return 7;
+        }
+    }
+    if (loaded.engine.enable_engine_logs != doc.engine.enable_engine_logs ||
+        loaded.engine.enable_cache_logs != doc.engine.enable_cache_logs ||
+        loaded.engine.enable_timing_logs != doc.engine.enable_timing_logs) {
+        session_document_free(&doc);
+        session_document_free(&loaded);
+        SDL_Log("session_serialization_test: engine logging flags mismatch");
+        return 8;
+    }
     SessionTrack* lt = &loaded.tracks[0];
     SessionClip* lc = &lt->clips[0];
     if (strcmp(lt->name, "Test Track") != 0 || strcmp(lc->name, "Test Clip") != 0 ||
@@ -257,7 +294,7 @@ int main(void) {
         session_document_free(&doc);
         session_document_free(&loaded);
         SDL_Log("session_serialization_test: deserialised content mismatch");
-        return 6;
+        return 9;
     }
 
     session_document_free(&doc);
@@ -266,18 +303,18 @@ int main(void) {
     FILE* file = fopen(kTestOutputPath, "rb");
     if (!file) {
         SDL_Log("session_serialization_test: output file missing");
-        return 7;
+        return 10;
     }
     if (fseek(file, 0, SEEK_END) != 0) {
         SDL_Log("session_serialization_test: failed to seek output file");
         fclose(file);
-        return 8;
+        return 11;
     }
     long size = ftell(file);
     fclose(file);
     if (size <= 0) {
         SDL_Log("session_serialization_test: output file empty");
-        return 9;
+        return 12;
     }
 
     SDL_Log("session_serialization_test: success (%ld bytes)", size);

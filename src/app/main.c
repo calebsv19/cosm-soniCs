@@ -1,6 +1,6 @@
 #include "app_state.h"
 #include "config.h"
-#include "engine.h"
+#include "engine/engine.h"
 #include "session.h"
 #include "sdl_app_framework.h"
 #include "input/inspector_input.h"
@@ -60,6 +60,10 @@ int main(void) {
                 state.runtime_cfg.sample_rate, state.runtime_cfg.block_size);
     }
 
+    state.engine_logging_enabled = state.runtime_cfg.enable_engine_logs;
+    state.cache_logging_enabled = state.runtime_cfg.enable_cache_logs;
+    state.timing_logging_enabled = state.runtime_cfg.enable_timing_logs;
+
     ui_init_panes(&state);
 
     bool loaded_session = false;
@@ -82,6 +86,17 @@ int main(void) {
         state.loop_enabled = false;
         state.loop_start_frame = 0;
         state.loop_end_frame = state.runtime_cfg.sample_rate > 0 ? (uint64_t)state.runtime_cfg.sample_rate : 48000;
+    }
+
+    state.engine_logging_enabled = state.runtime_cfg.enable_engine_logs;
+    state.cache_logging_enabled = state.runtime_cfg.enable_cache_logs;
+    state.timing_logging_enabled = state.runtime_cfg.enable_timing_logs;
+
+    if (state.engine) {
+        engine_set_logging(state.engine,
+                           state.engine_logging_enabled,
+                           state.cache_logging_enabled,
+                           state.timing_logging_enabled);
     }
 
     AppContext ctx = {0};

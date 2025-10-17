@@ -15,6 +15,8 @@ Purpose: Platform audio plumbing, buffering utilities, and media decoding.
 - `media_clip.c`
   - `audio_media_clip_load`: Detect file type (WAV/MP3), decode to float32, optionally resample, and fill an `AudioMediaClip`.
   - `audio_media_clip_free`: Release heap-backed sample buffers.
+- `media_cache.c`
+  - `audio_media_cache_*`: Manage a simple in-memory cache so the engine can reuse decoded clips across multiple timeline references.
 - `ringbuf.c`
   - `ringbuf_init/free/reset`: Manage the underlying byte buffer and indices.
   - `ringbuf_write/read`: Lock-free producer/consumer operations with wrap handling.

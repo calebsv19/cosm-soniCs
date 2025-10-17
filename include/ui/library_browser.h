@@ -7,6 +7,7 @@
 
 typedef struct {
     char name[LIBRARY_NAME_MAX];
+    float duration_seconds;
 } LibraryItem;
 
 typedef struct {

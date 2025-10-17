@@ -10,6 +10,7 @@ Purpose: Real-time audio engine, graph, and source implementations.
   - Transport/device control (`engine_create/start/stop/destroy`, `engine_is_running`, `engine_transport_play/stop/is_playing`).
   - Clip + track management (`engine_add_track`, `engine_remove_track`, `engine_track_set_name`, `engine_track_set_muted`, `engine_track_set_solo`, `engine_track_set_gain`, `engine_add_clip[_to_track]`, `engine_remove_clip`, `engine_duplicate_clip`, setters for timeline/gain/name/region).
   - Clip instances now retain their source `media_path` for session persistence.
+  - Decoded audio cache (`AudioMediaCache`) shares buffers between clips referencing the same file+sample-rate.
   - Transport helpers (`engine_transport_play/stop/is_playing/seek/set_loop`) and command queue plumbing for worker-thread safe updates.
   - Segment utilities (`engine_add_clip_segment`) to clone portions of an existing clip when splitting around drops.
   - Graph wiring (`engine_queue_graph_swap`, `engine_rebuild_sources`) and command processing (`engine_post_command`, worker thread loop).

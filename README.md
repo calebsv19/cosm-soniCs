@@ -2,7 +2,7 @@
 
 This repository hosts an in-progress, minimal C-based DAW prototype built on SDL2. The sprint-style roadmap below tracks feature phases, while this snapshot captures the current state and near-term goals.
 
-## Project Snapshot *(Phase 6 complete)*
+## Project Snapshot *(Phase 9 in progress)*
 - **Goal**: Multi-track DAW prototype with SDL2 front end and a lock-free, real-time-safe audio engine. Makefile builds `build/daw_app`.
 - **Architecture**: C sources under `src/` (app, engine, audio, input, UI) with matching headers in `include/`; runtime assets in `assets/`; configuration defaults in `config/`.
 - **Runtime Threads**: Real-time audio callback executes the graph; engine thread handles graph edits, transport, and command queues; background workers manage media decode.
@@ -13,7 +13,9 @@ This repository hosts an in-progress, minimal C-based DAW prototype built on SDL
   - Engine honors seek/loop commands, rebuilds track sources respecting mute/solo, and emits silence when idle (no fallback tone).
   - Session persistence auto-loads from and auto-saves to `config/last_session.json` (Phase 7 complete).
   - Library/decoder pipeline accepts both WAV and MP3 assets (MP3 decoded via CoreAudio on macOS).
-- **Focus Ahead**: Phase 8 engine housekeeping—multi-clip scheduling polish and audio caching.
+  - Decoded audio cache reuses media buffers across clips referencing the same file/sample-rate to reduce load overhead.
+  - Configurable diagnostics: F7/F8/F9 toggle engine, cache, and timing logs with an on-screen status strip; library browser displays clip durations and drop previews match the real clip length.
+- **Focus Ahead**: Phase 8 engine housekeeping—finalize caching QA, configurable fade defaults, and overlap priority polish.
 
 ## Phase 1 — Timeline Rendering Pass *(complete)*
 - Draw timeline grid with time ruler and playhead tied to `engine_get_transport_frame`.
@@ -46,12 +48,26 @@ This repository hosts an in-progress, minimal C-based DAW prototype built on SDL
 - Integrated autosave on shutdown and autoload on startup via `config/last_session.json`, restoring layout, loop, selection, and clip placement.
 - Updated documentation to reflect the new persistence workflow.
 
-## Phase 8 — Engine Housekeeping *(up next)*
-- Support multiple clips per track (sorted schedule) with fade-in/out ramps.
-- Cache decoded/resampled audio to avoid redundant work.
+## Phase 8 — Engine Housekeeping *(completed)*
+- ✅ Fade metadata persisted in session and applied at runtime with per-sample ramps (`engine_clip_set_fades`, sampler fades).
+- ✅ Timeline/inspector controls expose fades (Alt-drag overlays, sliders + presets).
+- ✅ Audio media cache shares decoded buffers across clips.
+- ✅ Configurable default fade lengths/presets surfaced in UI/config.
+- ✅ Stress-test media cache (duplicate-heavy sessions, rapid add/remove) and document the coverage.
+- ✅ Deterministic overlap priority for clips sharing a start frame with regression coverage.
+- **Next**: Phase 8 housekeeping checklist complete; roll remaining effort into Phase 9 polish.
 
-## Phase 9 — Integration & Polish
-- End-to-end QA: drag/trim across tracks, transport loop/seek, session restore.
-- Add optional logging toggles; stabilize UX for the new interactions.
+## Phase 9 — Integration & Polish *(in progress)*
+- ✅ Logging toggles with config + F7/F8/F9 shortcuts, verbose cache tracing, and audio worker timing instrumentation.
+- ✅ Library browser durations and timeline drop previews aligned to real clip length.
+- 🔄 Continue end-to-end QA sweeps (timeline edits, transport loop/seek, autosave restore) and capture remaining polish items.
+- 🔄 Refresh docs/tests as new instrumentation lands (see test targets below).
 
 Keep this roadmap up to date as each phase completes or is re-scoped. Future chats can reference this file to pick up where the sprint left off.
+
+## Test Targets
+- `make test-session` — Session serialization round-trip.
+- `make test-cache` — Media cache stress harness.
+- `make test-overlap` — Equal-start clip ordering regression.
+- `make test-smoke` — Engine API smoke (load clip, fades, loop/play toggles).
+

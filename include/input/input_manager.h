@@ -12,6 +12,11 @@ typedef struct InputManager {
     bool previous_space;
     bool previous_l;
     bool previous_delete;
+    bool previous_enter;
+    bool previous_c;
+    bool previous_f7;
+    bool previous_f8;
+    bool previous_f9;
     Uint32 last_click_ticks;
     int last_click_track;
     int last_click_clip;

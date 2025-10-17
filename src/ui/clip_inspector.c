@@ -1,7 +1,7 @@
 #include "ui/clip_inspector.h"
 
 #include "app_state.h"
-#include "engine.h"
+#include "engine/engine.h"
 #include "engine/sampler.h"
 #include "ui/font5x7.h"
 #include "ui/layout.h"
@@ -11,6 +11,28 @@
 
 #define INSPECTOR_GAIN_MIN 0.0f
 #define INSPECTOR_GAIN_MAX 4.0f
+#define INSPECTOR_MARGIN 16
+#define INSPECTOR_SECTION_SPACING 18
+#define INSPECTOR_SLIDER_HEIGHT 18
+#define INSPECTOR_SLIDER_GAP 28
+#define INSPECTOR_PRESET_HEIGHT 24
+#define INSPECTOR_PRESET_SPACING 10
+
+static EngineRuntimeConfig clip_inspector_active_config(const AppState* state) {
+    EngineRuntimeConfig cfg;
+    config_set_defaults(&cfg);
+    if (!state) {
+        return cfg;
+    }
+    cfg = state->runtime_cfg;
+    if (state->engine) {
+        const EngineRuntimeConfig* engine_cfg = engine_get_config(state->engine);
+        if (engine_cfg) {
+            cfg = *engine_cfg;
+        }
+    }
+    return cfg;
+}
 
 static void zero_layout(ClipInspectorLayout* layout) {
     if (!layout) {
@@ -57,40 +79,117 @@ static void draw_slider(SDL_Renderer* renderer, const SDL_Rect* track_rect, floa
     SDL_RenderDrawRect(renderer, &handle_rect);
 }
 
+static void draw_button(SDL_Renderer* renderer, const SDL_Rect* rect, const char* label, bool active) {
+    if (!renderer || !rect || !label) {
+        return;
+    }
+    SDL_Color base = {48, 52, 62, 255};
+    SDL_Color highlight = {120, 160, 220, 255};
+    SDL_Color border = {90, 95, 110, 255};
+    SDL_Color text = {220, 220, 230, 255};
+
+    SDL_Color fill = active ? highlight : base;
+    SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
+    SDL_RenderFillRect(renderer, rect);
+    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+    SDL_RenderDrawRect(renderer, rect);
+
+    int text_w = (int)strlen(label) * 6 * 2;
+    int text_h = 7 * 2;
+    int text_x = rect->x + (rect->w - text_w) / 2;
+    int text_y = rect->y + (rect->h - text_h) / 2;
+    ui_draw_text(renderer, text_x, text_y, label, text, 2);
+}
+
 void clip_inspector_compute_layout(const AppState* state, ClipInspectorLayout* layout) {
     if (!state || !layout) {
         return;
     }
     zero_layout(layout);
+    EngineRuntimeConfig runtime_cfg = clip_inspector_active_config(state);
+    int preset_count = runtime_cfg.fade_preset_count;
+    if (preset_count < 0) {
+        preset_count = 0;
+    }
+    if (preset_count > INSPECTOR_FADE_PRESET_COUNT) {
+        preset_count = INSPECTOR_FADE_PRESET_COUNT;
+    }
+    layout->fade_preset_count = preset_count;
+    for (int i = 0; i < preset_count; ++i) {
+        layout->fade_presets_ms[i] = runtime_cfg.fade_preset_ms[i];
+    }
+    for (int i = preset_count; i < INSPECTOR_FADE_PRESET_COUNT; ++i) {
+        layout->fade_presets_ms[i] = 0.0f;
+    }
     const Pane* mixer = ui_layout_get_pane(state, 2);
     if (!mixer) {
         return;
     }
     layout->panel_rect = mixer->rect;
 
-    int content_x = mixer->rect.x + 16;
-    int content_y = mixer->rect.y + 32;
+    int content_x = mixer->rect.x + INSPECTOR_MARGIN;
+    int content_y = mixer->rect.y + INSPECTOR_MARGIN;
+    int content_width = mixer->rect.w - 2 * INSPECTOR_MARGIN;
 
-    layout->name_rect = (SDL_Rect){content_x, content_y, mixer->rect.w - 32, 28};
-    content_y += 54;
+    layout->name_rect = (SDL_Rect){content_x, content_y, content_width, 28};
+    content_y += layout->name_rect.h + INSPECTOR_SECTION_SPACING;
 
-    int slider_width = mixer->rect.w - 64;
-    if (slider_width < 120) {
-        slider_width = 120;
+    int left_col_width = content_width / 2;
+    int right_col_width = content_width - left_col_width - INSPECTOR_MARGIN;
+    if (left_col_width < 180) {
+        left_col_width = 180;
+        right_col_width = content_width - left_col_width - INSPECTOR_MARGIN;
     }
-    layout->gain_track_rect = (SDL_Rect){content_x, content_y, slider_width, 16};
+    if (right_col_width < 160) {
+        right_col_width = 160;
+        left_col_width = content_width - right_col_width - INSPECTOR_MARGIN;
+        if (left_col_width < 140) {
+            left_col_width = 140;
+        }
+    }
+    int right_x = content_x + left_col_width + INSPECTOR_MARGIN;
+    content_y += INSPECTOR_SLIDER_GAP;
+
+    layout->gain_track_rect = (SDL_Rect){content_x, content_y, left_col_width, INSPECTOR_SLIDER_HEIGHT};
     layout->gain_fill_rect = layout->gain_track_rect;
     layout->gain_handle_rect = layout->gain_track_rect;
-    content_y += 46;
+    content_y += INSPECTOR_SLIDER_HEIGHT + INSPECTOR_SLIDER_GAP;
 
-    layout->fade_in_track_rect = (SDL_Rect){content_x, content_y, slider_width, 14};
+    layout->fade_in_track_rect = (SDL_Rect){content_x, content_y, left_col_width, INSPECTOR_SLIDER_HEIGHT};
     layout->fade_in_fill_rect = layout->fade_in_track_rect;
     layout->fade_in_handle_rect = layout->fade_in_track_rect;
-    content_y += 42;
+    content_y += INSPECTOR_SLIDER_HEIGHT + INSPECTOR_SLIDER_GAP;
 
-    layout->fade_out_track_rect = (SDL_Rect){content_x, content_y, slider_width, 14};
+    layout->fade_out_track_rect = (SDL_Rect){content_x, content_y, left_col_width, INSPECTOR_SLIDER_HEIGHT};
     layout->fade_out_fill_rect = layout->fade_out_track_rect;
     layout->fade_out_handle_rect = layout->fade_out_track_rect;
+
+    int button_width = 0;
+    int button_row_width = 0;
+    if (layout->fade_preset_count > 0) {
+        button_width = (right_col_width - (layout->fade_preset_count - 1) * INSPECTOR_PRESET_SPACING);
+        if (button_width < 0) button_width = 0;
+        button_width /= layout->fade_preset_count;
+        if (button_width < 42) {
+            button_width = 42;
+        }
+        button_row_width = button_width * layout->fade_preset_count + INSPECTOR_PRESET_SPACING * (layout->fade_preset_count - 1);
+    }
+    int button_start_x = right_x;
+    if (layout->fade_preset_count > 0 && button_row_width > 0) {
+        button_start_x = right_x + (right_col_width - button_row_width) / 2;
+    }
+    if (button_start_x < right_x) {
+        button_start_x = right_x;
+    }
+
+    int fade_in_button_y = layout->fade_in_track_rect.y + layout->fade_in_track_rect.h + (INSPECTOR_SECTION_SPACING / 2);
+    int fade_out_button_y = layout->fade_out_track_rect.y + layout->fade_out_track_rect.h + (INSPECTOR_SECTION_SPACING / 2);
+    for (int i = 0; i < layout->fade_preset_count; ++i) {
+        int bx = button_start_x + i * (button_width + INSPECTOR_PRESET_SPACING);
+        layout->fade_in_buttons[i] = (SDL_Rect){bx, fade_in_button_y, button_width, INSPECTOR_PRESET_HEIGHT};
+        layout->fade_out_buttons[i] = (SDL_Rect){bx, fade_out_button_y, button_width, INSPECTOR_PRESET_HEIGHT};
+    }
 }
 
 void clip_inspector_render(SDL_Renderer* renderer, const AppState* state, const ClipInspectorLayout* layout) {
@@ -99,7 +198,6 @@ void clip_inspector_render(SDL_Renderer* renderer, const AppState* state, const 
     }
 
     SDL_Color label = {210, 210, 220, 255};
-    ui_draw_text(renderer, layout->panel_rect.x + 12, layout->panel_rect.y + 12, "CLIP INSPECTOR", label, 2);
 
     if (!state->inspector.visible || !state->engine) {
         ui_draw_text(renderer, layout->panel_rect.x + 16, layout->panel_rect.y + 48, "Select a clip to edit.", label, 2);
@@ -141,7 +239,7 @@ void clip_inspector_render(SDL_Renderer* renderer, const AppState* state, const 
         SDL_RenderDrawLine(renderer, caret_x, caret_y, caret_x, caret_y + 20);
     }
 
-    const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
+    EngineRuntimeConfig runtime_cfg = clip_inspector_active_config(state);
 
     float gain_value = clip->gain;
     if (state->inspector.adjusting_gain) {
@@ -152,12 +250,11 @@ void clip_inspector_render(SDL_Renderer* renderer, const AppState* state, const 
 
     SDL_Rect track_rect = layout->gain_track_rect;
     float t = (gain_value - INSPECTOR_GAIN_MIN) / (INSPECTOR_GAIN_MAX - INSPECTOR_GAIN_MIN);
-    draw_slider(renderer, &track_rect, t);
-
     float gain_db = 20.0f * log10f(gain_value > 0.000001f ? gain_value : 0.000001f);
     char line[128];
-    snprintf(line, sizeof(line), "Gain: %.2f (%.1f dB)", gain_value, gain_db);
-    ui_draw_text(renderer, track_rect.x, track_rect.y - 18, line, label, 2);
+    snprintf(line, sizeof(line), "Gain %.2f (%.1f dB)", gain_value, gain_db);
+    draw_slider(renderer, &track_rect, t);
+    ui_draw_text(renderer, track_rect.x, track_rect.y - 20, line, label, 2);
 
     uint64_t clip_frames = clip->duration_frames;
     if (clip_frames == 0 && clip->sampler) {
@@ -178,22 +275,43 @@ void clip_inspector_render(SDL_Renderer* renderer, const AppState* state, const 
     draw_slider(renderer, &layout->fade_in_track_rect, fade_in_ratio);
     draw_slider(renderer, &layout->fade_out_track_rect, fade_out_ratio);
 
-    float sample_rate = (cfg && cfg->sample_rate > 0) ? (float)cfg->sample_rate : 48000.0f;
+    float sample_rate = runtime_cfg.sample_rate > 0 ? (float)runtime_cfg.sample_rate : 48000.0f;
     float fade_in_ms = (float)fade_in_frames * 1000.0f / sample_rate;
     float fade_out_ms = (float)fade_out_frames * 1000.0f / sample_rate;
 
-    snprintf(line, sizeof(line), "Fade In: %.1f ms", fade_in_ms);
-    ui_draw_text(renderer, layout->fade_in_track_rect.x, layout->fade_in_track_rect.y - 18, line, label, 2);
-    snprintf(line, sizeof(line), "Fade Out: %.1f ms", fade_out_ms);
-    ui_draw_text(renderer, layout->fade_out_track_rect.x, layout->fade_out_track_rect.y - 18, line, label, 2);
+    snprintf(line, sizeof(line), "Fade In %.1f ms", fade_in_ms);
+    ui_draw_text(renderer, layout->fade_in_track_rect.x, layout->fade_in_track_rect.y - 20, line, label, 2);
+    snprintf(line, sizeof(line), "Fade Out %.1f ms", fade_out_ms);
+    ui_draw_text(renderer, layout->fade_out_track_rect.x, layout->fade_out_track_rect.y - 20, line, label, 2);
 
-    if (cfg && cfg->sample_rate > 0) {
-        double start_sec = (double)clip->timeline_start_frames / (double)cfg->sample_rate;
-        double dur_sec = (double)clip->duration_frames / (double)cfg->sample_rate;
-        if (clip->duration_frames == 0) {
-            dur_sec = (double)engine_sampler_get_frame_count(clip->sampler) / (double)cfg->sample_rate;
+    if (layout->fade_preset_count > 0 && layout->fade_in_buttons[0].w > 0) {
+        int label_x = layout->fade_in_buttons[0].x;
+        int label_y = layout->fade_in_buttons[0].y - 22;
+        ui_draw_text(renderer, label_x, label_y, "Presets (ms)", label, 2);
+
+        for (int i = 0; i < layout->fade_preset_count; ++i) {
+            float preset_ms = layout->fade_presets_ms[i];
+            char preset_label[8];
+            if (preset_ms < 0.05f) {
+                strcpy(preset_label, "0");
+            } else {
+                snprintf(preset_label, sizeof(preset_label), "%.0f", preset_ms);
+            }
+            bool active_in = fabsf(fade_in_ms - preset_ms) < 0.6f;
+            bool active_out = fabsf(fade_out_ms - preset_ms) < 0.6f;
+            draw_button(renderer, &layout->fade_in_buttons[i], preset_label, active_in);
+            draw_button(renderer, &layout->fade_out_buttons[i], preset_label, active_out);
         }
-        snprintf(line, sizeof(line), "Start: %.3fs   Length: %.3fs", start_sec, dur_sec);
-        ui_draw_text(renderer, track_rect.x, track_rect.y + track_rect.h + 94, line, label, 2);
+    }
+
+    if (runtime_cfg.sample_rate > 0) {
+        double start_sec = (double)clip->timeline_start_frames / (double)runtime_cfg.sample_rate;
+        double dur_sec = (double)clip->duration_frames / (double)runtime_cfg.sample_rate;
+        if (clip->duration_frames == 0) {
+            dur_sec = (double)engine_sampler_get_frame_count(clip->sampler) / (double)runtime_cfg.sample_rate;
+        }
+        snprintf(line, sizeof(line), "Start %.3fs   Length %.3fs", start_sec, dur_sec);
+        int info_y = layout->panel_rect.y + layout->panel_rect.h - INSPECTOR_MARGIN;
+        ui_draw_text(renderer, layout->name_rect.x, info_y, line, label, 2);
     }
 }

@@ -82,3 +82,47 @@ void ui_draw_text(SDL_Renderer* renderer, int x, int y, const char* text, SDL_Co
         cursor_x += 6 * scale;
     }
 }
+
+int ui_measure_text_width(const char* text, int scale) {
+    if (!text || scale <= 0) {
+        return 0;
+    }
+    int width = 0;
+    for (const char* c = text; *c; ++c) {
+        (void)lookup_glyph(*c);
+        width += 6 * scale;
+    }
+    return width;
+}
+
+void ui_draw_text_clipped(SDL_Renderer* renderer,
+                          int x,
+                          int y,
+                          const char* text,
+                          SDL_Color color,
+                          int scale,
+                          int max_width) {
+    if (!renderer || !text || scale <= 0 || max_width <= 0) {
+        return;
+    }
+    SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+    int cursor_x = x;
+    int remaining = max_width;
+    const int advance = 6 * scale;
+    for (const char* c = text; *c && remaining >= advance; ++c) {
+        const Glyph* glyph = lookup_glyph(*c);
+        if (glyph) {
+            for (int row = 0; row < 7; ++row) {
+                unsigned char bits = glyph->rows[row];
+                for (int col = 0; col < 5; ++col) {
+                    if (bits & (1u << (4 - col))) {
+                        SDL_Rect pixel = {cursor_x + col * scale, y + row * scale, scale, scale};
+                        SDL_RenderFillRect(renderer, &pixel);
+                    }
+                }
+            }
+        }
+        cursor_x += advance;
+        remaining -= advance;
+    }
+}

@@ -1,10 +1,11 @@
 #include "input/input_manager.h"
 
 #include "app_state.h"
-#include "engine.h"
+#include "engine/engine.h"
 #include "input/timeline_input.h"
 #include "input/transport_input.h"
 #include "input/inspector_input.h"
+#include "input/timeline_selection.h"
 #include "ui/layout.h"
 #include "ui/library_browser.h"
 #include "ui/panes.h"
@@ -34,13 +35,18 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
     bool space_now = keys[SDL_SCANCODE_SPACE] != 0;
     if (space_now && !manager->previous_space) {
         bool shift_down = (SDL_GetModState() & KMOD_SHIFT) != 0;
-        bool was_playing = engine_transport_is_playing(state->engine);
         if (shift_down) {
-            engine_transport_seek(state->engine, 0);
+            bool was_playing = engine_transport_is_playing(state->engine);
+            uint64_t target_frame = 0;
+            if (state->loop_enabled && state->loop_end_frame > state->loop_start_frame) {
+                target_frame = state->loop_start_frame;
+            }
+            engine_transport_seek(state->engine, target_frame);
             if (was_playing) {
                 engine_transport_play(state->engine);
             }
         } else {
+            bool was_playing = engine_transport_is_playing(state->engine);
             if (was_playing) {
                 engine_transport_stop(state->engine);
             } else {
@@ -68,16 +74,75 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
 
     bool delete_now = keys[SDL_SCANCODE_DELETE] != 0 || keys[SDL_SCANCODE_BACKSPACE] != 0;
     if (!state->inspector.editing_name && delete_now && !manager->previous_delete) {
-        if (state->engine && state->selected_track_index >= 0 && state->selected_clip_index >= 0) {
-            if (engine_remove_clip(state->engine, state->selected_track_index, state->selected_clip_index)) {
-                timeline_input_init(manager);
-                inspector_input_init(state);
-                state->selected_track_index = -1;
-                state->selected_clip_index = -1;
-            }
-        }
+        timeline_selection_delete(state);
     }
     manager->previous_delete = delete_now;
+
+    bool c_now = keys[SDL_SCANCODE_C] != 0;
+    if (c_now && !manager->previous_c) {
+        bool new_state = !state->loop_enabled;
+        if (new_state && state->loop_end_frame <= state->loop_start_frame) {
+            const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
+            int sample_rate = cfg ? cfg->sample_rate : 0;
+            uint64_t default_len = sample_rate > 0 ? (uint64_t)sample_rate : 48000;
+            if (default_len == 0) {
+                default_len = 48000;
+            }
+            state->loop_end_frame = state->loop_start_frame + default_len;
+        }
+        state->loop_enabled = new_state;
+        state->loop_restart_pending = false;
+        engine_transport_set_loop(state->engine, state->loop_enabled, state->loop_start_frame, state->loop_end_frame);
+    }
+    manager->previous_c = c_now;
+
+    bool enter_now = keys[SDL_SCANCODE_RETURN] != 0 || keys[SDL_SCANCODE_KP_ENTER] != 0;
+    if (enter_now && !manager->previous_enter) {
+        bool was_playing = engine_transport_is_playing(state->engine);
+        bool loop_active = state->loop_enabled && state->loop_end_frame > state->loop_start_frame;
+        if (loop_active) {
+            state->loop_restart_pending = true;
+            engine_transport_set_loop(state->engine, false, state->loop_start_frame, state->loop_end_frame);
+        }
+        engine_transport_seek(state->engine, 0);
+        if (was_playing) {
+            engine_transport_play(state->engine);
+        }
+    }
+    manager->previous_enter = enter_now;
+
+    bool f7_now = keys[SDL_SCANCODE_F7] != 0;
+    if (f7_now && !manager->previous_f7) {
+        state->engine_logging_enabled = !state->engine_logging_enabled;
+        state->runtime_cfg.enable_engine_logs = state->engine_logging_enabled;
+        engine_set_logging(state->engine,
+                           state->engine_logging_enabled,
+                           state->cache_logging_enabled,
+                           state->timing_logging_enabled);
+    }
+    manager->previous_f7 = f7_now;
+
+    bool f8_now = keys[SDL_SCANCODE_F8] != 0;
+    if (f8_now && !manager->previous_f8) {
+        state->cache_logging_enabled = !state->cache_logging_enabled;
+        state->runtime_cfg.enable_cache_logs = state->cache_logging_enabled;
+        engine_set_logging(state->engine,
+                           state->engine_logging_enabled,
+                           state->cache_logging_enabled,
+                           state->timing_logging_enabled);
+    }
+    manager->previous_f8 = f8_now;
+
+    bool f9_now = keys[SDL_SCANCODE_F9] != 0;
+    if (f9_now && !manager->previous_f9) {
+        state->timing_logging_enabled = !state->timing_logging_enabled;
+        state->runtime_cfg.enable_timing_logs = state->timing_logging_enabled;
+        engine_set_logging(state->engine,
+                           state->engine_logging_enabled,
+                           state->cache_logging_enabled,
+                           state->timing_logging_enabled);
+    }
+    manager->previous_f9 = f9_now;
 }
 
 void input_manager_init(InputManager* manager) {
@@ -89,6 +154,11 @@ void input_manager_init(InputManager* manager) {
     manager->previous_space = false;
     manager->previous_l = false;
     manager->previous_delete = false;
+    manager->previous_enter = false;
+    manager->previous_c = false;
+    manager->previous_f7 = false;
+    manager->previous_f8 = false;
+    manager->previous_f9 = false;
     manager->last_click_ticks = 0;
     manager->last_click_track = -1;
     manager->last_click_clip = -1;
@@ -145,6 +215,18 @@ void input_manager_update(InputManager* manager, AppState* state) {
 
     handle_transport_controls(state, left_was_down, left_is_down);
     handle_keyboard_shortcuts(manager, state);
+
+    if (state->loop_restart_pending) {
+        if (!state->loop_enabled || state->loop_end_frame <= state->loop_start_frame) {
+            state->loop_restart_pending = false;
+        } else {
+            uint64_t frame = engine_get_transport_frame(state->engine);
+            if (frame >= state->loop_start_frame) {
+                engine_transport_set_loop(state->engine, true, state->loop_start_frame, state->loop_end_frame);
+                state->loop_restart_pending = false;
+            }
+        }
+    }
 
     if (state->inspector.adjusting_gain) {
         inspector_input_handle_gain_drag(state, state->mouse_x);

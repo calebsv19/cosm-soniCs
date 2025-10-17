@@ -28,6 +28,7 @@ struct EngineClip {
     uint64_t offset_frames;
     uint64_t fade_in_frames;
     uint64_t fade_out_frames;
+    uint64_t creation_index;
     bool selected;
 };
 
@@ -81,3 +82,4 @@ bool    engine_track_set_muted(Engine* engine, int track_index, bool muted);
 bool    engine_track_set_solo(Engine* engine, int track_index, bool solo);
 bool    engine_track_set_muted(Engine* engine, int track_index, bool muted);
 bool    engine_track_set_gain(Engine* engine, int track_index, float gain);
+void    engine_set_logging(Engine* engine, bool engine_logs, bool cache_logs, bool timing_logs);

@@ -11,6 +11,7 @@ SRCS := \
 	$(SRC_DIR)/audio/audio_queue.c \
 	$(SRC_DIR)/audio/ringbuf.c \
 	$(SRC_DIR)/audio/media_clip.c \
+	$(SRC_DIR)/audio/media_cache.c \
 	$(SRC_DIR)/engine/engine.c \
 	$(SRC_DIR)/engine/graph.c \
 	$(SRC_DIR)/engine/buffer_pool.c \
@@ -26,7 +27,9 @@ SRCS := \
 	$(SRC_DIR)/ui/transport.c \
 	$(SRC_DIR)/ui/clip_inspector.c \
 	$(SRC_DIR)/input/input_manager.c \
-	$(SRC_DIR)/input/timeline_input.c \
+	$(SRC_DIR)/input/timeline/timeline_input.c \
+	$(SRC_DIR)/input/timeline/timeline_selection.c \
+	$(SRC_DIR)/input/timeline/timeline_drag.c \
 	$(SRC_DIR)/input/inspector_input.c \
 	$(SRC_DIR)/input/transport_input.c
 
@@ -55,7 +58,39 @@ TEST_SRCS := \
 TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(TEST_SRCS))
 TEST_BIN := $(BUILD_DIR)/tests/session_serialization_test
 
-.PHONY: all clean run test-session
+CACHE_TEST_SRCS := \
+	tests/media_cache_stress_test.c
+
+CACHE_TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(CACHE_TEST_SRCS))
+CACHE_TEST_BIN := $(BUILD_DIR)/tests/media_cache_stress_test
+
+OVERLAP_TEST_SRCS := \
+	tests/clip_overlap_priority_test.c
+
+OVERLAP_TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(OVERLAP_TEST_SRCS))
+OVERLAP_TEST_BIN := $(BUILD_DIR)/tests/clip_overlap_priority_test
+
+SMOKE_TEST_SRCS := \
+	tests/engine_smoke_test.c
+
+SMOKE_TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SMOKE_TEST_SRCS))
+SMOKE_TEST_BIN := $(BUILD_DIR)/tests/engine_smoke_test
+
+ENGINE_TEST_SUPPORT_OBJS := \
+	$(BUILD_DIR)/src/engine/engine.o \
+	$(BUILD_DIR)/src/engine/graph.o \
+	$(BUILD_DIR)/src/engine/buffer_pool.o \
+	$(BUILD_DIR)/src/engine/source_tone.o \
+	$(BUILD_DIR)/src/engine/sampler.o \
+	$(BUILD_DIR)/src/audio/media_cache.o \
+	$(BUILD_DIR)/src/audio/media_clip.o \
+	$(BUILD_DIR)/src/audio/audio_queue.o \
+	$(BUILD_DIR)/src/audio/ringbuf.o \
+	$(BUILD_DIR)/src/audio/device_sdl.o \
+	$(BUILD_DIR)/src/config/config.o \
+	$(BUILD_DIR)/src/input/timeline/timeline_drag.o
+
+.PHONY: all clean run test-session test-cache test-overlap test-smoke
 
 all: $(APP_BIN)
 
@@ -76,7 +111,28 @@ run: $(APP_BIN)
 test-session: $(TEST_BIN)
 	$(TEST_BIN)
 
-$(TEST_BIN): $(TEST_OBJS) $(BUILD_DIR)/src/session/session_serialization.o
+$(TEST_BIN): $(TEST_OBJS) $(BUILD_DIR)/src/session/session_serialization.o $(BUILD_DIR)/src/config/config.o
+	@mkdir -p $(dir $@)
+	$(CC) $^ -o $@ $(LDFLAGS)
+
+test-cache: $(CACHE_TEST_BIN)
+	$(CACHE_TEST_BIN)
+
+$(CACHE_TEST_BIN): $(CACHE_TEST_OBJS) $(BUILD_DIR)/src/audio/media_cache.o $(BUILD_DIR)/src/audio/media_clip.o
+	@mkdir -p $(dir $@)
+	$(CC) $^ -o $@ $(LDFLAGS)
+
+test-overlap: $(OVERLAP_TEST_BIN)
+	$(OVERLAP_TEST_BIN)
+
+$(OVERLAP_TEST_BIN): $(OVERLAP_TEST_OBJS) $(ENGINE_TEST_SUPPORT_OBJS)
+	@mkdir -p $(dir $@)
+	$(CC) $^ -o $@ $(LDFLAGS)
+
+test-smoke: $(SMOKE_TEST_BIN)
+	$(SMOKE_TEST_BIN)
+
+$(SMOKE_TEST_BIN): $(SMOKE_TEST_OBJS) $(ENGINE_TEST_SUPPORT_OBJS)
 	@mkdir -p $(dir $@)
 	$(CC) $^ -o $@ $(LDFLAGS)
 

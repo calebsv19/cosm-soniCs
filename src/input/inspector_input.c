@@ -1,16 +1,31 @@
 #include "input/inspector_input.h"
 
 #include "app_state.h"
-#include "engine.h"
+#include "engine/engine.h"
 #include "engine/sampler.h"
 #include "input/input_manager.h"
 #include "ui/clip_inspector.h"
 
 #include <SDL2/SDL.h>
+#include <math.h>
 #include <string.h>
 
 #define INSPECTOR_GAIN_MIN 0.0f
 #define INSPECTOR_GAIN_MAX 4.0f
+
+static const EngineRuntimeConfig* inspector_get_runtime_cfg(const AppState* state) {
+    if (!state) {
+        return NULL;
+    }
+    if (state->engine) {
+        const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
+        if (cfg) {
+            return cfg;
+        }
+    }
+    return &state->runtime_cfg;
+}
+
 
 static EngineClip* inspector_get_clip_mutable(AppState* state) {
     if (!state || !state->engine) {
@@ -128,6 +143,33 @@ static void inspector_update_fade_from_mouse(AppState* state, bool is_fade_in, i
     }
 }
 
+static uint64_t inspector_ms_to_frames(const AppState* state, float ms) {
+    const EngineRuntimeConfig* cfg = inspector_get_runtime_cfg(state);
+    int sample_rate = (cfg && cfg->sample_rate > 0) ? cfg->sample_rate : 0;
+    if (sample_rate <= 0 && state) {
+        sample_rate = state->runtime_cfg.sample_rate;
+    }
+    if (sample_rate <= 0) {
+        sample_rate = 48000;
+    }
+    double frames = (double)ms * (double)sample_rate / 1000.0;
+    if (frames < 0.0) frames = 0.0;
+    return (uint64_t)llround(frames);
+}
+
+static void inspector_apply_fade_preset(AppState* state, bool set_fade_in, bool set_fade_out, float ms) {
+    EngineClip* clip = inspector_get_clip_mutable(state);
+    if (!clip || !state->engine) {
+        return;
+    }
+    uint64_t frames = inspector_ms_to_frames(state, ms);
+    uint64_t fade_in = set_fade_in ? frames : clip->fade_in_frames;
+    uint64_t fade_out = set_fade_out ? frames : clip->fade_out_frames;
+    if (engine_clip_set_fades(state->engine, state->inspector.track_index, state->inspector.clip_index, fade_in, fade_out)) {
+        inspector_input_set_clip(state, state->inspector.track_index, state->inspector.clip_index);
+    }
+}
+
 void inspector_input_init(AppState* state) {
     if (!state) {
         return;
@@ -241,6 +283,23 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                     state->inspector.adjusting_fade_in = false;
                     inspector_update_fade_from_mouse(state, false, p.x);
                     return;
+                }
+
+                for (int i = 0; i < layout.fade_preset_count; ++i) {
+                    if (layout.fade_in_buttons[i].w > 0 && SDL_PointInRect(&p, &layout.fade_in_buttons[i])) {
+                        inspector_input_commit_if_editing(state);
+                        inspector_apply_fade_preset(state, true, false, layout.fade_presets_ms[i]);
+                        state->inspector.adjusting_fade_in = false;
+                        state->inspector.adjusting_fade_out = false;
+                        return;
+                    }
+                    if (layout.fade_out_buttons[i].w > 0 && SDL_PointInRect(&p, &layout.fade_out_buttons[i])) {
+                        inspector_input_commit_if_editing(state);
+                        inspector_apply_fade_preset(state, false, true, layout.fade_presets_ms[i]);
+                        state->inspector.adjusting_fade_in = false;
+                        state->inspector.adjusting_fade_out = false;
+                        return;
+                    }
                 }
             }
         }

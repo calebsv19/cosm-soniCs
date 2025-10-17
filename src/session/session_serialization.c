@@ -1,7 +1,7 @@
 #include "session.h"
 
 #include "app_state.h"
-#include "engine.h"
+#include "engine/engine.h"
 
 #include <SDL2/SDL.h>
 
@@ -32,6 +32,7 @@ void session_document_init(SessionDocument* doc) {
     }
     memset(doc, 0, sizeof(*doc));
     doc->version = SESSION_DOCUMENT_VERSION;
+    config_set_defaults(&doc->engine);
 }
 
 void session_document_free(SessionDocument* doc) {
@@ -209,6 +210,20 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
         session_set_error(error_message, error_message_len, "invalid block size: %d", doc->engine.block_size);
         return false;
     }
+    if (doc->engine.default_fade_in_ms < 0.0f || doc->engine.default_fade_out_ms < 0.0f) {
+        session_set_error(error_message, error_message_len, "default fades must be non-negative");
+        return false;
+    }
+    if (doc->engine.fade_preset_count < 0 || doc->engine.fade_preset_count > CONFIG_FADE_PRESET_MAX) {
+        session_set_error(error_message, error_message_len, "invalid fade preset count: %d", doc->engine.fade_preset_count);
+        return false;
+    }
+    for (int i = 0; i < doc->engine.fade_preset_count; ++i) {
+        if (doc->engine.fade_preset_ms[i] < 0.0f) {
+            session_set_error(error_message, error_message_len, "fade preset %d negative", i);
+            return false;
+        }
+    }
     if (doc->loop.enabled && doc->loop.end_frame <= doc->loop.start_frame) {
         session_set_error(error_message, error_message_len, "loop end <= start");
         return false;
@@ -336,7 +351,37 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     json_write_indent(file, 2);
     fprintf(file, "\"sample_rate\": %d,\n", doc->engine.sample_rate);
     json_write_indent(file, 2);
-    fprintf(file, "\"block_size\": %d\n", doc->engine.block_size);
+    fprintf(file, "\"block_size\": %d,\n", doc->engine.block_size);
+    json_write_indent(file, 2);
+    fprintf(file, "\"default_fade_in_ms\": ");
+    json_write_float(file, doc->engine.default_fade_in_ms);
+    fprintf(file, ",\n");
+    json_write_indent(file, 2);
+    fprintf(file, "\"default_fade_out_ms\": ");
+    json_write_float(file, doc->engine.default_fade_out_ms);
+    fprintf(file, ",\n");
+    json_write_indent(file, 2);
+    fprintf(file, "\"fade_presets_ms\": [");
+    int preset_count = doc->engine.fade_preset_count;
+    if (preset_count < 0) {
+        preset_count = 0;
+    }
+    if (preset_count > CONFIG_FADE_PRESET_MAX) {
+        preset_count = CONFIG_FADE_PRESET_MAX;
+    }
+    for (int i = 0; i < preset_count; ++i) {
+        if (i > 0) {
+            fprintf(file, ", ");
+        }
+        json_write_float(file, doc->engine.fade_preset_ms[i]);
+    }
+    fprintf(file, "],\n");
+    json_write_indent(file, 2);
+    fprintf(file, "\"enable_engine_logs\": %s,\n", doc->engine.enable_engine_logs ? "true" : "false");
+    json_write_indent(file, 2);
+    fprintf(file, "\"enable_cache_logs\": %s,\n", doc->engine.enable_cache_logs ? "true" : "false");
+    json_write_indent(file, 2);
+    fprintf(file, "\"enable_timing_logs\": %s\n", doc->engine.enable_timing_logs ? "true" : "false");
     json_write_indent(file, 1);
     fprintf(file, "},\n");
 
@@ -1013,14 +1058,81 @@ static bool parse_session_document(JsonReader* r, SessionDocument* doc) {
                 if (!json_expect(r, ':')) {
                     return false;
                 }
-                double val;
-                if (!json_parse_number(r, &val)) {
-                    return false;
-                }
                 if (strcmp(eng_key, "sample_rate") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
                     doc->engine.sample_rate = (int)val;
                 } else if (strcmp(eng_key, "block_size") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
                     doc->engine.block_size = (int)val;
+                } else if (strcmp(eng_key, "default_fade_in_ms") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->engine.default_fade_in_ms = (float)(val < 0.0 ? 0.0 : val);
+                } else if (strcmp(eng_key, "default_fade_out_ms") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->engine.default_fade_out_ms = (float)(val < 0.0 ? 0.0 : val);
+                } else if (strcmp(eng_key, "fade_presets_ms") == 0) {
+                    if (!json_expect(r, '[')) {
+                        return false;
+                    }
+                    int stored = 0;
+                    json_skip_whitespace(r);
+                    if (r->pos < r->length && r->data[r->pos] == ']') {
+                        ++r->pos;
+                    } else {
+                        while (true) {
+                            double val;
+                            if (!json_parse_number(r, &val)) {
+                                return false;
+                            }
+                            if (stored < CONFIG_FADE_PRESET_MAX) {
+                                float clamped = (float)(val < 0.0 ? 0.0 : val);
+                                doc->engine.fade_preset_ms[stored] = clamped;
+                                stored++;
+                            }
+                            json_skip_whitespace(r);
+                            if (r->pos < r->length && r->data[r->pos] == ',') {
+                                ++r->pos;
+                                continue;
+                            }
+                            if (r->pos < r->length && r->data[r->pos] == ']') {
+                                ++r->pos;
+                                break;
+                            }
+                            return false;
+                        }
+                    }
+                    for (int i = stored; i < CONFIG_FADE_PRESET_MAX; ++i) {
+                        doc->engine.fade_preset_ms[i] = 0.0f;
+                    }
+                    doc->engine.fade_preset_count = stored;
+                } else if (strcmp(eng_key, "enable_engine_logs") == 0) {
+                    if (!json_parse_bool(r, &doc->engine.enable_engine_logs)) {
+                        return false;
+                    }
+                } else if (strcmp(eng_key, "enable_cache_logs") == 0) {
+                    if (!json_parse_bool(r, &doc->engine.enable_cache_logs)) {
+                        return false;
+                    }
+                } else if (strcmp(eng_key, "enable_timing_logs") == 0) {
+                    if (!json_parse_bool(r, &doc->engine.enable_timing_logs)) {
+                        return false;
+                    }
+                } else {
+                    if (!json_skip_value(r)) {
+                        return false;
+                    }
                 }
                 json_skip_whitespace(r);
                 if (r->pos < r->length && r->data[r->pos] == ',') {
@@ -1361,6 +1473,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     state->loop_enabled = doc->loop.enabled && doc->loop.end_frame > doc->loop.start_frame;
     state->loop_start_frame = doc->loop.start_frame;
     state->loop_end_frame = doc->loop.end_frame;
+    state->loop_restart_pending = false;
     if (state->engine) {
         engine_transport_set_loop(state->engine, state->loop_enabled, state->loop_start_frame, state->loop_end_frame);
     }
