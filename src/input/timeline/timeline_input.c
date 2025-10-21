@@ -26,6 +26,26 @@ static float clamp_scalar(float value, float min, float max) {
     return value;
 }
 
+static void add_unique_sampler(EngineSamplerSource** list,
+                               int* count,
+                               int max,
+                               EngineSamplerSource* sampler) {
+    if (!list || !count || max <= 0 || !sampler) {
+        return;
+    }
+    int current = *count;
+    for (int i = 0; i < current; ++i) {
+        if (list[i] == sampler) {
+            return;
+        }
+    }
+    if (current >= max) {
+        return;
+    }
+    list[current] = sampler;
+    *count = current + 1;
+}
+
 static void clear_timeline_drop(AppState* state) {
     if (!state) {
         return;
@@ -522,22 +542,19 @@ static void handle_library_drag(AppState* state, bool was_down, bool is_down) {
 
                     int final_clip_index = new_clip_index;
                     if (new_sampler) {
-                        int resolved = timeline_resolve_overlapping_clips(state, target_track, new_sampler);
-                        if (resolved >= 0) {
-                            final_clip_index = resolved;
-                        } else if (new_clip_ptr) {
-                            const EngineTrack* refreshed_tracks = engine_get_tracks(state->engine);
-                            if (refreshed_tracks) {
-                                const EngineTrack* refreshed_track = &refreshed_tracks[target_track];
-                                if (refreshed_track) {
-                                    for (int i = 0; i < refreshed_track->clip_count; ++i) {
-                                        if (refreshed_track->clips[i].sampler == new_sampler) {
-                                            final_clip_index = i;
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
+                        int resolved_index = -1;
+                        engine_track_apply_no_overlap(state->engine, target_track, new_sampler, &resolved_index);
+                        int sampler_track = target_track;
+                        int sampler_clip = -1;
+                        if (!timeline_find_clip_by_sampler(state, new_sampler, &sampler_track, &sampler_clip)) {
+                            sampler_track = target_track;
+                            sampler_clip = resolved_index;
+                        }
+                        if (sampler_track == target_track && sampler_clip >= 0) {
+                            final_clip_index = sampler_clip;
+                        } else if (sampler_track >= 0 && sampler_clip >= 0) {
+                            target_track = sampler_track;
+                            final_clip_index = sampler_clip;
                         }
                     }
 
@@ -1048,6 +1065,10 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
                     drop_anchor_clip = &drop_anchor_track->clips[drag->clip_index];
                 }
             }
+            EngineSamplerSource* anchor_sampler = drop_anchor_clip ? drop_anchor_clip->sampler : NULL;
+            EngineSamplerSource* overlap_targets[TIMELINE_MAX_SELECTION + 1];
+            int overlap_target_count = 0;
+            add_unique_sampler(overlap_targets, &overlap_target_count, TIMELINE_MAX_SELECTION + 1, anchor_sampler);
 
             if (drag->multi_move && drag->multi_clip_count > 0) {
                 int track_offset = dst_track - drag->track_index;
@@ -1055,7 +1076,6 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
                 TimelineSelectionEntry rebuilt[TIMELINE_MAX_SELECTION];
                 int rebuilt_count = 0;
                 int anchor_rebuilt_index = -1;
-                EngineSamplerSource* anchor_sampler = drop_anchor_clip ? drop_anchor_clip->sampler : NULL;
 
                 int required_tracks = dst_track;
                 for (int s = 0; s < drag->multi_clip_count; ++s) {
@@ -1105,6 +1125,7 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
                     } else {
                         new_index = timeline_move_clip_to_track(state, current_track, current_clip, target_track, target_start);
                     }
+                    add_unique_sampler(overlap_targets, &overlap_target_count, TIMELINE_MAX_SELECTION + 1, sampler);
                     if (new_index >= 0 && rebuilt_count < TIMELINE_MAX_SELECTION) {
                         rebuilt[rebuilt_count].track_index = target_track;
                         rebuilt[rebuilt_count].clip_index = new_index;
@@ -1165,9 +1186,19 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
                     if (updated_tracks && dst_track >= 0 && dst_track < updated_count) {
                         const EngineTrack* dst = &updated_tracks[dst_track];
                         if (dst && new_index >= 0 && new_index < dst->clip_count) {
+                            add_unique_sampler(overlap_targets, &overlap_target_count, TIMELINE_MAX_SELECTION + 1, dst->clips[new_index].sampler);
                             inspector_input_show(state, dst_track, new_index, &dst->clips[new_index]);
                         }
                     }
+                }
+            }
+
+            for (int i = 0; i < overlap_target_count; ++i) {
+                EngineSamplerSource* sampler = overlap_targets[i];
+                int target_track = -1;
+                int target_clip = -1;
+                if (timeline_find_clip_by_sampler(state, sampler, &target_track, &target_clip)) {
+                    engine_track_apply_no_overlap(state->engine, target_track, sampler, &target_clip);
                 }
             }
         }
@@ -1286,10 +1317,19 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
         uint64_t new_start_frames = (uint64_t)target_start_frames;
         int old_index = drag->clip_index;
         int new_index = drag->clip_index;
+        EngineSamplerSource* move_sampler = drag_clip ? drag_clip->sampler : NULL;
         if (engine_clip_set_timeline_start(state->engine, drag->track_index, drag->clip_index, (uint64_t)new_start_frames, &new_index)) {
-            drag->clip_index = new_index;
-            timeline_selection_update_index(state, drag->track_index, old_index, new_index);
-            inspector_input_set_clip(state, drag->track_index, new_index);
+            int final_index = new_index;
+            if (move_sampler) {
+                int resolved_index = new_index;
+                if (engine_track_apply_no_overlap(state->engine, drag->track_index, move_sampler, &resolved_index) &&
+                    resolved_index >= 0) {
+                    final_index = resolved_index;
+                }
+            }
+            drag->clip_index = final_index;
+            timeline_selection_update_index(state, drag->track_index, old_index, final_index);
+            inspector_input_set_clip(state, drag->track_index, final_index);
         }
 
         if (drag->multi_move) {

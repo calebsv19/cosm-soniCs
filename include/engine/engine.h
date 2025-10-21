@@ -78,6 +78,10 @@ bool    engine_add_clip_segment(Engine* engine, int track_index, const EngineCli
                                 uint64_t segment_length_frames,
                                 uint64_t start_frame,
                                 int* out_clip_index);
+bool    engine_track_apply_no_overlap(Engine* engine,
+                                      int track_index,
+                                      struct EngineSamplerSource* anchor_sampler,
+                                      int* out_anchor_index);
 bool    engine_track_set_muted(Engine* engine, int track_index, bool muted);
 bool    engine_track_set_solo(Engine* engine, int track_index, bool solo);
 bool    engine_track_set_muted(Engine* engine, int track_index, bool muted);

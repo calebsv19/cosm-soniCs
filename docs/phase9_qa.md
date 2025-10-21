@@ -7,7 +7,7 @@
 - **Session persistence**: Start a fresh session, create edits, quit to trigger autosave, then relaunch and verify layout, selection, fades, and loop state restore correctly.
 
 ## Observed Gaps / Risks
-- **Overlap splits**: `timeline_resolve_overlapping_clips` duplicates full PCM buffers when splitting overlaps, bypassing the shared media cache. Large files will spike memory usage during heavy edits; consider reusing cached media with offset/duration ranges.
+- **Overlap policy**: Ensure the new `engine_track_apply_no_overlap` helper continues to enforce trims without introducing audible pops; add stress tests with dense edits to validate batching efficiency.
 - **Fade feedback**: Inspector preset buttons correctly update fades, but timeline handles do not currently visualise preset changes until the next hover update. A hover/drag refresh pass will smooth the UX.
 - **Logging visibility**: F7/F8/F9 keyboard toggles now expose engine/cache/timing diagnostics with an on-screen status strip; ensure QA enables them when collecting traces.
 
