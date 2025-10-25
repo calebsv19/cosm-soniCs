@@ -34,8 +34,10 @@ static void render_single_pane(SDL_Renderer* renderer, const Pane* pane) {
     SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
     SDL_RenderFillRect(renderer, &pane->rect);
 
-    SDL_Color title_color = {220, 220, 230, 255};
-    ui_draw_text(renderer, pane->rect.x + 12, pane->rect.y + 12, pane->title, title_color, 2);
+    if (pane->drawTitle){
+	    SDL_Color title_color = {220, 220, 230, 255};
+	    ui_draw_text(renderer, pane->rect.x + 12, pane->rect.y + 12, pane->title, title_color, 2);
+    }
 
     if (pane->highlighted) {
         SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -107,7 +109,8 @@ void ui_init_panes(AppState* state) {
         .rect = {0, 0, 0, 0},
         .border_color = {200, 200, 210, 255},
         .fill_color = {26, 26, 34, 255},
-        .title = "",
+        .title = "MENU",
+	.drawTitle = false,
         .visible = true,
         .highlighted = false,
     };
@@ -116,6 +119,7 @@ void ui_init_panes(AppState* state) {
         .border_color = {200, 200, 210, 255},
         .fill_color = {32, 32, 40, 255},
         .title = "TIMELINE",
+	.drawTitle = false,
         .visible = true,
         .highlighted = false,
     };
@@ -124,7 +128,8 @@ void ui_init_panes(AppState* state) {
         .border_color = {200, 200, 210, 255},
         .fill_color = {28, 28, 36, 255},
         .title = "CLIP INSPECTOR",
-        .visible = true,
+        .drawTitle = false,
+	.visible = true,
         .highlighted = false,
     };
     state->panes[3] = (Pane){
@@ -132,7 +137,8 @@ void ui_init_panes(AppState* state) {
         .border_color = {200, 200, 210, 255},
         .fill_color = {24, 24, 32, 255},
         .title = "LIBRARY",
-        .visible = true,
+        .drawTitle = true,
+	.visible = true,
         .highlighted = false,
     };
     transport_ui_init(&state->transport_ui);

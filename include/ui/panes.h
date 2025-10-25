@@ -16,6 +16,7 @@ struct Pane {
     SDL_Color border_color;
     SDL_Color fill_color;
     const char* title;
+    bool drawTitle;
     bool visible;
     bool highlighted;
 };

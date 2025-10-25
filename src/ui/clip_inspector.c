@@ -102,93 +102,166 @@ static void draw_button(SDL_Renderer* renderer, const SDL_Rect* rect, const char
 }
 
 void clip_inspector_compute_layout(const AppState* state, ClipInspectorLayout* layout) {
-    if (!state || !layout) {
-        return;
-    }
+    if (!state || !layout) return;
+
     zero_layout(layout);
+
+    // ---------- Runtime presets ----------
     EngineRuntimeConfig runtime_cfg = clip_inspector_active_config(state);
     int preset_count = runtime_cfg.fade_preset_count;
-    if (preset_count < 0) {
-        preset_count = 0;
-    }
-    if (preset_count > INSPECTOR_FADE_PRESET_COUNT) {
-        preset_count = INSPECTOR_FADE_PRESET_COUNT;
-    }
+    if (preset_count < 0) preset_count = 0;
+    if (preset_count > INSPECTOR_FADE_PRESET_COUNT) preset_count = INSPECTOR_FADE_PRESET_COUNT;
     layout->fade_preset_count = preset_count;
-    for (int i = 0; i < preset_count; ++i) {
-        layout->fade_presets_ms[i] = runtime_cfg.fade_preset_ms[i];
-    }
-    for (int i = preset_count; i < INSPECTOR_FADE_PRESET_COUNT; ++i) {
-        layout->fade_presets_ms[i] = 0.0f;
-    }
+    for (int i = 0; i < preset_count; ++i) layout->fade_presets_ms[i] = runtime_cfg.fade_preset_ms[i];
+    for (int i = preset_count; i < INSPECTOR_FADE_PRESET_COUNT; ++i) layout->fade_presets_ms[i] = 0.0f;
+
+    // ---------- Host pane ----------
     const Pane* mixer = ui_layout_get_pane(state, 2);
-    if (!mixer) {
-        return;
-    }
+    if (!mixer) return;
     layout->panel_rect = mixer->rect;
 
-    int content_x = mixer->rect.x + INSPECTOR_MARGIN;
-    int content_y = mixer->rect.y + INSPECTOR_MARGIN;
-    int content_width = mixer->rect.w - 2 * INSPECTOR_MARGIN;
+    // ---------- Metrics / constants ----------
+    const int M = INSPECTOR_MARGIN;                 // outer margin
+    const int Gx = INSPECTOR_PRESET_SPACING;        // horizontal spacing between buttons
+    const int slider_h = INSPECTOR_SLIDER_HEIGHT;
+    const int min_btn_w = 42;
+    const int btn_h = INSPECTOR_PRESET_HEIGHT;
 
-    layout->name_rect = (SDL_Rect){content_x, content_y, content_width, 28};
-    content_y += layout->name_rect.h + INSPECTOR_SECTION_SPACING;
+    // Title / footer heights (match your current title box ~28; footer same)
+    const int title_h  = 28;
+    const int footer_h = 28;
 
-    int left_col_width = content_width / 2;
-    int right_col_width = content_width - left_col_width - INSPECTOR_MARGIN;
-    if (left_col_width < 180) {
-        left_col_width = 180;
-        right_col_width = content_width - left_col_width - INSPECTOR_MARGIN;
+    // Column gap between L/R columns
+    const int col_gap = M;
+
+    // Minimal vertical gaps — we'll grow them to fill space elastically
+    const int min_vgap_sliders = INSPECTOR_SLIDER_GAP;   // between slider rows (and top/bottom padding)
+    const int min_vgap_btns    = INSPECTOR_SECTION_SPACING;
+
+    // ---------- Title (full width) ----------
+    const int content_x      = mixer->rect.x + M;
+    const int content_y      = mixer->rect.y + M;
+    const int content_w      = mixer->rect.w - 2 * M;
+    int       cursor_y       = content_y;
+
+    layout->name_rect = (SDL_Rect){ content_x, cursor_y, content_w, title_h };
+    cursor_y += title_h + INSPECTOR_SECTION_SPACING;
+
+    // ---------- Footer (full width) ----------
+    const int footer_y = mixer->rect.y + mixer->rect.h - M - footer_h;
+//    layout->info_rect  = (SDL_Rect){ content_x, footer_y, content_w, footer_h };
+
+    // ---------- Content band (between title and footer) ----------
+    const int band_y = cursor_y;
+    const int band_h = (footer_y - INSPECTOR_SECTION_SPACING) - band_y;
+    if (band_h <= 0) {
+        // Tiny pane; fall back to just title/footer; leave others zeroed
+        return;
     }
-    if (right_col_width < 160) {
-        right_col_width = 160;
-        left_col_width = content_width - right_col_width - INSPECTOR_MARGIN;
-        if (left_col_width < 140) {
-            left_col_width = 140;
+
+    // ---------- Split content into two columns ----------
+    // Start with a 58/42 split, then enforce mins on both sides.
+    int left_w  = (int)(content_w * 0.58f);
+    int right_w = content_w - left_w - col_gap;
+
+    // Enforce minimums; keep them mutually consistent
+    const int min_left  = 140;  // never let the slider column collapse
+    const int min_right = 160;  // buttons need some width
+    if (left_w < min_left)  left_w = min_left;
+    right_w = content_w - left_w - col_gap;
+    if (right_w < min_right) {
+        right_w = min_right;
+        left_w  = content_w - right_w - col_gap;
+        if (left_w < min_left) left_w = min_left; // worst-case squeeze
+    }
+
+    const int left_x  = content_x;
+    const int right_x = content_x + left_w + col_gap;
+
+    // ---------- Left column: 3 sliders (gain, fade-in, fade-out) ----------
+    {
+        const int rows = 3;
+        const int total_fixed = rows * slider_h;
+        int free_h = band_h - total_fixed;
+        if (free_h < 0) free_h = 0;
+
+        // Distribute free space as (rows+1) vertical gaps: top, between, ..., bottom
+        int vgap = min_vgap_sliders;
+        if (free_h > (rows + 1) * vgap) {
+            vgap = free_h / (rows + 1);
         }
+
+        int y = band_y + vgap;
+
+        layout->gain_track_rect      = (SDL_Rect){ left_x, y, left_w, slider_h };
+        layout->gain_fill_rect       = layout->gain_track_rect;
+        layout->gain_handle_rect     = layout->gain_track_rect;
+        y += slider_h + vgap;
+
+        layout->fade_in_track_rect   = (SDL_Rect){ left_x, y, left_w, slider_h };
+        layout->fade_in_fill_rect    = layout->fade_in_track_rect;
+        layout->fade_in_handle_rect  = layout->fade_in_track_rect;
+        y += slider_h + vgap;
+
+        layout->fade_out_track_rect  = (SDL_Rect){ left_x, y, left_w, slider_h };
+        layout->fade_out_fill_rect   = layout->fade_out_track_rect;
+        layout->fade_out_handle_rect = layout->fade_out_track_rect;
+        // bottom padding implicitly = vgap
     }
-    int right_x = content_x + left_col_width + INSPECTOR_MARGIN;
-    content_y += INSPECTOR_SLIDER_GAP;
 
-    layout->gain_track_rect = (SDL_Rect){content_x, content_y, left_col_width, INSPECTOR_SLIDER_HEIGHT};
-    layout->gain_fill_rect = layout->gain_track_rect;
-    layout->gain_handle_rect = layout->gain_track_rect;
-    content_y += INSPECTOR_SLIDER_HEIGHT + INSPECTOR_SLIDER_GAP;
+    // ---------- Right column: 2 rows of preset buttons ----------
+    // Each row is centered horizontally; widths shrink/grow with the column.
+    {
+        const int rows = 2;
+        const int total_fixed = rows * btn_h;
+        int free_h = band_h - total_fixed;
+        if (free_h < 0) free_h = 0;
 
-    layout->fade_in_track_rect = (SDL_Rect){content_x, content_y, left_col_width, INSPECTOR_SLIDER_HEIGHT};
-    layout->fade_in_fill_rect = layout->fade_in_track_rect;
-    layout->fade_in_handle_rect = layout->fade_in_track_rect;
-    content_y += INSPECTOR_SLIDER_HEIGHT + INSPECTOR_SLIDER_GAP;
-
-    layout->fade_out_track_rect = (SDL_Rect){content_x, content_y, left_col_width, INSPECTOR_SLIDER_HEIGHT};
-    layout->fade_out_fill_rect = layout->fade_out_track_rect;
-    layout->fade_out_handle_rect = layout->fade_out_track_rect;
-
-    int button_width = 0;
-    int button_row_width = 0;
-    if (layout->fade_preset_count > 0) {
-        button_width = (right_col_width - (layout->fade_preset_count - 1) * INSPECTOR_PRESET_SPACING);
-        if (button_width < 0) button_width = 0;
-        button_width /= layout->fade_preset_count;
-        if (button_width < 42) {
-            button_width = 42;
+        // (rows+1) vertical gaps to distribute top/between/bottom
+        int vgap = min_vgap_btns;
+        if (free_h > (rows + 1) * vgap) {
+            vgap = free_h / (rows + 1);
         }
-        button_row_width = button_width * layout->fade_preset_count + INSPECTOR_PRESET_SPACING * (layout->fade_preset_count - 1);
-    }
-    int button_start_x = right_x;
-    if (layout->fade_preset_count > 0 && button_row_width > 0) {
-        button_start_x = right_x + (right_col_width - button_row_width) / 2;
-    }
-    if (button_start_x < right_x) {
-        button_start_x = right_x;
-    }
 
-    int fade_in_button_y = layout->fade_in_track_rect.y + layout->fade_in_track_rect.h + (INSPECTOR_SECTION_SPACING / 2);
-    int fade_out_button_y = layout->fade_out_track_rect.y + layout->fade_out_track_rect.h + (INSPECTOR_SECTION_SPACING / 2);
-    for (int i = 0; i < layout->fade_preset_count; ++i) {
-        int bx = button_start_x + i * (button_width + INSPECTOR_PRESET_SPACING);
-        layout->fade_in_buttons[i] = (SDL_Rect){bx, fade_in_button_y, button_width, INSPECTOR_PRESET_HEIGHT};
-        layout->fade_out_buttons[i] = (SDL_Rect){bx, fade_out_button_y, button_width, INSPECTOR_PRESET_HEIGHT};
+        // Compute per-button width from available row width
+        int button_w = 0;
+        int button_row_w = 0;
+        if (layout->fade_preset_count > 0) {
+            // Total inner width usable for buttons on a row
+            const int inner_w = right_w;
+            // n buttons + (n-1) gaps
+            button_w = inner_w - (layout->fade_preset_count - 1) * Gx;
+            if (button_w < 0) button_w = 0;
+            button_w /= layout->fade_preset_count;
+            if (button_w < min_btn_w) button_w = min_btn_w;
+
+            button_row_w = button_w * layout->fade_preset_count
+                         + Gx * (layout->fade_preset_count - 1);
+            if (button_row_w > inner_w) button_row_w = inner_w; // clamp visual overflow
+        }
+
+        // Row Ys
+        const int row1_y = band_y + vgap;                       // Fade-In presets
+        const int row2_y = band_y + vgap + btn_h + vgap;        // Fade-Out presets
+
+        // Start X so the row is centered in the right column
+        int start_x = right_x;
+        if (layout->fade_preset_count > 0 && button_row_w > 0) {
+            start_x = right_x + (right_w - button_row_w) / 2;
+            if (start_x < right_x) start_x = right_x;
+        }
+
+        // Emit button rects
+        for (int i = 0; i < layout->fade_preset_count; ++i) {
+            const int bx = start_x + i * (button_w + Gx);
+            layout->fade_in_buttons[i]  = (SDL_Rect){ bx, row1_y, button_w, btn_h };
+            layout->fade_out_buttons[i] = (SDL_Rect){ bx, row2_y, button_w, btn_h };
+        }
+        // Zero remaining (in case preset_count shrank)
+        for (int i = layout->fade_preset_count; i < INSPECTOR_FADE_PRESET_COUNT; ++i) {
+            layout->fade_in_buttons[i]  = (SDL_Rect){0,0,0,0};
+            layout->fade_out_buttons[i] = (SDL_Rect){0,0,0,0};
+        }
     }
 }
 
@@ -199,10 +272,14 @@ void clip_inspector_render(SDL_Renderer* renderer, const AppState* state, const 
 
     SDL_Color label = {210, 210, 220, 255};
 
+
+/*
     if (!state->inspector.visible || !state->engine) {
         ui_draw_text(renderer, layout->panel_rect.x + 16, layout->panel_rect.y + 48, "Select a clip to edit.", label, 2);
         return;
     }
+*/
+
 
     const EngineTrack* tracks = engine_get_tracks(state->engine);
     int track_count = engine_get_track_count(state->engine);

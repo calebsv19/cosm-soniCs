@@ -1,13 +1,17 @@
 #include "engine/engine.h"
+#include "engine/graph.h"
+#include "engine/sampler.h"
+#include "engine/sources.h"
+#include "engine/ringbuf.h"
 
 #include "audio/media_clip.h"
 #include "audio/media_cache.h"
 #include "audio/audio_device.h"
 #include "audio/audio_queue.h"
-#include "engine/graph.h"
-#include "engine/sampler.h"
-#include "engine/sources.h"
-#include "engine/ringbuf.h"
+
+#include "effects/effects_manager.h"
+#include "effects/effects_api.h"
+
 
 #include <SDL2/SDL.h>
 #include <stdarg.h>
@@ -51,6 +55,7 @@ struct Engine {
     atomic_bool worker_running;
     atomic_bool transport_playing;
     RingBuffer command_queue;
+    EffectsManager* fxm;
     EngineGraph* graph;
     EngineToneSource* tone_source;
     EngineGraphSourceOps tone_ops;
@@ -65,6 +70,48 @@ struct Engine {
     atomic_uint_fast64_t loop_start_frame;
     atomic_uint_fast64_t loop_end_frame;
 };
+
+
+
+
+// Built-in effect factories (from src/effects/fx_gain.c, fx_softclip.c)
+int gain_get_desc(FxDesc *out);
+int gain_create(const FxDesc*, FxHandle **out_handle, FxVTable *out_vt,
+                uint32_t sample_rate, uint32_t max_block, uint32_t max_channels);
+
+int softclip_get_desc(FxDesc *out);
+int softclip_create(const FxDesc*, FxHandle **out_handle, FxVTable *out_vt,
+                    uint32_t sample_rate, uint32_t max_block, uint32_t max_channels);
+
+int biquad_get_desc(FxDesc *out);
+int biquad_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
+
+int delay_get_desc(FxDesc *out);
+int delay_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
+
+int reverb_get_desc(FxDesc *out);
+int reverb_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
+
+
+
+static void engine_register_builtin_fx(EffectsManager* fxm) {
+    if (!fxm) return;
+    FxRegistryEntry reg[] = {
+        { 1u, "Gain",     (int(*)(void*))gain_get_desc,     
+					(int(*)(const void*,void**,void*,uint32_t,uint32_t,uint32_t))gain_create },
+        { 2u, "SoftClip", (int(*)(void*))softclip_get_desc, 
+					(int(*)(const void*,void**,void*,uint32_t,uint32_t,uint32_t))softclip_create },
+	{ 3u, "BiquadEQ",  (int(*)(void*))biquad_get_desc,  
+					(int(*)(const void*,void**,void*,uint32_t,uint32_t,uint32_t))biquad_create },
+        { 4u, "Delay",     (int(*)(void*))delay_get_desc,   
+					(int(*)(const void*,void**,void*,uint32_t,uint32_t,uint32_t))delay_create },
+	{ 5u, "Reverb", (int(*)(void*))reverb_get_desc,
+         			        (int(*)(const void*,void**,void*,uint32_t,uint32_t,uint32_t))reverb_create },
+    };
+    fxm_register_builtin(fxm, reg, (int)(sizeof(reg)/sizeof(reg[0])));
+}
+
+
 
 static void engine_trace(const Engine* engine, const char* fmt, ...) {
     if (!engine || !engine->config.enable_engine_logs || !fmt) {
@@ -522,8 +569,8 @@ static int engine_worker_main(void* userdata) {
                     uint64_t frames_until_end = (current < loop_end) ? (loop_end - current) : 0;
                     if (frames_until_end == 0) {
                         engine->transport_frame = loop_start;
-                        current = loop_start;
                         engine_graph_reset(engine->graph);
+                        current = loop_start;
                         frames_until_end = loop_len;
                     }
                     if (frames_until_end > 0 && (uint64_t)chunk > frames_until_end) {
@@ -568,11 +615,17 @@ static int engine_worker_main(void* userdata) {
             if (loop_enabled) {
                 uint64_t loop_start_cur = atomic_load_explicit(&engine->loop_start_frame, memory_order_acquire);
                 uint64_t loop_end_cur = atomic_load_explicit(&engine->loop_end_frame, memory_order_acquire);
-                if (atomic_load_explicit(&engine->loop_enabled, memory_order_acquire) && loop_end_cur > loop_start_cur && engine->transport_frame >= loop_end_cur) {
+                if (atomic_load_explicit(&engine->loop_enabled, memory_order_acquire) && loop_end_cur > loop_start_cur && 
+				engine->transport_frame >= loop_end_cur) {
                     engine->transport_frame = loop_start_cur;
                     engine_graph_reset(engine->graph);
                 }
             }
+        }
+
+        // >>> INSERTED: master effects chain over the completed block <<<
+        if (engine->fxm) {
+            fxm_render_master(engine->fxm, block_buffer, block, channels);
         }
 
         audio_queue_write(&engine->output_queue, block_buffer, (size_t)block);
@@ -581,6 +634,7 @@ static int engine_worker_main(void* userdata) {
     free(block_buffer);
     return 0;
 }
+
 
 Engine* engine_create(const EngineRuntimeConfig* cfg) {
     Engine* engine = (Engine*)calloc(1, sizeof(Engine));
@@ -650,6 +704,13 @@ void engine_destroy(Engine* engine) {
     }
     engine_stop(engine);
     audio_device_close(&engine->device);
+
+    // >>> NEW: destroy effects manager <<<
+    if (engine->fxm) {
+        fxm_destroy(engine->fxm);
+        engine->fxm = NULL;
+    }
+
     if (engine->graph) {
         engine_graph_destroy(engine->graph);
         engine->graph = NULL;
@@ -708,6 +769,23 @@ bool engine_start(Engine* engine) {
         return false;
     }
     engine_rebuild_sources(engine);
+
+    if (engine->fxm) {
+        fxm_destroy(engine->fxm);
+        engine->fxm = NULL;
+    }
+    FxConfig fxcfg = {
+        .sample_rate  = have->sample_rate,
+        .max_block    = engine->config.block_size,
+        .max_channels = have->channels,
+        .pool         = NULL, // not needed for interleaved v1
+    };
+    engine->fxm = fxm_create(&fxcfg);
+    if (!engine->fxm) {
+        SDL_Log("engine_start: failed to create effects manager");
+        return false;
+    }
+
 
     engine->transport_frame = 0;
 

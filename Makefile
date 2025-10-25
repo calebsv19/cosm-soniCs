@@ -17,6 +17,9 @@ SRCS := \
 	$(SRC_DIR)/engine/buffer_pool.c \
 	$(SRC_DIR)/engine/source_tone.c \
 	$(SRC_DIR)/engine/sampler.c \
+	$(SRC_DIR)/effects/effects_manager.c \
+        $(SRC_DIR)/effects/fx_gain.c \
+        $(SRC_DIR)/effects/fx_softclip.c \
 	$(SRC_DIR)/session/session_serialization.c \
 	$(SRC_DIR)/ui/panes.c \
 	$(SRC_DIR)/ui/layout.c \
