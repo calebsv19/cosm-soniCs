@@ -27,15 +27,23 @@ static const int ALLPASS_BASE_48K[NUM_ALLPASS]= { 225,  556 };
 static const int STEREO_SPREAD_48K = 23;
 
 // Parameter ranges/defaults
-static const float SIZE_MIN = 0.5f, SIZE_MAX = 1.5f, SIZE_DEF = 1.0f;
-static const float DECAY_MIN = 0.1f, DECAY_MAX = 10.0f, DECAY_DEF = 2.0f;
-static const float DAMP_MIN = 0.0f, DAMP_MAX = 1.0f, DAMP_DEF = 0.3f;
-static const float PRE_MIN = 0.0f, PRE_MAX = 100.0f, PRE_DEF = 20.0f; // ms
-static const float MIX_MIN = 0.0f, MIX_MAX = 1.0f, MIX_DEF = 0.2f;
+static const float REVERB_SIZE_MIN = 0.5f;
+static const float REVERB_SIZE_MAX = 1.5f;
+static const float REVERB_SIZE_DEF = 1.0f;
+static const float REVERB_DECAY_MIN = 0.1f;
+static const float REVERB_DECAY_MAX = 10.0f;
+static const float REVERB_DECAY_DEF = 2.0f;
+static const float REVERB_DAMP_MIN = 0.0f;
+static const float REVERB_DAMP_MAX = 1.0f;
+static const float REVERB_DAMP_DEF = 0.3f;
+static const float REVERB_PRE_MIN = 0.0f;
+static const float REVERB_PRE_MAX = 100.0f;
+static const float REVERB_PRE_DEF = 20.0f; // ms
+static const float REVERB_MIX_MIN = 0.0f;
+static const float REVERB_MIX_MAX = 1.0f;
+static const float REVERB_MIX_DEF = 0.2f;
 
 static inline float clampf(float x, float lo, float hi) { return x < lo ? lo : (x > hi ? hi : x); }
-static inline float dB_to_lin(float db) { return powf(10.0f, db * 0.05f); }
-
 // --- Delay line helpers -----------------------------------------------------
 
 typedef struct DelayLine {
@@ -129,9 +137,9 @@ static int scale_delay(int base_48k, float sr, float size, int stereo_spread_48k
 
 static void reverb_recompute(FxReverb* rv) {
     const float sr = (float)rv->sr;
-    const float size = clampf(rv->size, SIZE_MIN, SIZE_MAX);
-    const float damp = clampf(rv->damping, DAMP_MIN, DAMP_MAX);
-    float rt60 = clampf(rv->decay_rt60, DECAY_MIN, DECAY_MAX);
+    const float size = clampf(rv->size, REVERB_SIZE_MIN, REVERB_SIZE_MAX);
+    const float damp = clampf(rv->damping, REVERB_DAMP_MIN, REVERB_DAMP_MAX);
+    float rt60 = clampf(rv->decay_rt60, REVERB_DECAY_MIN, REVERB_DECAY_MAX);
 
     // Predelay
     int pre = (int)( (rv->predelay_ms * 0.001f) * sr + 0.5f );
@@ -224,7 +232,7 @@ static void reverb_process(FxHandle* h, const float* in, float* out, int frames,
     FxReverb* rv = (FxReverb*)h;
     if (channels > (int)rv->max_channels) channels = (int)rv->max_channels;
 
-    const float mix = clampf(rv->mix, MIX_MIN, MIX_MAX);
+    const float mix = clampf(rv->mix, REVERB_MIX_MIN, REVERB_MIX_MAX);
     const float dry = 1.0f - mix;
 
     // Pre-delay tap positions (advance by one write per sample)
@@ -266,11 +274,11 @@ static void reverb_process(FxHandle* h, const float* in, float* out, int frames,
 static void reverb_set_param(FxHandle* h, uint32_t idx, float value) {
     FxReverb* rv = (FxReverb*)h;
     switch (idx) {
-        case 0: rv->size = clampf(value, SIZE_MIN, SIZE_MAX); break;
-        case 1: rv->decay_rt60 = clampf(value, DECAY_MIN, DECAY_MAX); break;
-        case 2: rv->damping = clampf(value, DAMP_MIN, DAMP_MAX); break;
-        case 3: rv->predelay_ms = clampf(value, PRE_MIN, PRE_MAX); break;
-        case 4: rv->mix = clampf(value, MIX_MIN, MIX_MAX); break;
+        case 0: rv->size = clampf(value, REVERB_SIZE_MIN, REVERB_SIZE_MAX); break;
+        case 1: rv->decay_rt60 = clampf(value, REVERB_DECAY_MIN, REVERB_DECAY_MAX); break;
+        case 2: rv->damping = clampf(value, REVERB_DAMP_MIN, REVERB_DAMP_MAX); break;
+        case 3: rv->predelay_ms = clampf(value, REVERB_PRE_MIN, REVERB_PRE_MAX); break;
+        case 4: rv->mix = clampf(value, REVERB_MIX_MIN, REVERB_MIX_MAX); break;
         default: break;
     }
     // Recompute derived taps/coeffs (non-RT OK)
@@ -341,11 +349,11 @@ int reverb_get_desc(FxDesc *out) {
     out->param_names[2] = "damping";
     out->param_names[3] = "predelay_ms";
     out->param_names[4] = "mix";
-    out->param_defaults[0] = SIZE_DEF;
-    out->param_defaults[1] = DECAY_DEF;
-    out->param_defaults[2] = DAMP_DEF;
-    out->param_defaults[3] = PRE_DEF;
-    out->param_defaults[4] = MIX_DEF;
+    out->param_defaults[0] = REVERB_SIZE_DEF;
+    out->param_defaults[1] = REVERB_DECAY_DEF;
+    out->param_defaults[2] = REVERB_DAMP_DEF;
+    out->param_defaults[3] = REVERB_PRE_DEF;
+    out->param_defaults[4] = REVERB_MIX_DEF;
     out->latency_samples = 0; // creative predelay is included in effect sound, not throughput latency
     return 1;
 }
@@ -361,11 +369,11 @@ int reverb_create(const FxDesc* desc, FxHandle **out_handle, FxVTable *out_vt,
     rv->max_channels = (max_channels > 0) ? max_channels : 2;
 
     // Defaults
-    rv->size = SIZE_DEF;
-    rv->decay_rt60 = DECAY_DEF;
-    rv->damping = DAMP_DEF;
-    rv->predelay_ms = PRE_DEF;
-    rv->mix = MIX_DEF;
+    rv->size = REVERB_SIZE_DEF;
+    rv->decay_rt60 = REVERB_DECAY_DEF;
+    rv->damping = REVERB_DAMP_DEF;
+    rv->predelay_ms = REVERB_PRE_DEF;
+    rv->mix = REVERB_MIX_DEF;
 
     // Compute taps/coeffs
     reverb_recompute(rv);
@@ -405,4 +413,3 @@ int reverb_create(const FxDesc* desc, FxHandle **out_handle, FxVTable *out_vt,
     *out_handle = (FxHandle*)rv;
     return 1;
 }
-

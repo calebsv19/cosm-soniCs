@@ -4,10 +4,12 @@
 #include "session.h"
 #include "sdl_app_framework.h"
 #include "input/inspector_input.h"
+#include "input/effects_panel_input.h"
 #include "ui/layout.h"
 #include "ui/panes.h"
 #include "ui/library_browser.h"
 #include "ui/transport.h"
+#include "ui/effects_panel.h"
 
 #include <SDL2/SDL.h>
 #include <stdio.h>
@@ -122,6 +124,7 @@ int main(void) {
     state.timeline_drag.trimming_left = false;
     state.timeline_drag.trimming_right = false;
     inspector_input_init(&state);
+    effects_panel_input_init(&state);
     state.timeline_drop_track_index = state.active_track_index >= 0 ? state.active_track_index : 0;
 
     ctx.userData = &state;
@@ -140,6 +143,8 @@ int main(void) {
             SDL_Log("Audio engine failed to start; continuing without audio.");
         } else {
             engine_started = true;
+            session_apply_pending_master_fx(&state);
+            effects_panel_sync_from_engine(&state);
         }
     }
 

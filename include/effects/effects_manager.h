@@ -2,6 +2,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "effects/effects_api.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -13,6 +15,21 @@ struct EffectsManager;
 typedef struct EffectsManager EffectsManager;
 typedef uint32_t FxTypeId;   // registry id (static table for now)
 typedef uint32_t FxInstId;   // per-track or master instance id
+
+#define FX_MASTER_MAX 16
+
+typedef struct {
+    FxInstId  id;
+    FxTypeId  type;
+    bool      enabled;
+    uint32_t  param_count;
+    float     params[FX_MAX_PARAMS];
+} FxMasterInstanceInfo;
+
+typedef struct {
+    int                  count;
+    FxMasterInstanceInfo items[FX_MASTER_MAX];
+} FxMasterSnapshot;
 
 typedef struct {
     int sample_rate;
@@ -68,14 +85,16 @@ void     fxm_render_track(EffectsManager* fm,
 typedef struct {
     FxTypeId       id;
     const char*    name;
-    int          (*get_desc)(void* out_desc);  // cast to fx_get_desc_fn
-    int          (*create)(const void* desc, void** out_handle, void* out_vt,
-                           uint32_t sr, uint32_t max_block, uint32_t max_ch);
+    fx_get_desc_fn get_desc;
+    fx_create_fn   create;
 } FxRegistryEntry;
 
 bool fxm_register_builtin(EffectsManager* fm, const FxRegistryEntry* entries, int count);
+const FxRegistryEntry* fxm_get_registry(const EffectsManager* fm, int* out_count);
+const FxRegistryEntry* fxm_find_registry(const EffectsManager* fm, FxTypeId type);
+bool fxm_registry_get_desc(const EffectsManager* fm, FxTypeId type, FxDesc* out_desc);
+bool fxm_master_snapshot(const EffectsManager* fm, FxMasterSnapshot* out);
 
 #ifdef __cplusplus
 } // extern "C"
 #endif
-

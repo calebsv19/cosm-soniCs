@@ -10,11 +10,12 @@ This repository hosts an in-progress, minimal C-based DAW prototype built on SDL
 - **Current Feature Set**:
   - Timeline supports multi-track layout, clip drag/trim with snapping, loop band, mute/solo headers, and selection aware inspector.
   - Transport bar exposes play/stop, seek bar with MM:SS.mmm counter, loop toggles with draggable in/out handles, zoom sliders, grid toggle, and fit width/height controls.
-  - Engine honors seek/loop commands, rebuilds track sources respecting mute/solo, and emits silence when idle (no fallback tone).
-  - Session persistence auto-loads from and auto-saves to `config/last_session.json` (Phase 7 complete).
-  - Library/decoder pipeline accepts both WAV and MP3 assets (MP3 decoded via CoreAudio on macOS).
-  - Decoded audio cache reuses media buffers across clips referencing the same file/sample-rate to reduce load overhead.
-  - Configurable diagnostics: F7/F8/F9 toggle engine, cache, and timing logs with an on-screen status strip; library browser displays clip durations and drop previews match the real clip length.
+- Engine honors seek/loop commands, rebuilds track sources respecting mute/solo, and emits silence when idle (no fallback tone).
+- Session persistence auto-loads from and auto-saves to `config/last_session.json` (Phase 7 complete).
+- Library/decoder pipeline accepts both WAV and MP3 assets (MP3 decoded via CoreAudio on macOS).
+- Decoded audio cache reuses media buffers across clips referencing the same file/sample-rate to reduce load overhead.
+- Mixer pane shows a master effects rack when no clip is selected, with a two-layer add-effect overlay (category → effect) that includes wheel/scroll-bar navigation, plus stacked sliders that dynamically resize with the pane for live tweaks and removal buttons.
+- Configurable diagnostics: F7/F8/F9 toggle engine, cache, and timing logs with an on-screen status strip; library browser displays clip durations and drop previews match the real clip length.
 - **Focus Ahead**: Phase 8 engine housekeeping—finalize caching QA, configurable fade defaults, and overlap priority polish.
 
 ## Phase 1 — Timeline Rendering Pass *(complete)*
@@ -70,4 +71,3 @@ Keep this roadmap up to date as each phase completes or is re-scoped. Future cha
 - `make test-cache` — Media cache stress harness.
 - `make test-overlap` — Equal-start clip ordering regression.
 - `make test-smoke` — Engine API smoke (load clip, fades, loop/play toggles).
-

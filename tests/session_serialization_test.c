@@ -156,6 +156,41 @@ bool engine_remove_track(Engine* engine, int track_index) {
     return true;
 }
 
+bool engine_fx_master_snapshot(const Engine* engine, FxMasterSnapshot* out_snapshot) {
+    (void)engine;
+    if (out_snapshot) {
+        SDL_zero(*out_snapshot);
+    }
+    return true;
+}
+
+FxInstId engine_fx_master_add(Engine* engine, FxTypeId type) {
+    (void)engine;
+    (void)type;
+    return (FxInstId)1;
+}
+
+bool engine_fx_master_remove(Engine* engine, FxInstId id) {
+    (void)engine;
+    (void)id;
+    return true;
+}
+
+bool engine_fx_master_set_param(Engine* engine, FxInstId id, uint32_t param_index, float value) {
+    (void)engine;
+    (void)id;
+    (void)param_index;
+    (void)value;
+    return true;
+}
+
+bool engine_fx_master_set_enabled(Engine* engine, FxInstId id, bool enabled) {
+    (void)engine;
+    (void)id;
+    (void)enabled;
+    return true;
+}
+
 void library_browser_init(LibraryBrowser* browser, const char* directory) {
     (void)browser;
     (void)directory;

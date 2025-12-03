@@ -1,14 +1,16 @@
 #pragma once
 
 #include "config.h"
+#include "effects/effects_manager.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#define SESSION_DOCUMENT_VERSION 1
+#define SESSION_DOCUMENT_VERSION 2
 #define SESSION_PATH_MAX 512
 #define SESSION_NAME_MAX 128
+#define SESSION_FX_NAME_MAX 64
 
 typedef struct {
     char media_path[SESSION_PATH_MAX];
@@ -55,6 +57,14 @@ typedef struct {
     int selected_index;
 } SessionLibraryState;
 
+typedef struct SessionFxInstance {
+    FxTypeId type;
+    bool enabled;
+    uint32_t param_count;
+    float params[FX_MAX_PARAMS];
+    char name[SESSION_FX_NAME_MAX];
+} SessionFxInstance;
+
 typedef struct {
     uint32_t version;
     EngineRuntimeConfig engine;
@@ -66,6 +76,8 @@ typedef struct {
     uint64_t transport_frame;
     SessionTrack* tracks;
     int track_count;
+    SessionFxInstance* master_fx;
+    int master_fx_count;
 } SessionDocument;
 
 struct AppState;
@@ -80,3 +92,4 @@ bool session_save_to_file(const struct AppState* state, const char* path);
 bool session_document_read_file(const char* path, SessionDocument* out_doc);
 bool session_apply_document(struct AppState* state, const SessionDocument* doc);
 bool session_load_from_file(struct AppState* state, const char* path);
+void session_apply_pending_master_fx(struct AppState* state);

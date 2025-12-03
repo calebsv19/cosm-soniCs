@@ -11,6 +11,8 @@
 
 #include "effects/effects_manager.h"
 #include "effects/effects_api.h"
+#include "effects/effects_builtin.h"
+
 
 
 #include <SDL2/SDL.h>
@@ -56,6 +58,7 @@ struct Engine {
     atomic_bool transport_playing;
     RingBuffer command_queue;
     EffectsManager* fxm;
+    SDL_mutex* fxm_mutex;
     EngineGraph* graph;
     EngineToneSource* tone_source;
     EngineGraphSourceOps tone_ops;
@@ -71,45 +74,6 @@ struct Engine {
     atomic_uint_fast64_t loop_end_frame;
 };
 
-
-
-
-// Built-in effect factories (from src/effects/fx_gain.c, fx_softclip.c)
-int gain_get_desc(FxDesc *out);
-int gain_create(const FxDesc*, FxHandle **out_handle, FxVTable *out_vt,
-                uint32_t sample_rate, uint32_t max_block, uint32_t max_channels);
-
-int softclip_get_desc(FxDesc *out);
-int softclip_create(const FxDesc*, FxHandle **out_handle, FxVTable *out_vt,
-                    uint32_t sample_rate, uint32_t max_block, uint32_t max_channels);
-
-int biquad_get_desc(FxDesc *out);
-int biquad_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
-
-int delay_get_desc(FxDesc *out);
-int delay_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
-
-int reverb_get_desc(FxDesc *out);
-int reverb_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
-
-
-
-static void engine_register_builtin_fx(EffectsManager* fxm) {
-    if (!fxm) return;
-    FxRegistryEntry reg[] = {
-        { 1u, "Gain",     (int(*)(void*))gain_get_desc,     
-					(int(*)(const void*,void**,void*,uint32_t,uint32_t,uint32_t))gain_create },
-        { 2u, "SoftClip", (int(*)(void*))softclip_get_desc, 
-					(int(*)(const void*,void**,void*,uint32_t,uint32_t,uint32_t))softclip_create },
-	{ 3u, "BiquadEQ",  (int(*)(void*))biquad_get_desc,  
-					(int(*)(const void*,void**,void*,uint32_t,uint32_t,uint32_t))biquad_create },
-        { 4u, "Delay",     (int(*)(void*))delay_get_desc,   
-					(int(*)(const void*,void**,void*,uint32_t,uint32_t,uint32_t))delay_create },
-	{ 5u, "Reverb", (int(*)(void*))reverb_get_desc,
-         			        (int(*)(const void*,void**,void*,uint32_t,uint32_t,uint32_t))reverb_create },
-    };
-    fxm_register_builtin(fxm, reg, (int)(sizeof(reg)/sizeof(reg[0])));
-}
 
 
 
@@ -623,9 +587,11 @@ static int engine_worker_main(void* userdata) {
             }
         }
 
-        // >>> INSERTED: master effects chain over the completed block <<<
+        // master effects chain over the completed block
         if (engine->fxm) {
+            SDL_LockMutex(engine->fxm_mutex);
             fxm_render_master(engine->fxm, block_buffer, block, channels);
+            SDL_UnlockMutex(engine->fxm_mutex);
         }
 
         audio_queue_write(&engine->output_queue, block_buffer, (size_t)block);
@@ -657,8 +623,15 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         free(engine);
         return NULL;
     }
+    engine->fxm_mutex = SDL_CreateMutex();
+    if (!engine->fxm_mutex) {
+        ringbuf_free(&engine->command_queue);
+        free(engine);
+        return NULL;
+    }
     engine->graph = engine_graph_create(engine->config.sample_rate, 2, engine->config.block_size);
     if (!engine->graph) {
+        SDL_DestroyMutex(engine->fxm_mutex);
         ringbuf_free(&engine->command_queue);
         free(engine);
         return NULL;
@@ -668,6 +641,7 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
     engine->tone_source = engine_tone_source_create();
     if (!engine->tone_source) {
         engine_graph_destroy(engine->graph);
+        SDL_DestroyMutex(engine->fxm_mutex);
         ringbuf_free(&engine->command_queue);
         free(engine);
         return NULL;
@@ -678,6 +652,7 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
     if (!engine->tracks) {
         engine_tone_source_destroy(engine->tone_source);
         engine_graph_destroy(engine->graph);
+        SDL_DestroyMutex(engine->fxm_mutex);
         ringbuf_free(&engine->command_queue);
         free(engine);
         return NULL;
@@ -725,11 +700,15 @@ void engine_destroy(Engine* engine) {
     free(engine->tracks);
     engine->tracks = NULL;
     engine->track_count = 0;
-    engine->track_capacity = 0;
-    audio_media_cache_shutdown(&engine->media_cache);
-    ringbuf_free(&engine->command_queue);
-    audio_queue_free(&engine->output_queue);
-    free(engine);
+   engine->track_capacity = 0;
+   audio_media_cache_shutdown(&engine->media_cache);
+   ringbuf_free(&engine->command_queue);
+   audio_queue_free(&engine->output_queue);
+    if (engine->fxm_mutex) {
+        SDL_DestroyMutex(engine->fxm_mutex);
+        engine->fxm_mutex = NULL;
+    }
+   free(engine);
 }
 
 bool engine_start(Engine* engine) {
@@ -770,22 +749,29 @@ bool engine_start(Engine* engine) {
     }
     engine_rebuild_sources(engine);
 
-    if (engine->fxm) {
-        fxm_destroy(engine->fxm);
-        engine->fxm = NULL;
-    }
     FxConfig fxcfg = {
         .sample_rate  = have->sample_rate,
         .max_block    = engine->config.block_size,
         .max_channels = have->channels,
         .pool         = NULL, // not needed for interleaved v1
     };
-    engine->fxm = fxm_create(&fxcfg);
-    if (!engine->fxm) {
+
+    SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) {
+        fxm_destroy(engine->fxm);
+        engine->fxm = NULL;
+    }
+
+    EffectsManager* new_fxm = fxm_create(&fxcfg);
+    if (!new_fxm) {
+        SDL_UnlockMutex(engine->fxm_mutex);
         SDL_Log("engine_start: failed to create effects manager");
         return false;
     }
 
+    fx_register_builtins_all(new_fxm);
+    engine->fxm = new_fxm;
+    SDL_UnlockMutex(engine->fxm_mutex);
 
     engine->transport_frame = 0;
 
@@ -835,6 +821,109 @@ const EngineRuntimeConfig* engine_get_config(const Engine* engine) {
         return NULL;
     }
     return &engine->config;
+}
+
+bool engine_fx_get_registry(const Engine* engine, const FxRegistryEntry** out_entries, int* out_count) {
+    if (!engine || !engine->fxm_mutex) {
+        return false;
+    }
+    if (out_entries) {
+        *out_entries = NULL;
+    }
+    if (out_count) {
+        *out_count = 0;
+    }
+    SDL_LockMutex(engine->fxm_mutex);
+    const FxRegistryEntry* entries = NULL;
+    if (engine->fxm) {
+        entries = fxm_get_registry(engine->fxm, out_count);
+    }
+    SDL_UnlockMutex(engine->fxm_mutex);
+    if (!entries) {
+        return false;
+    }
+    if (out_entries) {
+        *out_entries = entries;
+    }
+    return true;
+}
+
+bool engine_fx_registry_get_desc(const Engine* engine, FxTypeId type, FxDesc* out_desc) {
+    if (!engine || !out_desc || !engine->fxm_mutex) {
+        return false;
+    }
+    bool ok = false;
+    SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) {
+        ok = fxm_registry_get_desc(engine->fxm, type, out_desc);
+    }
+    SDL_UnlockMutex(engine->fxm_mutex);
+    return ok;
+}
+
+bool engine_fx_master_snapshot(const Engine* engine, FxMasterSnapshot* out_snapshot) {
+    if (!engine || !out_snapshot || !engine->fxm_mutex) {
+        return false;
+    }
+    bool ok = false;
+    SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) {
+        ok = fxm_master_snapshot(engine->fxm, out_snapshot);
+    }
+    SDL_UnlockMutex(engine->fxm_mutex);
+    return ok;
+}
+
+FxInstId engine_fx_master_add(Engine* engine, FxTypeId type) {
+    if (!engine || !engine->fxm_mutex) {
+        return 0;
+    }
+    FxInstId id = 0;
+    SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) {
+        id = fxm_master_add(engine->fxm, type);
+    }
+    SDL_UnlockMutex(engine->fxm_mutex);
+    return id;
+}
+
+bool engine_fx_master_remove(Engine* engine, FxInstId id) {
+    if (!engine || !engine->fxm_mutex || id == 0) {
+        return false;
+    }
+    bool ok = false;
+    SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) {
+        ok = fxm_master_remove(engine->fxm, id);
+    }
+    SDL_UnlockMutex(engine->fxm_mutex);
+    return ok;
+}
+
+bool engine_fx_master_set_param(Engine* engine, FxInstId id, uint32_t param_index, float value) {
+    if (!engine || !engine->fxm_mutex || id == 0) {
+        return false;
+    }
+    bool ok = false;
+    SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) {
+        ok = fxm_master_set_param(engine->fxm, id, param_index, value);
+    }
+    SDL_UnlockMutex(engine->fxm_mutex);
+    return ok;
+}
+
+bool engine_fx_master_set_enabled(Engine* engine, FxInstId id, bool enabled) {
+    if (!engine || !engine->fxm_mutex || id == 0) {
+        return false;
+    }
+    bool ok = false;
+    SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) {
+        ok = fxm_master_set_enabled(engine->fxm, id, enabled);
+    }
+    SDL_UnlockMutex(engine->fxm_mutex);
+    return ok;
 }
 
 bool engine_is_running(const Engine* engine) {

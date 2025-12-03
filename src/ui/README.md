@@ -6,6 +6,9 @@ Purpose: Render the DAW UI, manage pane layout, and draw widget chrome.
 - `clip_inspector.c`
   - `clip_inspector_compute_layout`: Calculate rectangles for the inspector panel controls.
   - `clip_inspector_render`: Draw labels, editable name fields, gain slider, and clip metadata.
+- `effects_panel.c`
+  - `effects_panel_compute_layout`: Lay out master-rack columns, dynamically size slider rows, and position the two-layer overlay dropdown with scroll state.
+  - `effects_panel_render`: Draw effect headers, delete buttons, sliders, and the category/effect overlay (including scrollbar/thumb) when no clip is selected.
 - `font5x7.c`
   - `ui_draw_text`: Render uppercase characters with a 5x7 bitmap font scaled per call.
 - `layout.c`

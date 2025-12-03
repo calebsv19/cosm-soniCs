@@ -33,6 +33,8 @@ void session_document_init(SessionDocument* doc) {
     memset(doc, 0, sizeof(*doc));
     doc->version = SESSION_DOCUMENT_VERSION;
     config_set_defaults(&doc->engine);
+    doc->master_fx = NULL;
+    doc->master_fx_count = 0;
 }
 
 void session_document_free(SessionDocument* doc) {
@@ -51,6 +53,11 @@ void session_document_free(SessionDocument* doc) {
     }
     doc->tracks = NULL;
     doc->track_count = 0;
+    if (doc->master_fx) {
+        free(doc->master_fx);
+        doc->master_fx = NULL;
+    }
+    doc->master_fx_count = 0;
 }
 
 void session_document_reset(SessionDocument* doc) {
@@ -180,6 +187,42 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
         }
     }
 
+    out_doc->master_fx_count = 0;
+    out_doc->master_fx = NULL;
+    FxMasterSnapshot snap = {0};
+    if (state->engine && engine_fx_master_snapshot(state->engine, &snap) && snap.count > 0) {
+        int count = snap.count;
+        if (count > FX_MASTER_MAX) {
+            count = FX_MASTER_MAX;
+        }
+        SessionFxInstance* fx = (SessionFxInstance*)calloc((size_t)count, sizeof(SessionFxInstance));
+        if (!fx) {
+            SDL_Log("session_document_capture: failed to allocate master fx array");
+            session_document_reset(out_doc);
+            return false;
+        }
+        out_doc->master_fx = fx;
+        out_doc->master_fx_count = count;
+        for (int i = 0; i < count; ++i) {
+            SessionFxInstance* dst = &fx[i];
+            const FxMasterInstanceInfo* src = &snap.items[i];
+            dst->type = src->type;
+            dst->enabled = src->enabled;
+            dst->param_count = src->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : src->param_count;
+            for (uint32_t p = 0; p < dst->param_count; ++p) {
+                dst->params[p] = src->params[p];
+            }
+            dst->name[0] = '\0';
+            if (state->engine) {
+                FxDesc desc = {0};
+                if (engine_fx_registry_get_desc(state->engine, dst->type, &desc) && desc.name) {
+                    strncpy(dst->name, desc.name, SESSION_FX_NAME_MAX - 1);
+                    dst->name[SESSION_FX_NAME_MAX - 1] = '\0';
+                }
+            }
+        }
+    }
+
     return true;
 }
 
@@ -268,6 +311,21 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
                 session_set_error(error_message, error_message_len, "track %d clip %d fade-out exceeds duration", t, c);
                 return false;
             }
+        }
+    }
+    if (doc->master_fx_count < 0 || doc->master_fx_count > FX_MASTER_MAX) {
+        session_set_error(error_message, error_message_len, "invalid master fx count %d", doc->master_fx_count);
+        return false;
+    }
+    if (doc->master_fx_count > 0 && !doc->master_fx) {
+        session_set_error(error_message, error_message_len, "master fx array missing");
+        return false;
+    }
+    for (int i = 0; i < doc->master_fx_count; ++i) {
+        const SessionFxInstance* fx = &doc->master_fx[i];
+        if (fx->param_count > FX_MAX_PARAMS) {
+            session_set_error(error_message, error_message_len, "master fx %d param count too large", i);
+            return false;
         }
     }
     return true;
@@ -445,6 +503,43 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     fprintf(file, "\"selected_index\": %d\n", doc->library.selected_index);
     json_write_indent(file, 1);
     fprintf(file, "},\n");
+
+    json_write_indent(file, 1);
+    fprintf(file, "\"master_fx\": [\n");
+    for (int i = 0; i < doc->master_fx_count; ++i) {
+        const SessionFxInstance* fx = &doc->master_fx[i];
+        json_write_indent(file, 2);
+        fprintf(file, "{\n");
+        json_write_indent(file, 3);
+        fprintf(file, "\"type\": %u,\n", fx->type);
+        if (fx->name[0] != '\0') {
+            json_write_indent(file, 3);
+            fprintf(file, "\"name\": ");
+            json_write_string(file, fx->name);
+            fprintf(file, ",\n");
+        }
+        json_write_indent(file, 3);
+        fprintf(file, "\"enabled\": %s,\n", fx->enabled ? "true" : "false");
+        json_write_indent(file, 3);
+        fprintf(file, "\"params\": [");
+        for (uint32_t p = 0; p < fx->param_count; ++p) {
+            if (p > 0) {
+                fprintf(file, ", ");
+            }
+            json_write_float(file, fx->params[p]);
+        }
+        fprintf(file, "],\n");
+        json_write_indent(file, 3);
+        fprintf(file, "\"param_count\": %u\n", fx->param_count);
+        json_write_indent(file, 2);
+        fprintf(file, "}");
+        if (i + 1 < doc->master_fx_count) {
+            fprintf(file, ",");
+        }
+        fprintf(file, "\n");
+    }
+    json_write_indent(file, 1);
+    fprintf(file, "],\n");
 
     json_write_indent(file, 1);
     fprintf(file, "\"tracks\": [\n");
@@ -829,6 +924,21 @@ static SessionClip* session_track_append_clip(SessionTrack* track) {
 }
 
 static bool parse_session_tracks(JsonReader* r, SessionDocument* doc);
+static SessionFxInstance* session_document_append_master_fx(SessionDocument* doc) {
+    int new_count = doc->master_fx_count + 1;
+    SessionFxInstance* resized = (SessionFxInstance*)realloc(doc->master_fx, (size_t)new_count * sizeof(SessionFxInstance));
+    if (!resized) {
+        return NULL;
+    }
+    doc->master_fx = resized;
+    SessionFxInstance* fx = &doc->master_fx[new_count - 1];
+    memset(fx, 0, sizeof(*fx));
+    fx->enabled = true;
+    doc->master_fx_count = new_count;
+    return fx;
+}
+
+static bool parse_master_fx(JsonReader* r, SessionDocument* doc);
 
 static bool parse_session_track(JsonReader* r, SessionTrack* track) {
     if (!json_expect(r, '{')) {
@@ -1003,6 +1113,128 @@ static bool parse_session_tracks(JsonReader* r, SessionDocument* doc) {
         }
         if (!parse_session_track(r, track)) {
             return false;
+        }
+        json_skip_whitespace(r);
+        if (r->pos < r->length && r->data[r->pos] == ',') {
+            ++r->pos;
+            continue;
+        }
+        if (r->pos < r->length && r->data[r->pos] == ']') {
+            ++r->pos;
+            break;
+        }
+        return false;
+    }
+    return true;
+}
+
+static bool parse_master_fx(JsonReader* r, SessionDocument* doc) {
+    if (!json_expect(r, '[')) {
+        return false;
+    }
+    json_skip_whitespace(r);
+    if (r->pos < r->length && r->data[r->pos] == ']') {
+        ++r->pos;
+        return true;
+    }
+    while (true) {
+        SessionFxInstance* fx = session_document_append_master_fx(doc);
+        if (!fx) {
+            return false;
+        }
+        if (!json_expect(r, '{')) {
+            return false;
+        }
+        uint32_t params_found = 0;
+        bool params_set = false;
+        while (true) {
+            json_skip_whitespace(r);
+            if (r->pos < r->length && r->data[r->pos] == '}') {
+                ++r->pos;
+                break;
+            }
+            char key[64];
+            if (!json_parse_string(r, key, sizeof(key))) {
+                return false;
+            }
+            if (!json_expect(r, ':')) {
+                return false;
+            }
+            if (strcmp(key, "type") == 0) {
+                double val;
+                if (!json_parse_number(r, &val)) {
+                    return false;
+                }
+                fx->type = (FxTypeId)(val < 0 ? 0 : val);
+            } else if (strcmp(key, "name") == 0) {
+                if (!json_parse_string(r, fx->name, sizeof(fx->name))) {
+                    return false;
+                }
+            } else if (strcmp(key, "enabled") == 0) {
+                if (!json_parse_bool(r, &fx->enabled)) {
+                    return false;
+                }
+            } else if (strcmp(key, "params") == 0) {
+                if (!json_expect(r, '[')) {
+                    return false;
+                }
+                json_skip_whitespace(r);
+                params_found = 0;
+                if (r->pos < r->length && r->data[r->pos] == ']') {
+                    ++r->pos;
+                } else {
+                    while (true) {
+                        double val;
+                        if (!json_parse_number(r, &val)) {
+                            return false;
+                        }
+                        if (params_found < FX_MAX_PARAMS) {
+                            fx->params[params_found] = (float)val;
+                        }
+                        ++params_found;
+                        json_skip_whitespace(r);
+                        if (r->pos < r->length && r->data[r->pos] == ',') {
+                            ++r->pos;
+                            continue;
+                        }
+                        if (r->pos < r->length && r->data[r->pos] == ']') {
+                            ++r->pos;
+                            break;
+                        }
+                        return false;
+                    }
+                }
+                fx->param_count = params_found > FX_MAX_PARAMS ? FX_MAX_PARAMS : params_found;
+                params_set = true;
+            } else if (strcmp(key, "param_count") == 0) {
+                double val;
+                if (!json_parse_number(r, &val)) {
+                    return false;
+                }
+                uint32_t count = (val < 0) ? 0u : (uint32_t)val;
+                if (count > FX_MAX_PARAMS) {
+                    count = FX_MAX_PARAMS;
+                }
+                fx->param_count = count;
+                params_set = true;
+            } else {
+                if (!json_skip_value(r)) {
+                    return false;
+                }
+            }
+            json_skip_whitespace(r);
+            if (r->pos < r->length && r->data[r->pos] == ',') {
+                ++r->pos;
+                continue;
+            }
+            if (r->pos < r->length && r->data[r->pos] == '}') {
+                ++r->pos;
+                break;
+            }
+            return false;
+        }
+        if (!params_set) {
+            fx->param_count = params_found > FX_MAX_PARAMS ? FX_MAX_PARAMS : params_found;
         }
         json_skip_whitespace(r);
         if (r->pos < r->length && r->data[r->pos] == ',') {
@@ -1339,6 +1571,10 @@ static bool parse_session_document(JsonReader* r, SessionDocument* doc) {
                 }
                 return false;
             }
+        } else if (strcmp(key, "master_fx") == 0) {
+            if (!parse_master_fx(r, doc)) {
+                return false;
+            }
         } else if (strcmp(key, "tracks") == 0) {
             if (!parse_session_tracks(r, doc)) {
                 return false;
@@ -1531,7 +1767,65 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
         state->selected_clip_index = doc->tracks[0].clip_count > 0 ? 0 : -1;
     }
 
+    memset(state->pending_master_fx, 0, sizeof(state->pending_master_fx));
+    state->pending_master_fx_count = 0;
+    state->pending_master_fx_dirty = false;
+    if (doc->master_fx_count > 0) {
+        int count = doc->master_fx_count;
+        if (count > FX_MASTER_MAX) {
+            count = FX_MASTER_MAX;
+        }
+        state->pending_master_fx_count = count;
+        for (int i = 0; i < count; ++i) {
+            PendingMasterFx* dst = &state->pending_master_fx[i];
+            const SessionFxInstance* src = &doc->master_fx[i];
+            dst->type_id = src->type;
+            dst->enabled = src->enabled;
+            dst->param_count = src->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : src->param_count;
+            for (uint32_t p = 0; p < dst->param_count; ++p) {
+                dst->param_values[p] = src->params[p];
+            }
+        }
+        state->pending_master_fx_dirty = true;
+    }
+
     return true;
+}
+
+void session_apply_pending_master_fx(AppState* state) {
+    if (!state || !state->engine) {
+        return;
+    }
+    if (state->pending_master_fx_count <= 0) {
+        state->pending_master_fx_dirty = false;
+        return;
+    }
+
+    FxMasterSnapshot existing = {0};
+    if (engine_fx_master_snapshot(state->engine, &existing)) {
+        for (int i = 0; i < existing.count; ++i) {
+            engine_fx_master_remove(state->engine, existing.items[i].id);
+        }
+    }
+
+    for (int i = 0; i < state->pending_master_fx_count && i < FX_MASTER_MAX; ++i) {
+        const PendingMasterFx* fx = &state->pending_master_fx[i];
+        if (fx->type_id == 0) {
+            continue;
+        }
+        FxInstId id = engine_fx_master_add(state->engine, fx->type_id);
+        if (!id) {
+            continue;
+        }
+        uint32_t count = fx->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : fx->param_count;
+        for (uint32_t p = 0; p < count; ++p) {
+            engine_fx_master_set_param(state->engine, id, p, fx->param_values[p]);
+        }
+        if (!fx->enabled) {
+            engine_fx_master_set_enabled(state->engine, id, false);
+        }
+    }
+    state->pending_master_fx_dirty = false;
 }
 
 bool session_load_from_file(AppState* state, const char* path) {

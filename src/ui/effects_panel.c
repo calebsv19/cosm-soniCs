@@ -1,0 +1,823 @@
+#include "ui/effects_panel.h"
+
+#include "app_state.h"
+#include "engine/engine.h"
+#include "ui/font5x7.h"
+#include "ui/layout.h"
+
+#include <ctype.h>
+#include <math.h>
+#include <stdio.h>
+#include <string.h>
+
+#define FX_PANEL_MARGIN 16
+#define FX_PANEL_HEADER_HEIGHT 36
+#define FX_PANEL_COLUMN_GAP 16
+#define FX_PANEL_INNER_MARGIN 12
+#define FX_PANEL_SLIDER_HEIGHT 18
+#define FX_PANEL_PARAM_GAP 24
+#define FX_PANEL_OVERLAY_WIDTH 260
+#define FX_PANEL_OVERLAY_HEADER_HEIGHT 34
+#define FX_PANEL_OVERLAY_PADDING 8
+
+typedef struct {
+    const char* name;
+    FxTypeId    id_min;
+    FxTypeId    id_max;
+} FxCategorySpec;
+
+static const FxCategorySpec kCategorySpecs[] = {
+    {"Basics",        1u,  19u},
+    {"Dynamics",      20u, 29u},
+    {"EQ",            30u, 39u},
+    {"Filter & Tone", 40u, 49u},
+    {"Delay",         50u, 59u},
+    {"Distortion",    60u, 69u},
+    {"Modulation",    70u, 79u},
+    {"Reverb",        90u, 99u},
+};
+
+static void zero_layout(EffectsPanelLayout* layout) {
+    if (!layout) {
+        return;
+    }
+    SDL_zero(*layout);
+}
+
+static float clampf(float v, float lo, float hi) {
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
+static void lower_copy(char* dst, size_t dst_size, const char* src) {
+    if (!dst || dst_size == 0) {
+        return;
+    }
+    if (!src) {
+        dst[0] = '\0';
+        return;
+    }
+    size_t i = 0;
+    for (; i + 1 < dst_size && src[i]; ++i) {
+        dst[i] = (char)tolower((unsigned char)src[i]);
+    }
+    dst[i] = '\0';
+}
+
+static void derive_param_range(const char* name, float def_value, float* out_min, float* out_max) {
+    float min_v = 0.0f;
+    float max_v = 1.0f;
+    char lower[64];
+    lower_copy(lower, sizeof(lower), name);
+
+    if (strstr(lower, "mix") || strstr(lower, "depth") || strstr(lower, "width") || strstr(lower, "blend")) {
+        min_v = 0.0f;
+        max_v = 1.0f;
+    } else if (strstr(lower, "feedback")) {
+        min_v = 0.0f;
+        max_v = 0.95f;
+    } else if (strstr(lower, "time_ms") || strstr(lower, "_ms")) {
+        min_v = 0.0f;
+        max_v = 2000.0f;
+    } else if (strstr(lower, "time")) {
+        min_v = 0.0f;
+        max_v = 5.0f;
+    } else if (strstr(lower, "freq") || strstr(lower, "hz")) {
+        min_v = 20.0f;
+        max_v = 20000.0f;
+    } else if (strcmp(lower, "q") == 0 || strstr(lower, "reso")) {
+        min_v = 0.1f;
+        max_v = 20.0f;
+    } else if (strstr(lower, "gain")) {
+        min_v = 0.0f;
+        max_v = 4.0f;
+    } else if (strstr(lower, "threshold")) {
+        min_v = -60.0f;
+        max_v = 0.0f;
+    } else if (strstr(lower, "ratio")) {
+        min_v = 1.0f;
+        max_v = 20.0f;
+    } else if (strstr(lower, "attack")) {
+        min_v = 0.1f;
+        max_v = 500.0f;
+    } else if (strstr(lower, "release")) {
+        min_v = 10.0f;
+        max_v = 2000.0f;
+    } else if (strstr(lower, "drive") || strstr(lower, "amount")) {
+        min_v = 0.0f;
+        max_v = 2.5f;
+    } else if (strstr(lower, "pan")) {
+        min_v = -1.0f;
+        max_v = 1.0f;
+    } else if (strstr(lower, "level")) {
+        min_v = 0.0f;
+        max_v = 1.5f;
+    }
+
+    if (def_value < min_v) {
+        min_v = def_value * 0.5f;
+    }
+    if (def_value > max_v) {
+        max_v = def_value * 1.5f;
+    }
+    if (fabsf(max_v - min_v) < 1e-6f) {
+        max_v = min_v + 1.0f;
+    }
+
+    if (out_min) *out_min = min_v;
+    if (out_max) *out_max = max_v;
+}
+
+static const FxTypeUIInfo* find_type_info(const EffectsPanelState* panel, FxTypeId type_id) {
+    if (!panel) {
+        return NULL;
+    }
+    for (int i = 0; i < panel->type_count; ++i) {
+        if (panel->types[i].type_id == type_id) {
+            return &panel->types[i];
+        }
+    }
+    return NULL;
+}
+
+static void effects_panel_build_categories(EffectsPanelState* panel) {
+    if (!panel) {
+        return;
+    }
+
+    panel->category_count = 0;
+    bool assigned[FX_PANEL_MAX_TYPES];
+    memset(assigned, 0, sizeof(assigned));
+
+    int spec_count = (int)(sizeof(kCategorySpecs) / sizeof(kCategorySpecs[0]));
+    for (int s = 0; s < spec_count && panel->category_count < FX_PANEL_MAX_CATEGORIES; ++s) {
+        const FxCategorySpec* spec = &kCategorySpecs[s];
+        FxCategoryUIInfo* cat = &panel->categories[panel->category_count];
+        SDL_zero(*cat);
+        strncpy(cat->name, spec->name, sizeof(cat->name) - 1);
+        cat->name[sizeof(cat->name) - 1] = '\0';
+
+        for (int t = 0; t < panel->type_count; ++t) {
+            FxTypeId type_id = panel->types[t].type_id;
+            if (type_id >= spec->id_min && type_id <= spec->id_max) {
+                if (cat->type_count < FX_PANEL_MAX_TYPES) {
+                    cat->type_indices[cat->type_count++] = t;
+                    assigned[t] = true;
+                }
+            }
+        }
+
+        if (cat->type_count > 0) {
+            panel->category_count++;
+        }
+    }
+
+    FxCategoryUIInfo others;
+    SDL_zero(others);
+    strncpy(others.name, "Other", sizeof(others.name) - 1);
+    others.name[sizeof(others.name) - 1] = '\0';
+
+    for (int t = 0; t < panel->type_count; ++t) {
+        if (!assigned[t] && others.type_count < FX_PANEL_MAX_TYPES) {
+            others.type_indices[others.type_count++] = t;
+        }
+    }
+
+    if (others.type_count > 0 && panel->category_count < FX_PANEL_MAX_CATEGORIES) {
+        panel->categories[panel->category_count++] = others;
+    }
+
+    if (panel->category_count == 0 && panel->type_count > 0) {
+        FxCategoryUIInfo all;
+        SDL_zero(all);
+        strncpy(all.name, "All Effects", sizeof(all.name) - 1);
+        all.name[sizeof(all.name) - 1] = '\0';
+        for (int t = 0; t < panel->type_count && t < FX_PANEL_MAX_TYPES; ++t) {
+            all.type_indices[all.type_count++] = t;
+        }
+        panel->categories[panel->category_count++] = all;
+    }
+
+    if (panel->category_count == 0) {
+        panel->active_category_index = -1;
+    } else if (panel->active_category_index >= panel->category_count) {
+        panel->active_category_index = -1;
+    }
+}
+
+static void draw_slider(SDL_Renderer* renderer, const SDL_Rect* rect, float t) {
+    if (!renderer || !rect || rect->w <= 0 || rect->h <= 0) {
+        return;
+    }
+    SDL_Color track_bg = {36, 36, 44, 255};
+    SDL_Color track_border = {90, 90, 110, 255};
+    SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
+    SDL_RenderFillRect(renderer, rect);
+    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
+    SDL_RenderDrawRect(renderer, rect);
+
+    SDL_Rect fill_rect = *rect;
+    fill_rect.w = (int)roundf(clampf(t, 0.0f, 1.0f) * (float)rect->w);
+    SDL_Color fill_color = {120, 180, 255, 200};
+    SDL_SetRenderDrawColor(renderer, fill_color.r, fill_color.g, fill_color.b, fill_color.a);
+    SDL_RenderFillRect(renderer, &fill_rect);
+
+    SDL_Rect handle = {
+        rect->x + fill_rect.w - 4,
+        rect->y - 3,
+        8,
+        rect->h + 6,
+    };
+    if (handle.x < rect->x - 4) {
+        handle.x = rect->x - 4;
+    }
+    if (handle.x + handle.w > rect->x + rect->w + 4) {
+        handle.x = rect->x + rect->w - 4;
+    }
+    SDL_SetRenderDrawColor(renderer, 180, 210, 255, 255);
+    SDL_RenderFillRect(renderer, &handle);
+    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
+    SDL_RenderDrawRect(renderer, &handle);
+}
+
+static void draw_button(SDL_Renderer* renderer, const SDL_Rect* rect, bool highlighted, const char* label) {
+    if (!renderer || !rect) {
+        return;
+    }
+    SDL_Color base = {48, 52, 62, 255};
+    SDL_Color highlight = {120, 160, 220, 255};
+    SDL_Color border = {90, 95, 110, 255};
+    SDL_Color text = {220, 220, 230, 255};
+
+    SDL_Color fill = highlighted ? highlight : base;
+    SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
+    SDL_RenderFillRect(renderer, rect);
+    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+    SDL_RenderDrawRect(renderer, rect);
+    if (label) {
+        int text_x = rect->x + 8;
+        int text_y = rect->y + (rect->h - 14) / 2;
+        ui_draw_text(renderer, text_x, text_y, label, text, 2);
+    }
+}
+
+static void format_value_label(const char* param_name, float value, char* out, size_t out_size) {
+    if (!out || out_size == 0) {
+        return;
+    }
+    out[0] = '\0';
+    char lower[64];
+    lower_copy(lower, sizeof(lower), param_name);
+    if (strstr(lower, "ms")) {
+        snprintf(out, out_size, "%.1f ms", value);
+    } else if (strstr(lower, "hz") || strstr(lower, "freq")) {
+        snprintf(out, out_size, "%.1f Hz", value);
+    } else if (strstr(lower, "db")) {
+        snprintf(out, out_size, "%.1f dB", value);
+    } else if (fabsf(value) >= 100.0f) {
+        snprintf(out, out_size, "%.0f", value);
+    } else {
+        snprintf(out, out_size, "%.2f", value);
+    }
+}
+
+void effects_panel_init(AppState* state) {
+    if (!state) {
+        return;
+    }
+    SDL_zero(state->effects_panel);
+    state->effects_panel.overlay_layer = FX_PANEL_OVERLAY_CLOSED;
+    state->effects_panel.hovered_category_index = -1;
+    state->effects_panel.hovered_effect_index = -1;
+    state->effects_panel.active_category_index = -1;
+    state->effects_panel.highlighted_slot_index = -1;
+    state->effects_panel.active_slot_index = -1;
+    state->effects_panel.active_param_index = -1;
+    state->effects_panel.overlay_scroll_index = 0;
+}
+
+void effects_panel_refresh_catalog(AppState* state) {
+    if (!state) {
+        return;
+    }
+    EffectsPanelState* panel = &state->effects_panel;
+    if (!state->engine) {
+        panel->type_count = 0;
+        panel->category_count = 0;
+        panel->initialized = true;
+        panel->overlay_layer = FX_PANEL_OVERLAY_CLOSED;
+        panel->overlay_scroll_index = 0;
+        return;
+    }
+    const FxRegistryEntry* entries = NULL;
+    int count = 0;
+    if (!engine_fx_get_registry(state->engine, &entries, &count) || !entries) {
+        panel->type_count = 0;
+        panel->category_count = 0;
+        panel->initialized = true;
+        panel->overlay_layer = FX_PANEL_OVERLAY_CLOSED;
+        panel->overlay_scroll_index = 0;
+        return;
+    }
+    if (count > FX_PANEL_MAX_TYPES) {
+        count = FX_PANEL_MAX_TYPES;
+    }
+    panel->type_count = count;
+    for (int i = 0; i < count; ++i) {
+        FxTypeUIInfo* info = &panel->types[i];
+        SDL_zero(*info);
+        info->type_id = entries[i].id;
+        if (entries[i].name) {
+            strncpy(info->name, entries[i].name, sizeof(info->name) - 1);
+            info->name[sizeof(info->name) - 1] = '\0';
+        }
+        FxDesc desc = {0};
+        if (engine_fx_registry_get_desc(state->engine, info->type_id, &desc)) {
+            if (desc.name) {
+                strncpy(info->name, desc.name, sizeof(info->name) - 1);
+                info->name[sizeof(info->name) - 1] = '\0';
+            }
+            info->param_count = desc.num_params <= FX_MAX_PARAMS ? desc.num_params : FX_MAX_PARAMS;
+            for (uint32_t p = 0; p < info->param_count; ++p) {
+                const char* pname = desc.param_names[p] ? desc.param_names[p] : "param";
+                strncpy(info->param_names[p], pname, sizeof(info->param_names[p]) - 1);
+                info->param_names[p][sizeof(info->param_names[p]) - 1] = '\0';
+                float def_v = desc.param_defaults[p];
+                info->param_defaults[p] = def_v;
+                derive_param_range(pname, def_v, &info->param_min[p], &info->param_max[p]);
+            }
+        }
+    }
+    effects_panel_build_categories(panel);
+    panel->initialized = true;
+    panel->overlay_scroll_index = 0;
+    if (panel->category_count == 0) {
+        panel->overlay_layer = FX_PANEL_OVERLAY_CLOSED;
+    }
+}
+
+void effects_panel_sync_from_engine(AppState* state) {
+    if (!state || !state->engine) {
+        return;
+    }
+    EffectsPanelState* panel = &state->effects_panel;
+    FxMasterSnapshot snap;
+    if (!engine_fx_master_snapshot(state->engine, &snap)) {
+        panel->chain_count = 0;
+        return;
+    }
+    panel->chain_count = snap.count;
+    for (int i = 0; i < snap.count && i < FX_MASTER_MAX; ++i) {
+        FxSlotUIState* slot = &panel->chain[i];
+        SDL_zero(*slot);
+        slot->id = snap.items[i].id;
+        slot->type_id = snap.items[i].type;
+        slot->enabled = snap.items[i].enabled;
+        slot->param_count = snap.items[i].param_count;
+        if (slot->param_count > FX_MAX_PARAMS) {
+            slot->param_count = FX_MAX_PARAMS;
+        }
+        for (uint32_t p = 0; p < slot->param_count; ++p) {
+            slot->param_values[p] = snap.items[i].params[p];
+        }
+    }
+    for (int i = snap.count; i < FX_MASTER_MAX; ++i) {
+        panel->chain[i].id = 0;
+        panel->chain[i].param_count = 0;
+    }
+    if (panel->highlighted_slot_index >= panel->chain_count) {
+        panel->highlighted_slot_index = -1;
+    }
+    if (panel->active_slot_index >= panel->chain_count) {
+        panel->active_slot_index = -1;
+    }
+}
+
+void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* layout) {
+    if (!state || !layout) {
+        return;
+    }
+    zero_layout(layout);
+    const Pane* mixer = ui_layout_get_pane(state, 2);
+    if (!mixer) {
+        return;
+    }
+    layout->panel_rect = mixer->rect;
+
+    int content_x = mixer->rect.x + FX_PANEL_MARGIN;
+    int content_y = mixer->rect.y + FX_PANEL_MARGIN;
+    int content_w = mixer->rect.w - 2 * FX_PANEL_MARGIN;
+    int content_h = mixer->rect.h - 2 * FX_PANEL_MARGIN;
+    if (content_w <= 0 || content_h <= 0) {
+        return;
+    }
+
+    layout->dropdown_button_rect = (SDL_Rect){content_x, content_y, FX_PANEL_OVERLAY_WIDTH, 32};
+
+    const EffectsPanelState* panel = &state->effects_panel;
+    int column_count = panel->chain_count;
+    layout->column_count = column_count;
+    int body_y = content_y + FX_PANEL_HEADER_HEIGHT;
+    int body_h = content_h - FX_PANEL_HEADER_HEIGHT;
+    if (body_h <= 0) {
+        body_h = content_h / 2;
+    }
+
+    if (column_count > FX_MASTER_MAX) {
+        column_count = FX_MASTER_MAX;
+    }
+
+    if (column_count > 0) {
+        int total_gaps = (column_count - 1) * FX_PANEL_COLUMN_GAP;
+        int column_w = (content_w - total_gaps);
+        if (column_w < 0) column_w = 0;
+        column_w = column_count > 0 ? column_w / column_count : content_w;
+        if (column_w < 160) {
+            column_w = 160;
+        }
+
+        int start_x = content_x;
+        for (int i = 0; i < column_count; ++i) {
+            SDL_Rect col = {start_x, body_y, column_w, body_h};
+            layout->column_rects[i] = col;
+            layout->header_rects[i] = (SDL_Rect){col.x, col.y, col.w, FX_PANEL_HEADER_HEIGHT - 8};
+            layout->remove_button_rects[i] = (SDL_Rect){col.x + col.w - 28, col.y + 6, 22, 22};
+            const FxSlotUIState* slot = &panel->chain[i];
+            uint32_t param_count = slot ? slot->param_count : 0;
+            if (param_count > 0) {
+                int slider_x = col.x + FX_PANEL_INNER_MARGIN;
+                int slider_w = col.w - 2 * FX_PANEL_INNER_MARGIN;
+                if (slider_w < 60) slider_w = col.w - 12;
+
+                int available_h = col.h - FX_PANEL_HEADER_HEIGHT - FX_PANEL_INNER_MARGIN;
+                if (available_h < (int)param_count * 18) {
+                    available_h = col.h - FX_PANEL_HEADER_HEIGHT;
+                }
+                if (available_h < (int)param_count * 16) {
+                    available_h = (int)param_count * 16;
+                }
+
+                int block_h = available_h / (int)param_count;
+                if (block_h < 18) block_h = 18;
+                int label_h = block_h / 3;
+                if (label_h < 10) label_h = 10;
+                int slider_h = block_h - label_h - 4;
+                if (slider_h < 8) {
+                    slider_h = 8;
+                    if (label_h > block_h - slider_h - 2) {
+                        label_h = block_h - slider_h - 2;
+                        if (label_h < 8) label_h = 8;
+                    }
+                }
+                int stride = slider_h + label_h + 4;
+                int param_y = col.y + FX_PANEL_HEADER_HEIGHT + FX_PANEL_INNER_MARGIN / 2;
+                for (uint32_t p = 0; p < param_count && p < FX_MAX_PARAMS; ++p) {
+                    layout->param_label_rects[i][p] = (SDL_Rect){slider_x, param_y, slider_w, label_h};
+                    layout->param_slider_rects[i][p] = (SDL_Rect){slider_x, param_y + label_h, slider_w, slider_h};
+                    param_y += stride;
+                }
+            }
+            start_x += column_w + FX_PANEL_COLUMN_GAP;
+        }
+    }
+
+    layout->overlay_visible = false;
+    layout->overlay_item_count = 0;
+    layout->overlay_total_items = 0;
+    layout->overlay_visible_count = 0;
+    layout->overlay_has_scrollbar = false;
+    const bool overlay_active = (panel->overlay_layer != FX_PANEL_OVERLAY_CLOSED);
+    if (!overlay_active) {
+        return;
+    }
+
+    int overlay_total_items = 0;
+    if (panel->overlay_layer == FX_PANEL_OVERLAY_CATEGORIES) {
+        overlay_total_items = panel->category_count;
+    } else if (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS) {
+        if (panel->active_category_index >= 0 && panel->active_category_index < panel->category_count) {
+            overlay_total_items = panel->categories[panel->active_category_index].type_count;
+        }
+    }
+
+    int overlay_w = FX_PANEL_OVERLAY_WIDTH;
+    if (overlay_w > content_w) {
+        overlay_w = content_w;
+    }
+    int overlay_x = layout->dropdown_button_rect.x;
+    if (overlay_x + overlay_w > content_x + content_w) {
+        overlay_x = content_x + content_w - overlay_w;
+    }
+    int overlay_y = layout->dropdown_button_rect.y + layout->dropdown_button_rect.h + 6;
+    int available_h = (mixer->rect.y + mixer->rect.h) - FX_PANEL_MARGIN - overlay_y;
+    if (available_h < FX_PANEL_OVERLAY_HEADER_HEIGHT + FX_PANEL_DROPDOWN_ITEM_HEIGHT) {
+        return;
+    }
+
+    int max_visible_items = (available_h - FX_PANEL_OVERLAY_HEADER_HEIGHT) / FX_PANEL_DROPDOWN_ITEM_HEIGHT;
+    if (max_visible_items <= 0) {
+        return;
+    }
+    if (overlay_total_items <= 0) {
+        layout->overlay_visible = false;
+        return;
+    }
+
+    int display_capacity = overlay_total_items;
+    if (display_capacity < 1) display_capacity = 1;
+    if (display_capacity > max_visible_items) {
+        display_capacity = max_visible_items;
+    }
+
+    int max_scroll = overlay_total_items - display_capacity;
+    if (max_scroll < 0) max_scroll = 0;
+    int scroll_index = panel->overlay_scroll_index;
+    if (scroll_index > max_scroll) {
+        scroll_index = max_scroll;
+    }
+    if (scroll_index < 0) {
+        scroll_index = 0;
+    }
+
+    int first_index = scroll_index;
+    int remaining = overlay_total_items - first_index;
+    if (remaining < 0) remaining = 0;
+    int visible_items = remaining;
+    if (visible_items > display_capacity) {
+        visible_items = display_capacity;
+    }
+    if (visible_items < 0) {
+        visible_items = 0;
+    }
+
+    SDL_Rect overlay_rect = {
+        overlay_x,
+        overlay_y,
+        overlay_w,
+        FX_PANEL_OVERLAY_HEADER_HEIGHT + display_capacity * FX_PANEL_DROPDOWN_ITEM_HEIGHT + FX_PANEL_OVERLAY_PADDING
+    };
+
+    layout->overlay_visible = true;
+    layout->overlay_rect = overlay_rect;
+    layout->overlay_header_rect = (SDL_Rect){overlay_rect.x, overlay_rect.y, overlay_rect.w, FX_PANEL_OVERLAY_HEADER_HEIGHT};
+    if (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS) {
+        layout->overlay_back_rect = (SDL_Rect){
+            overlay_rect.x + FX_PANEL_OVERLAY_PADDING,
+            overlay_rect.y + 6,
+            24,
+            FX_PANEL_OVERLAY_HEADER_HEIGHT - 12
+        };
+    } else {
+        layout->overlay_back_rect = (SDL_Rect){0, 0, 0, 0};
+    }
+
+    layout->overlay_total_items = overlay_total_items;
+    layout->overlay_visible_count = visible_items;
+    layout->overlay_item_count = visible_items;
+
+    int item_y = overlay_rect.y + FX_PANEL_OVERLAY_HEADER_HEIGHT + 4;
+    const int scrollbar_w = 8;
+    bool has_scrollbar = (overlay_total_items > display_capacity);
+    layout->overlay_has_scrollbar = has_scrollbar;
+    int item_width = overlay_rect.w - 2 * FX_PANEL_OVERLAY_PADDING - (has_scrollbar ? (scrollbar_w + 4) : 0);
+    if (item_width < 80) item_width = overlay_rect.w - 2 * FX_PANEL_OVERLAY_PADDING;
+
+    for (int i = 0; i < visible_items; ++i) {
+        layout->overlay_item_rects[i] = (SDL_Rect){
+            overlay_rect.x + FX_PANEL_OVERLAY_PADDING,
+            item_y,
+            item_width,
+            FX_PANEL_DROPDOWN_ITEM_HEIGHT
+        };
+        if (panel->overlay_layer == FX_PANEL_OVERLAY_CATEGORIES) {
+            int cat_index = first_index + i;
+            layout->overlay_item_order[i] = (cat_index >= 0 && cat_index < panel->category_count) ? cat_index : -1;
+        } else {
+            const FxCategoryUIInfo* cat = NULL;
+            if (panel->active_category_index >= 0 && panel->active_category_index < panel->category_count) {
+                cat = &panel->categories[panel->active_category_index];
+            }
+            int type_index = -1;
+            if (cat) {
+                int cat_offset = first_index + i;
+                if (cat_offset >= 0 && cat_offset < cat->type_count) {
+                    type_index = cat->type_indices[cat_offset];
+                }
+            }
+            layout->overlay_item_order[i] = type_index;
+        }
+        item_y += FX_PANEL_DROPDOWN_ITEM_HEIGHT;
+    }
+
+    if (has_scrollbar) {
+        int track_x = overlay_rect.x + overlay_rect.w - FX_PANEL_OVERLAY_PADDING - scrollbar_w;
+        int track_y = overlay_rect.y + FX_PANEL_OVERLAY_HEADER_HEIGHT + 4;
+        int track_h = display_capacity * FX_PANEL_DROPDOWN_ITEM_HEIGHT;
+        layout->overlay_scrollbar_track = (SDL_Rect){track_x, track_y, scrollbar_w, track_h};
+        float visible_ratio = (overlay_total_items > 0) ? (float)visible_items / (float)overlay_total_items : 1.0f;
+        if (visible_ratio < 0.05f) visible_ratio = 0.05f;
+        int thumb_h = (int)(track_h * visible_ratio);
+        if (thumb_h < 10) thumb_h = 10;
+        int max_scroll_index = overlay_total_items - visible_items;
+        float scroll_ratio = (max_scroll_index > 0) ? (float)scroll_index / (float)max_scroll_index : 0.0f;
+        if (scroll_ratio < 0.0f) scroll_ratio = 0.0f;
+        if (scroll_ratio > 1.0f) scroll_ratio = 1.0f;
+        int thumb_y = track_y + (int)((track_h - thumb_h) * scroll_ratio);
+        if (thumb_y > track_y + track_h - thumb_h) thumb_y = track_y + track_h - thumb_h;
+        layout->overlay_scrollbar_thumb = (SDL_Rect){track_x, thumb_y, scrollbar_w, thumb_h};
+    } else {
+        layout->overlay_scrollbar_track = (SDL_Rect){0,0,0,0};
+        layout->overlay_scrollbar_thumb = (SDL_Rect){0,0,0,0};
+    }
+}
+
+static void render_overlay(SDL_Renderer* renderer, const AppState* state, const EffectsPanelLayout* layout) {
+    if (!renderer || !state || !layout || !layout->overlay_visible) {
+        return;
+    }
+    const EffectsPanelState* panel = &state->effects_panel;
+    SDL_Color bg = {26, 26, 32, 240};
+    SDL_Color border = {90, 95, 110, 255};
+    SDL_Color header_bg = {48, 52, 62, 255};
+    SDL_Color label = {210, 210, 220, 255};
+    SDL_Color hover = {80, 110, 160, 255};
+
+    SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
+    SDL_RenderFillRect(renderer, &layout->overlay_rect);
+    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+    SDL_RenderDrawRect(renderer, &layout->overlay_rect);
+
+    SDL_SetRenderDrawColor(renderer, header_bg.r, header_bg.g, header_bg.b, header_bg.a);
+    SDL_RenderFillRect(renderer, &layout->overlay_header_rect);
+    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+    SDL_RenderDrawRect(renderer, &layout->overlay_header_rect);
+
+    const char* title = "Add Effect";
+    if (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS && panel->active_category_index >= 0 &&
+        panel->active_category_index < panel->category_count) {
+        title = panel->categories[panel->active_category_index].name;
+    } else if (panel->overlay_layer == FX_PANEL_OVERLAY_CATEGORIES) {
+        title = "Select Category";
+    }
+    ui_draw_text(renderer,
+                 layout->overlay_header_rect.x + FX_PANEL_OVERLAY_PADDING + (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS ? 32 : 8),
+                 layout->overlay_header_rect.y + 10,
+                 title,
+                 label,
+                 2);
+
+    if (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS) {
+        SDL_Color back_color = {70, 90, 120, 255};
+        SDL_SetRenderDrawColor(renderer, back_color.r, back_color.g, back_color.b, back_color.a);
+        SDL_RenderFillRect(renderer, &layout->overlay_back_rect);
+        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+        SDL_RenderDrawRect(renderer, &layout->overlay_back_rect);
+        ui_draw_text(renderer,
+                     layout->overlay_back_rect.x + 6,
+                     layout->overlay_back_rect.y + 8,
+                     "<",
+                     label,
+                     2);
+    }
+
+    if (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS) {
+        bool invalid_cat = (panel->active_category_index < 0 || panel->active_category_index >= panel->category_count);
+        bool empty_cat = false;
+        if (!invalid_cat) {
+            const FxCategoryUIInfo* cat = &panel->categories[panel->active_category_index];
+            empty_cat = (cat->type_count == 0);
+        }
+        if (invalid_cat || empty_cat || layout->overlay_item_count == 0) {
+            const char* msg = "No effects in this category.";
+            ui_draw_text(renderer,
+                         layout->overlay_rect.x + FX_PANEL_OVERLAY_PADDING,
+                         layout->overlay_rect.y + FX_PANEL_OVERLAY_HEADER_HEIGHT + 12,
+                         msg,
+                         label,
+                         2);
+            return;
+        }
+    }
+
+    for (int i = 0; i < layout->overlay_item_count; ++i) {
+        SDL_Rect item_rect = layout->overlay_item_rects[i];
+        bool is_hover = false;
+        if (panel->overlay_layer == FX_PANEL_OVERLAY_CATEGORIES) {
+            if (layout->overlay_item_order[i] == panel->hovered_category_index) {
+                is_hover = true;
+            }
+        } else if (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS) {
+            if (layout->overlay_item_order[i] == panel->hovered_effect_index) {
+                is_hover = true;
+            }
+        }
+        if (is_hover) {
+            SDL_SetRenderDrawColor(renderer, hover.r, hover.g, hover.b, hover.a);
+            SDL_RenderFillRect(renderer, &item_rect);
+        }
+
+        const char* item_label = "";
+        char buffer[96];
+        if (panel->overlay_layer == FX_PANEL_OVERLAY_CATEGORIES) {
+            int cat_index = layout->overlay_item_order[i];
+            if (cat_index >= 0 && cat_index < panel->category_count) {
+                const FxCategoryUIInfo* cat = &panel->categories[cat_index];
+                snprintf(buffer, sizeof(buffer), "%s (%d)", cat->name, cat->type_count);
+                item_label = buffer;
+            }
+        } else if (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS) {
+            int type_index = layout->overlay_item_order[i];
+            if (type_index >= 0 && type_index < panel->type_count) {
+                item_label = panel->types[type_index].name;
+            }
+        }
+        ui_draw_text(renderer, item_rect.x + 8, item_rect.y + 6, item_label, label, 2);
+    }
+
+    if (layout->overlay_has_scrollbar) {
+        SDL_Color track = {52, 56, 64, 220};
+        SDL_Color thumb = {120, 160, 220, 255};
+        SDL_SetRenderDrawColor(renderer, track.r, track.g, track.b, track.a);
+        SDL_RenderFillRect(renderer, &layout->overlay_scrollbar_track);
+        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+        SDL_RenderDrawRect(renderer, &layout->overlay_scrollbar_track);
+        SDL_SetRenderDrawColor(renderer, thumb.r, thumb.g, thumb.b, thumb.a);
+        SDL_RenderFillRect(renderer, &layout->overlay_scrollbar_thumb);
+        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+        SDL_RenderDrawRect(renderer, &layout->overlay_scrollbar_thumb);
+    }
+}
+
+void effects_panel_render(SDL_Renderer* renderer, const AppState* state, const EffectsPanelLayout* layout) {
+    if (!renderer || !state || !layout) {
+        return;
+    }
+    const EffectsPanelState* panel = &state->effects_panel;
+    SDL_Color label_color = {210, 210, 220, 255};
+    SDL_Color text_dim = {160, 170, 190, 255};
+
+    // Add button
+    bool button_active = (panel->overlay_layer != FX_PANEL_OVERLAY_CLOSED);
+    draw_button(renderer, &layout->dropdown_button_rect, button_active, "Add Effect");
+
+    if (panel->chain_count == 0) {
+        const char* msg = "No master effects yet. Use 'Add Effect' to insert one.";
+        int msg_x = layout->panel_rect.x + FX_PANEL_MARGIN;
+        int msg_y = layout->panel_rect.y + FX_PANEL_MARGIN + 48;
+        ui_draw_text(renderer, msg_x, msg_y, msg, text_dim, 2);
+    }
+
+    for (int i = 0; i < layout->column_count && i < panel->chain_count; ++i) {
+        const FxSlotUIState* slot = &panel->chain[i];
+        const FxTypeUIInfo* info = find_type_info(panel, slot->type_id);
+        SDL_Rect col = layout->column_rects[i];
+        SDL_Color box_bg = {32, 34, 42, 255};
+        SDL_Color box_border = {80, 85, 100, 255};
+        SDL_SetRenderDrawColor(renderer, box_bg.r, box_bg.g, box_bg.b, box_bg.a);
+        SDL_RenderFillRect(renderer, &col);
+        SDL_SetRenderDrawColor(renderer, box_border.r, box_border.g, box_border.b, box_border.a);
+        SDL_RenderDrawRect(renderer, &col);
+
+        // Header
+        SDL_Rect header = layout->header_rects[i];
+        SDL_SetRenderDrawColor(renderer, 44, 48, 58, 255);
+        SDL_RenderFillRect(renderer, &header);
+        SDL_SetRenderDrawColor(renderer, box_border.r, box_border.g, box_border.b, box_border.a);
+        SDL_RenderDrawRect(renderer, &header);
+
+        const char* fx_name = info ? info->name : "Effect";
+        ui_draw_text(renderer, header.x + 8, header.y + 8, fx_name, label_color, 2);
+
+        SDL_Rect remove_rect = layout->remove_button_rects[i];
+        draw_button(renderer, &remove_rect, panel->highlighted_slot_index == i, "-");
+
+        for (uint32_t p = 0; p < slot->param_count && p < FX_MAX_PARAMS; ++p) {
+            SDL_Rect label_rect = layout->param_label_rects[i][p];
+            SDL_Rect slider_rect = layout->param_slider_rects[i][p];
+            const char* pname = info ? info->param_names[p] : "Param";
+            float min_v = info ? info->param_min[p] : 0.0f;
+            float max_v = info ? info->param_max[p] : 1.0f;
+            if (fabsf(max_v - min_v) < 1e-6f) {
+                max_v = min_v + 1.0f;
+            }
+            float value = slot->param_values[p];
+            float t = (value - min_v) / (max_v - min_v);
+            draw_slider(renderer, &slider_rect, t);
+
+            char label_line[96];
+            snprintf(label_line, sizeof(label_line), "%s", pname);
+            ui_draw_text(renderer, label_rect.x, label_rect.y, label_line, label_color, 1);
+
+            char value_line[64];
+            format_value_label(pname, value, value_line, sizeof(value_line));
+            int value_y = slider_rect.y - 12;
+            if (value_y < header.y + header.h + 2) {
+                value_y = slider_rect.y + slider_rect.h + 2;
+            }
+            ui_draw_text(renderer, slider_rect.x, value_y, value_line, text_dim, 1);
+        }
+    }
+
+    render_overlay(renderer, state, layout);
+}

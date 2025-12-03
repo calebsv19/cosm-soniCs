@@ -12,6 +12,8 @@ Purpose: Translate SDL events and pointer state into engine/UI actions.
   - `inspector_input_handle_event`: React to mouse/text events for renaming clips or adjusting gain.
 - `inspector_input_handle_gain_drag/stop_gain_drag`: Continue or stop gain scrubbing.
 - `inspector_input_commit_if_editing/sync`: Persist edits back to the engine and pull latest clip data.
+- `effects_panel_input.c`
+  - Initializes the master effects panel state, synchronises effect snapshots, and handles the category/effect overlay navigation (including scroll wheel support), slider drags, and delete interactions when the mixer rack is active.
 - `transport_input.c`
   - `transport_input_init`: Clear slider drag flags.
   - `transport_input_handle_event`: Handle clicks that toggle grid mode or begin slider drags.

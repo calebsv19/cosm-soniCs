@@ -5,6 +5,7 @@
 #include "input/timeline_input.h"
 #include "input/transport_input.h"
 #include "input/inspector_input.h"
+#include "input/effects_panel_input.h"
 #include "input/timeline_selection.h"
 #include "ui/layout.h"
 #include "ui/library_browser.h"
@@ -178,6 +179,7 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
 
     transport_input_handle_event(manager, state, event);
     inspector_input_handle_event(manager, state, event);
+    effects_panel_input_handle_event(manager, state, event);
     timeline_input_handle_event(manager, state, event);
 }
 
@@ -212,6 +214,7 @@ void input_manager_update(InputManager* manager, AppState* state) {
 
     transport_input_update(manager, state);
     timeline_input_update(manager, state, left_was_down, left_is_down);
+    effects_panel_input_update(manager, state, left_was_down, left_is_down);
 
     handle_transport_controls(state, left_was_down, left_is_down);
     handle_keyboard_shortcuts(manager, state);

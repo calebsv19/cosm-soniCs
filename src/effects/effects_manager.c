@@ -17,6 +17,10 @@ typedef struct FxInstance {
     FxVTable  vt;
     FxDesc    desc;
     bool      enabled;
+    FxInstId  id;
+    FxTypeId  type;
+    uint32_t  param_count;
+    float     param_values[FX_MAX_PARAMS];
 } FxInstance;
 
 typedef struct FxChain {
@@ -40,6 +44,7 @@ struct EffectsManager {
 
     // Master bus chain (v1)
     FxChain master;
+    FxInstId next_inst_id;
 
     // Simple built-in registry table
     FxRegistryEntry* reg;
@@ -74,9 +79,10 @@ static FxInstance* chain_insert(FxChain* c, int at_index) {
         c->items = n;
         c->capacity = new_cap;
     }
-    // move tail
-    for (int i = c->count; i > at_index; --i) {
-        c->items[i] = c->items[i - 1];
+    if (c->count > at_index) {
+        memmove(&c->items[at_index + 1],
+                &c->items[at_index],
+                (size_t)(c->count - at_index) * sizeof(FxInstance));
     }
     c->count++;
     return &c->items[at_index];
@@ -88,8 +94,10 @@ static bool chain_remove(FxChain* c, int idx) {
     if (inst->handle && inst->vt.destroy) {
         inst->vt.destroy(inst->handle);
     }
-    for (int i = idx; i < c->count - 1; ++i) {
-        c->items[i] = c->items[i + 1];
+    if (idx < c->count - 1) {
+        memmove(&c->items[idx],
+                &c->items[idx + 1],
+                (size_t)(c->count - idx - 1) * sizeof(FxInstance));
     }
     c->count--;
     return true;
@@ -142,6 +150,29 @@ sizeof(FxRegistryEntry));
     return true;
 }
 
+const FxRegistryEntry* fxm_get_registry(const EffectsManager* fm, int* out_count) {
+    if (!fm) return NULL;
+    if (out_count) {
+        *out_count = fm->reg_count;
+    }
+    return fm->reg;
+}
+
+const FxRegistryEntry* fxm_find_registry(const EffectsManager* fm, FxTypeId type) {
+    if (!fm) return NULL;
+    return reg_find_by_id(fm, type);
+}
+
+bool fxm_registry_get_desc(const EffectsManager* fm, FxTypeId type, FxDesc* out_desc) {
+    if (!fm || !out_desc) return false;
+    const FxRegistryEntry* ent = reg_find_by_id(fm, type);
+    if (!ent || !ent->get_desc) return false;
+    FxDesc desc = {0};
+    if (!ent->get_desc(&desc)) return false;
+    *out_desc = desc;
+    return true;
+}
+
 // -------------------------------
 // Manager lifecycle
 // -------------------------------
@@ -170,6 +201,7 @@ EffectsManager* fxm_create(const FxConfig* cfg) {
     fm->master.items = NULL;
     fm->master.count = 0;
     fm->master.capacity = 0;
+    fm->next_inst_id = 1;
     fm->reg = NULL;
     fm->reg_count = fm->reg_cap = 0;
 
@@ -201,8 +233,7 @@ static bool instantiate_fx(EffectsManager* fm, const FxRegistryEntry* ent, FxIns
     FxHandle* handle = NULL;
     FxVTable vt = {0};
 
-    // Cast function pointer types back to the clean signatures
-    fx_create_fn create_fn = (fx_create_fn)ent->create;
+    fx_create_fn create_fn = ent->create;
     if (!create_fn) return false;
     if (!create_fn(&desc, &handle, &vt,
                    (uint32_t)fm->sample_rate,
@@ -216,11 +247,19 @@ static bool instantiate_fx(EffectsManager* fm, const FxRegistryEntry* ent, FxIns
     out_inst->vt      = vt;
     out_inst->desc    = desc;
     out_inst->enabled = true;
+    out_inst->type    = ent->id;
+    out_inst->param_count = desc.num_params > FX_MAX_PARAMS ? FX_MAX_PARAMS : desc.num_params;
+    for (uint32_t i = 0; i < FX_MAX_PARAMS; ++i) {
+        out_inst->param_values[i] = 0.0f;
+    }
 
     // Initialize defaults
     for (uint32_t i = 0; i < desc.num_params; ++i) {
         if (out_inst->vt.set_param) {
             out_inst->vt.set_param(out_inst->handle, i, desc.param_defaults[i]);
+        }
+        if (i < FX_MAX_PARAMS) {
+            out_inst->param_values[i] = desc.param_defaults[i];
         }
     }
     if (out_inst->vt.reset) {
@@ -248,19 +287,25 @@ FxInstId fxm_master_add(EffectsManager* fm, FxTypeId type) {
         if (inst.handle && inst.vt.destroy) inst.vt.destroy(inst.handle);
         return (FxInstId)0;
     }
+    FxInstId new_id = fm->next_inst_id++;
+    if (new_id == 0) {
+        new_id = fm->next_inst_id++;
+    }
+    inst.id = new_id;
     *slot = inst;
-
-    // Use the index as a simple ID for v1; stable enough while editing on the engine thread.
-    // For a robust ID, add a monotonically increasing counter.
-    return (FxInstId)(at + 1);
+    return new_id;
 }
 
 static FxInstance* master_get_by_id(EffectsManager* fm, FxInstId id, int* out_index) {
     if (!fm || id == 0) return NULL;
-    int idx = (int)id - 1;
-    if (idx < 0 || idx >= fm->master.count) return NULL;
-    if (out_index) *out_index = idx;
-    return &fm->master.items[idx];
+    for (int i = 0; i < fm->master.count; ++i) {
+        FxInstance* inst = &fm->master.items[i];
+        if (inst->id == id) {
+            if (out_index) *out_index = i;
+            return inst;
+        }
+    }
+    return NULL;
 }
 
 bool fxm_master_remove(EffectsManager* fm, FxInstId id) {
@@ -283,6 +328,9 @@ bool fxm_master_set_param(EffectsManager* fm, FxInstId id, uint32_t pidx, float 
     if (!inst->vt.set_param) return false;
     if (pidx >= inst->desc.num_params) return false;
     inst->vt.set_param(inst->handle, pidx, value);
+    if (pidx < FX_MAX_PARAMS) {
+        inst->param_values[pidx] = value;
+    }
     return true;
 }
 
@@ -290,6 +338,33 @@ bool fxm_master_set_enabled(EffectsManager* fm, FxInstId id, bool enabled) {
     FxInstance* inst = master_get_by_id(fm, id, NULL);
     if (!inst) return false;
     inst->enabled = enabled;
+    return true;
+}
+
+bool fxm_master_snapshot(const EffectsManager* fm, FxMasterSnapshot* out) {
+    if (!fm || !out) return false;
+    FxMasterSnapshot snap = {0};
+    int limit = fm->master.count;
+    if (limit > FX_MASTER_MAX) {
+        limit = FX_MASTER_MAX;
+    }
+    for (int i = 0; i < limit; ++i) {
+        const FxInstance* inst = &fm->master.items[i];
+        FxMasterInstanceInfo info = {0};
+        info.id = inst->id;
+        info.type = inst->type;
+        info.enabled = inst->enabled;
+        uint32_t pc = inst->desc.num_params;
+        if (pc > FX_MAX_PARAMS) {
+            pc = FX_MAX_PARAMS;
+        }
+        info.param_count = pc;
+        for (uint32_t p = 0; p < pc; ++p) {
+            info.params[p] = inst->param_values[p];
+        }
+        snap.items[snap.count++] = info;
+    }
+    *out = snap;
     return true;
 }
 
@@ -359,4 +434,3 @@ int channels) {
     (void)fm; (void)track_index; (void)interleaved_io; (void)frames; (void)channels;
     // not implemented in v1
 }
-

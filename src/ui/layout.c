@@ -7,6 +7,7 @@
 #include "ui/library_browser.h"
 #include "ui/transport.h"
 #include "ui/clip_inspector.h"
+#include "ui/effects_panel.h"
 
 #include <SDL2/SDL.h>
 #include <math.h>
@@ -289,7 +290,13 @@ void ui_render_overlays(SDL_Renderer* renderer, const AppState* state) {
     }
     ClipInspectorLayout inspector_layout;
     clip_inspector_compute_layout(state, &inspector_layout);
-    clip_inspector_render(renderer, state, &inspector_layout);
+    if (state->inspector.visible) {
+        clip_inspector_render(renderer, state, &inspector_layout);
+    } else {
+        EffectsPanelLayout effects_layout;
+        effects_panel_compute_layout(state, &effects_layout);
+        effects_panel_render(renderer, state, &effects_layout);
+    }
 
     SDL_Color status_color = {160, 170, 190, 255};
     char log_line[96];

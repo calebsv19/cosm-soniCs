@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config.h"
+#include "effects/effects_manager.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -48,6 +49,13 @@ void    engine_destroy(Engine* engine);
 bool    engine_start(Engine* engine);
 void    engine_stop(Engine* engine);
 const EngineRuntimeConfig* engine_get_config(const Engine* engine);
+bool    engine_fx_get_registry(const Engine* engine, const FxRegistryEntry** out_entries, int* out_count);
+bool    engine_fx_registry_get_desc(const Engine* engine, FxTypeId type, FxDesc* out_desc);
+bool    engine_fx_master_snapshot(const Engine* engine, FxMasterSnapshot* out_snapshot);
+FxInstId engine_fx_master_add(Engine* engine, FxTypeId type);
+bool    engine_fx_master_remove(Engine* engine, FxInstId id);
+bool    engine_fx_master_set_param(Engine* engine, FxInstId id, uint32_t param_index, float value);
+bool    engine_fx_master_set_enabled(Engine* engine, FxInstId id, bool enabled);
 bool    engine_is_running(const Engine* engine);
 size_t  engine_get_queued_frames(const Engine* engine);
 bool    engine_transport_play(Engine* engine);

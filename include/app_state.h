@@ -72,6 +72,58 @@ typedef struct {
     uint64_t fade_out_frames;
 } ClipInspectorState;
 
+typedef enum {
+    FX_PANEL_OVERLAY_CLOSED = 0,
+    FX_PANEL_OVERLAY_CATEGORIES,
+    FX_PANEL_OVERLAY_EFFECTS
+} EffectsPanelOverlayLayer;
+
+#define FX_PANEL_MAX_TYPES 64
+#define FX_PANEL_MAX_CATEGORIES 12
+
+typedef struct {
+    FxTypeId type_id;
+    char name[32];
+    uint32_t param_count;
+    char param_names[FX_MAX_PARAMS][32];
+    float param_defaults[FX_MAX_PARAMS];
+    float param_min[FX_MAX_PARAMS];
+    float param_max[FX_MAX_PARAMS];
+} FxTypeUIInfo;
+
+typedef struct {
+    char name[32];
+    int type_indices[FX_PANEL_MAX_TYPES];
+    int type_count;
+} FxCategoryUIInfo;
+
+typedef struct {
+    FxInstId id;
+    FxTypeId type_id;
+    uint32_t param_count;
+    float param_values[FX_MAX_PARAMS];
+    bool enabled;
+} FxSlotUIState;
+
+typedef struct {
+    bool initialized;
+    EffectsPanelOverlayLayer overlay_layer;
+    int hovered_category_index;
+    int hovered_effect_index;
+    int active_category_index;
+    int highlighted_slot_index;
+    bool dragging_slider;
+    int active_slot_index;
+    int active_param_index;
+    int overlay_scroll_index;
+    FxTypeUIInfo types[FX_PANEL_MAX_TYPES];
+    int type_count;
+    FxCategoryUIInfo categories[FX_PANEL_MAX_CATEGORIES];
+    int category_count;
+    FxSlotUIState chain[FX_MASTER_MAX];
+    int chain_count;
+} EffectsPanelState;
+
 typedef struct {
     SDL_Rect add_rect;
     SDL_Rect remove_rect;
@@ -93,6 +145,13 @@ typedef struct {
     char buffer[ENGINE_CLIP_NAME_MAX];
     int cursor;
 } TrackNameEditor;
+
+typedef struct {
+    FxTypeId type_id;
+    bool enabled;
+    uint32_t param_count;
+    float param_values[FX_MAX_PARAMS];
+} PendingMasterFx;
 
 typedef struct AppState AppState;
 
@@ -119,6 +178,7 @@ struct AppState {
     TimelineSelectionEntry selection[TIMELINE_MAX_SELECTION];
     TimelineDragState timeline_drag;
     ClipInspectorState inspector;
+    EffectsPanelState effects_panel;
     TimelineControlsUI timeline_controls;
     TrackNameEditor track_name_editor;
     float timeline_visible_seconds;
@@ -137,4 +197,7 @@ struct AppState {
     bool engine_logging_enabled;
     bool cache_logging_enabled;
     bool timing_logging_enabled;
+    PendingMasterFx pending_master_fx[FX_MASTER_MAX];
+    int pending_master_fx_count;
+    bool pending_master_fx_dirty;
 };
