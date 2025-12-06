@@ -27,6 +27,10 @@ void library_browser_init(LibraryBrowser* browser, const char* directory) {
     }
     browser->hovered_index = -1;
     browser->selected_index = -1;
+    browser->editing = false;
+    browser->edit_index = -1;
+    browser->edit_buffer[0] = '\0';
+    browser->edit_cursor = 0;
 }
 
 static void ensure_directory(const char* path) {
@@ -116,6 +120,12 @@ void library_browser_scan(LibraryBrowser* browser) {
     if (browser->selected_index >= browser->count) {
         browser->selected_index = -1;
     }
+    if (browser->editing && (browser->edit_index < 0 || browser->edit_index >= browser->count)) {
+        browser->editing = false;
+        browser->edit_index = -1;
+        browser->edit_buffer[0] = '\0';
+        browser->edit_cursor = 0;
+    }
 }
 
 void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* renderer, const SDL_Rect* rect, int line_height) {
@@ -139,13 +149,26 @@ void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* rendere
             SDL_SetRenderDrawColor(renderer, highlight_color.r, highlight_color.g, highlight_color.b, highlight_color.a);
             SDL_RenderFillRect(renderer, &row);
         }
+        const char* display_name = browser->items[i].name;
         char label[192];
+        bool is_editing = browser->editing && browser->edit_index == i;
+        if (is_editing) {
+            display_name = browser->edit_buffer;
+        }
         if (browser->items[i].duration_seconds > 0.0f) {
-            snprintf(label, sizeof(label), "%s (%.1fs)", browser->items[i].name, browser->items[i].duration_seconds);
+            snprintf(label, sizeof(label), "%s (%.1fs)", display_name, browser->items[i].duration_seconds);
         } else {
-            snprintf(label, sizeof(label), "%s", browser->items[i].name);
+            snprintf(label, sizeof(label), "%s", display_name);
         }
         ui_draw_text(renderer, rect->x + 16, y, label, text_color, 2);
+
+        if (is_editing) {
+            int char_w = 6 * 2;
+            int cursor_x = rect->x + 16 + browser->edit_cursor * char_w;
+            int cursor_y = y;
+            SDL_SetRenderDrawColor(renderer, 240, 240, 250, 255);
+            SDL_RenderDrawLine(renderer, cursor_x, cursor_y, cursor_x, cursor_y + 14);
+        }
         y += line_height;
     }
     if (browser->count == 0) {

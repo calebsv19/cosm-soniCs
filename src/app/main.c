@@ -13,18 +13,33 @@
 
 #include <SDL2/SDL.h>
 #include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
+
+static void handle_render(AppContext* ctx);
+static void perform_bounce(AppContext* ctx, AppState* state);
 
 static void handle_input(AppContext* ctx) {
     if (!ctx || !ctx->userData || !ctx->has_event) {
         return;
     }
     AppState* state = (AppState*)ctx->userData;
+    if (state->bounce_active) {
+        return;
+    }
     input_manager_handle_event(&state->input_manager, state, &ctx->current_event);
 }
 
 static void handle_update(AppContext* ctx) {
     AppState* state = (AppState*)ctx->userData;
     if (!state) {
+        return;
+    }
+    if (state->bounce_requested && !state->bounce_active) {
+        perform_bounce(ctx, state);
+        return;
+    }
+    if (state->bounce_active) {
         return;
     }
     ui_ensure_layout(state, ctx->renderer);
@@ -45,6 +60,141 @@ static void handle_render(AppContext* ctx) {
     ui_render_overlays(renderer, state);
 
     SDL_RenderPresent(renderer);
+}
+
+static bool path_exists(const char* path) {
+    struct stat st;
+    return path && stat(path, &st) == 0;
+}
+
+static bool next_bounce_path(char* out, size_t len) {
+    if (!out || len == 0) {
+        return false;
+    }
+    const char* dir = "assets/audio";
+    for (int i = 0; i < 10000; ++i) {
+        char name[64];
+        if (i == 0) {
+            snprintf(name, sizeof(name), "bounce.wav");
+        } else {
+            snprintf(name, sizeof(name), "bounce%d.wav", i);
+        }
+        snprintf(out, len, "%s/%s", dir, name);
+        if (!path_exists(out)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static uint64_t find_project_end_frame(const Engine* engine) {
+    if (!engine) return 0;
+    const EngineTrack* tracks = engine_get_tracks(engine);
+    int track_count = engine_get_track_count(engine);
+    uint64_t max_end = 0;
+    for (int t = 0; t < track_count; ++t) {
+        const EngineTrack* track = &tracks[t];
+        if (!track || track->clip_count <= 0) {
+            continue;
+        }
+        for (int c = 0; c < track->clip_count; ++c) {
+            const EngineClip* clip = &track->clips[c];
+            if (!clip || !clip->active) {
+                continue;
+            }
+            uint64_t len = engine_clip_get_total_frames(engine, t, c);
+            uint64_t end = clip->timeline_start_frames + len;
+            if (end > max_end) {
+                max_end = end;
+            }
+        }
+    }
+    return max_end;
+}
+
+typedef struct {
+    AppState* state;
+    AppContext* ctx;
+    Uint32 last_render_ms;
+    Uint32 render_interval_ms;
+} BounceProgressCtx;
+
+static void bounce_progress_cb(uint64_t done_frames, uint64_t total_frames, void* user) {
+    BounceProgressCtx* prog = (BounceProgressCtx*)user;
+    if (!prog || !prog->state) {
+        return;
+    }
+    prog->state->bounce_progress_frames = done_frames;
+    prog->state->bounce_total_frames = total_frames;
+    if (prog->ctx && prog->ctx->renderer) {
+        Uint32 now = SDL_GetTicks();
+        if (now - prog->last_render_ms >= prog->render_interval_ms) {
+            prog->last_render_ms = now;
+            handle_render(prog->ctx);
+        }
+    }
+}
+
+static void perform_bounce(AppContext* ctx, AppState* state) {
+    if (!ctx || !state || !state->engine) {
+        return;
+    }
+
+    uint64_t start_frame = 0;
+    uint64_t end_frame = 0;
+    if (state->loop_enabled && state->loop_end_frame > state->loop_start_frame) {
+        start_frame = state->loop_start_frame;
+        end_frame = state->loop_end_frame;
+    } else {
+        start_frame = 0;
+        end_frame = find_project_end_frame(state->engine);
+        if (end_frame == 0) {
+            SDL_Log("Bounce aborted: no clips found.");
+            state->bounce_requested = false;
+            return;
+        }
+    }
+
+    char path[512];
+    if (!next_bounce_path(path, sizeof(path))) {
+        SDL_Log("Bounce aborted: unable to allocate output filename.");
+        state->bounce_requested = false;
+        return;
+    }
+
+    state->bounce_active = true;
+    state->bounce_progress_frames = 0;
+    state->bounce_total_frames = end_frame > start_frame ? end_frame - start_frame : 0;
+    state->bounce_start_frame = start_frame;
+    state->bounce_end_frame = end_frame;
+
+    SDL_Log("Bounce started: %s", path);
+    BounceProgressCtx prog = {
+        .state = state,
+        .ctx = ctx,
+        .last_render_ms = SDL_GetTicks(),
+        .render_interval_ms = 50
+    };
+    bool ok = engine_bounce_range(state->engine,
+                                  start_frame,
+                                  end_frame,
+                                  path,
+                                  bounce_progress_cb,
+                                  &prog);
+
+    state->bounce_active = false;
+    state->bounce_requested = false;
+    state->bounce_progress_frames = 0;
+    state->bounce_total_frames = 0;
+    state->bounce_start_frame = 0;
+    state->bounce_end_frame = 0;
+
+    if (ok) {
+        library_browser_scan(&state->library);
+        SDL_Log("Bounce completed: %s", path);
+    } else {
+        SDL_Log("Bounce failed");
+    }
 }
 
 int main(void) {

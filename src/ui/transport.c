@@ -279,7 +279,6 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         return;
     }
     SDL_Color label_zoom = {200, 200, 210, 255};
-    SDL_Color label = {210, 210, 220, 255};
 
     SDL_Color underline = {90, 90, 100, 255};
     int underline_y = ui->panel_rect.y + ui->panel_rect.h - 1;

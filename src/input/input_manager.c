@@ -2,6 +2,7 @@
 
 #include "app_state.h"
 #include "engine/engine.h"
+#include "input/library_input.h"
 #include "input/timeline_input.h"
 #include "input/transport_input.h"
 #include "input/inspector_input.h"
@@ -29,6 +30,9 @@ static void handle_transport_controls(AppState* state, bool was_down, bool is_do
 
 static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
     if (!manager || !state || !state->engine) {
+        return;
+    }
+    if (library_input_is_editing(state)) {
         return;
     }
 
@@ -112,6 +116,12 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
     }
     manager->previous_enter = enter_now;
 
+    bool b_now = keys[SDL_SCANCODE_B] != 0;
+    if (b_now && !manager->previous_b) {
+        state->bounce_requested = true;
+    }
+    manager->previous_b = b_now;
+
     bool f7_now = keys[SDL_SCANCODE_F7] != 0;
     if (f7_now && !manager->previous_f7) {
         state->engine_logging_enabled = !state->engine_logging_enabled;
@@ -157,6 +167,7 @@ void input_manager_init(InputManager* manager) {
     manager->previous_delete = false;
     manager->previous_enter = false;
     manager->previous_c = false;
+    manager->previous_b = false;
     manager->previous_f7 = false;
     manager->previous_f8 = false;
     manager->previous_f9 = false;
@@ -167,6 +178,8 @@ void input_manager_init(InputManager* manager) {
     manager->last_header_click_track = -1;
     manager->prev_horiz_slider_down = false;
     manager->prev_vert_slider_down = false;
+    manager->last_library_click_ticks = 0;
+    manager->last_library_click_index = -1;
 
     timeline_input_init(manager);
     transport_input_init(manager);
@@ -174,6 +187,11 @@ void input_manager_init(InputManager* manager) {
 
 void input_manager_handle_event(InputManager* manager, AppState* state, const SDL_Event* event) {
     if (!manager || !state || !event) {
+        return;
+    }
+
+    if (library_input_is_editing(state)) {
+        timeline_input_handle_event(manager, state, event);
         return;
     }
 

@@ -7,6 +7,7 @@
 #include "input/inspector_input.h"
 #include "input/timeline_drag.h"
 #include "input/timeline_selection.h"
+#include "input/library_input.h"
 #include "ui/layout.h"
 #include "ui/library_browser.h"
 #include "ui/panes.h"
@@ -468,17 +469,36 @@ static void update_timeline_drop_hint(AppState* state) {
     state->timeline_drop_active = true;
 }
 
-static void handle_library_drag(AppState* state, bool was_down, bool is_down) {
+static void handle_library_drag(InputManager* manager, AppState* state, bool was_down, bool is_down) {
     if (!state) {
         return;
     }
+    LibraryBrowser* lib = &state->library;
+    if (library_input_is_editing(state)) {
+        return;
+    }
     if (!was_down && is_down && !state->layout_runtime.drag.active) {
-        if (state->library.hovered_index >= 0) {
-            state->library.selected_index = state->library.hovered_index;
+        if (lib->hovered_index >= 0) {
+            Uint32 now = SDL_GetTicks();
+            bool is_double = false;
+            if (manager->last_library_click_index == lib->hovered_index &&
+                now - manager->last_library_click_ticks < 300) {
+                is_double = true;
+            }
+            manager->last_library_click_index = lib->hovered_index;
+            manager->last_library_click_ticks = now;
+
+            lib->selected_index = lib->hovered_index;
+            if (is_double) {
+                const Pane* library_pane = ui_layout_get_pane(state, 3);
+                library_input_start_edit(state, library_pane, state->mouse_x);
+                return;
+            }
+
             state->dragging_library = true;
-            state->drag_library_index = state->library.hovered_index;
-            if (state->drag_library_index >= 0 && state->drag_library_index < state->library.count) {
-                const LibraryItem* item = &state->library.items[state->drag_library_index];
+            state->drag_library_index = lib->hovered_index;
+            if (state->drag_library_index >= 0 && state->drag_library_index < lib->count) {
+                const LibraryItem* item = &lib->items[state->drag_library_index];
                 set_drop_label(state, item->name, item->duration_seconds);
                 state->timeline_drop_preview_duration = item->duration_seconds > 0.0f ? item->duration_seconds : 2.0f;
             } else {
@@ -1498,6 +1518,10 @@ void timeline_input_handle_event(InputManager* manager, AppState* state, const S
         return;
     }
 
+    if (library_input_handle_event(manager, state, event)) {
+        return;
+    }
+
     TrackNameEditor* editor = &state->track_name_editor;
     if (event->type == SDL_TEXTINPUT && editor->editing) {
         size_t len = strlen(editor->buffer);
@@ -1677,7 +1701,7 @@ void timeline_input_handle_event(InputManager* manager, AppState* state, const S
 
 void timeline_input_update(InputManager* manager, AppState* state, bool was_down, bool is_down) {
     timeline_controls_update_hover(state);
-    handle_library_drag(state, was_down, is_down);
+    handle_library_drag(manager, state, was_down, is_down);
     update_timeline_drop_hint(state);
     handle_timeline_clip_interactions(manager, state, was_down, is_down);
 }

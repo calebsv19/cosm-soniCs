@@ -14,7 +14,6 @@
 
 static inline float clampf(float x, float lo, float hi){ return x<lo?lo:(x>hi?hi:x); }
 static inline float dB_to_lin(float dB){ return powf(10.0f, dB * 0.05f); }
-static inline float lin_to_dB(float lin){ return 20.0f * log10f(fmaxf(lin, 1e-12f)); }
 
 typedef struct FxLimiter {
     float sr;

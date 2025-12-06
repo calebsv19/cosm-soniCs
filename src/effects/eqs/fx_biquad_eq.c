@@ -67,9 +67,6 @@ static void biquad_recalc(FxBiquad* f) {
         } break;
 
         default: { // 1: Peaking EQ (RBJ)
-            float ap1 = A + 1.0f;
-            float am1 = A - 1.0f;
-
             b0 = 1.0f + alpha*A;
             b1 = -2.0f*cosw0;
             b2 = 1.0f - alpha*A;
@@ -91,7 +88,6 @@ static void biquad_process(FxHandle* h, const float* in, float* out, int frames,
     (void)in; // in-place
     FxBiquad* f = (FxBiquad*)h;
 
-    const int N = frames * channels;
     // DF2T per-channel
     for (int n = 0; n < frames; ++n) {
         int base = n * channels;
@@ -187,4 +183,3 @@ int biquad_create(const FxDesc* desc, FxHandle **out_handle, FxVTable *out_vt,
     *out_handle = (FxHandle*)f;
     return 1;
 }
-

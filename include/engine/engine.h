@@ -95,3 +95,9 @@ bool    engine_track_set_solo(Engine* engine, int track_index, bool solo);
 bool    engine_track_set_muted(Engine* engine, int track_index, bool muted);
 bool    engine_track_set_gain(Engine* engine, int track_index, float gain);
 void    engine_set_logging(Engine* engine, bool engine_logs, bool cache_logs, bool timing_logs);
+bool    engine_bounce_range(Engine* engine,
+                            uint64_t start_frame,
+                            uint64_t end_frame,
+                            const char* out_path,
+                            void (*progress_cb)(uint64_t done_frames, uint64_t total_frames, void* user),
+                            void* user);

@@ -32,7 +32,6 @@ static inline float dl_read(const DelayLine* d, int tap){ int r=d->w-tap; while(
 static inline void  dl_write(DelayLine* d, float x){ d->buf[d->w]=x; d->w++; if(d->w>=d->len) d->w=0; }
 static inline void  dl_clear(DelayLine* d){ if(!d||!d->buf) return; for(int i=0;i<d->len;++i)d->buf[i]=0.f; d->w=0; }
 static int  alloc_dl(DelayLine* d, int len){ d->buf=(float*)calloc((size_t)len,sizeof(float)); if(!d->buf) return 0; d->len=len; d->w=0; return 1; }
-static void free_dl(DelayLine* d){ free(d->buf); d->buf=NULL; d->len=0; d->w=0; }
 
 typedef struct AP { DelayLine dl; float g; } AP;
 typedef struct CB { DelayLine dl; float g; } CB;

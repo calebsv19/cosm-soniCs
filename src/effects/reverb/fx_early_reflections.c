@@ -113,10 +113,6 @@ static void er_process(FxHandle* h, const float* in, float* out, int frames, int
         dl_write(&e->dlL, inL);
         dl_write(&e->dlR, inR);
 
-        // read predelayed inputs
-        float preL = (e->pre_samp>0) ? dl_read(&e->dlL, e->pre_samp) : inL;
-        float preR = (e->pre_samp>0) ? dl_read(&e->dlR, e->pre_samp) : inR;
-
         // build ER sums with small interaural differences (alternate tap offsets)
         float erL = 0.f, erR = 0.f;
         for(int t=0;t<NUM_TAPS;++t){

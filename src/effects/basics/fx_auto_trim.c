@@ -23,7 +23,6 @@
 
 static inline float clampf(float x, float a, float b){ return x<a?a:(x>b?b:x); }
 static inline float db_to_lin(float dB){ return powf(10.0f, dB/20.0f); }
-static inline float lin_to_db(float x){ return 20.0f*log10f(clampf(x, 1e-12f, 1e12f)); }
 
 typedef struct FxAutoTrim {
     float sr;

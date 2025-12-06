@@ -16,7 +16,6 @@
 #endif
 
 static inline float clampf(float x, float lo, float hi){ return x<lo?lo:(x>hi?hi:x); }
-static inline float fracf(float x){ return x - floorf(x); }
 static inline float lerp(float a, float b, float t){ return a + (b - a) * t; }
 
 typedef struct FxFlanger {

@@ -194,6 +194,12 @@ struct AppState {
     uint64_t loop_start_frame;
     uint64_t loop_end_frame;
     bool loop_restart_pending;
+    bool bounce_requested;
+    bool bounce_active;
+    uint64_t bounce_progress_frames;
+    uint64_t bounce_total_frames;
+    uint64_t bounce_start_frame;
+    uint64_t bounce_end_frame;
     bool engine_logging_enabled;
     bool cache_logging_enabled;
     bool timing_logging_enabled;

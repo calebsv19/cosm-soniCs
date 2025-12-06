@@ -140,17 +140,6 @@ static inline void deesser_core(FxDeEsser* d,
     const int   key_stride = key_ch; // interleaved
 
     for (int n = 0; n < frames; ++n) {
-        // build a "mono" key sample by averaging key channels after bandpass
-        float key_level = 0.0f;
-        for (int kc = 0; kc < key_ch; ++kc) {
-            float xk = key[n * key_stride + kc];
-            // use channel 0's filter state for detector? No: use per-channel states
-            // We'll re-use detector per output channel states (bp.z1/z2 indexed by ch),
-            // but for a mono combined detector, use channel 0's states safely.
-            // Simpler: process bandpass separately per output channel below.
-            (void)xk;
-        }
-
         // We compute detector per output channel and then take max for shared gain
         float shared_gain = 1.0f;
         for (int ch = 0; ch < channels; ++ch) {

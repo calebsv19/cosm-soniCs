@@ -8,6 +8,7 @@
 #include "audio/media_cache.h"
 #include "audio/audio_device.h"
 #include "audio/audio_queue.h"
+#include "audio/wav_writer.h"
 
 #include "effects/effects_manager.h"
 #include "effects/effects_api.h"
@@ -923,6 +924,90 @@ bool engine_fx_master_set_enabled(Engine* engine, FxInstId id, bool enabled) {
         ok = fxm_master_set_enabled(engine->fxm, id, enabled);
     }
     SDL_UnlockMutex(engine->fxm_mutex);
+    return ok;
+}
+
+bool engine_bounce_range(Engine* engine,
+                         uint64_t start_frame,
+                         uint64_t end_frame,
+                         const char* out_path,
+                         void (*progress_cb)(uint64_t done_frames, uint64_t total_frames, void* user),
+                         void* user) {
+    if (!engine || !out_path || end_frame <= start_frame) {
+        return false;
+    }
+    int channels = engine_graph_get_channels(engine->graph);
+    int sample_rate = engine->config.sample_rate;
+    if (channels <= 0 || sample_rate <= 0) {
+        return false;
+    }
+
+    uint64_t total_frames = end_frame - start_frame;
+    if (total_frames == 0) {
+        return false;
+    }
+
+    bool was_running = engine_is_running(engine);
+    bool was_playing = engine_transport_is_playing(engine);
+    uint64_t prev_transport = engine_get_transport_frame(engine);
+
+    if (was_running) {
+        engine_transport_stop(engine);
+        engine_stop(engine);
+    }
+
+    engine_rebuild_sources(engine);
+    engine_graph_reset(engine->graph);
+
+    int block = engine->config.block_size > 0 ? engine->config.block_size : 512;
+    int offline_block = block * 8;
+    if (offline_block < block) offline_block = block;
+    if (offline_block > 8192) offline_block = 8192;
+    float* buffer = (float*)calloc((size_t)total_frames * (size_t)channels, sizeof(float));
+    if (!buffer) {
+        if (was_running) {
+            engine_start(engine);
+            engine_transport_seek(engine, prev_transport);
+            if (was_playing) {
+                engine_transport_play(engine);
+            }
+        }
+        return false;
+    }
+
+    uint64_t rendered = 0;
+    while (rendered < total_frames) {
+        uint64_t remaining = total_frames - rendered;
+        int chunk = (int)(remaining > (uint64_t)offline_block ? (uint64_t)offline_block : remaining);
+        float* out = buffer + rendered * (uint64_t)channels;
+
+        engine_graph_render(engine->graph, out, chunk, start_frame + rendered);
+        if (engine->fxm && engine->fxm_mutex) {
+            SDL_LockMutex(engine->fxm_mutex);
+            fxm_render_master(engine->fxm, out, chunk, channels);
+            SDL_UnlockMutex(engine->fxm_mutex);
+        }
+
+        rendered += (uint64_t)chunk;
+        if (progress_cb) {
+            progress_cb(rendered, total_frames, user);
+        }
+    }
+
+    bool ok = wav_write_pcm16(out_path, buffer, total_frames, channels, sample_rate);
+    free(buffer);
+
+    if (was_running) {
+        if (engine_start(engine)) {
+            engine_transport_seek(engine, prev_transport);
+            if (was_playing) {
+                engine_transport_play(engine);
+            }
+        } else {
+            ok = false;
+        }
+    }
+
     return ok;
 }
 

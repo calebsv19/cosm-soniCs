@@ -28,6 +28,7 @@ SRCS := \
 	$(SRC_DIR)/audio/audio_queue.c \
 	$(SRC_DIR)/audio/ringbuf.c \
 	$(SRC_DIR)/audio/media_clip.c \
+	$(SRC_DIR)/audio/wav_writer.c \
 	$(SRC_DIR)/audio/media_cache.c \
 	$(SRC_DIR)/engine/engine.c \
 	$(SRC_DIR)/engine/graph.c \
@@ -46,6 +47,7 @@ SRCS := \
 	$(SRC_DIR)/ui/clip_inspector.c \
 	$(SRC_DIR)/ui/effects_panel.c \
 	$(SRC_DIR)/input/input_manager.c \
+	$(SRC_DIR)/input/library_input.c \
 	$(SRC_DIR)/input/timeline/timeline_input.c \
 	$(SRC_DIR)/input/timeline/timeline_selection.c \
 	$(SRC_DIR)/input/timeline/timeline_drag.c \
@@ -60,16 +62,63 @@ OBJS_QUOTED := $(foreach obj,$(OBJS),"$(obj)")
 CC := cc
 CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -MMD -MP
 
-SDL2_CFLAGS := $(shell sdl2-config --cflags 2>/dev/null || pkg-config --cflags sdl2 2>/dev/null)
-SDL2_LIBS := $(shell sdl2-config --libs 2>/dev/null || pkg-config --libs sdl2 2>/dev/null)
+UNAME_S := $(shell uname -s)
+SDL_CONFIG := $(shell command -v sdl2-config 2>/dev/null)
+SDL2_CFLAGS :=
+SDL2_LDFLAGS :=
+SDL2_LIBS := -lSDL2
+SDL2_FRAMEWORKS :=
+
+ifeq ($(UNAME_S),Darwin)
+	# Prefer explicit Homebrew prefixes for both Apple Silicon (/opt/homebrew) and Intel (/usr/local).
+	ifneq ($(wildcard /opt/homebrew/include/SDL2/SDL.h),)
+		SDL2_CFLAGS += -I/opt/homebrew/include -D_THREAD_SAFE
+		SDL2_LDFLAGS += -L/opt/homebrew/lib
+	endif
+	ifneq ($(wildcard /usr/local/include/SDL2/SDL.h),)
+		SDL2_CFLAGS += -I/usr/local/include -D_THREAD_SAFE
+		SDL2_LDFLAGS += -L/usr/local/lib
+	endif
+
+	# Framework fallback when headers are installed as frameworks.
+	ifeq ($(strip $(SDL2_CFLAGS)),)
+		ifneq ($(wildcard /Library/Frameworks/SDL2.framework/Headers/SDL.h),)
+			SDL2_CFLAGS += -F/Library/Frameworks -I/Library/Frameworks/SDL2.framework/Headers -D_THREAD_SAFE
+			SDL2_LDFLAGS += -F/Library/Frameworks
+			SDL2_LIBS :=
+			SDL2_FRAMEWORKS := -framework SDL2
+		endif
+	endif
+
+	# Last-resort: sdl2-config if nothing else is found.
+	ifeq ($(strip $(SDL2_CFLAGS)),)
+		ifneq ($(SDL_CONFIG),)
+			SDL2_CFLAGS += $(shell $(SDL_CONFIG) --cflags)
+			SDL2_LDFLAGS += $(shell $(SDL_CONFIG) --libs)
+		endif
+	endif
+else
+	# Non-macOS: prefer sdl2-config, then pkg-config, then a basic system fallback.
+	ifneq ($(SDL_CONFIG),)
+		SDL2_CFLAGS += $(shell $(SDL_CONFIG) --cflags)
+		SDL2_LDFLAGS += $(shell $(SDL_CONFIG) --libs)
+	else
+		SDL_PKGCONFIG := $(shell pkg-config --exists sdl2 >/dev/null 2>&1 && echo yes)
+		ifeq ($(SDL_PKGCONFIG),yes)
+			SDL2_CFLAGS += $(shell pkg-config --cflags sdl2)
+			SDL2_LDFLAGS += $(shell pkg-config --libs sdl2)
+		else
+			SDL2_CFLAGS += -I/usr/include/SDL2
+			SDL2_LDFLAGS += -L/usr/lib
+		endif
+	endif
+endif
 
 CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) $(SDL2_CFLAGS)
 
-UNAME_S := $(shell uname -s)
+LDFLAGS := $(SDL2_LDFLAGS) $(SDL2_LIBS) $(SDL2_FRAMEWORKS)
 ifeq ($(UNAME_S),Darwin)
-LDFLAGS := $(SDL2_LIBS) -framework AudioToolbox -framework CoreFoundation
-else
-LDFLAGS := $(SDL2_LIBS)
+LDFLAGS += -framework AudioToolbox -framework CoreFoundation
 endif
 
 APP_BIN := $(BUILD_DIR)/$(APP_NAME)

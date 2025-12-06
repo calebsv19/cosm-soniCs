@@ -14,6 +14,7 @@ typedef struct InputManager {
     bool previous_delete;
     bool previous_enter;
     bool previous_c;
+    bool previous_b;
     bool previous_f7;
     bool previous_f8;
     bool previous_f9;
@@ -24,6 +25,8 @@ typedef struct InputManager {
     int last_header_click_track;
     bool prev_horiz_slider_down;
     bool prev_vert_slider_down;
+    Uint32 last_library_click_ticks;
+    int last_library_click_index;
 } InputManager;
 
 void input_manager_init(InputManager* manager);

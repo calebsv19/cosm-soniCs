@@ -22,7 +22,6 @@ static inline float db_to_lin(float dB){ return powf(10.0f, dB/20.0f); }
 
 typedef struct Biquad { float b0,b1,b2,a1,a2,z1,z2; } Biquad;
 
-static void biq_reset(Biquad* b){ b->z1 = b->z2 = 0.f; }
 static float biq_run(Biquad* b, float x){
     float y = b->b0*x + b->z1;
     b->z1 = b->b1*x - b->a1*y + b->z2;

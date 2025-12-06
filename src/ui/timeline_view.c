@@ -484,8 +484,16 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
         SDL_RenderDrawRect(renderer, &controls->loop_end_rect);
     }
 
-    const uint64_t transport_frame = engine_get_transport_frame(engine);
-    const double transport_sec = (double)transport_frame / (double)sample_rate;
+    uint64_t playhead_frame = engine_get_transport_frame(engine);
+    if (state->bounce_active) {
+        uint64_t start = state->bounce_start_frame;
+        uint64_t end = state->bounce_end_frame > start ? state->bounce_end_frame : start;
+        playhead_frame = start + state->bounce_progress_frames;
+        if (playhead_frame > end) {
+            playhead_frame = end;
+        }
+    }
+    const double transport_sec = (double)playhead_frame / (double)sample_rate;
     float playhead_offset = (float)(transport_sec / visible_seconds) * (float)content_width;
     playhead_offset = clamp_float(playhead_offset, 0.0f, (float)content_width);
     int playhead_x = content_left + (int)roundf(playhead_offset);

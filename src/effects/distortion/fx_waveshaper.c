@@ -93,7 +93,7 @@ static void tilt_setup_pair(TiltPair* t, unsigned ch, float sr, float pivot, flo
     }
 }
 
-static inline float apply_tilt(TiltPair* t, unsigned ch, int c, float x){
+static inline float apply_tilt(TiltPair* t, int c, float x){
     x = biq_run(&t->ls[c], x);
     x = biq_run(&t->hs[c], x);
     return x;
@@ -168,7 +168,7 @@ static void ws_process(FxHandle* h, const float* in, float* out, int frames, int
             float d = x;
 
             // pre tilt
-            d = apply_tilt(&s->pre, s->max_ch, c, d);
+            d = apply_tilt(&s->pre, c, d);
 
             // drive + bias
             d = d * pre_gain + s->bias;
@@ -177,7 +177,7 @@ static void ws_process(FxHandle* h, const float* in, float* out, int frames, int
             d = shaper_sample(s->curve, d);
 
             // post tilt
-            d = apply_tilt(&s->post, s->max_ch, c, d);
+            d = apply_tilt(&s->post, c, d);
 
             d *= post_gain;
 
