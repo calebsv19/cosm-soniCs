@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 #include "config.h"
+#include "session.h"
 #include "engine/engine.h"
 #include "input/input_manager.h"
 #include "ui/panes.h"
@@ -81,6 +82,11 @@ typedef enum {
 #define FX_PANEL_MAX_TYPES 64
 #define FX_PANEL_MAX_CATEGORIES 12
 
+typedef enum {
+    FX_PANEL_TARGET_MASTER = 0,
+    FX_PANEL_TARGET_TRACK
+} EffectsPanelTarget;
+
 typedef struct {
     FxTypeId type_id;
     char name[32];
@@ -108,6 +114,9 @@ typedef struct {
 typedef struct {
     bool initialized;
     EffectsPanelOverlayLayer overlay_layer;
+    EffectsPanelTarget target;
+    int target_track_index;
+    char target_label[64];
     int hovered_category_index;
     int hovered_effect_index;
     int active_category_index;
@@ -152,6 +161,11 @@ typedef struct {
     uint32_t param_count;
     float param_values[FX_MAX_PARAMS];
 } PendingMasterFx;
+
+typedef struct {
+    SessionFxInstance fx[FX_MASTER_MAX];
+    int fx_count;
+} PendingTrackFxEntry;
 
 typedef struct AppState AppState;
 
@@ -206,4 +220,7 @@ struct AppState {
     PendingMasterFx pending_master_fx[FX_MASTER_MAX];
     int pending_master_fx_count;
     bool pending_master_fx_dirty;
+    PendingTrackFxEntry* pending_track_fx;
+    int pending_track_fx_count;
+    bool pending_track_fx_dirty;
 };

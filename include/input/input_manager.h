@@ -15,6 +15,7 @@ typedef struct InputManager {
     bool previous_enter;
     bool previous_c;
     bool previous_b;
+    bool previous_s;
     bool previous_f7;
     bool previous_f8;
     bool previous_f9;

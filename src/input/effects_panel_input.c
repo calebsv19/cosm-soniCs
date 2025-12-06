@@ -25,6 +25,10 @@ static const FxTypeUIInfo* find_type_info(const EffectsPanelState* panel, FxType
     return NULL;
 }
 
+static bool panel_targets_track(const EffectsPanelState* panel) {
+    return panel && panel->target == FX_PANEL_TARGET_TRACK && panel->target_track_index >= 0;
+}
+
 static float slider_value_from_mouse(const AppState* state,
                                      const EffectsPanelLayout* layout,
                                      int slot_index,
@@ -68,7 +72,17 @@ static void apply_slider_value(AppState* state, int slot_index, int param_index,
     if (param_index < 0 || param_index >= (int)slot->param_count) {
         return;
     }
-    if (engine_fx_master_set_param(state->engine, slot->id, (uint32_t)param_index, value)) {
+    bool updated = false;
+    if (panel_targets_track(panel)) {
+        updated = engine_fx_track_set_param(state->engine,
+                                            panel->target_track_index,
+                                            slot->id,
+                                            (uint32_t)param_index,
+                                            value);
+    } else {
+        updated = engine_fx_master_set_param(state->engine, slot->id, (uint32_t)param_index, value);
+    }
+    if (updated) {
         slot->param_values[param_index] = value;
     }
 }
@@ -166,7 +180,12 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                                 int type_index = layout.overlay_item_order[i];
                                 if (type_index >= 0 && type_index < panel->type_count && state->engine) {
                                     FxTypeId type = panel->types[type_index].type_id;
-                                    FxInstId id = engine_fx_master_add(state->engine, type);
+                                    FxInstId id = 0;
+                                    if (panel_targets_track(panel)) {
+                                        id = engine_fx_track_add(state->engine, panel->target_track_index, type);
+                                    } else {
+                                        id = engine_fx_master_add(state->engine, type);
+                                    }
                                     if (id != 0) {
                                         effects_panel_sync_from_engine(state);
                                         panel->highlighted_slot_index = panel->chain_count > 0 ? panel->chain_count - 1 : -1;
@@ -194,7 +213,13 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                 if (SDL_PointInRect(&pt, &layout.remove_button_rects[i])) {
                     if (state->engine) {
                         FxInstId id = panel->chain[i].id;
-                        if (id != 0 && engine_fx_master_remove(state->engine, id)) {
+                        bool removed = false;
+                        if (panel_targets_track(panel)) {
+                            removed = engine_fx_track_remove(state->engine, panel->target_track_index, id);
+                        } else {
+                            removed = engine_fx_master_remove(state->engine, id);
+                        }
+                        if (id != 0 && removed) {
                             effects_panel_sync_from_engine(state);
                         }
                     }

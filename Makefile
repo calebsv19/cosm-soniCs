@@ -36,7 +36,13 @@ SRCS := \
 	$(SRC_DIR)/engine/source_tone.c \
 	$(SRC_DIR)/engine/sampler.c \
 	$(SRC_DIR)/effects/effects_manager.c \
-	$(SRC_DIR)/session/session_serialization.c \
+	$(SRC_DIR)/session/session_document.c \
+	$(SRC_DIR)/session/session_validation.c \
+	$(SRC_DIR)/session/session_io_write.c \
+	$(SRC_DIR)/session/session_io_read.c \
+	$(SRC_DIR)/session/session_io_json.c \
+	$(SRC_DIR)/session/session_io_read_parse.c \
+	$(SRC_DIR)/session/session_apply.c \
 	$(SRC_DIR)/ui/panes.c \
 	$(SRC_DIR)/ui/layout.c \
 	$(SRC_DIR)/ui/layout_config.c \
@@ -194,7 +200,15 @@ run: $(APP_BIN)
 test-session: $(TEST_BIN)
 	$(TEST_BIN)
 
-$(TEST_BIN): $(TEST_OBJS) $(BUILD_DIR)/src/session/session_serialization.o $(BUILD_DIR)/src/config/config.o
+$(TEST_BIN): $(TEST_OBJS) \
+	$(BUILD_DIR)/src/session/session_document.o \
+	$(BUILD_DIR)/src/session/session_validation.o \
+	$(BUILD_DIR)/src/session/session_io_write.o \
+	$(BUILD_DIR)/src/session/session_io_read.o \
+	$(BUILD_DIR)/src/session/session_io_json.o \
+	$(BUILD_DIR)/src/session/session_io_read_parse.o \
+	$(BUILD_DIR)/src/session/session_apply.o \
+	$(BUILD_DIR)/src/config/config.o
 	@mkdir -p "$(dir $@)"
 	$(CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
 

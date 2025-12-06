@@ -5,6 +5,7 @@
 - `Enter` — Seek to start (temporarily disables loop for the jump).  
 - `C` — Toggle loop; auto-fills loop end if empty.  
 - `B` — Bounce: if loop is on, bounce loop range; otherwise bounce whole project (start to last clip).  
+- `S` — Save session to `config/last_session.json`.  
 - `L` — Load selected library item into the session (fallback to `config/test.wav` if none).  
 - `Delete`/`Backspace` — Delete selected clip(s) (when not renaming).  
 - `F7` / `F8` / `F9` — Toggle engine / cache / timing logs.

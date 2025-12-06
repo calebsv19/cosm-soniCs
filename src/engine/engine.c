@@ -23,6 +23,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <math.h>
 
 typedef enum {
     ENGINE_CMD_PLAY = 1,
@@ -96,6 +97,25 @@ static void engine_timing_trace(const Engine* engine, const char* fmt, ...) {
     va_start(args, fmt);
     SDL_LogMessageV(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_VERBOSE, fmt, args);
     va_end(args);
+}
+
+static inline float sanitize_sample(float v) {
+    if (!isfinite(v) || fabsf(v) > 64.0f) {
+        return 0.0f;
+    }
+    if (fabsf(v) < 1e-12f) {
+        return 0.0f;
+    }
+    return v;
+}
+
+static void sanitize_block(float* buf, size_t samples) {
+    if (!buf) {
+        return;
+    }
+    for (size_t i = 0; i < samples; ++i) {
+        buf[i] = sanitize_sample(buf[i]);
+    }
 }
 
 static void engine_clip_destroy(Engine* engine, EngineClip* clip) {
@@ -380,6 +400,11 @@ static void engine_rebuild_sources(Engine* engine) {
     if (!engine || !engine->graph) {
         return;
     }
+    if (engine->fxm && engine->fxm_mutex) {
+        SDL_LockMutex(engine->fxm_mutex);
+        fxm_set_track_count(engine->fxm, engine->track_count);
+        SDL_UnlockMutex(engine->fxm_mutex);
+    }
     engine_graph_clear_sources(engine->graph);
     bool any_solo = false;
     for (int i = 0; i < engine->track_count; ++i) {
@@ -408,7 +433,7 @@ static void engine_rebuild_sources(Engine* engine) {
                 continue;
             }
             float clip_gain = clip->gain != 0.0f ? clip->gain : 1.0f;
-            engine_graph_add_source(engine->graph, &engine->sampler_ops, clip->sampler, track_gain * clip_gain);
+            engine_graph_add_source(engine->graph, &engine->sampler_ops, clip->sampler, track_gain * clip_gain, i);
         }
     }
     engine_graph_reset(engine->graph);
@@ -464,6 +489,44 @@ static void engine_process_commands(Engine* engine) {
     }
 }
 
+static void engine_mix_tracks(Engine* engine,
+                              uint64_t start_frame,
+                              int frames,
+                              float* out,
+                              float* track_buffer,
+                              int channels) {
+    if (!engine || !out || !track_buffer || frames <= 0 || channels <= 0) {
+        return;
+    }
+    memset(out, 0, (size_t)frames * (size_t)channels * sizeof(float));
+
+    int tcount = engine->track_count;
+    for (int t = 0; t < tcount; ++t) {
+        memset(track_buffer, 0, (size_t)frames * (size_t)channels * sizeof(float));
+        engine_graph_render_track(engine->graph,
+                                  track_buffer,
+                                  frames,
+                                  start_frame,
+                                  t);
+        if (engine->fxm && engine->fxm_mutex) {
+            SDL_LockMutex(engine->fxm_mutex);
+            fxm_render_track(engine->fxm, t, track_buffer, frames, channels);
+            SDL_UnlockMutex(engine->fxm_mutex);
+        }
+        for (int s = 0; s < frames * channels; ++s) {
+            out[s] += track_buffer[s];
+        }
+    }
+
+    if (engine->fxm && engine->fxm_mutex) {
+        SDL_LockMutex(engine->fxm_mutex);
+        fxm_render_master(engine->fxm, out, frames, channels);
+        SDL_UnlockMutex(engine->fxm_mutex);
+    }
+
+    sanitize_block(out, (size_t)frames * (size_t)channels);
+}
+
 static int engine_worker_main(void* userdata) {
     Engine* engine = (Engine*)userdata;
     if (!engine) {
@@ -475,7 +538,8 @@ static int engine_worker_main(void* userdata) {
     }
     const int block = engine->config.block_size;
     float* block_buffer = (float*)malloc((size_t)block * (size_t)channels * sizeof(float));
-    if (!block_buffer) {
+    float* track_buffer = (float*)malloc((size_t)block * (size_t)channels * sizeof(float));
+    if (!block_buffer || !track_buffer) {
         return -1;
     }
 
@@ -548,12 +612,17 @@ static int engine_worker_main(void* userdata) {
                 chunk = frames_remaining;
             }
 
+            Uint64 start_counter = engine->config.enable_timing_logs ? SDL_GetPerformanceCounter() : 0;
+
+            // mix tracks with per-track FX
+            float* out_ptr = block_buffer + produced * channels;
+            engine_mix_tracks(engine, engine->transport_frame, chunk, out_ptr, track_buffer, channels);
+
+            engine->transport_frame += (uint64_t)chunk;
+            produced += chunk;
+            frames_remaining -= chunk;
+
             if (engine->config.enable_timing_logs && perf_freq > 0) {
-                Uint64 start_counter = SDL_GetPerformanceCounter();
-                engine_graph_render(engine->graph,
-                                    block_buffer + produced * channels,
-                                    chunk,
-                                    engine->transport_frame);
                 Uint64 end_counter = SDL_GetPerformanceCounter();
                 double elapsed_ms = (double)(end_counter - start_counter) * 1000.0 / (double)perf_freq;
                 accum_ms += elapsed_ms;
@@ -566,16 +635,7 @@ static int engine_worker_main(void* userdata) {
                     accum_blocks = 0;
                     last_report_counter = end_counter;
                 }
-            } else {
-                engine_graph_render(engine->graph,
-                                    block_buffer + produced * channels,
-                                    chunk,
-                                    engine->transport_frame);
             }
-
-            engine->transport_frame += (uint64_t)chunk;
-            produced += chunk;
-            frames_remaining -= chunk;
 
             if (loop_enabled) {
                 uint64_t loop_start_cur = atomic_load_explicit(&engine->loop_start_frame, memory_order_acquire);
@@ -595,10 +655,13 @@ static int engine_worker_main(void* userdata) {
             SDL_UnlockMutex(engine->fxm_mutex);
         }
 
+        sanitize_block(block_buffer, (size_t)block * (size_t)channels);
+
         audio_queue_write(&engine->output_queue, block_buffer, (size_t)block);
     }
 
     free(block_buffer);
+    free(track_buffer);
     return 0;
 }
 
@@ -666,7 +729,7 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
     engine->next_clip_id = 1;
 
     engine_graph_clear_sources(engine->graph);
-    engine_graph_add_source(engine->graph, &engine->tone_ops, engine->tone_source, 1.0f);
+    engine_graph_add_source(engine->graph, &engine->tone_ops, engine->tone_source, 1.0f, -1);
     engine_graph_reset(engine->graph);
 
     audio_media_cache_init(&engine->media_cache, engine->config.enable_cache_logs);
@@ -709,7 +772,83 @@ void engine_destroy(Engine* engine) {
         SDL_DestroyMutex(engine->fxm_mutex);
         engine->fxm_mutex = NULL;
     }
-   free(engine);
+    free(engine);
+}
+
+typedef struct EngineFxSnapshot {
+    FxMasterSnapshot master;
+    FxMasterSnapshot* tracks;
+    int track_count;
+} EngineFxSnapshot;
+
+static bool engine_fx_snapshot_all(Engine* engine, EngineFxSnapshot* out_snap) {
+    if (!engine || !engine->fxm_mutex || !out_snap) {
+        return false;
+    }
+    SDL_zero(*out_snap);
+    SDL_LockMutex(engine->fxm_mutex);
+    bool ok = false;
+    FxMasterSnapshot master = {0};
+    if (engine->fxm && fxm_master_snapshot(engine->fxm, &master)) {
+        ok = true;
+    }
+    int tcount = engine->track_count;
+    FxMasterSnapshot* tracks = NULL;
+    if (ok && tcount > 0) {
+        tracks = (FxMasterSnapshot*)calloc((size_t)tcount, sizeof(FxMasterSnapshot));
+        if (!tracks) {
+            ok = false;
+        } else {
+            for (int t = 0; t < tcount; ++t) {
+                fxm_track_snapshot(engine->fxm, t, &tracks[t]);
+            }
+        }
+    }
+    SDL_UnlockMutex(engine->fxm_mutex);
+    if (!ok) {
+        free(tracks);
+        return false;
+    }
+    out_snap->master = master;
+    out_snap->tracks = tracks;
+    out_snap->track_count = tcount;
+    return true;
+}
+
+static void engine_fx_restore_all(Engine* engine, const EngineFxSnapshot* snap) {
+    if (!engine || !engine->fxm_mutex || !snap || !engine->fxm) {
+        return;
+    }
+    SDL_LockMutex(engine->fxm_mutex);
+    fxm_set_track_count(engine->fxm, snap->track_count);
+    for (int i = 0; i < snap->master.count && i < FX_MASTER_MAX; ++i) {
+        const FxMasterInstanceInfo* src = &snap->master.items[i];
+        FxInstId id = fxm_master_add(engine->fxm, src->type);
+        if (!id) continue;
+        uint32_t pc = src->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : src->param_count;
+        for (uint32_t p = 0; p < pc; ++p) {
+            fxm_master_set_param(engine->fxm, id, p, src->params[p]);
+        }
+        if (!src->enabled) {
+            fxm_master_set_enabled(engine->fxm, id, false);
+        }
+    }
+    for (int t = 0; t < snap->track_count; ++t) {
+        const FxMasterSnapshot* ts = &snap->tracks[t];
+        for (int i = 0; i < ts->count && i < FX_MASTER_MAX; ++i) {
+            const FxMasterInstanceInfo* src = &ts->items[i];
+            FxInstId id = fxm_track_add(engine->fxm, t, src->type);
+            if (!id) continue;
+            uint32_t pc = src->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : src->param_count;
+            for (uint32_t p = 0; p < pc; ++p) {
+                fxm_track_set_param(engine->fxm, t, id, p, src->params[p]);
+            }
+            if (!src->enabled) {
+                fxm_track_set_enabled(engine->fxm, t, id, false);
+            }
+        }
+    }
+    SDL_UnlockMutex(engine->fxm_mutex);
 }
 
 bool engine_start(Engine* engine) {
@@ -722,9 +861,13 @@ bool engine_start(Engine* engine) {
         .block_size = engine->config.block_size,
         .channels = 2
     };
+    EngineFxSnapshot fx_snap = {0};
+    bool had_fxm = engine_fx_snapshot_all(engine, &fx_snap);
+
     if (!engine->device.is_open) {
         if (!audio_device_open(&engine->device, &want, engine_audio_callback, engine)) {
             SDL_Log("engine_start: failed to open audio device");
+            free(fx_snap.tracks);
             return false;
         }
     }
@@ -772,6 +915,12 @@ bool engine_start(Engine* engine) {
 
     fx_register_builtins_all(new_fxm);
     engine->fxm = new_fxm;
+
+    if (had_fxm) {
+        engine_fx_restore_all(engine, &fx_snap);
+    }
+    free(fx_snap.tracks);
+
     SDL_UnlockMutex(engine->fxm_mutex);
 
     engine->transport_frame = 0;
@@ -927,6 +1076,73 @@ bool engine_fx_master_set_enabled(Engine* engine, FxInstId id, bool enabled) {
     return ok;
 }
 
+FxInstId engine_fx_track_add(Engine* engine, int track_index, FxTypeId type) {
+    if (!engine || !engine->fxm_mutex) return 0;
+    FxInstId id = 0;
+    SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) {
+        id = fxm_track_add(engine->fxm, track_index, type);
+    }
+    SDL_UnlockMutex(engine->fxm_mutex);
+    return id;
+}
+
+bool engine_fx_track_remove(Engine* engine, int track_index, FxInstId id) {
+    if (!engine || !engine->fxm_mutex || id == 0) return false;
+    bool ok = false;
+    SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) ok = fxm_track_remove(engine->fxm, track_index, id);
+    SDL_UnlockMutex(engine->fxm_mutex);
+    return ok;
+}
+
+bool engine_fx_track_reorder(Engine* engine, int track_index, FxInstId id, int new_index) {
+    if (!engine || !engine->fxm_mutex || id == 0) return false;
+    bool ok = false;
+    SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) ok = fxm_track_reorder(engine->fxm, track_index, id, new_index);
+    SDL_UnlockMutex(engine->fxm_mutex);
+    return ok;
+}
+
+bool engine_fx_track_set_param(Engine* engine, int track_index, FxInstId id, uint32_t param_index, float value) {
+    if (!engine || !engine->fxm_mutex || id == 0) return false;
+    bool ok = false;
+    SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) ok = fxm_track_set_param(engine->fxm, track_index, id, param_index, value);
+    SDL_UnlockMutex(engine->fxm_mutex);
+    return ok;
+}
+
+bool engine_fx_track_set_enabled(Engine* engine, int track_index, FxInstId id, bool enabled) {
+    if (!engine || !engine->fxm_mutex || id == 0) return false;
+    bool ok = false;
+    SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) ok = fxm_track_set_enabled(engine->fxm, track_index, id, enabled);
+    SDL_UnlockMutex(engine->fxm_mutex);
+    return ok;
+}
+
+bool engine_fx_track_snapshot(const Engine* engine, int track_index, FxMasterSnapshot* out_snapshot) {
+    if (!engine || !engine->fxm_mutex || !out_snapshot) return false;
+    bool ok = false;
+    SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) ok = fxm_track_snapshot(engine->fxm, track_index, out_snapshot);
+    SDL_UnlockMutex(engine->fxm_mutex);
+    return ok;
+}
+
+bool engine_fx_set_track_count(Engine* engine, int track_count) {
+    if (!engine || !engine->fxm_mutex || track_count < 0) {
+        return false;
+    }
+    bool ok = false;
+    SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) ok = fxm_set_track_count(engine->fxm, track_count);
+    SDL_UnlockMutex(engine->fxm_mutex);
+    return ok;
+}
+
 bool engine_bounce_range(Engine* engine,
                          uint64_t start_frame,
                          uint64_t end_frame,
@@ -960,11 +1176,10 @@ bool engine_bounce_range(Engine* engine,
     engine_graph_reset(engine->graph);
 
     int block = engine->config.block_size > 0 ? engine->config.block_size : 512;
-    int offline_block = block * 8;
-    if (offline_block < block) offline_block = block;
-    if (offline_block > 8192) offline_block = 8192;
+    int offline_block = block;
     float* buffer = (float*)calloc((size_t)total_frames * (size_t)channels, sizeof(float));
-    if (!buffer) {
+    float* track_buffer = (float*)calloc((size_t)offline_block * (size_t)channels, sizeof(float));
+    if (!buffer || !track_buffer) {
         if (was_running) {
             engine_start(engine);
             engine_transport_seek(engine, prev_transport);
@@ -981,12 +1196,7 @@ bool engine_bounce_range(Engine* engine,
         int chunk = (int)(remaining > (uint64_t)offline_block ? (uint64_t)offline_block : remaining);
         float* out = buffer + rendered * (uint64_t)channels;
 
-        engine_graph_render(engine->graph, out, chunk, start_frame + rendered);
-        if (engine->fxm && engine->fxm_mutex) {
-            SDL_LockMutex(engine->fxm_mutex);
-            fxm_render_master(engine->fxm, out, chunk, channels);
-            SDL_UnlockMutex(engine->fxm_mutex);
-        }
+        engine_mix_tracks(engine, start_frame + rendered, chunk, out, track_buffer, channels);
 
         rendered += (uint64_t)chunk;
         if (progress_cb) {
@@ -994,8 +1204,30 @@ bool engine_bounce_range(Engine* engine,
         }
     }
 
-    bool ok = wav_write_pcm16(out_path, buffer, total_frames, channels, sample_rate);
+    // Normalize to prevent clipping; also emit a float WAV for fidelity/debug.
+    float peak = 0.0f;
+    size_t total_samples = (size_t)total_frames * (size_t)channels;
+    for (size_t i = 0; i < total_samples; ++i) {
+        float a = fabsf(buffer[i]);
+        if (a > peak) peak = a;
+    }
+    float norm = (peak > 1.0f) ? (1.0f / peak) : 1.0f;
+    if (norm < 1.0f) {
+        for (size_t i = 0; i < total_samples; ++i) {
+            buffer[i] *= norm;
+        }
+    }
+
+    // Write a float WAV alongside the PCM16 for comparison.
+    char float_path[512];
+    snprintf(float_path, sizeof(float_path), "%s.f32.wav", out_path);
+
+    bool ok_float = wav_write_f32(float_path, buffer, total_frames, channels, sample_rate);
+    uint32_t dither_seed = (uint32_t)(SDL_GetPerformanceCounter() & 0xffffffffu);
+    bool ok = wav_write_pcm16_dithered(out_path, buffer, total_frames, channels, sample_rate, dither_seed);
+    (void)ok_float;
     free(buffer);
+    free(track_buffer);
 
     if (was_running) {
         if (engine_start(engine)) {

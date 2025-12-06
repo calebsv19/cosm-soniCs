@@ -41,6 +41,7 @@ typedef struct {
 // Creation/destruction (non-RT)
 EffectsManager* fxm_create(const FxConfig* cfg);
 void            fxm_destroy(EffectsManager* fm);
+bool            fxm_set_track_count(EffectsManager* fm, int track_count);
 
 // ---------- Master chain (v1 minimal integration) ----------
 
@@ -60,10 +61,7 @@ void     fxm_render_master(EffectsManager* fm,
                            int frames,
                            int channels);
 
-// ---------- (Optional next step) Per-track chains ----------
-// NOTE: Your current EngineGraph mixes sources directly to one buffer.
-// We'll first ship master-only (above). When you introduce per-track
-// mix buffers, we can flip on these APIs with minimal changes.
+// ---------- Per-track chains ----------
 
 FxInstId fxm_track_add(EffectsManager* fm, int track_index, FxTypeId type);
 bool     fxm_track_remove(EffectsManager* fm, int track_index, FxInstId id);
@@ -71,6 +69,7 @@ bool     fxm_track_reorder(EffectsManager* fm, int track_index, FxInstId id, int
 bool     fxm_track_set_param(EffectsManager* fm, int track_index, FxInstId id, uint32_t pidx, 
 float value);
 bool     fxm_track_set_enabled(EffectsManager* fm, int track_index, FxInstId id, bool enabled);
+bool     fxm_track_snapshot(const EffectsManager* fm, int track_index, FxMasterSnapshot* out);
 
 // RT render for a single track's interleaved buffer (when available).
 void     fxm_render_track(EffectsManager* fm,

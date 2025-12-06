@@ -264,7 +264,9 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
     SDL_Color header_bg = {30, 30, 38, 255};
     SDL_Color header_border = {70, 70, 90, 255};
     SDL_Color header_text = {200, 200, 210, 255};
-    int active_track = (state->active_track_index >= 0 && state->active_track_index < track_count) ? state->active_track_index : -1;
+    int active_track = (state->selected_track_index >= 0 && state->selected_track_index < track_count)
+                           ? state->selected_track_index
+                           : -1;
     const TrackNameEditor* editor = &state->track_name_editor;
     SDL_Point mouse_point = {state->mouse_x, state->mouse_y};
 

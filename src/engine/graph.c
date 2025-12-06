@@ -75,7 +75,7 @@ void engine_graph_clear_sources(EngineGraph* graph) {
     graph->source_count = 0;
 }
 
-bool engine_graph_add_source(EngineGraph* graph, const EngineGraphSourceOps* ops, void* userdata, float gain) {
+bool engine_graph_add_source(EngineGraph* graph, const EngineGraphSourceOps* ops, void* userdata, float gain, int track_index) {
     if (!graph || !ops || !ops->render) {
         return false;
     }
@@ -92,6 +92,7 @@ bool engine_graph_add_source(EngineGraph* graph, const EngineGraphSourceOps* ops
         .ops = ops,
         .userdata = userdata,
         .gain = gain,
+        .track_index = track_index,
     };
     if (ops->reset) {
         ops->reset(userdata, graph->sample_rate, graph->channels);
@@ -112,7 +113,7 @@ static bool ensure_mix_capacity(EngineGraph* graph, size_t samples) {
     return true;
 }
 
-void engine_graph_render(EngineGraph* graph, float* interleaved_out, int frames, uint64_t transport_frame) {
+static void engine_graph_render_internal(EngineGraph* graph, float* interleaved_out, int frames, uint64_t transport_frame, int track_filter) {
     if (!graph || !interleaved_out || frames <= 0) {
         return;
     }
@@ -129,6 +130,9 @@ void engine_graph_render(EngineGraph* graph, float* interleaved_out, int frames,
 
     for (int i = 0; i < graph->source_count; ++i) {
         EngineGraphSourceEntry* entry = &graph->sources[i];
+        if (track_filter >= 0 && entry->track_index != track_filter) {
+            continue;
+        }
         memset(graph->mix_buffer, 0, total_samples * sizeof(float));
         entry->ops->render(entry->userdata, graph->mix_buffer, frames, transport_frame);
         float gain = entry->gain;
@@ -139,6 +143,14 @@ void engine_graph_render(EngineGraph* graph, float* interleaved_out, int frames,
             interleaved_out[s] += graph->mix_buffer[s] * gain;
         }
     }
+}
+
+void engine_graph_render(EngineGraph* graph, float* interleaved_out, int frames, uint64_t transport_frame) {
+    engine_graph_render_internal(graph, interleaved_out, frames, transport_frame, -1);
+}
+
+void engine_graph_render_track(EngineGraph* graph, float* interleaved_out, int frames, uint64_t transport_frame, int track_index) {
+    engine_graph_render_internal(graph, interleaved_out, frames, transport_frame, track_index);
 }
 
 void engine_graph_reset(EngineGraph* graph) {

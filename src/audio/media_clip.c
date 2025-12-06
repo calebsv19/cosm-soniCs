@@ -178,7 +178,9 @@ bool audio_media_clip_load_wav(const char* path, int target_sample_rate, AudioMe
         }
     }
 
-    if (format_tag != 1 || channels == 0 || sample_rate == 0 || bits_per_sample == 0 || data_chunk_size == 0) {
+    bool pcm_int = (format_tag == 1);
+    bool pcm_float = (format_tag == 3);
+    if ((!pcm_int && !pcm_float) || channels == 0 || sample_rate == 0 || bits_per_sample == 0 || data_chunk_size == 0) {
         fclose(file);
         return false;
     }
@@ -206,14 +208,14 @@ bool audio_media_clip_load_wav(const char* path, int target_sample_rate, AudioMe
     for (uint64_t i = 0; i < frame_count && ok; ++i) {
         for (uint16_t ch = 0; ch < channels; ++ch) {
             float value = 0.0f;
-            if (bytes_per_sample == 2) {
+            if (pcm_int && bytes_per_sample == 2) {
                 int16_t sample16;
                 if (fread(&sample16, sizeof(int16_t), 1, file) != 1) {
                     ok = false;
                     break;
                 }
                 value = (float)sample16 / 32768.0f;
-            } else if (bytes_per_sample == 4 && bits_per_sample == 32) {
+            } else if (pcm_float && bytes_per_sample == 4 && bits_per_sample == 32) {
                 float sample32;
                 if (fread(&sample32, sizeof(float), 1, file) != 1) {
                     ok = false;

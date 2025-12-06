@@ -30,11 +30,14 @@ typedef struct FxLimiter {
     float gain; // current shared gain (linear)
 } FxLimiter;
 
+static void limiter_reset(FxHandle* h);
+
 static float* chan_ptr(struct FxLimiter* L, unsigned ch){ return L->buf + (size_t)ch * (size_t)L->look_samples; }
 
 static void limiter_set_param(FxHandle* h, uint32_t idx, float value)
 {
     FxLimiter* L = (FxLimiter*)h;
+    unsigned old_look = L->look_samples;
     switch (idx) {
         case 0: L->ceiling_dB = clampf(value, -24.f, 0.f); break;
         case 1: L->look_ms    = clampf(value, 0.0f, 3.0f);
@@ -43,6 +46,18 @@ static void limiter_set_param(FxHandle* h, uint32_t idx, float value)
                 break;
         case 2: L->release_ms = clampf(value, 5.f, 200.f); break;
         default: break;
+    }
+    if (L->look_samples != old_look) {
+        size_t total = (size_t)L->look_samples * (size_t)L->max_channels;
+        float* new_buf = (float*)calloc(total, sizeof(float));
+        if (new_buf) {
+            free(L->buf);
+            L->buf = new_buf;
+            limiter_reset(h);
+        } else {
+            // allocation failed; revert to old size to avoid OOB
+            L->look_samples = old_look;
+        }
     }
 }
 

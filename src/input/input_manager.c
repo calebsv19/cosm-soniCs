@@ -8,6 +8,7 @@
 #include "input/inspector_input.h"
 #include "input/effects_panel_input.h"
 #include "input/timeline_selection.h"
+#include "session.h"
 #include "ui/layout.h"
 #include "ui/library_browser.h"
 #include "ui/panes.h"
@@ -122,6 +123,17 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
     }
     manager->previous_b = b_now;
 
+    bool s_now = keys[SDL_SCANCODE_S] != 0;
+    if (s_now && !manager->previous_s) {
+        const char* session_path = "config/last_session.json";
+        if (!session_save_to_file(state, session_path)) {
+            SDL_Log("Save failed to %s", session_path);
+        } else {
+            SDL_Log("Session saved to %s", session_path);
+        }
+    }
+    manager->previous_s = s_now;
+
     bool f7_now = keys[SDL_SCANCODE_F7] != 0;
     if (f7_now && !manager->previous_f7) {
         state->engine_logging_enabled = !state->engine_logging_enabled;
@@ -168,6 +180,7 @@ void input_manager_init(InputManager* manager) {
     manager->previous_enter = false;
     manager->previous_c = false;
     manager->previous_b = false;
+    manager->previous_s = false;
     manager->previous_f7 = false;
     manager->previous_f8 = false;
     manager->previous_f9 = false;

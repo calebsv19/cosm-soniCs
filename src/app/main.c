@@ -294,6 +294,7 @@ int main(void) {
         } else {
             engine_started = true;
             session_apply_pending_master_fx(&state);
+            session_apply_pending_track_fx(&state);
             effects_panel_sync_from_engine(&state);
         }
     }

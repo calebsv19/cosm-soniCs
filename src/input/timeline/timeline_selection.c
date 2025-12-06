@@ -27,6 +27,7 @@ void timeline_selection_clear(AppState* state) {
     state->selection_count = 0;
     state->selected_track_index = -1;
     state->selected_clip_index = -1;
+    state->active_track_index = -1;
     inspector_input_init(state);
     state->timeline_drop_track_index = 0;
 }

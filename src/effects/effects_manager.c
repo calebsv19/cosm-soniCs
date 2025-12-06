@@ -46,6 +46,11 @@ struct EffectsManager {
     FxChain master;
     FxInstId next_inst_id;
 
+    // Per-track chains
+    FxChain* tracks;
+    int track_count;
+    int track_capacity;
+
     // Simple built-in registry table
     FxRegistryEntry* reg;
     int reg_count;
@@ -100,6 +105,28 @@ static bool chain_remove(FxChain* c, int idx) {
                 (size_t)(c->count - idx - 1) * sizeof(FxInstance));
     }
     c->count--;
+    return true;
+}
+
+static bool ensure_track_capacity(EffectsManager* fm, int track_count) {
+    if (!fm || track_count < 0) return false;
+    if (track_count <= fm->track_capacity) {
+        fm->track_count = track_count;
+        return true;
+    }
+    int new_cap = fm->track_capacity == 0 ? 4 : fm->track_capacity;
+    while (new_cap < track_count) new_cap *= 2;
+    FxChain* n = (FxChain*)realloc(fm->tracks, (size_t)new_cap * sizeof(FxChain));
+    if (!n) return false;
+    // initialize new slots
+    for (int i = fm->track_capacity; i < new_cap; ++i) {
+        n[i].items = NULL;
+        n[i].count = 0;
+        n[i].capacity = 0;
+    }
+    fm->tracks = n;
+    fm->track_capacity = new_cap;
+    fm->track_count = track_count;
     return true;
 }
 
@@ -201,6 +228,9 @@ EffectsManager* fxm_create(const FxConfig* cfg) {
     fm->master.items = NULL;
     fm->master.count = 0;
     fm->master.capacity = 0;
+    fm->tracks = NULL;
+    fm->track_count = 0;
+    fm->track_capacity = 0;
     fm->next_inst_id = 1;
     fm->reg = NULL;
     fm->reg_count = fm->reg_cap = 0;
@@ -211,6 +241,12 @@ EffectsManager* fxm_create(const FxConfig* cfg) {
 void fxm_destroy(EffectsManager* fm) {
     if (!fm) return;
     chain_free(&fm->master);
+    if (fm->tracks) {
+        for (int i = 0; i < fm->track_count; ++i) {
+            chain_free(&fm->tracks[i]);
+        }
+        free(fm->tracks);
+    }
     free(fm->scratch);
     free(fm->reg);
     free(fm);
@@ -271,6 +307,22 @@ static bool instantiate_fx(EffectsManager* fm, const FxRegistryEntry* ent, FxIns
 // -------------------------------
 // Master chain API
 // -------------------------------
+
+bool fxm_set_track_count(EffectsManager* fm, int track_count) {
+    if (!fm || track_count < 0) return false;
+    int prev = fm->track_count;
+    if (!ensure_track_capacity(fm, track_count)) {
+        fm->track_count = prev;
+        return false;
+    }
+    if (fm->tracks && track_count < prev) {
+        for (int i = track_count; i < prev; ++i) {
+            chain_free(&fm->tracks[i]);
+        }
+    }
+    fm->track_count = track_count;
+    return true;
+}
 
 FxInstId fxm_master_add(EffectsManager* fm, FxTypeId type) {
     if (!fm) return (FxInstId)0;
@@ -368,6 +420,102 @@ bool fxm_master_snapshot(const EffectsManager* fm, FxMasterSnapshot* out) {
     return true;
 }
 
+static FxInstance* track_get_by_id(EffectsManager* fm, int track_index, FxInstId id, int* out_index) {
+    if (!fm || !fm->tracks || id == 0) return NULL;
+    if (track_index < 0 || track_index >= fm->track_count) return NULL;
+    FxChain* c = &fm->tracks[track_index];
+    for (int i = 0; i < c->count; ++i) {
+        FxInstance* inst = &c->items[i];
+        if (inst->id == id) {
+            if (out_index) *out_index = i;
+            return inst;
+        }
+    }
+    return NULL;
+}
+
+FxInstId fxm_track_add(EffectsManager* fm, int track_index, FxTypeId type) {
+    if (!fm || track_index < 0) return (FxInstId)0;
+    if (!ensure_track_capacity(fm, track_index + 1)) return (FxInstId)0;
+    FxChain* chain = &fm->tracks[track_index];
+
+    const FxRegistryEntry* ent = reg_find_by_id(fm, type);
+    if (!ent) return (FxInstId)0;
+
+    FxInstance inst = {0};
+    if (!instantiate_fx(fm, ent, &inst)) return (FxInstId)0;
+
+    FxInstance* slot = chain_insert(chain, chain->count);
+    if (!slot) {
+        if (inst.handle && inst.vt.destroy) inst.vt.destroy(inst.handle);
+        return (FxInstId)0;
+    }
+    FxInstId new_id = fm->next_inst_id++;
+    if (new_id == 0) new_id = fm->next_inst_id++;
+    inst.id = new_id;
+    *slot = inst;
+    return new_id;
+}
+
+bool fxm_track_remove(EffectsManager* fm, int track_index, FxInstId id) {
+    int idx = -1;
+    FxInstance* inst = track_get_by_id(fm, track_index, id, &idx);
+    if (!inst) return false;
+    return chain_remove(&fm->tracks[track_index], idx);
+}
+
+bool fxm_track_reorder(EffectsManager* fm, int track_index, FxInstId id, int new_index) {
+    if (!fm || track_index < 0 || track_index >= fm->track_count) return false;
+    int idx = -1;
+    FxInstance* inst = track_get_by_id(fm, track_index, id, &idx);
+    if (!inst) return false;
+    FxChain* chain = &fm->tracks[track_index];
+    if (new_index < 0) new_index = 0;
+    if (new_index >= chain->count) new_index = chain->count - 1;
+    return chain_reorder(chain, idx, new_index);
+}
+
+bool fxm_track_set_param(EffectsManager* fm, int track_index, FxInstId id, uint32_t pidx, float value) {
+    FxInstance* inst = track_get_by_id(fm, track_index, id, NULL);
+    if (!inst || pidx >= inst->desc.num_params) return false;
+    if (!inst->vt.set_param) return false;
+    inst->vt.set_param(inst->handle, pidx, value);
+    if (pidx < FX_MAX_PARAMS) inst->param_values[pidx] = value;
+    return true;
+}
+
+bool fxm_track_set_enabled(EffectsManager* fm, int track_index, FxInstId id, bool enabled) {
+    FxInstance* inst = track_get_by_id(fm, track_index, id, NULL);
+    if (!inst) return false;
+    inst->enabled = enabled;
+    return true;
+}
+
+bool fxm_track_snapshot(const EffectsManager* fm, int track_index, FxMasterSnapshot* out) {
+    if (!fm || !out || !fm->tracks) return false;
+    if (track_index < 0 || track_index >= fm->track_count) return false;
+    FxChain* chain = &fm->tracks[track_index];
+    FxMasterSnapshot snap = {0};
+    int limit = chain->count;
+    if (limit > FX_MASTER_MAX) limit = FX_MASTER_MAX;
+    for (int i = 0; i < limit; ++i) {
+        const FxInstance* inst = &chain->items[i];
+        FxMasterInstanceInfo info = {0};
+        info.id = inst->id;
+        info.type = inst->type;
+        info.enabled = inst->enabled;
+        uint32_t pc = inst->desc.num_params;
+        if (pc > FX_MAX_PARAMS) pc = FX_MAX_PARAMS;
+        info.param_count = pc;
+        for (uint32_t p = 0; p < pc; ++p) {
+            info.params[p] = inst->param_values[p];
+        }
+        snap.items[snap.count++] = info;
+    }
+    *out = snap;
+    return true;
+}
+
 // -------------------------------
 // Real-time render (master bus)
 // -------------------------------
@@ -405,32 +553,31 @@ void fxm_render_master(EffectsManager* fm, float* interleaved_io, int frames, in
 }
 
 // -------------------------------
-// Track chain stubs (future work)
+// Track render
 // -------------------------------
 
-FxInstId fxm_track_add(EffectsManager* fm, int track_index, FxTypeId type) {
-    (void)fm; (void)track_index; (void)type;
-    return 0;
-}
-bool fxm_track_remove(EffectsManager* fm, int track_index, FxInstId id) {
-    (void)fm; (void)track_index; (void)id;
-    return false;
-}
-bool fxm_track_reorder(EffectsManager* fm, int track_index, FxInstId id, int new_index) {
-    (void)fm; (void)track_index; (void)id; (void)new_index;
-    return false;
-}
-bool fxm_track_set_param(EffectsManager* fm, int track_index, FxInstId id, uint32_t pidx, float 
-value) {
-    (void)fm; (void)track_index; (void)id; (void)pidx; (void)value;
-    return false;
-}
-bool fxm_track_set_enabled(EffectsManager* fm, int track_index, FxInstId id, bool enabled) {
-    (void)fm; (void)track_index; (void)id; (void)enabled;
-    return false;
-}
-void fxm_render_track(EffectsManager* fm, int track_index, float* interleaved_io, int frames, 
-int channels) {
-    (void)fm; (void)track_index; (void)interleaved_io; (void)frames; (void)channels;
-    // not implemented in v1
+void fxm_render_track(EffectsManager* fm, int track_index, float* interleaved_io, int frames, int channels) {
+    if (!fm || !fm->tracks || track_index < 0 || track_index >= fm->track_count) return;
+    FxChain* chain = &fm->tracks[track_index];
+    if (chain->count == 0) return;
+    int n = frames * channels;
+    if (n <= 0) return;
+    float* scratch = fm->scratch;
+    if (!scratch) return;
+    for (int i = 0; i < chain->count; ++i) {
+        FxInstance* inst = &chain->items[i];
+        if (!inst->enabled) continue;
+        FxHandle* h = inst->handle;
+        if (!h || !inst->vt.process) continue;
+
+        if (inst->desc.flags & FX_FLAG_INPLACE_OK) {
+            inst->vt.process(h, interleaved_io, interleaved_io, frames, channels);
+        } else {
+            if (n > fm->scratch_frames * fm->scratch_channels) {
+                continue;
+            }
+            inst->vt.process(h, interleaved_io, scratch, frames, channels);
+            memcpy(interleaved_io, scratch, (size_t)n * sizeof(float));
+        }
+    }
 }

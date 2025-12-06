@@ -206,6 +206,49 @@ static void effects_panel_build_categories(EffectsPanelState* panel) {
     }
 }
 
+static bool effects_panel_update_target(AppState* state) {
+    if (!state) {
+        return false;
+    }
+    EffectsPanelState* panel = &state->effects_panel;
+    EffectsPanelTarget prev_target = panel->target;
+    int prev_track = panel->target_track_index;
+    char prev_label[sizeof(panel->target_label)];
+    strncpy(prev_label, panel->target_label, sizeof(prev_label) - 1);
+    prev_label[sizeof(prev_label) - 1] = '\0';
+
+    panel->target = FX_PANEL_TARGET_MASTER;
+    panel->target_track_index = -1;
+    const char* label = "Master";
+    char label_buf[sizeof(panel->target_label)];
+    label_buf[0] = '\0';
+
+    if (state->engine) {
+        int sel_track = state->selected_track_index;
+        int track_count = engine_get_track_count(state->engine);
+        if (sel_track >= 0 && sel_track < track_count) {
+            panel->target = FX_PANEL_TARGET_TRACK;
+            panel->target_track_index = sel_track;
+            const EngineTrack* tracks = engine_get_tracks(state->engine);
+            if (tracks && sel_track >= 0 && sel_track < track_count) {
+                const EngineTrack* track = &tracks[sel_track];
+                if (track->name[0] != '\0') {
+                    label = track->name;
+                } else {
+                    snprintf(label_buf, sizeof(label_buf), "Track %d", sel_track + 1);
+                    label = label_buf;
+                }
+            }
+        }
+    }
+
+    strncpy(panel->target_label, label, sizeof(panel->target_label) - 1);
+    panel->target_label[sizeof(panel->target_label) - 1] = '\0';
+
+    bool label_changed = strncmp(prev_label, panel->target_label, sizeof(prev_label)) != 0;
+    return label_changed || prev_target != panel->target || prev_track != panel->target_track_index;
+}
+
 static void draw_slider(SDL_Renderer* renderer, const SDL_Rect* rect, float t) {
     if (!renderer || !rect || rect->w <= 0 || rect->h <= 0) {
         return;
@@ -288,6 +331,10 @@ void effects_panel_init(AppState* state) {
     }
     SDL_zero(state->effects_panel);
     state->effects_panel.overlay_layer = FX_PANEL_OVERLAY_CLOSED;
+    state->effects_panel.target = FX_PANEL_TARGET_MASTER;
+    state->effects_panel.target_track_index = -1;
+    strncpy(state->effects_panel.target_label, "Master", sizeof(state->effects_panel.target_label) - 1);
+    state->effects_panel.target_label[sizeof(state->effects_panel.target_label) - 1] = '\0';
     state->effects_panel.hovered_category_index = -1;
     state->effects_panel.hovered_effect_index = -1;
     state->effects_panel.active_category_index = -1;
@@ -362,8 +409,15 @@ void effects_panel_sync_from_engine(AppState* state) {
         return;
     }
     EffectsPanelState* panel = &state->effects_panel;
+    effects_panel_update_target(state);
     FxMasterSnapshot snap;
-    if (!engine_fx_master_snapshot(state->engine, &snap)) {
+    bool ok = false;
+    if (panel->target == FX_PANEL_TARGET_TRACK && panel->target_track_index >= 0) {
+        ok = engine_fx_track_snapshot(state->engine, panel->target_track_index, &snap);
+    } else {
+        ok = engine_fx_master_snapshot(state->engine, &snap);
+    }
+    if (!ok) {
         panel->chain_count = 0;
         return;
     }
@@ -757,12 +811,28 @@ void effects_panel_render(SDL_Renderer* renderer, const AppState* state, const E
     SDL_Color label_color = {210, 210, 220, 255};
     SDL_Color text_dim = {160, 170, 190, 255};
 
+    const char* target_label = (panel->target_label[0] != '\0') ? panel->target_label : "Master";
+    char target_line[128];
+    if (panel->target == FX_PANEL_TARGET_TRACK && panel->target_track_index >= 0) {
+        snprintf(target_line, sizeof(target_line), "Track FX: %s", target_label);
+    } else {
+        snprintf(target_line, sizeof(target_line), "Master FX");
+    }
+    int target_w = ui_measure_text_width(target_line, 2);
+    int target_x = layout->panel_rect.x + layout->panel_rect.w - FX_PANEL_MARGIN - target_w;
+    int target_y = layout->panel_rect.y + FX_PANEL_MARGIN + 8;
+    ui_draw_text(renderer, target_x, target_y, target_line, label_color, 2);
+
     // Add button
     bool button_active = (panel->overlay_layer != FX_PANEL_OVERLAY_CLOSED);
     draw_button(renderer, &layout->dropdown_button_rect, button_active, "Add Effect");
 
     if (panel->chain_count == 0) {
-        const char* msg = "No master effects yet. Use 'Add Effect' to insert one.";
+        char msg[160];
+        snprintf(msg,
+                 sizeof(msg),
+                 "No effects on %s yet. Use 'Add Effect' to insert one.",
+                 target_label);
         int msg_x = layout->panel_rect.x + FX_PANEL_MARGIN;
         int msg_y = layout->panel_rect.y + FX_PANEL_MARGIN + 48;
         ui_draw_text(renderer, msg_x, msg_y, msg, text_dim, 2);

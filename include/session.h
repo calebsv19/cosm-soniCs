@@ -7,7 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SESSION_DOCUMENT_VERSION 2
+#define SESSION_DOCUMENT_VERSION 3
 #define SESSION_PATH_MAX 512
 #define SESSION_NAME_MAX 128
 #define SESSION_FX_NAME_MAX 64
@@ -23,15 +23,6 @@ typedef struct {
     float gain;
     bool selected;
 } SessionClip;
-
-typedef struct {
-    char name[SESSION_NAME_MAX];
-    float gain;
-    bool muted;
-    bool solo;
-    int clip_count;
-    SessionClip* clips;
-} SessionTrack;
 
 typedef struct {
     bool enabled;
@@ -66,6 +57,17 @@ typedef struct SessionFxInstance {
 } SessionFxInstance;
 
 typedef struct {
+    char name[SESSION_NAME_MAX];
+    float gain;
+    bool muted;
+    bool solo;
+    int clip_count;
+    SessionClip* clips;
+    SessionFxInstance* fx;
+    int fx_count;
+} SessionTrack;
+
+typedef struct {
     uint32_t version;
     EngineRuntimeConfig engine;
     SessionLoopState loop;
@@ -93,3 +95,4 @@ bool session_document_read_file(const char* path, SessionDocument* out_doc);
 bool session_apply_document(struct AppState* state, const SessionDocument* doc);
 bool session_load_from_file(struct AppState* state, const char* path);
 void session_apply_pending_master_fx(struct AppState* state);
+void session_apply_pending_track_fx(struct AppState* state);
