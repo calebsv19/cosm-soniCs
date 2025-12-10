@@ -677,6 +677,11 @@ bool parse_session_document(JsonReader* r, SessionDocument* doc) {
                         return false;
                     }
                     doc->timeline.visible_seconds = (float)val;
+                } else if (strcmp(timeline_key, "window_start_seconds") == 0) {
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->timeline.window_start_seconds = (float)val;
                 } else if (strcmp(timeline_key, "vertical_scale") == 0) {
                     if (!json_parse_number(r, &val)) {
                         return false;

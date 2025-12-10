@@ -5,6 +5,7 @@
 #include "ui/transport.h"
 #include "ui/timeline_view.h"
 #include "ui/layout.h"
+#include "session/project_manager.h"
 
 #include <SDL2/SDL.h>
 
@@ -42,6 +43,56 @@ static uint64_t transport_total_frames(const AppState* state) {
         }
     }
     return max_frames;
+}
+
+static float transport_total_seconds(const AppState* state) {
+    const EngineRuntimeConfig* cfg = state && state->engine ? engine_get_config(state->engine) : NULL;
+    int sample_rate = cfg ? cfg->sample_rate : 0;
+    if (sample_rate <= 0) {
+        return 0.0f;
+    }
+    uint64_t frames = transport_total_frames(state);
+    if (frames == 0) {
+        return 0.0f;
+    }
+    return (float)frames / (float)sample_rate;
+}
+
+static float timeline_window_max_start(const AppState* state) {
+    if (!state) {
+        return 0.0f;
+    }
+    float visible = clamp_scalar(state->timeline_visible_seconds,
+                                 TIMELINE_MIN_VISIBLE_SECONDS,
+                                 TIMELINE_MAX_VISIBLE_SECONDS);
+    float total_seconds = transport_total_seconds(state);
+    if (total_seconds > visible) {
+        return total_seconds - visible;
+    }
+    return 0.0f;
+}
+
+static void clamp_timeline_window(AppState* state) {
+    if (!state) {
+        return;
+    }
+    float visible = clamp_scalar(state->timeline_visible_seconds,
+                                 TIMELINE_MIN_VISIBLE_SECONDS,
+                                 TIMELINE_MAX_VISIBLE_SECONDS);
+    state->timeline_visible_seconds = visible;
+    float max_start = timeline_window_max_start(state);
+    float start = state->timeline_window_start_seconds;
+    if (start < 0.0f) start = 0.0f;
+    if (start > max_start) start = max_start;
+    state->timeline_window_start_seconds = start;
+}
+
+static void open_project_prompt(AppState* state) {
+    if (!state) return;
+    state->project_prompt.active = true;
+    state->project_prompt.buffer[0] = '\0';
+    state->project_prompt.cursor = 0;
+    SDL_StartTextInput();
 }
 
 static void transport_seek_to(AppState* state, float t) {
@@ -86,6 +137,46 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
     case SDL_MOUSEBUTTONDOWN:
         if (event->button.button == SDL_BUTTON_LEFT) {
             SDL_Point p = {event->button.x, event->button.y};
+            if (SDL_PointInRect(&p, &transport->save_rect)) {
+                if (state->project.has_name) {
+                    project_manager_save(state, state->project.name, true);
+                } else {
+                    open_project_prompt(state);
+                }
+                break;
+            }
+            if (SDL_PointInRect(&p, &transport->load_rect)) {
+                bool shift_down = (SDL_GetModState() & KMOD_SHIFT) != 0;
+                if (shift_down) {
+                    if (project_manager_new(state)) {
+                        project_manager_post_load(state);
+                    }
+                } else {
+                    state->project_load.active = true;
+                    state->project_load.scroll_offset = 0.0f;
+                    state->project_load.selected_index = -1;
+                    state->project_load.last_click_index = -1;
+                    state->project_load.last_click_ticks = 0;
+                    int count = 0;
+                    project_manager_list(state->project_load.entries, (int)(sizeof(state->project_load.entries) / sizeof(state->project_load.entries[0])), &count);
+                    state->project_load.count = count;
+                    if (count > 0) {
+                        int match = -1;
+                        for (int i = 0; i < count; ++i) {
+                            if (state->project.path[0] &&
+                                strcmp(state->project.path, state->project_load.entries[i].path) == 0) {
+                                match = i;
+                                break;
+                            }
+                        }
+                        state->project_load.selected_index = match >= 0 ? match : 0;
+                    } else {
+                        SDL_Log("No project to load (config/projects)");
+                    }
+                }
+                transport_ui_sync(transport, state);
+                break;
+            }
             if (SDL_PointInRect(&p, &transport->grid_rect)) {
                 state->timeline_show_all_grid_lines = !state->timeline_show_all_grid_lines;
                 break;
@@ -101,6 +192,7 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
                 }
                 seconds = clamp_scalar(seconds, TIMELINE_MIN_VISIBLE_SECONDS, TIMELINE_MAX_VISIBLE_SECONDS);
                 state->timeline_visible_seconds = seconds;
+                clamp_timeline_window(state);
                 transport_ui_sync(transport, state);
                 break;
             }
@@ -128,12 +220,24 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
                 transport_ui_sync(transport, state);
                 break;
             }
+            if (SDL_PointInRect(&p, &transport->window_track_rect) || SDL_PointInRect(&p, &transport->window_handle_rect)) {
+                manager->prev_window_slider_down = true;
+                transport->adjusting_window = true;
+                float t = (float)(p.x - transport->window_track_rect.x) / (float)transport->window_track_rect.w;
+                t = clamp_scalar(t, 0.0f, 1.0f);
+                float max_start = timeline_window_max_start(state);
+                state->timeline_window_start_seconds = t * max_start;
+                clamp_timeline_window(state);
+                transport_ui_sync(transport, state);
+                break;
+            }
             if (SDL_PointInRect(&p, &transport->horiz_track_rect)) {
                 manager->prev_horiz_slider_down = true;
                 float t = (float)(p.x - transport->horiz_track_rect.x) / (float)transport->horiz_track_rect.w;
                 t = clamp_scalar(t, 0.0f, 1.0f);
                 state->timeline_visible_seconds = TIMELINE_MIN_VISIBLE_SECONDS +
                     t * (TIMELINE_MAX_VISIBLE_SECONDS - TIMELINE_MIN_VISIBLE_SECONDS);
+                clamp_timeline_window(state);
                 transport_ui_sync(transport, state);
             } else if (SDL_PointInRect(&p, &transport->vert_track_rect)) {
                 manager->prev_vert_slider_down = true;
@@ -149,7 +253,9 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
         if (event->button.button == SDL_BUTTON_LEFT) {
             manager->prev_horiz_slider_down = false;
             manager->prev_vert_slider_down = false;
+            manager->prev_window_slider_down = false;
             transport->adjusting_seek = false;
+            transport->adjusting_window = false;
         }
         break;
     case SDL_MOUSEMOTION:
@@ -158,6 +264,15 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
             t = clamp_scalar(t, 0.0f, 1.0f);
             state->timeline_visible_seconds = TIMELINE_MIN_VISIBLE_SECONDS +
                 t * (TIMELINE_MAX_VISIBLE_SECONDS - TIMELINE_MIN_VISIBLE_SECONDS);
+            clamp_timeline_window(state);
+            transport_ui_sync(transport, state);
+        }
+        if (manager->prev_window_slider_down && transport->window_track_rect.w > 0) {
+            float t = (float)(event->motion.x - transport->window_track_rect.x) / (float)transport->window_track_rect.w;
+            t = clamp_scalar(t, 0.0f, 1.0f);
+            float max_start = timeline_window_max_start(state);
+            state->timeline_window_start_seconds = t * max_start;
+            clamp_timeline_window(state);
             transport_ui_sync(transport, state);
         }
         if (manager->prev_vert_slider_down && transport->vert_track_rect.w > 0) {
@@ -184,7 +299,7 @@ void transport_input_update(InputManager* manager, AppState* state) {
     }
     TransportUI* transport = &state->transport_ui;
     transport_ui_sync(transport, state);
-    if (manager->prev_horiz_slider_down || manager->prev_vert_slider_down || transport->adjusting_seek) {
+    if (manager->prev_horiz_slider_down || manager->prev_vert_slider_down || manager->prev_window_slider_down || transport->adjusting_seek || transport->adjusting_window) {
         int mouse_x, mouse_y;
         Uint32 buttons = SDL_GetMouseState(&mouse_x, &mouse_y);
         (void)buttons;
@@ -193,6 +308,15 @@ void transport_input_update(InputManager* manager, AppState* state) {
             t = clamp_scalar(t, 0.0f, 1.0f);
             state->timeline_visible_seconds = TIMELINE_MIN_VISIBLE_SECONDS +
                 t * (TIMELINE_MAX_VISIBLE_SECONDS - TIMELINE_MIN_VISIBLE_SECONDS);
+            clamp_timeline_window(state);
+            transport_ui_sync(transport, state);
+        }
+        if (manager->prev_window_slider_down && transport->window_track_rect.w > 0) {
+            float t = (float)(mouse_x - transport->window_track_rect.x) / (float)transport->window_track_rect.w;
+            t = clamp_scalar(t, 0.0f, 1.0f);
+            float max_start = timeline_window_max_start(state);
+            state->timeline_window_start_seconds = t * max_start;
+            clamp_timeline_window(state);
             transport_ui_sync(transport, state);
         }
         if (manager->prev_vert_slider_down && transport->vert_track_rect.w > 0) {

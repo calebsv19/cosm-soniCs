@@ -1,7 +1,7 @@
 #include "ui/library_browser.h"
 
 #include "audio/media_clip.h"
-#include "ui/font5x7.h"
+#include "ui/font.h"
 
 #include <dirent.h>
 #include <string.h>
@@ -160,7 +160,7 @@ void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* rendere
         } else {
             snprintf(label, sizeof(label), "%s", display_name);
         }
-        ui_draw_text(renderer, rect->x + 16, y, label, text_color, 2);
+        ui_draw_text(renderer, rect->x + 16, y, label, text_color, 1.5f);
 
         if (is_editing) {
             int char_w = 6 * 2;
@@ -172,7 +172,7 @@ void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* rendere
         y += line_height;
     }
     if (browser->count == 0) {
-        ui_draw_text(renderer, rect->x + 16, rect->y + 32, "(no wav files)", text_color, 2);
+        ui_draw_text(renderer, rect->x + 16, rect->y + 32, "(no wav files)", text_color, 1.5f);
     }
 }
 

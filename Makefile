@@ -43,15 +43,17 @@ SRCS := \
 	$(SRC_DIR)/session/session_io_json.c \
 	$(SRC_DIR)/session/session_io_read_parse.c \
 	$(SRC_DIR)/session/session_apply.c \
+	$(SRC_DIR)/session/project_manager.c \
 	$(SRC_DIR)/ui/panes.c \
 	$(SRC_DIR)/ui/layout.c \
 	$(SRC_DIR)/ui/layout_config.c \
 	$(SRC_DIR)/ui/library_browser.c \
 	$(SRC_DIR)/ui/timeline_view.c \
-	$(SRC_DIR)/ui/font5x7.c \
+	$(SRC_DIR)/ui/font.c \
 	$(SRC_DIR)/ui/transport.c \
 	$(SRC_DIR)/ui/clip_inspector.c \
-	$(SRC_DIR)/ui/effects_panel.c \
+	$(SRC_DIR)/ui/effects_panel/panel.c \
+	$(SRC_DIR)/ui/effects_panel/slot_view.c \
 	$(SRC_DIR)/input/input_manager.c \
 	$(SRC_DIR)/input/library_input.c \
 	$(SRC_DIR)/input/timeline/timeline_input.c \
@@ -72,7 +74,7 @@ UNAME_S := $(shell uname -s)
 SDL_CONFIG := $(shell command -v sdl2-config 2>/dev/null)
 SDL2_CFLAGS :=
 SDL2_LDFLAGS :=
-SDL2_LIBS := -lSDL2
+SDL2_LIBS := -lSDL2 -lSDL2_ttf
 SDL2_FRAMEWORKS :=
 
 ifeq ($(UNAME_S),Darwin)

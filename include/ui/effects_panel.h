@@ -3,6 +3,7 @@
 #include <SDL2/SDL.h>
 
 #include "effects/effects_manager.h"
+#include "ui/effects_panel_slot.h"
 
 #ifndef FX_PANEL_MAX_TYPES
 #define FX_PANEL_MAX_TYPES 64
@@ -17,12 +18,9 @@ struct AppState;
 typedef struct {
     SDL_Rect panel_rect;
     SDL_Rect dropdown_button_rect;
+    SDL_Rect target_label_rect;
     int column_count;
-    SDL_Rect column_rects[FX_MASTER_MAX];
-    SDL_Rect header_rects[FX_MASTER_MAX];
-    SDL_Rect remove_button_rects[FX_MASTER_MAX];
-    SDL_Rect param_slider_rects[FX_MASTER_MAX][FX_MAX_PARAMS];
-    SDL_Rect param_label_rects[FX_MASTER_MAX][FX_MAX_PARAMS];
+    EffectsSlotLayout slots[FX_MASTER_MAX];
     bool overlay_visible;
     SDL_Rect overlay_rect;
     SDL_Rect overlay_header_rect;

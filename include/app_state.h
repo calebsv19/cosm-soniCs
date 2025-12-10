@@ -12,6 +12,8 @@
 #include "ui/transport.h"
 #include "ui/timeline_view.h"
 #include "ui/library_browser.h"
+#include "ui/effects_panel_slot.h"
+#include "session/project_manager.h"
 
 #define TIMELINE_MAX_SELECTION 256
 
@@ -111,7 +113,7 @@ typedef struct {
     bool enabled;
 } FxSlotUIState;
 
-typedef struct {
+typedef struct EffectsPanelState {
     bool initialized;
     EffectsPanelOverlayLayer overlay_layer;
     EffectsPanelTarget target;
@@ -131,6 +133,10 @@ typedef struct {
     int category_count;
     FxSlotUIState chain[FX_MASTER_MAX];
     int chain_count;
+    EffectsSlotRuntime slot_runtime[FX_MASTER_MAX];
+    int param_scroll_drag_slot;
+    Uint32 title_last_click_ticks;
+    bool title_debug_last_click; // transient debug flag
 } EffectsPanelState;
 
 typedef struct {
@@ -167,6 +173,28 @@ typedef struct {
     int fx_count;
 } PendingTrackFxEntry;
 
+typedef struct {
+    bool has_name;
+    char name[SESSION_NAME_MAX];
+    char path[SESSION_PATH_MAX];
+} ProjectState;
+
+typedef struct {
+    bool active;
+    char buffer[SESSION_NAME_MAX];
+    int cursor;
+} ProjectSavePrompt;
+
+typedef struct {
+    bool active;
+    ProjectInfo entries[64];
+    int count;
+    int selected_index;
+    float scroll_offset;
+    Uint32 last_click_ticks;
+    int last_click_index;
+} ProjectLoadModal;
+
 typedef struct AppState AppState;
 
 struct AppState {
@@ -196,6 +224,7 @@ struct AppState {
     TimelineControlsUI timeline_controls;
     TrackNameEditor track_name_editor;
     float timeline_visible_seconds;
+    float timeline_window_start_seconds;
     float timeline_vertical_scale;
     bool timeline_drop_active;
     float timeline_drop_seconds;
@@ -223,4 +252,7 @@ struct AppState {
     PendingTrackFxEntry* pending_track_fx;
     int pending_track_fx_count;
     bool pending_track_fx_dirty;
+    ProjectState project;
+    ProjectSavePrompt project_prompt;
+    ProjectLoadModal project_load;
 };

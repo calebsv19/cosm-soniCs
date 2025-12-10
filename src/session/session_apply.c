@@ -2,6 +2,7 @@
 #include "app_state.h"
 #include "engine/engine.h"
 #include "ui/library_browser.h"
+#include "ui/timeline_view.h"
 
 #include <SDL2/SDL.h>
 #include <stdlib.h>
@@ -11,6 +12,47 @@ static float clamp_ratio(float value) {
     if (value < 0.0f) return 0.0f;
     if (value > 1.0f) return 1.0f;
     return value;
+}
+
+static float clamp_float(float value, float min, float max) {
+    if (value < min) return min;
+    if (value > max) return max;
+    return value;
+}
+
+static float compute_total_seconds(const AppState* state) {
+    if (!state || !state->engine) {
+        return 0.0f;
+    }
+    const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
+    int sample_rate = cfg ? cfg->sample_rate : 0;
+    if (sample_rate <= 0) {
+        return 0.0f;
+    }
+    const EngineTrack* tracks = engine_get_tracks(state->engine);
+    int track_count = engine_get_track_count(state->engine);
+    uint64_t max_frames = 0;
+    for (int t = 0; t < track_count; ++t) {
+        const EngineTrack* track = &tracks[t];
+        if (!track) continue;
+        for (int i = 0; i < track->clip_count; ++i) {
+            const EngineClip* clip = &track->clips[i];
+            if (!clip) continue;
+            uint64_t start = clip->timeline_start_frames;
+            uint64_t length = clip->duration_frames;
+            if (length == 0) {
+                length = engine_clip_get_total_frames(state->engine, t, i);
+            }
+            uint64_t end = start + length;
+            if (end > max_frames) {
+                max_frames = end;
+            }
+        }
+    }
+    if (max_frames == 0) {
+        return 0.0f;
+    }
+    return (float)max_frames / (float)sample_rate;
 }
 
 static void clear_pending_track_fx(AppState* state) {
@@ -55,6 +97,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     }
 
     state->timeline_visible_seconds = doc->timeline.visible_seconds;
+    state->timeline_window_start_seconds = doc->timeline.window_start_seconds;
     state->timeline_vertical_scale = doc->timeline.vertical_scale;
     state->timeline_show_all_grid_lines = doc->timeline.show_all_grid_lines;
 
@@ -166,6 +209,18 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     if (state->pending_track_fx_count > 0 && state->pending_track_fx) {
         state->pending_track_fx_dirty = true;
     }
+
+    state->timeline_visible_seconds = clamp_float(state->timeline_visible_seconds,
+                                                  TIMELINE_MIN_VISIBLE_SECONDS,
+                                                  TIMELINE_MAX_VISIBLE_SECONDS);
+    float total_seconds = compute_total_seconds(state);
+    float max_start = total_seconds > state->timeline_visible_seconds
+                          ? total_seconds - state->timeline_visible_seconds
+                          : 0.0f;
+    if (max_start < 0.0f) {
+        max_start = 0.0f;
+    }
+    state->timeline_window_start_seconds = clamp_float(state->timeline_window_start_seconds, 0.0f, max_start);
 
     return true;
 }

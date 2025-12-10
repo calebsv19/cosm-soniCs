@@ -13,6 +13,7 @@
 #include "ui/library_browser.h"
 #include "ui/panes.h"
 #include "ui/transport.h"
+#include "session/project_manager.h"
 
 #include <SDL2/SDL.h>
 
@@ -29,11 +30,244 @@ static void handle_transport_controls(AppState* state, bool was_down, bool is_do
     }
 }
 
+static void project_prompt_stop(AppState* state) {
+    if (!state) return;
+    state->project_prompt.active = false;
+    state->project_prompt.buffer[0] = '\0';
+    state->project_prompt.cursor = 0;
+    SDL_StopTextInput();
+}
+
+static bool project_prompt_handle_event(AppState* state, const SDL_Event* event) {
+    if (!state || !event || !state->project_prompt.active) {
+        return false;
+    }
+    ProjectSavePrompt* prompt = &state->project_prompt;
+    switch (event->type) {
+    case SDL_TEXTINPUT: {
+        const char* txt = event->text.text;
+        int len = (int)strlen(prompt->buffer);
+        int cur = prompt->cursor;
+        if (cur < 0) cur = 0;
+        if (cur > len) cur = len;
+        for (const char* p = txt; *p; ++p) {
+            if ((int)strlen(prompt->buffer) >= (int)sizeof(prompt->buffer) - 1) {
+                break;
+            }
+            // insert at cursor
+            memmove(prompt->buffer + cur + 1, prompt->buffer + cur, strlen(prompt->buffer + cur) + 1);
+            prompt->buffer[cur] = *p;
+            cur++;
+        }
+        prompt->cursor = cur;
+        return true;
+    }
+    case SDL_KEYDOWN: {
+        SDL_Keycode key = event->key.keysym.sym;
+        if (key == SDLK_BACKSPACE) {
+            int len = (int)strlen(prompt->buffer);
+            int cur = prompt->cursor;
+            if (cur > 0 && len > 0) {
+                memmove(prompt->buffer + cur - 1, prompt->buffer + cur, (size_t)(len - cur + 1));
+                prompt->cursor = cur - 1;
+            }
+            return true;
+        } else if (key == SDLK_LEFT) {
+            if (prompt->cursor > 0) prompt->cursor--;
+            return true;
+        } else if (key == SDLK_RIGHT) {
+            int len = (int)strlen(prompt->buffer);
+            if (prompt->cursor < len) prompt->cursor++;
+            return true;
+        } else if (key == SDLK_ESCAPE) {
+            project_prompt_stop(state);
+            return true;
+        } else if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
+            const char* name = prompt->buffer[0] ? prompt->buffer : "project";
+            project_manager_save(state, name, true);
+            project_prompt_stop(state);
+            return true;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+    return false;
+}
+
+static void project_load_close(AppState* state) {
+    if (!state) return;
+    state->project_load.active = false;
+    state->project_load.count = 0;
+    state->project_load.selected_index = -1;
+}
+
+static void project_load_clamp_scroll(ProjectLoadModal* modal, int item_height, int view_height) {
+    if (!modal) return;
+    float max_scroll = (float)(modal->count * item_height - view_height);
+    if (max_scroll < 0.0f) max_scroll = 0.0f;
+    if (modal->scroll_offset < 0.0f) modal->scroll_offset = 0.0f;
+    if (modal->scroll_offset > max_scroll) modal->scroll_offset = max_scroll;
+}
+
+static bool project_load_handle_event(AppState* state, const SDL_Event* event) {
+    if (!state || !state->project_load.active || !event) {
+        return false;
+    }
+    ProjectLoadModal* modal = &state->project_load;
+
+    int width = state->window_width > 0 ? state->window_width : 800;
+    int height = state->window_height > 0 ? state->window_height : 600;
+    SDL_Rect box = {
+        (width - 720) / 2,
+        (height - 420) / 2,
+        720,
+        420
+    };
+    SDL_Rect list_rect = {
+        box.x + 16,
+        box.y + 56,
+        box.w / 2 - 32,
+        box.h - 96
+    };
+    SDL_Rect info_rect = {
+        box.x + box.w / 2 + 8,
+        box.y + 56,
+        box.w / 2 - 24,
+        box.h - 126
+    };
+    SDL_Rect load_button = {
+        info_rect.x,
+        box.y + box.h - 52,
+        120,
+        36
+    };
+    SDL_Rect cancel_button = {
+        load_button.x + load_button.w + 12,
+        load_button.y,
+        120,
+        36
+    };
+
+    int item_h = 28;
+    project_load_clamp_scroll(modal, item_h, list_rect.h);
+
+    switch (event->type) {
+    case SDL_MOUSEWHEEL: {
+        modal->scroll_offset -= (float)event->wheel.y * (float)item_h * 2.0f;
+        project_load_clamp_scroll(modal, item_h, list_rect.h);
+        return true;
+    }
+    case SDL_MOUSEBUTTONDOWN:
+        if (event->button.button == SDL_BUTTON_LEFT) {
+            SDL_Point p = {event->button.x, event->button.y};
+            Uint32 now = SDL_GetTicks();
+            if (SDL_PointInRect(&p, &list_rect)) {
+                int local_y = p.y - list_rect.y;
+                int idx = (int)((local_y + (int)modal->scroll_offset) / item_h);
+                if (idx >= 0 && idx < modal->count) {
+                    if (modal->last_click_index == idx && (now - modal->last_click_ticks) <= 350) {
+                        // Double click -> load
+                        if (project_manager_load(state, modal->entries[idx].path)) {
+                            project_manager_post_load(state);
+                        }
+                        project_load_close(state);
+                        return true;
+                    }
+                    modal->selected_index = idx;
+                    modal->last_click_index = idx;
+                    modal->last_click_ticks = now;
+                }
+                return true;
+            }
+            if (SDL_PointInRect(&p, &load_button)) {
+                int sel = modal->selected_index;
+                if (sel >= 0 && sel < modal->count) {
+                    if (project_manager_load(state, modal->entries[sel].path)) {
+                        project_manager_post_load(state);
+                    }
+                    project_load_close(state);
+                }
+                return true;
+            }
+            if (SDL_PointInRect(&p, &cancel_button)) {
+                project_load_close(state);
+                return true;
+            }
+        }
+        break;
+    case SDL_KEYDOWN:
+        if (event->key.keysym.sym == SDLK_ESCAPE) {
+            project_load_close(state);
+            return true;
+        } else if (event->key.keysym.sym == SDLK_RETURN || event->key.keysym.sym == SDLK_KP_ENTER) {
+            int sel = modal->selected_index;
+            if (sel >= 0 && sel < modal->count) {
+                if (project_manager_load(state, modal->entries[sel].path)) {
+                    project_manager_post_load(state);
+                }
+                project_load_close(state);
+            }
+            return true;
+        }
+        break;
+    default:
+        break;
+    }
+    return false;
+}
+
+static void seek_to_seconds(AppState* state, float seconds, bool resume_playback) {
+    if (!state || !state->engine) {
+        return;
+    }
+    const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
+    int sample_rate = cfg ? cfg->sample_rate : 0;
+    if (sample_rate <= 0) {
+        return;
+    }
+    if (seconds < 0.0f) seconds = 0.0f;
+
+    uint64_t total_frames = 0;
+    const EngineTrack* tracks = engine_get_tracks(state->engine);
+    int track_count = engine_get_track_count(state->engine);
+    if (tracks && track_count > 0) {
+        for (int t = 0; t < track_count; ++t) {
+            const EngineTrack* track = &tracks[t];
+            if (!track) continue;
+            for (int i = 0; i < track->clip_count; ++i) {
+                const EngineClip* clip = &track->clips[i];
+                if (!clip) continue;
+                uint64_t start = clip->timeline_start_frames;
+                uint64_t length = clip->duration_frames;
+                if (length == 0) {
+                    length = engine_clip_get_total_frames(state->engine, t, i);
+                }
+                uint64_t end = start + length;
+                if (end > total_frames) {
+                    total_frames = end;
+                }
+            }
+        }
+    }
+    float max_seconds = total_frames > 0 ? (float)total_frames / (float)sample_rate : 0.0f;
+    if (max_seconds > 0.0f && seconds > max_seconds) {
+        seconds = max_seconds;
+    }
+    uint64_t frame = (uint64_t)llroundf(seconds * (float)sample_rate);
+    bool was_playing = engine_transport_is_playing(state->engine);
+    engine_transport_seek(state->engine, frame);
+    if (resume_playback && was_playing) {
+        engine_transport_play(state->engine);
+    }
+}
+
 static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
     if (!manager || !state || !state->engine) {
         return;
     }
-    if (library_input_is_editing(state)) {
+    if (library_input_is_editing(state) || state->track_name_editor.editing) {
         return;
     }
 
@@ -103,16 +337,14 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
     manager->previous_c = c_now;
 
     bool enter_now = keys[SDL_SCANCODE_RETURN] != 0 || keys[SDL_SCANCODE_KP_ENTER] != 0;
+    bool shift_down_now = (SDL_GetModState() & KMOD_SHIFT) != 0;
     if (enter_now && !manager->previous_enter) {
-        bool was_playing = engine_transport_is_playing(state->engine);
-        bool loop_active = state->loop_enabled && state->loop_end_frame > state->loop_start_frame;
-        if (loop_active) {
-            state->loop_restart_pending = true;
-            engine_transport_set_loop(state->engine, false, state->loop_start_frame, state->loop_end_frame);
-        }
-        engine_transport_seek(state->engine, 0);
-        if (was_playing) {
-            engine_transport_play(state->engine);
+        if (shift_down_now) {
+            // Shift+Enter: jump to project start (frame 0)
+            seek_to_seconds(state, 0.0f, true);
+        } else {
+            // Enter: jump to window start
+            seek_to_seconds(state, state->timeline_window_start_seconds, true);
         }
     }
     manager->previous_enter = enter_now;
@@ -191,6 +423,7 @@ void input_manager_init(InputManager* manager) {
     manager->last_header_click_track = -1;
     manager->prev_horiz_slider_down = false;
     manager->prev_vert_slider_down = false;
+    manager->prev_window_slider_down = false;
     manager->last_library_click_ticks = 0;
     manager->last_library_click_index = -1;
 
@@ -200,6 +433,15 @@ void input_manager_init(InputManager* manager) {
 
 void input_manager_handle_event(InputManager* manager, AppState* state, const SDL_Event* event) {
     if (!manager || !state || !event) {
+        return;
+    }
+
+    if (state->project_load.active) {
+        project_load_handle_event(state, event);
+        return;
+    }
+    if (state->project_prompt.active) {
+        project_prompt_handle_event(state, event);
         return;
     }
 
@@ -216,6 +458,10 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
 
 void input_manager_update(InputManager* manager, AppState* state) {
     if (!manager || !state) {
+        return;
+    }
+    if (state->project_prompt.active || state->project_load.active) {
+        // Block normal updates while prompt is active.
         return;
     }
 

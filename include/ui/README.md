@@ -4,7 +4,7 @@ Purpose: UI layout and widget-facing headers shared between renderer code and in
 
 ## Files
 - `clip_inspector.h`: Layout calculator (`clip_inspector_compute_layout`) and renderer (`clip_inspector_render`) for the clip properties pane.
-- `font5x7.h`: Pixel font helper (`ui_draw_text`) used across panels.
+- `font.h`: SDL_ttf-backed font helper (`ui_draw_text`) used across panels.
 - `layout.h`: Master UI surface—initialisation, layout, rendering, and resize zone helpers (`ui_init_panes`, `ui_layout_panes`, `ui_render_*`, etc.).
 - `layout_config.h`: Accessor `ui_layout_config_get` exposing tweakable ratios and minimum sizes.
 - `library_browser.h`: File picker view primitives (init/scan/render/hit-test).

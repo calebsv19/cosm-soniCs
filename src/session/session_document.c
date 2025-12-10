@@ -66,19 +66,6 @@ void session_document_reset(SessionDocument* doc) {
     session_document_init(doc);
 }
 
-static int count_active_tracks(const EngineTrack* tracks, int track_count) {
-    if (!tracks || track_count <= 0) {
-        return 0;
-    }
-    int active = 0;
-    for (int i = 0; i < track_count; ++i) {
-        if (tracks[i].active) {
-            ++active;
-        }
-    }
-    return active;
-}
-
 static int count_active_clips(const EngineTrack* track) {
     if (!track || track->clip_count <= 0 || !track->clips) {
         return 0;
@@ -119,6 +106,7 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
     out_doc->loop.end_frame = state->loop_end_frame;
 
     out_doc->timeline.visible_seconds = state->timeline_visible_seconds;
+    out_doc->timeline.window_start_seconds = state->timeline_window_start_seconds;
     out_doc->timeline.vertical_scale = state->timeline_vertical_scale;
     out_doc->timeline.show_all_grid_lines = state->timeline_show_all_grid_lines;
     out_doc->timeline.playhead_frame = out_doc->transport_frame;
@@ -132,24 +120,20 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
 
     int engine_track_count = state->engine ? engine_get_track_count(state->engine) : 0;
     const EngineTrack* engine_tracks = state->engine ? engine_get_tracks(state->engine) : NULL;
-    int active_tracks = count_active_tracks(engine_tracks, engine_track_count);
-    if (active_tracks > 0) {
-        out_doc->tracks = (SessionTrack*)calloc((size_t)active_tracks, sizeof(SessionTrack));
+    int total_tracks = engine_track_count;
+    if (total_tracks > 0) {
+        out_doc->tracks = (SessionTrack*)calloc((size_t)total_tracks, sizeof(SessionTrack));
         if (!out_doc->tracks) {
-            SDL_Log("session_document_capture: failed to allocate %d tracks", active_tracks);
+            SDL_Log("session_document_capture: failed to allocate %d tracks", total_tracks);
             session_document_reset(out_doc);
             return false;
         }
     }
-    out_doc->track_count = active_tracks;
+    out_doc->track_count = total_tracks;
 
-    int track_out = 0;
     for (int t = 0; t < engine_track_count; ++t) {
         const EngineTrack* src_track = &engine_tracks[t];
-        if (!src_track->active) {
-            continue;
-        }
-        SessionTrack* dst_track = &out_doc->tracks[track_out++];
+        SessionTrack* dst_track = &out_doc->tracks[t];
         copy_string(dst_track->name, sizeof(dst_track->name), src_track->name);
         dst_track->gain = src_track->gain;
         dst_track->muted = src_track->muted;

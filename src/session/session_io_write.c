@@ -144,6 +144,10 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     json_write_float(file, doc->timeline.visible_seconds);
     fprintf(file, ",\n");
     json_write_indent(file, 2);
+    fprintf(file, "\"window_start_seconds\": ");
+    json_write_float(file, doc->timeline.window_start_seconds);
+    fprintf(file, ",\n");
+    json_write_indent(file, 2);
     fprintf(file, "\"vertical_scale\": ");
     json_write_float(file, doc->timeline.vertical_scale);
     fprintf(file, ",\n");

@@ -2,7 +2,7 @@
 #include "app_state.h"
 #include "ui/timeline_view.h"
 
-#include "ui/font5x7.h"
+#include "ui/font.h"
 
 #include <string.h>
 
@@ -11,25 +11,33 @@ void transport_ui_init(TransportUI* ui) {
         return;
     }
     ui->panel_rect = (SDL_Rect){0, 0, 0, 0};
+    ui->load_rect = (SDL_Rect){0, 0, 0, 0};
+    ui->save_rect = (SDL_Rect){0, 0, 0, 0};
     ui->play_rect = (SDL_Rect){0, 0, 0, 0};
     ui->stop_rect = (SDL_Rect){0, 0, 0, 0};
     ui->play_hovered = false;
     ui->stop_hovered = false;
+    ui->load_hovered = false;
+    ui->save_hovered = false;
     ui->grid_rect = (SDL_Rect){0, 0, 0, 0};
     ui->time_label_rect = (SDL_Rect){0, 0, 0, 0};
     ui->seek_track_rect = (SDL_Rect){0, 0, 0, 0};
     ui->seek_handle_rect = (SDL_Rect){0, 0, 0, 0};
+    ui->window_track_rect = (SDL_Rect){0, 0, 0, 0};
+    ui->window_handle_rect = (SDL_Rect){0, 0, 0, 0};
     ui->horiz_track_rect = (SDL_Rect){0,0,0,0};
     ui->horiz_handle_rect = (SDL_Rect){0,0,0,0};
     ui->vert_track_rect = (SDL_Rect){0,0,0,0};
     ui->vert_handle_rect = (SDL_Rect){0,0,0,0};
     ui->grid_hovered = false;
     ui->seek_hovered = false;
+    ui->window_hovered = false;
     ui->horiz_hovered = false;
     ui->vert_hovered = false;
     ui->adjusting_horizontal = false;
     ui->adjusting_vertical = false;
     ui->adjusting_seek = false;
+    ui->adjusting_window = false;
 }
 
 void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
@@ -41,24 +49,31 @@ void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
     const int button_width = 64;
     const int button_height = 26;
     const int padding = 12;
+    const int button_v_gap = 4;
     const int label_width = 96;
     const int seek_height = 8;
     const int handle_width = 12;
 
     int x = container->x + padding;
-    int y = container->y + (container->h - button_height) / 2;
+    int button_stack_height = button_height * 2 + button_v_gap;
+    int buttons_y = container->y + (container->h - button_stack_height) / 2;
 
-    ui->play_rect = (SDL_Rect){x, y, button_width, button_height};
-    ui->stop_rect = (SDL_Rect){x + button_width + padding, y, button_width, button_height};
+    ui->load_rect = (SDL_Rect){x, buttons_y, button_width, button_height};
+    ui->play_rect = (SDL_Rect){x, buttons_y + button_height + button_v_gap, button_width, button_height};
+
+    ui->save_rect = (SDL_Rect){x + button_width + padding, buttons_y, button_width, button_height};
+    ui->stop_rect = (SDL_Rect){x + button_width + padding, buttons_y + button_height + button_v_gap, button_width, button_height};
 
     const int group_spacing = padding * 2;
-    int grid_width = 96;
+    int grid_width = 88;
     int slider_width = 132;
     int slider_height = 8;
     int slider_y = container->y + (container->h - slider_height) / 2 - 8;
+    int slider_row_gap = 20;
 
     x = ui->stop_rect.x + ui->stop_rect.w + padding;
-    ui->time_label_rect = (SDL_Rect){x, y, label_width, button_height};
+    int label_y = container->y + (container->h - button_height) / 2;
+    ui->time_label_rect = (SDL_Rect){x, label_y, label_width, button_height};
     x += label_width + padding;
 
 
@@ -66,11 +81,12 @@ void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
     int grid_x = right_edge - grid_width;
     ui->grid_rect = (SDL_Rect){grid_x, container->y + (container->h - 24) / 2, grid_width, 24};
 
-    int fit_button_width = 24;
-    int fit_button_height = 18;
+    int fit_button_width = 20;
+    int fit_button_height = 16;
     int fit_spacing = padding / 2;
 
-    int slider_limit = grid_x - fit_spacing - fit_button_width;
+    // Leave a little breathing room between sliders and the grid button.
+    int slider_limit = grid_x - fit_spacing - fit_button_width - 12;
     if (slider_limit < x + group_spacing + 80) {
         slider_limit = x + group_spacing + 80;
     }
@@ -103,9 +119,12 @@ void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
         if (seek_width < 40) seek_width = 40;
     }
 
-    int seek_y = container->y + (container->h - seek_height) / 2;
+    int seek_y = slider_y;
+    int window_y = seek_y + slider_row_gap;
     ui->seek_track_rect = (SDL_Rect){x, seek_y, seek_width, seek_height};
     ui->seek_handle_rect = (SDL_Rect){x, seek_y - 4, handle_width, seek_height + 8};
+    ui->window_track_rect = (SDL_Rect){x, window_y, seek_width, seek_height};
+    ui->window_handle_rect = (SDL_Rect){x, window_y - 4, handle_width, seek_height + 8};
 
     int slider_x = x + seek_width + group_spacing;
     if (slider_x + slider_width > slider_limit) {
@@ -126,7 +145,7 @@ void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
     ui->fit_width_rect = (SDL_Rect){button_stack_x, slider_y - 10, fit_button_width, fit_button_height};
     ui->fit_height_rect = (SDL_Rect){button_stack_x, slider_y + 12, fit_button_width, fit_button_height};
 
-    int vert_slider_y = slider_y + 20;
+    int vert_slider_y = slider_y + slider_row_gap;
     ui->vert_track_rect = (SDL_Rect){slider_x, vert_slider_y, slider_width, slider_height};
     ui->vert_handle_rect = (SDL_Rect){slider_x, vert_slider_y - 4, handle_width, slider_height + 8};
 }
@@ -136,10 +155,13 @@ void transport_ui_update_hover(TransportUI* ui, int mouse_x, int mouse_y) {
         return;
     }
     SDL_Point p = {mouse_x, mouse_y};
+    ui->load_hovered = SDL_PointInRect(&p, &ui->load_rect);
+    ui->save_hovered = SDL_PointInRect(&p, &ui->save_rect);
     ui->play_hovered = SDL_PointInRect(&p, &ui->play_rect);
     ui->stop_hovered = SDL_PointInRect(&p, &ui->stop_rect);
     ui->grid_hovered = SDL_PointInRect(&p, &ui->grid_rect);
     ui->seek_hovered = SDL_PointInRect(&p, &ui->seek_track_rect) || SDL_PointInRect(&p, &ui->seek_handle_rect);
+    ui->window_hovered = SDL_PointInRect(&p, &ui->window_track_rect) || SDL_PointInRect(&p, &ui->window_handle_rect);
     ui->horiz_hovered = SDL_PointInRect(&p, &ui->horiz_track_rect);
     ui->vert_hovered = SDL_PointInRect(&p, &ui->vert_track_rect);
     ui->fit_width_hovered = SDL_PointInRect(&p, &ui->fit_width_rect);
@@ -180,13 +202,17 @@ void transport_ui_sync(TransportUI* ui, const AppState* state) {
     if (!ui || !state) {
         return;
     }
-    if (ui->horiz_track_rect.w <= 0 || ui->vert_track_rect.w <= 0 || ui->seek_track_rect.w <= 0) {
+    if (ui->horiz_track_rect.w <= 0 || ui->vert_track_rect.w <= 0 || ui->seek_track_rect.w <= 0 || ui->window_track_rect.w <= 0) {
         return;
     }
 
+    float visible_seconds = state->timeline_visible_seconds;
+    if (visible_seconds < TIMELINE_MIN_VISIBLE_SECONDS) visible_seconds = TIMELINE_MIN_VISIBLE_SECONDS;
+    if (visible_seconds > TIMELINE_MAX_VISIBLE_SECONDS) visible_seconds = TIMELINE_MAX_VISIBLE_SECONDS;
+
     float horiz_t = 0.0f;
     if (TIMELINE_MAX_VISIBLE_SECONDS > TIMELINE_MIN_VISIBLE_SECONDS) {
-        horiz_t = (state->timeline_visible_seconds - TIMELINE_MIN_VISIBLE_SECONDS) /
+        horiz_t = (visible_seconds - TIMELINE_MIN_VISIBLE_SECONDS) /
                   (TIMELINE_MAX_VISIBLE_SECONDS - TIMELINE_MIN_VISIBLE_SECONDS);
     }
     if (horiz_t < 0.0f) horiz_t = 0.0f;
@@ -224,7 +250,7 @@ void transport_ui_sync(TransportUI* ui, const AppState* state) {
     int sample_rate = cfg ? cfg->sample_rate : 0;
     uint64_t total_frames = compute_total_frames(state);
     if (total_frames == 0 && sample_rate > 0) {
-        total_frames = (uint64_t)(state->timeline_visible_seconds * (float)sample_rate);
+        total_frames = (uint64_t)(visible_seconds * (float)sample_rate);
     }
     if (total_frames < 1) {
         total_frames = 1;
@@ -244,6 +270,22 @@ void transport_ui_sync(TransportUI* ui, const AppState* state) {
         ui->seek_handle_rect.x = ui->seek_track_rect.x;
     if (ui->seek_handle_rect.x + handle_w > ui->seek_track_rect.x + ui->seek_track_rect.w)
         ui->seek_handle_rect.x = ui->seek_track_rect.x + ui->seek_track_rect.w - handle_w;
+
+    float total_seconds = (sample_rate > 0) ? (float)total_frames / (float)sample_rate : 0.0f;
+    float max_window_start = total_seconds > visible_seconds ? total_seconds - visible_seconds : 0.0f;
+    if (max_window_start < 0.0f) max_window_start = 0.0f;
+    float window_start = state->timeline_window_start_seconds;
+    if (window_start < 0.0f) window_start = 0.0f;
+    if (window_start > max_window_start) window_start = max_window_start;
+    float window_t = max_window_start > 0.0f ? window_start / max_window_start : 0.0f;
+    ui->window_handle_rect.w = handle_w;
+    ui->window_handle_rect.h = ui->window_track_rect.h + 8;
+    ui->window_handle_rect.y = ui->window_track_rect.y - 4;
+    ui->window_handle_rect.x = ui->window_track_rect.x + (int)(window_t * ui->window_track_rect.w) - handle_w / 2;
+    if (ui->window_handle_rect.x < ui->window_track_rect.x)
+        ui->window_handle_rect.x = ui->window_track_rect.x;
+    if (ui->window_handle_rect.x + handle_w > ui->window_track_rect.x + ui->window_track_rect.w)
+        ui->window_handle_rect.x = ui->window_track_rect.x + ui->window_track_rect.w - handle_w;
 }
 
 static void render_button(SDL_Renderer* renderer, const SDL_Rect* rect, bool hovered, bool active, const char* label, SDL_Color base_color) {
@@ -267,9 +309,9 @@ static void render_button(SDL_Renderer* renderer, const SDL_Rect* rect, bool hov
 
     SDL_Color text = {220, 220, 230, 255};
     const int scale = 2;
-    int text_width = (int)strlen(label) * 6 * scale;
+    int text_width = ui_measure_text_width(label, scale);
+    int text_height = ui_font_line_height(scale);
     int text_x = rect->x + (rect->w - text_width) / 2;
-    int text_height = 7 * scale;
     int text_y = rect->y + (rect->h - text_height) / 2;
     ui_draw_text(renderer, text_x, text_y, label, text, scale);
 }
@@ -286,6 +328,8 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
     SDL_RenderDrawLine(renderer, ui->panel_rect.x, underline_y, ui->panel_rect.x + ui->panel_rect.w, underline_y);
 
     SDL_Color button_base = {60, 60, 70, 255};
+    render_button(renderer, &ui->load_rect, ui->load_hovered, false, "LOAD", button_base);
+    render_button(renderer, &ui->save_rect, ui->save_hovered, false, "SAVE", button_base);
     render_button(renderer, &ui->play_rect, ui->play_hovered, is_playing, "PLAY", button_base);
     render_button(renderer, &ui->stop_rect, ui->stop_hovered, !is_playing, "STOP", button_base);
 
@@ -312,10 +356,12 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         char time_text[32];
         snprintf(time_text, sizeof(time_text), "%02d:%02d.%03d", minutes, seconds_part, millis);
         SDL_Color time_color = {225, 225, 235, 255};
-        int text_width = (int)strlen(time_text) * 6 * 2;
-        int time_x = ui->time_label_rect.x + (ui->time_label_rect.w - text_width) / 2;
+        int tw = ui_measure_text_width(time_text, 2);
+        int th = ui_font_line_height(2);
+        int time_x = ui->time_label_rect.x + (ui->time_label_rect.w - tw) / 2;
+        int time_y = ui->time_label_rect.y + (ui->time_label_rect.h - th) / 2;
         if (time_x < ui->time_label_rect.x) time_x = ui->time_label_rect.x;
-        ui_draw_text(renderer, time_x, ui->time_label_rect.y + 6, time_text, time_color, 2);
+        ui_draw_text(renderer, time_x, time_y, time_text, time_color, 2);
     }
 
     SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
@@ -329,6 +375,18 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
     SDL_SetRenderDrawColor(renderer, seek_handle_col.r, seek_handle_col.g, seek_handle_col.b, seek_handle_col.a);
     SDL_RenderFillRect(renderer, &ui->seek_handle_rect);
     SDL_RenderDrawRect(renderer, &ui->seek_handle_rect);
+
+    SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
+    SDL_RenderFillRect(renderer, &ui->window_track_rect);
+    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
+    SDL_RenderDrawRect(renderer, &ui->window_track_rect);
+    SDL_Color window_handle_col = {170, 200, 245, 255};
+    if (ui->window_hovered || ui->adjusting_window) {
+        window_handle_col = (SDL_Color){200, 220, 255, 255};
+    }
+    SDL_SetRenderDrawColor(renderer, window_handle_col.r, window_handle_col.g, window_handle_col.b, window_handle_col.a);
+    SDL_RenderFillRect(renderer, &ui->window_handle_rect);
+    SDL_RenderDrawRect(renderer, &ui->window_handle_rect);
 
     SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
     SDL_RenderFillRect(renderer, &ui->horiz_track_rect);
@@ -362,11 +420,16 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         SDL_RenderFillRect(renderer, &buttons[i]);
         SDL_SetRenderDrawColor(renderer, fit_border.r, fit_border.g, fit_border.b, fit_border.a);
         SDL_RenderDrawRect(renderer, &buttons[i]);
-        int tx = buttons[i].x + (buttons[i].w - 6 * 2) / 2;
-        int ty = buttons[i].y + (buttons[i].h - 7 * 2) / 2;
-        ui_draw_text(renderer, tx, ty, labels[i], (SDL_Color){220, 220, 230, 255}, 2);
+        int scale = 2;
+        int tw = ui_measure_text_width(labels[i], scale);
+        int th = ui_font_line_height(scale);
+        int tx = buttons[i].x + (buttons[i].w - tw) / 2;
+        int ty = buttons[i].y + (buttons[i].h - th) / 2;
+        ui_draw_text(renderer, tx, ty, labels[i], (SDL_Color){220, 220, 230, 255}, scale);
     }
 
+    ui_draw_text(renderer, ui->seek_track_rect.x, ui->seek_track_rect.y - 18, "Playhead", label_zoom, 2);
+    ui_draw_text(renderer, ui->window_track_rect.x, ui->window_track_rect.y - 18, "Window", label_zoom, 2);
     ui_draw_text(renderer, ui->horiz_track_rect.x, ui->horiz_track_rect.y - 18, "Timeline", label_zoom, 2);
     ui_draw_text(renderer, ui->vert_track_rect.x, ui->vert_track_rect.y - 18, "Track Size", label_zoom, 2);
 }

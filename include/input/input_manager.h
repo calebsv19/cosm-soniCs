@@ -26,6 +26,7 @@ typedef struct InputManager {
     int last_header_click_track;
     bool prev_horiz_slider_down;
     bool prev_vert_slider_down;
+    bool prev_window_slider_down;
     Uint32 last_library_click_ticks;
     int last_library_click_index;
 } InputManager;

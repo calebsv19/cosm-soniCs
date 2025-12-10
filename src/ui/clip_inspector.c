@@ -3,7 +3,7 @@
 #include "app_state.h"
 #include "engine/engine.h"
 #include "engine/sampler.h"
-#include "ui/font5x7.h"
+#include "ui/font.h"
 #include "ui/layout.h"
 
 #include <math.h>

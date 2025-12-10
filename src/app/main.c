@@ -10,8 +10,11 @@
 #include "ui/library_browser.h"
 #include "ui/transport.h"
 #include "ui/effects_panel.h"
+#include "ui/font.h"
+#include "session/project_manager.h"
 
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -217,11 +220,18 @@ int main(void) {
     state.timing_logging_enabled = state.runtime_cfg.enable_timing_logs;
 
     ui_init_panes(&state);
+    project_manager_init();
 
     bool loaded_session = false;
-    if (session_load_from_file(&state, last_session_path)) {
-        SDL_Log("Session restored from %s", last_session_path);
+    bool engine_started = false;
+    if (project_manager_load_last(&state)) {
+        SDL_Log("Project restored from last saved project");
         loaded_session = true;
+        engine_started = project_manager_post_load(&state);
+    } else if (session_load_from_file(&state, "config/last_session.json")) {
+        SDL_Log("Session restored from config/last_session.json");
+        loaded_session = true;
+        engine_started = project_manager_post_load(&state);
     }
 
     if (!loaded_session) {
@@ -233,6 +243,7 @@ int main(void) {
         library_browser_init(&state.library, "assets/audio");
         library_browser_scan(&state.library);
         state.timeline_visible_seconds = TIMELINE_DEFAULT_VISIBLE_SECONDS;
+        state.timeline_window_start_seconds = 0.0f;
         state.timeline_vertical_scale = 1.0f;
         state.timeline_show_all_grid_lines = false;
         state.loop_enabled = false;
@@ -259,6 +270,17 @@ int main(void) {
         }
         return 1;
     }
+
+    if (TTF_Init() != 0) {
+        SDL_Log("TTF_Init failed: %s", TTF_GetError());
+        App_Shutdown(&ctx);
+        if (state.engine) {
+            engine_destroy(state.engine);
+            state.engine = NULL;
+        }
+        return 1;
+    }
+    ui_font_set("include/fonts/Montserrat/Montserrat-Regular.ttf", 9);
 
     ui_layout_panes(&state, window_width, window_height);
     pane_manager_init(&state.pane_manager, state.panes, state.pane_count);
@@ -287,8 +309,7 @@ int main(void) {
 
     App_SetRenderMode(&ctx, RENDER_THROTTLED, 1.0f / 60.0f);
 
-    bool engine_started = false;
-    if (state.engine) {
+    if (!engine_started && state.engine) {
         if (!engine_start(state.engine)) {
             SDL_Log("Audio engine failed to start; continuing without audio.");
         } else {
@@ -306,10 +327,14 @@ int main(void) {
 
     App_Run(&ctx, &callbacks);
 
-    if (!session_save_to_file(&state, last_session_path)) {
+    if (state.project.has_name) {
+        project_manager_save(&state, state.project.name, true);
+    } else if (!session_save_to_file(&state, last_session_path)) {
         SDL_Log("Failed to save session to %s", last_session_path);
     }
 
+    ui_font_shutdown();
+    TTF_Quit();
     App_Shutdown(&ctx);
 
     if (state.engine) {

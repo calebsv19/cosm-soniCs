@@ -7,7 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SESSION_DOCUMENT_VERSION 3
+#define SESSION_DOCUMENT_VERSION 4
 #define SESSION_PATH_MAX 512
 #define SESSION_NAME_MAX 128
 #define SESSION_FX_NAME_MAX 64
@@ -32,6 +32,7 @@ typedef struct {
 
 typedef struct {
     float visible_seconds;
+    float window_start_seconds;
     float vertical_scale;
     bool show_all_grid_lines;
     uint64_t playhead_frame;

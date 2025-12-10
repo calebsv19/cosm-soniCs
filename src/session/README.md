@@ -7,7 +7,7 @@ Purpose: Session persistence helpers that translate between the live `AppState`/
 - `engine`: Snapshot of `EngineRuntimeConfig` (sample rate, block size).
 - `transport_playing` / `transport_frame`: Whether playback was active and the current frame.
 - `loop`: Loop enabled flag plus start/end frames.
-- `timeline`: Visible seconds, vertical scale, grid visibility, and playhead frame.
+- `timeline`: Visible seconds, window start offset, vertical scale, grid visibility, and playhead frame.
 - `layout`: Split ratios for transport/library/mixer panes.
 - `library`: Root directory for the asset browser and currently selected index.
 - `tracks[]`: Ordered list of tracks with name, gain, mute/solo flags.
@@ -20,13 +20,14 @@ Purpose: Session persistence helpers that translate between the live `AppState`/
 ### JSON Sketch
 ```json
 {
-  "version": 1,
+  "version": 4,
   "engine": {"sample_rate": 48000, "block_size": 128},
   "transport_playing": false,
   "transport_frame": 0,
   "loop": {"enabled": true, "start_frame": 96000, "end_frame": 144000},
   "timeline": {
     "visible_seconds": 8.0,
+    "window_start_seconds": 0.0,
     "vertical_scale": 1.0,
     "show_all_grid_lines": false,
     "playhead_frame": 96000

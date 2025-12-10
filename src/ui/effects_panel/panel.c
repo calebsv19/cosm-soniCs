@@ -2,7 +2,7 @@
 
 #include "app_state.h"
 #include "engine/engine.h"
-#include "ui/font5x7.h"
+#include "ui/font.h"
 #include "ui/layout.h"
 
 #include <ctype.h>
@@ -15,7 +15,7 @@
 #define FX_PANEL_COLUMN_GAP 16
 #define FX_PANEL_INNER_MARGIN 12
 #define FX_PANEL_SLIDER_HEIGHT 18
-#define FX_PANEL_PARAM_GAP 24
+#define FX_PANEL_PARAM_GAP 10
 #define FX_PANEL_OVERLAY_WIDTH 260
 #define FX_PANEL_OVERLAY_HEADER_HEIGHT 34
 #define FX_PANEL_OVERLAY_PADDING 8
@@ -42,12 +42,6 @@ static void zero_layout(EffectsPanelLayout* layout) {
         return;
     }
     SDL_zero(*layout);
-}
-
-static float clampf(float v, float lo, float hi) {
-    if (v < lo) return lo;
-    if (v > hi) return hi;
-    return v;
 }
 
 static void lower_copy(char* dst, size_t dst_size, const char* src) {
@@ -127,18 +121,6 @@ static void derive_param_range(const char* name, float def_value, float* out_min
 
     if (out_min) *out_min = min_v;
     if (out_max) *out_max = max_v;
-}
-
-static const FxTypeUIInfo* find_type_info(const EffectsPanelState* panel, FxTypeId type_id) {
-    if (!panel) {
-        return NULL;
-    }
-    for (int i = 0; i < panel->type_count; ++i) {
-        if (panel->types[i].type_id == type_id) {
-            return &panel->types[i];
-        }
-    }
-    return NULL;
 }
 
 static void effects_panel_build_categories(EffectsPanelState* panel) {
@@ -249,41 +231,6 @@ static bool effects_panel_update_target(AppState* state) {
     return label_changed || prev_target != panel->target || prev_track != panel->target_track_index;
 }
 
-static void draw_slider(SDL_Renderer* renderer, const SDL_Rect* rect, float t) {
-    if (!renderer || !rect || rect->w <= 0 || rect->h <= 0) {
-        return;
-    }
-    SDL_Color track_bg = {36, 36, 44, 255};
-    SDL_Color track_border = {90, 90, 110, 255};
-    SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
-    SDL_RenderFillRect(renderer, rect);
-    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
-    SDL_RenderDrawRect(renderer, rect);
-
-    SDL_Rect fill_rect = *rect;
-    fill_rect.w = (int)roundf(clampf(t, 0.0f, 1.0f) * (float)rect->w);
-    SDL_Color fill_color = {120, 180, 255, 200};
-    SDL_SetRenderDrawColor(renderer, fill_color.r, fill_color.g, fill_color.b, fill_color.a);
-    SDL_RenderFillRect(renderer, &fill_rect);
-
-    SDL_Rect handle = {
-        rect->x + fill_rect.w - 4,
-        rect->y - 3,
-        8,
-        rect->h + 6,
-    };
-    if (handle.x < rect->x - 4) {
-        handle.x = rect->x - 4;
-    }
-    if (handle.x + handle.w > rect->x + rect->w + 4) {
-        handle.x = rect->x + rect->w - 4;
-    }
-    SDL_SetRenderDrawColor(renderer, 180, 210, 255, 255);
-    SDL_RenderFillRect(renderer, &handle);
-    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
-    SDL_RenderDrawRect(renderer, &handle);
-}
-
 static void draw_button(SDL_Renderer* renderer, const SDL_Rect* rect, bool highlighted, const char* label) {
     if (!renderer || !rect) {
         return;
@@ -305,26 +252,6 @@ static void draw_button(SDL_Renderer* renderer, const SDL_Rect* rect, bool highl
     }
 }
 
-static void format_value_label(const char* param_name, float value, char* out, size_t out_size) {
-    if (!out || out_size == 0) {
-        return;
-    }
-    out[0] = '\0';
-    char lower[64];
-    lower_copy(lower, sizeof(lower), param_name);
-    if (strstr(lower, "ms")) {
-        snprintf(out, out_size, "%.1f ms", value);
-    } else if (strstr(lower, "hz") || strstr(lower, "freq")) {
-        snprintf(out, out_size, "%.1f Hz", value);
-    } else if (strstr(lower, "db")) {
-        snprintf(out, out_size, "%.1f dB", value);
-    } else if (fabsf(value) >= 100.0f) {
-        snprintf(out, out_size, "%.0f", value);
-    } else {
-        snprintf(out, out_size, "%.2f", value);
-    }
-}
-
 void effects_panel_init(AppState* state) {
     if (!state) {
         return;
@@ -342,6 +269,11 @@ void effects_panel_init(AppState* state) {
     state->effects_panel.active_slot_index = -1;
     state->effects_panel.active_param_index = -1;
     state->effects_panel.overlay_scroll_index = 0;
+    state->effects_panel.title_last_click_ticks = 0;
+    for (int i = 0; i < FX_MASTER_MAX; ++i) {
+        effects_slot_reset_runtime(&state->effects_panel.slot_runtime[i]);
+    }
+    state->effects_panel.param_scroll_drag_slot = -1;
 }
 
 void effects_panel_refresh_catalog(AppState* state) {
@@ -469,7 +401,35 @@ void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* lay
 
     layout->dropdown_button_rect = (SDL_Rect){content_x, content_y, FX_PANEL_OVERLAY_WIDTH, 32};
 
-    const EffectsPanelState* panel = &state->effects_panel;
+    EffectsPanelState* panel_mut = (EffectsPanelState*)&state->effects_panel;
+    const EffectsPanelState* panel = panel_mut;
+    if (panel_mut->param_scroll_drag_slot >= panel->chain_count) {
+        panel_mut->param_scroll_drag_slot = -1;
+    }
+    const TrackNameEditor* editor = &state->track_name_editor;
+    const char* target_label = (panel->target_label[0] != '\0') ? panel->target_label : "Master";
+    if (editor && editor->editing && editor->buffer[0] != '\0') {
+        target_label = editor->buffer;
+        panel_mut->target = FX_PANEL_TARGET_TRACK;
+        panel_mut->target_track_index = editor->track_index;
+    }
+    char target_line[128];
+    if (panel->target == FX_PANEL_TARGET_TRACK && panel->target_track_index >= 0) {
+        snprintf(target_line, sizeof(target_line), "Track FX: %s", target_label);
+    } else {
+        snprintf(target_line, sizeof(target_line), "Master FX");
+    }
+    float title_scale = 2.0f;
+    int text_w = ui_measure_text_width(target_line, title_scale);
+    int text_h = ui_font_line_height(title_scale);
+    int padding_x = 16;
+    int padding_y = 10;
+    int target_w = text_w + padding_x;
+    int target_h = text_h + padding_y;
+    int target_x = mixer->rect.x + mixer->rect.w - FX_PANEL_MARGIN - target_w;
+    int target_y = mixer->rect.y + FX_PANEL_MARGIN + 4;
+    layout->target_label_rect = (SDL_Rect){target_x, target_y, target_w, target_h};
+
     int column_count = panel->chain_count;
     layout->column_count = column_count;
     int body_y = content_y + FX_PANEL_HEADER_HEIGHT;
@@ -494,44 +454,13 @@ void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* lay
         int start_x = content_x;
         for (int i = 0; i < column_count; ++i) {
             SDL_Rect col = {start_x, body_y, column_w, body_h};
-            layout->column_rects[i] = col;
-            layout->header_rects[i] = (SDL_Rect){col.x, col.y, col.w, FX_PANEL_HEADER_HEIGHT - 8};
-            layout->remove_button_rects[i] = (SDL_Rect){col.x + col.w - 28, col.y + 6, 22, 22};
-            const FxSlotUIState* slot = &panel->chain[i];
-            uint32_t param_count = slot ? slot->param_count : 0;
-            if (param_count > 0) {
-                int slider_x = col.x + FX_PANEL_INNER_MARGIN;
-                int slider_w = col.w - 2 * FX_PANEL_INNER_MARGIN;
-                if (slider_w < 60) slider_w = col.w - 12;
-
-                int available_h = col.h - FX_PANEL_HEADER_HEIGHT - FX_PANEL_INNER_MARGIN;
-                if (available_h < (int)param_count * 18) {
-                    available_h = col.h - FX_PANEL_HEADER_HEIGHT;
-                }
-                if (available_h < (int)param_count * 16) {
-                    available_h = (int)param_count * 16;
-                }
-
-                int block_h = available_h / (int)param_count;
-                if (block_h < 18) block_h = 18;
-                int label_h = block_h / 3;
-                if (label_h < 10) label_h = 10;
-                int slider_h = block_h - label_h - 4;
-                if (slider_h < 8) {
-                    slider_h = 8;
-                    if (label_h > block_h - slider_h - 2) {
-                        label_h = block_h - slider_h - 2;
-                        if (label_h < 8) label_h = 8;
-                    }
-                }
-                int stride = slider_h + label_h + 4;
-                int param_y = col.y + FX_PANEL_HEADER_HEIGHT + FX_PANEL_INNER_MARGIN / 2;
-                for (uint32_t p = 0; p < param_count && p < FX_MAX_PARAMS; ++p) {
-                    layout->param_label_rects[i][p] = (SDL_Rect){slider_x, param_y, slider_w, label_h};
-                    layout->param_slider_rects[i][p] = (SDL_Rect){slider_x, param_y + label_h, slider_w, slider_h};
-                    param_y += stride;
-                }
-            }
+            effects_slot_compute_layout(panel_mut,
+                                        i,
+                                        &col,
+                                        FX_PANEL_HEADER_HEIGHT,
+                                        FX_PANEL_INNER_MARGIN,
+                                        FX_PANEL_PARAM_GAP,
+                                        &layout->slots[i]);
             start_x += column_w + FX_PANEL_COLUMN_GAP;
         }
     }
@@ -786,7 +715,7 @@ static void render_overlay(SDL_Renderer* renderer, const AppState* state, const 
                 item_label = panel->types[type_index].name;
             }
         }
-        ui_draw_text(renderer, item_rect.x + 8, item_rect.y + 6, item_label, label, 2);
+        ui_draw_text(renderer, item_rect.x + 8, item_rect.y + 4, item_label, label, 1.5f);
     }
 
     if (layout->overlay_has_scrollbar) {
@@ -811,17 +740,53 @@ void effects_panel_render(SDL_Renderer* renderer, const AppState* state, const E
     SDL_Color label_color = {210, 210, 220, 255};
     SDL_Color text_dim = {160, 170, 190, 255};
 
+    if (panel->title_debug_last_click) {
+        SDL_Log("FX title clicked (target=%s, track=%d)", panel->target == FX_PANEL_TARGET_TRACK ? "track" : "master", panel->target_track_index);
+        ((EffectsPanelState*)panel)->title_debug_last_click = false;
+    }
+
+    const TrackNameEditor* editor = &state->track_name_editor;
     const char* target_label = (panel->target_label[0] != '\0') ? panel->target_label : "Master";
+    if (panel->target == FX_PANEL_TARGET_TRACK &&
+        editor &&
+        editor->editing &&
+        editor->track_index == panel->target_track_index &&
+        editor->buffer[0] != '\0') {
+        target_label = editor->buffer;
+    }
     char target_line[128];
     if (panel->target == FX_PANEL_TARGET_TRACK && panel->target_track_index >= 0) {
         snprintf(target_line, sizeof(target_line), "Track FX: %s", target_label);
     } else {
         snprintf(target_line, sizeof(target_line), "Master FX");
     }
-    int target_w = ui_measure_text_width(target_line, 2);
-    int target_x = layout->panel_rect.x + layout->panel_rect.w - FX_PANEL_MARGIN - target_w;
-    int target_y = layout->panel_rect.y + FX_PANEL_MARGIN + 8;
-    ui_draw_text(renderer, target_x, target_y, target_line, label_color, 2);
+    SDL_Rect title_rect = layout->target_label_rect.w > 0 ? layout->target_label_rect
+                                                          : (SDL_Rect){layout->panel_rect.x + FX_PANEL_MARGIN,
+                                                                       layout->panel_rect.y + FX_PANEL_MARGIN + 8,
+                                                                       ui_measure_text_width(target_line, 2.0f) + 16,
+                                                                       ui_font_line_height(2.0f) + 10};
+    SDL_SetRenderDrawColor(renderer, 40, 44, 54, 200);
+    SDL_RenderFillRect(renderer, &title_rect);
+    SDL_SetRenderDrawColor(renderer, 90, 95, 110, 255);
+    SDL_RenderDrawRect(renderer, &title_rect);
+    float title_scale = 2.0f;
+    int text_h = ui_font_line_height(title_scale);
+    int text_y = title_rect.y + (title_rect.h - text_h) / 2;
+    ui_draw_text(renderer, title_rect.x + 6, text_y, target_line, label_color, title_scale);
+    if (editor && editor->editing) {
+        const char* prefix = "Track FX: ";
+        int prefix_w = ui_measure_text_width(prefix, title_scale);
+        char temp[ENGINE_CLIP_NAME_MAX + 32];
+        snprintf(temp, sizeof(temp), "%.*s", editor->cursor, editor->buffer);
+        int caret_x = title_rect.x + 6 + prefix_w + ui_measure_text_width(temp, title_scale);
+        if (caret_x > title_rect.x + title_rect.w) {
+            caret_x = title_rect.x + title_rect.w;
+        }
+        int caret_h = ui_font_line_height(title_scale);
+        SDL_Rect caret = {caret_x, text_y, 2, caret_h};
+        SDL_SetRenderDrawColor(renderer, 240, 240, 240, 255);
+        SDL_RenderFillRect(renderer, &caret);
+    }
 
     // Add button
     bool button_active = (panel->overlay_layer != FX_PANEL_OVERLAY_CLOSED);
@@ -839,54 +804,13 @@ void effects_panel_render(SDL_Renderer* renderer, const AppState* state, const E
     }
 
     for (int i = 0; i < layout->column_count && i < panel->chain_count; ++i) {
-        const FxSlotUIState* slot = &panel->chain[i];
-        const FxTypeUIInfo* info = find_type_info(panel, slot->type_id);
-        SDL_Rect col = layout->column_rects[i];
-        SDL_Color box_bg = {32, 34, 42, 255};
-        SDL_Color box_border = {80, 85, 100, 255};
-        SDL_SetRenderDrawColor(renderer, box_bg.r, box_bg.g, box_bg.b, box_bg.a);
-        SDL_RenderFillRect(renderer, &col);
-        SDL_SetRenderDrawColor(renderer, box_border.r, box_border.g, box_border.b, box_border.a);
-        SDL_RenderDrawRect(renderer, &col);
-
-        // Header
-        SDL_Rect header = layout->header_rects[i];
-        SDL_SetRenderDrawColor(renderer, 44, 48, 58, 255);
-        SDL_RenderFillRect(renderer, &header);
-        SDL_SetRenderDrawColor(renderer, box_border.r, box_border.g, box_border.b, box_border.a);
-        SDL_RenderDrawRect(renderer, &header);
-
-        const char* fx_name = info ? info->name : "Effect";
-        ui_draw_text(renderer, header.x + 8, header.y + 8, fx_name, label_color, 2);
-
-        SDL_Rect remove_rect = layout->remove_button_rects[i];
-        draw_button(renderer, &remove_rect, panel->highlighted_slot_index == i, "-");
-
-        for (uint32_t p = 0; p < slot->param_count && p < FX_MAX_PARAMS; ++p) {
-            SDL_Rect label_rect = layout->param_label_rects[i][p];
-            SDL_Rect slider_rect = layout->param_slider_rects[i][p];
-            const char* pname = info ? info->param_names[p] : "Param";
-            float min_v = info ? info->param_min[p] : 0.0f;
-            float max_v = info ? info->param_max[p] : 1.0f;
-            if (fabsf(max_v - min_v) < 1e-6f) {
-                max_v = min_v + 1.0f;
-            }
-            float value = slot->param_values[p];
-            float t = (value - min_v) / (max_v - min_v);
-            draw_slider(renderer, &slider_rect, t);
-
-            char label_line[96];
-            snprintf(label_line, sizeof(label_line), "%s", pname);
-            ui_draw_text(renderer, label_rect.x, label_rect.y, label_line, label_color, 1);
-
-            char value_line[64];
-            format_value_label(pname, value, value_line, sizeof(value_line));
-            int value_y = slider_rect.y - 12;
-            if (value_y < header.y + header.h + 2) {
-                value_y = slider_rect.y + slider_rect.h + 2;
-            }
-            ui_draw_text(renderer, slider_rect.x, value_y, value_line, text_dim, 1);
-        }
+        effects_slot_render(renderer,
+                            state,
+                            i,
+                            &layout->slots[i],
+                            panel->highlighted_slot_index == i,
+                            label_color,
+                            text_dim);
     }
 
     render_overlay(renderer, state, layout);

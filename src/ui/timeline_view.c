@@ -3,7 +3,7 @@
 #include "app_state.h"
 #include "engine/engine.h"
 #include "engine/sampler.h"
-#include "ui/font5x7.h"
+#include "ui/font.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -46,6 +46,44 @@ static inline Uint8 clamp_u8(int value) {
     return (Uint8)value;
 }
 
+static float timeline_total_seconds(const AppState* state) {
+    if (!state || !state->engine) {
+        return 0.0f;
+    }
+    const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
+    int sample_rate = cfg ? cfg->sample_rate : 0;
+    if (sample_rate <= 0) {
+        return 0.0f;
+    }
+    const EngineTrack* tracks = engine_get_tracks(state->engine);
+    int track_count = engine_get_track_count(state->engine);
+    uint64_t max_frames = 0;
+    for (int t = 0; t < track_count; ++t) {
+        const EngineTrack* track = &tracks[t];
+        if (!track) continue;
+        for (int i = 0; i < track->clip_count; ++i) {
+            const EngineClip* clip = &track->clips[i];
+            if (!clip) continue;
+            uint64_t start = clip->timeline_start_frames;
+            uint64_t length = clip->duration_frames;
+            if (length == 0 && clip->media) {
+                length = clip->media->frame_count;
+            }
+            if (length == 0) {
+                length = engine_clip_get_total_frames(state->engine, t, i);
+            }
+            uint64_t end = start + length;
+            if (end > max_frames) {
+                max_frames = end;
+            }
+        }
+    }
+    if (max_frames == 0) {
+        return 0.0f;
+    }
+    return (float)max_frames / (float)sample_rate;
+}
+
 static void draw_timeline_button(SDL_Renderer* renderer,
                                  const SDL_Rect* rect,
                                  const char* label,
@@ -69,9 +107,44 @@ static void draw_timeline_button(SDL_Renderer* renderer,
     SDL_RenderDrawRect(renderer, rect);
 
     SDL_Color text_color = enabled ? text : text_disabled;
-    int text_x = rect->x + (rect->w - (int)strlen(label) * 6 * 2) / 2;
-    int text_y = rect->y + (rect->h - 7 * 2) / 2;
-    ui_draw_text(renderer, text_x, text_y, label, text_color, 2);
+    int scale = 1;
+    int text_w = ui_measure_text_width(label, scale);
+    int text_h = ui_font_line_height(scale);
+    int text_x = rect->x + (rect->w - text_w) / 2;
+    int text_y = rect->y + (rect->h - text_h) / 2;
+    ui_draw_text(renderer, text_x, text_y, label, text_color, scale);
+}
+
+static void fit_label_ellipsis(const char* src, int max_px, float scale, char* out, size_t out_size) {
+    if (!out || out_size == 0) return;
+    out[0] = '\0';
+    if (!src) return;
+    int full_w = ui_measure_text_width(src, scale);
+    if (full_w <= max_px) {
+        strncpy(out, src, out_size - 1);
+        out[out_size - 1] = '\0';
+        return;
+    }
+    const char* ell = "...";
+    int ell_w = ui_measure_text_width(ell, scale);
+    int target_px = max_px - ell_w;
+    if (target_px <= 0) {
+        strncpy(out, ell, out_size - 1);
+        out[out_size - 1] = '\0';
+        return;
+    }
+    size_t len = strlen(src);
+    for (size_t i = len; i > 0; --i) {
+        char tmp[ENGINE_CLIP_NAME_MAX];
+        snprintf(tmp, sizeof(tmp), "%.*s", (int)i, src);
+        if (ui_measure_text_width(tmp, scale) <= target_px) {
+            snprintf(out, out_size, "%s%s", tmp, ell);
+            out[out_size - 1] = '\0';
+            return;
+        }
+    }
+    strncpy(out, ell, out_size - 1);
+    out[out_size - 1] = '\0';
 }
 
 static void draw_toggle_button(SDL_Renderer* renderer,
@@ -101,13 +174,16 @@ static void draw_toggle_button(SDL_Renderer* renderer,
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, rect);
 
-    int text_x = rect->x + (rect->w - (int)strlen(label) * 6 * 2) / 2;
+    int scale = 1;
+    int text_w = ui_measure_text_width(label, scale);
+    int text_h = ui_font_line_height(scale);
+    int text_x = rect->x + (rect->w - text_w) / 2;
     if (text_x < rect->x + 2) text_x = rect->x + 2;
-    int text_y = rect->y + (rect->h - 7 * 2) / 2;
-    ui_draw_text(renderer, text_x, text_y, label, text, 2);
+    int text_y = rect->y + (rect->h - text_h) / 2;
+    ui_draw_text(renderer, text_x, text_y, label, text, scale);
 }
 
-static void draw_timeline_grid(SDL_Renderer* renderer, int x0, int width, int top, int height, float pixels_per_second, float visible_seconds, bool show_all_lines) {
+static void draw_timeline_grid(SDL_Renderer* renderer, int x0, int width, int top, int height, float pixels_per_second, float visible_seconds, bool show_all_lines, float window_start_seconds) {
     SDL_SetRenderDrawColor(renderer, 60, 60, 72, 255);
     SDL_RenderDrawRect(renderer, &(SDL_Rect){x0, top, width, height});
 
@@ -146,12 +222,13 @@ static void draw_timeline_grid(SDL_Renderer* renderer, int x0, int width, int to
         int x = x0 + (int)roundf(sec * pixels_per_second);
         SDL_RenderDrawLine(renderer, x, top, x, top + height);
 
-        int total_seconds = (int)sec;
+        float label_sec = window_start_seconds + sec;
+        int total_seconds = (int)label_sec;
         int minutes = total_seconds / 60;
         int seconds = total_seconds % 60;
         char label[16];
         snprintf(label, sizeof(label), "%02d:%02d", minutes, seconds);
-        ui_draw_text(renderer, x + 4, top - 14, label, label_color, 2);
+        ui_draw_text(renderer, x + 4, top - 14, label, label_color, 1);
     }
 }
 
@@ -165,6 +242,13 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
 
     float visible_seconds = clamp_float(state->timeline_visible_seconds, TIMELINE_MIN_VISIBLE_SECONDS, TIMELINE_MAX_VISIBLE_SECONDS);
     float vertical_scale = clamp_float(state->timeline_vertical_scale, TIMELINE_MIN_VERTICAL_SCALE, TIMELINE_MAX_VERTICAL_SCALE);
+    float total_seconds = timeline_total_seconds(state);
+    float max_window_start = total_seconds > visible_seconds ? total_seconds - visible_seconds : 0.0f;
+    if (max_window_start < 0.0f) {
+        max_window_start = 0.0f;
+    }
+    float window_start = clamp_float(state->timeline_window_start_seconds, 0.0f, max_window_start);
+    float window_end = window_start + visible_seconds;
 
     const int controls_height = TIMELINE_CONTROLS_HEIGHT;
     const int track_top_offset = controls_height + 8;
@@ -188,9 +272,10 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
     const int sample_rate = engine_get_config(engine)->sample_rate;
 
     TimelineControlsUI* controls = (TimelineControlsUI*)&state->timeline_controls;
-    controls->add_rect = (SDL_Rect){rect->x + 16, rect->y + 8, 28, 24};
-    controls->remove_rect = (SDL_Rect){rect->x + 52, rect->y + 8, 28, 24};
-    controls->loop_toggle_rect = (SDL_Rect){rect->x + 88, rect->y + 8, 56, 24};
+    int controls_left = rect->x + 12;
+    controls->add_rect = (SDL_Rect){controls_left, rect->y + 8, 28, 24};
+    controls->remove_rect = (SDL_Rect){controls_left + 36, rect->y + 8, 28, 24};
+    controls->loop_toggle_rect = (SDL_Rect){controls_left + 72, rect->y + 8, 42, 24};
 
     bool remove_enabled = track_count > 0;
     draw_timeline_button(renderer, &controls->add_rect, "+", controls->add_hovered, true);
@@ -213,13 +298,14 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
     if (have_loop_controls) {
         float loop_start_sec = (float)state->loop_start_frame / (float)sample_rate;
         float loop_end_sec = (float)state->loop_end_frame / (float)sample_rate;
-        float max_sec = visible_seconds;
-        if (loop_start_sec < 0.0f) loop_start_sec = 0.0f;
-        if (loop_end_sec < 0.0f) loop_end_sec = 0.0f;
-        if (loop_start_sec > max_sec) loop_start_sec = max_sec;
-        if (loop_end_sec > max_sec) loop_end_sec = max_sec;
-        int loop_start_x = content_left + (int)roundf((loop_start_sec / max_sec) * (float)content_width);
-        int loop_end_x = content_left + (int)roundf((loop_end_sec / max_sec) * (float)content_width);
+        float loop_start_local = loop_start_sec - window_start;
+        float loop_end_local = loop_end_sec - window_start;
+        if (loop_start_local < 0.0f) loop_start_local = 0.0f;
+        if (loop_end_local < 0.0f) loop_end_local = 0.0f;
+        if (loop_start_local > visible_seconds) loop_start_local = visible_seconds;
+        if (loop_end_local > visible_seconds) loop_end_local = visible_seconds;
+        int loop_start_x = content_left + (int)roundf(loop_start_local * pixels_per_second);
+        int loop_end_x = content_left + (int)roundf(loop_end_local * pixels_per_second);
         if (loop_start_x < content_left) loop_start_x = content_left;
         if (loop_start_x > content_left + content_width) loop_start_x = content_left + content_width;
         if (loop_end_x < content_left) loop_end_x = content_left;
@@ -232,9 +318,11 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
         int top_zone_y = rect->y + 8;
         int top_zone_h = track_y - rect->y - 12;
         if (top_zone_h < 12) top_zone_h = 12;
-        int handle_width = 12;
-        controls->loop_start_rect = (SDL_Rect){loop_start_x - handle_width / 2, top_zone_y, handle_width, top_zone_h};
-        controls->loop_end_rect = (SDL_Rect){loop_end_x - handle_width / 2, top_zone_y, handle_width, top_zone_h};
+        int handle_width = 10;
+        int handle_height = top_zone_h - 6;
+        if (handle_height < 12) handle_height = 12;
+        controls->loop_start_rect = (SDL_Rect){loop_start_x - handle_width / 2, top_zone_y + 3, handle_width, handle_height};
+        controls->loop_end_rect = (SDL_Rect){loop_end_x - handle_width / 2, top_zone_y + 3, handle_width, handle_height};
 
         if (loop_end_x > loop_start_x) {
             have_loop_region = true;
@@ -258,7 +346,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
 
     for (int lane = 0; lane < grid_lanes; ++lane) {
         int lane_top = track_y + lane * (track_height + track_spacing);
-        draw_timeline_grid(renderer, content_left, content_width, lane_top, track_height, pixels_per_second, visible_seconds, state->timeline_show_all_grid_lines);
+        draw_timeline_grid(renderer, content_left, content_width, lane_top, track_height, pixels_per_second, visible_seconds, state->timeline_show_all_grid_lines, window_start);
     }
 
     SDL_Color header_bg = {30, 30, 38, 255};
@@ -327,29 +415,42 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
             draw_toggle_button(renderer, &mute_rect, "M", track ? track->muted : false, mute_hover, mute_active);
             draw_toggle_button(renderer, &solo_rect, "S", track ? track->solo : false, solo_hover, solo_active);
 
-            int text_x = header_rect.x + 8;
+            int text_x = header_rect.x + 6;
             int text_max_x = mute_rect.x - 4;
             int available_px = text_max_x - text_x;
+            available_px = (int)((float)available_px * 1.5f);
             char text_buf[ENGINE_CLIP_NAME_MAX];
             const char* display = label;
             if (available_px > 0) {
-                int max_chars = available_px / (6 * 2);
-                if (max_chars > 0 && (int)strlen(label) > max_chars) {
-                    strncpy(text_buf, label, (size_t)max_chars);
-                    text_buf[max_chars] = '\0';
-                    display = text_buf;
-                }
+                fit_label_ellipsis(label, available_px, 1.0f, text_buf, sizeof(text_buf));
+                display = text_buf;
             }
-            ui_draw_text(renderer, text_x, header_rect.y + 8, display, label_color, 2);
+            int label_text_y = header_rect.y + 4;
+            ui_draw_text(renderer, text_x, label_text_y, display, label_color, 1);
             if (editor && editor->editing && editor->track_index == t) {
+                float scale = 1.0f;
                 int caret_limit = text_max_x;
                 if (caret_limit < text_x) caret_limit = text_x;
-                int caret_x = text_x + editor->cursor * 6 * 2;
+                char temp[ENGINE_CLIP_NAME_MAX];
+                int len = (int)strlen(editor->buffer);
+                int caret_x = text_x;
+                int target_index = editor->cursor;
+                if (target_index < 0) target_index = 0;
+                if (target_index > len) target_index = len;
+                snprintf(temp, sizeof(temp), "%.*s", target_index, editor->buffer);
+                caret_x = text_x + ui_measure_text_width(temp, scale);
                 if (caret_x > caret_limit) {
                     caret_x = caret_limit;
                 }
+                int caret_h = ui_font_line_height(scale);
+                SDL_Rect caret_rect = {
+                    caret_x,
+                    label_text_y,
+                    2,
+                    caret_h
+                };
                 SDL_SetRenderDrawColor(renderer, 220, 230, 255, 255);
-                SDL_RenderDrawLine(renderer, caret_x, header_rect.y + 6, caret_x, header_rect.y + header_rect.h - 6);
+                SDL_RenderFillRect(renderer, &caret_rect);
             }
 
             if (!track || track->clip_count <= 0) {
@@ -370,8 +471,23 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                 const double clip_sec = (double)frame_count / (double)sample_rate;
                 const double start_sec = (double)start_frame / (double)sample_rate;
 
-                int clip_x = content_left + (int)round(start_sec * pixels_per_second);
-                int clip_w = (int)round(clip_sec * pixels_per_second);
+                double clip_end_sec = start_sec + clip_sec;
+                double visible_start_sec = start_sec;
+                if (visible_start_sec < (double)window_start) {
+                    visible_start_sec = (double)window_start;
+                }
+                double visible_end_sec = clip_end_sec;
+                double window_end_sec = (double)window_end;
+                if (visible_end_sec > window_end_sec) {
+                    visible_end_sec = window_end_sec;
+                }
+                if (visible_end_sec <= visible_start_sec) {
+                    continue;
+                }
+
+                double visible_offset = visible_start_sec - (double)window_start;
+                int clip_x = content_left + (int)round(visible_offset * pixels_per_second);
+                int clip_w = (int)round((visible_end_sec - visible_start_sec) * pixels_per_second);
                 if (clip_w < 4) {
                     clip_w = 4;
                 }
@@ -401,11 +517,17 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
 
                 if (sample_rate > 0) {
                     int fade_in_px = (int)round((double)clip->fade_in_frames / (double)sample_rate * pixels_per_second);
-                    if (fade_in_px > clip_rect.w) fade_in_px = clip_rect.w;
-                    if (fade_in_px > 0) {
+                    int fade_out_px = (int)round((double)clip->fade_out_frames / (double)sample_rate * pixels_per_second);
+                    int clip_clip_left_px = (int)round((visible_start_sec - start_sec) * pixels_per_second);
+                    int clip_clip_right_px = (int)round((clip_end_sec - visible_end_sec) * pixels_per_second);
+
+                    int fade_in_draw = fade_in_px - clip_clip_left_px;
+                    if (fade_in_draw < 0) fade_in_draw = 0;
+                    if (fade_in_draw > clip_rect.w) fade_in_draw = clip_rect.w;
+                    if (fade_in_draw > 0) {
                         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 80);
-                        for (int fx = 0; fx < fade_in_px; ++fx) {
-                            float tf = (float)fx / (float)fade_in_px;
+                        for (int fx = 0; fx < fade_in_draw; ++fx) {
+                            float tf = fade_in_draw > 0 ? (float)fx / (float)fade_in_draw : 0.0f;
                             if (tf > 1.0f) tf = 1.0f;
                             int h = (int)((1.0f - tf) * clip_rect.h);
                             SDL_RenderDrawLine(renderer,
@@ -416,15 +538,16 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                         }
                     }
 
-                    int fade_out_px = (int)round((double)clip->fade_out_frames / (double)sample_rate * pixels_per_second);
-                    if (fade_out_px > clip_rect.w) fade_out_px = clip_rect.w;
-                    if (fade_out_px > 0) {
+                    int fade_out_draw = fade_out_px - clip_clip_right_px;
+                    if (fade_out_draw < 0) fade_out_draw = 0;
+                    if (fade_out_draw > clip_rect.w) fade_out_draw = clip_rect.w;
+                    if (fade_out_draw > 0) {
                         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 80);
-                        for (int fx = 0; fx < fade_out_px; ++fx) {
-                            float tf = (float)fx / (float)fade_out_px;
+                        for (int fx = 0; fx < fade_out_draw; ++fx) {
+                            float tf = fade_out_draw > 0 ? (float)fx / (float)fade_out_draw : 0.0f;
                             if (tf > 1.0f) tf = 1.0f;
                             int h = (int)(tf * clip_rect.h);
-                            int px = clip_rect.x + clip_rect.w - fade_out_px + fx;
+                            int px = clip_rect.x + clip_rect.w - fade_out_draw + fx;
                             SDL_RenderDrawLine(renderer,
                                                px,
                                                clip_rect.y,
@@ -436,15 +559,21 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
 
                 SDL_Color text_color = {200, 200, 210, 255};
                 const char* name = clip->name[0] ? clip->name : "Clip";
-                int label_padding = 8;
+                int label_padding = 6;
                 int label_width = clip_rect.w - label_padding * 2;
+                float scale_f = 1.5f; // mid-size for readability on clips
+                int text_h = ui_font_line_height(scale_f);
+                int label_y = clip_rect.y + (clip_rect.h - text_h) / 2;
+                if (label_y < clip_rect.y + 2) {
+                    label_y = clip_rect.y + 2;
+                }
                 if (label_width > 0) {
                     ui_draw_text_clipped(renderer,
                                          clip_rect.x + label_padding,
-                                         clip_rect.y + 8,
+                                         label_y,
                                          name,
                                          text_color,
-                                         2,
+                                         scale_f,
                                          label_width);
                 }
 
@@ -496,7 +625,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
         }
     }
     const double transport_sec = (double)playhead_frame / (double)sample_rate;
-    float playhead_offset = (float)(transport_sec / visible_seconds) * (float)content_width;
+    float playhead_offset = (float)((transport_sec - window_start) / visible_seconds) * (float)content_width;
     playhead_offset = clamp_float(playhead_offset, 0.0f, (float)content_width);
     int playhead_x = content_left + (int)roundf(playhead_offset);
     int timeline_bottom = track_y + (track_count > 0
@@ -520,7 +649,8 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
             if (duration_sec <= 0.0) {
                 duration_sec = 1.0 / (double)sample_rate;
             }
-            int ghost_x = content_left + (int)round(start_sec * pixels_per_second);
+            double ghost_offset = start_sec - (double)window_start;
+            int ghost_x = content_left + (int)round(ghost_offset * pixels_per_second);
             int ghost_w = (int)round(duration_sec * pixels_per_second);
             if (ghost_w < 4) {
                 ghost_w = 4;
@@ -545,7 +675,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                     const EngineClip* clip = &src_track->clips[drag->clip_index];
                     if (clip && clip->name[0]) {
                         SDL_Color text_color = {220, 230, 255, 255};
-                        ui_draw_text(renderer, ghost_rect.x + 6, ghost_rect.y + 6, clip->name, text_color, 2);
+                        ui_draw_text(renderer, ghost_rect.x + 4, ghost_rect.y + 4, clip->name, text_color, 1);
                     }
                 }
             }
@@ -567,7 +697,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                     label_y = ghost_rect.y + ghost_rect.h + 6;
                 }
                 SDL_Color badge = {235, 240, 255, 255};
-                ui_draw_text(renderer, label_x, label_y, label, badge, 2);
+                ui_draw_text(renderer, label_x, label_y, label, badge, 1);
             }
         }
     }
@@ -576,13 +706,13 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
         float start_sec = state->timeline_drop_seconds_snapped >= 0.0f
                               ? state->timeline_drop_seconds_snapped
                               : state->timeline_drop_seconds;
-        start_sec = clamp_float(start_sec, 0.0f, visible_seconds);
+        start_sec = clamp_float(start_sec, window_start, window_end);
         float duration_sec = state->timeline_drop_preview_duration > 0.0f
                                  ? state->timeline_drop_preview_duration
                                  : 1.0f;
-        float end_sec = clamp_float(start_sec + duration_sec, start_sec + 0.01f, visible_seconds);
+        float end_sec = clamp_float(start_sec + duration_sec, start_sec + 0.01f, window_end);
 
-        int ghost_x = content_left + (int)roundf(start_sec * pixels_per_second);
+        int ghost_x = content_left + (int)roundf((start_sec - window_start) * pixels_per_second);
         int ghost_w = (int)roundf((end_sec - start_sec) * pixels_per_second);
         if (ghost_w < 6) {
             ghost_w = 6;
@@ -608,7 +738,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
 
         if (state->timeline_drop_label[0] != '\0') {
             SDL_Color ghost_text = {220, 230, 255, 255};
-            ui_draw_text(renderer, ghost_rect.x + 6, ghost_rect.y + 6, state->timeline_drop_label, ghost_text, 2);
+            ui_draw_text(renderer, ghost_rect.x + 4, ghost_rect.y + 4, state->timeline_drop_label, ghost_text, 1);
         }
     }
 }

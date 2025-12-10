@@ -12,6 +12,7 @@
 #include "ui/library_browser.h"
 #include "ui/panes.h"
 #include "ui/timeline_view.h"
+#include "ui/effects_panel.h"
 
 #include <SDL2/SDL.h>
 #include <math.h>
@@ -136,7 +137,7 @@ static void timeline_end_drag(AppState* state) {
     }
 }
 
-static void track_name_editor_stop(AppState* state, bool commit) {
+void track_name_editor_stop(AppState* state, bool commit) {
     if (!state) {
         return;
     }
@@ -144,10 +145,12 @@ static void track_name_editor_stop(AppState* state, bool commit) {
     if (!editor->editing) {
         return;
     }
+    SDL_Log("track_name_editor_stop (commit=%d, track=%d)", commit ? 1 : 0, editor->track_index);
     if (commit && state->engine && editor->track_index >= 0) {
         int track_count = engine_get_track_count(state->engine);
         if (editor->track_index < track_count) {
             engine_track_set_name(state->engine, editor->track_index, editor->buffer);
+            effects_panel_sync_from_engine(state);
         }
     }
     editor->editing = false;
@@ -157,7 +160,7 @@ static void track_name_editor_stop(AppState* state, bool commit) {
     SDL_StopTextInput();
 }
 
-static void track_name_editor_start(AppState* state, int track_index) {
+void track_name_editor_start(AppState* state, int track_index) {
     if (!state || !state->engine || track_index < 0) {
         return;
     }
@@ -191,8 +194,44 @@ typedef struct TimelineGeometry {
     int track_spacing;
     int header_width;
     float visible_seconds;
+    float window_start_seconds;
     float pixels_per_second;
 } TimelineGeometry;
+
+static float timeline_total_seconds(const AppState* state) {
+    if (!state || !state->engine) {
+        return 0.0f;
+    }
+    const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
+    int sample_rate = cfg ? cfg->sample_rate : 0;
+    if (sample_rate <= 0) {
+        return 0.0f;
+    }
+    const EngineTrack* tracks = engine_get_tracks(state->engine);
+    int track_count = engine_get_track_count(state->engine);
+    uint64_t max_frames = 0;
+    for (int t = 0; t < track_count; ++t) {
+        const EngineTrack* track = &tracks[t];
+        if (!track) continue;
+        for (int i = 0; i < track->clip_count; ++i) {
+            const EngineClip* clip = &track->clips[i];
+            if (!clip) continue;
+            uint64_t start = clip->timeline_start_frames;
+            uint64_t length = clip->duration_frames;
+            if (length == 0) {
+                length = engine_clip_get_total_frames(state->engine, t, i);
+            }
+            uint64_t end = start + length;
+            if (end > max_frames) {
+                max_frames = end;
+            }
+        }
+    }
+    if (max_frames == 0) {
+        return 0.0f;
+    }
+    return (float)max_frames / (float)sample_rate;
+}
 
 static bool timeline_compute_geometry(const AppState* state, const Pane* timeline, TimelineGeometry* out_geom) {
     if (!state || !timeline || !out_geom) {
@@ -218,6 +257,15 @@ static bool timeline_compute_geometry(const AppState* state, const Pane* timelin
     if (geom.content_width <= 0) {
         return false;
     }
+    float total_seconds = timeline_total_seconds(state);
+    float max_start = total_seconds > geom.visible_seconds ? total_seconds - geom.visible_seconds : 0.0f;
+    if (max_start < 0.0f) {
+        max_start = 0.0f;
+    }
+    float window_start = state->timeline_window_start_seconds;
+    if (window_start < 0.0f) window_start = 0.0f;
+    if (window_start > max_start) window_start = max_start;
+    geom.window_start_seconds = window_start;
     geom.pixels_per_second = geom.visible_seconds > 0.0f
                                  ? (float)geom.content_width / geom.visible_seconds
                                  : 0.0f;
@@ -226,6 +274,14 @@ static bool timeline_compute_geometry(const AppState* state, const Pane* timelin
     }
     *out_geom = geom;
     return true;
+}
+
+static float timeline_x_to_seconds(const TimelineGeometry* geom, int x) {
+    if (!geom || geom->pixels_per_second <= 0.0f) {
+        return 0.0f;
+    }
+    float local = (float)(x - geom->content_left) / geom->pixels_per_second;
+    return geom->window_start_seconds + local;
 }
 
 static void timeline_controls_update_hover(AppState* state) {
@@ -251,8 +307,8 @@ static bool timeline_controls_handle_click(AppState* state, const SDL_Point* poi
         return false;
     }
     TimelineControlsUI* controls = &state->timeline_controls;
-    track_name_editor_stop(state, true);
     if (SDL_PointInRect(point, &controls->add_rect)) {
+        track_name_editor_stop(state, true);
         int new_track = engine_add_track(state->engine);
         if (new_track >= 0) {
             timeline_select_clip(state, new_track, -1);
@@ -264,6 +320,7 @@ static bool timeline_controls_handle_click(AppState* state, const SDL_Point* poi
         return true;
     }
     if (SDL_PointInRect(point, &controls->remove_rect)) {
+        track_name_editor_stop(state, true);
         int track_count = engine_get_track_count(state->engine);
         if (track_count <= 0) {
             return true;
@@ -311,6 +368,7 @@ static bool timeline_controls_handle_click(AppState* state, const SDL_Point* poi
         return true;
     }
     if (SDL_PointInRect(point, &controls->loop_toggle_rect)) {
+        track_name_editor_stop(state, true);
         controls->adjusting_loop_start = false;
         controls->adjusting_loop_end = false;
         bool new_state = !state->loop_enabled;
@@ -378,16 +436,18 @@ static void update_timeline_drop_hint(AppState* state) {
 
     float visible_seconds = geom.visible_seconds;
     float pixels_per_second = geom.pixels_per_second;
-    float seconds = pixels_per_second > 0.0f ? (float)rel_x / pixels_per_second : 0.0f;
+    float window_start = geom.window_start_seconds;
+    float window_end = window_start + visible_seconds;
+    float seconds = pixels_per_second > 0.0f ? window_start + (float)rel_x / pixels_per_second : window_start;
     float snap_interval = TIMELINE_SNAP_SECONDS > 0.0f ? TIMELINE_SNAP_SECONDS : 0.25f;
 
-    float best_sec = clamp_scalar(seconds, 0.0f, visible_seconds);
+    float best_sec = clamp_scalar(seconds, window_start, window_end);
     float best_diff = FLT_MAX;
 
     int base_tick = (int)roundf(seconds / snap_interval);
     for (int offset = -2; offset <= 2; ++offset) {
         float candidate = (float)(base_tick + offset) * snap_interval;
-        if (candidate < 0.0f || candidate > visible_seconds) {
+        if (candidate < window_start || candidate > window_end) {
             continue;
         }
         float diff = fabsf(candidate - seconds);
@@ -449,8 +509,8 @@ static void update_timeline_drop_hint(AppState* state) {
         set_drop_label(state, item->name, item->duration_seconds);
     }
 
-    best_sec = clamp_scalar(best_sec, 0.0f, visible_seconds);
-    state->timeline_drop_seconds = clamp_scalar(seconds, 0.0f, visible_seconds);
+    best_sec = clamp_scalar(best_sec, window_start, window_end);
+    state->timeline_drop_seconds = clamp_scalar(seconds, window_start, window_end);
     state->timeline_drop_seconds_snapped = best_sec;
     state->timeline_drop_track_index = drop_track;
     float preview_seconds = state->timeline_drop_preview_duration;
@@ -719,9 +779,11 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
             controls->adjusting_loop_start = false;
             controls->adjusting_loop_end = false;
         } else if (state->loop_enabled) {
-            float seconds = (float)(state->mouse_x - geom.content_left) / geom.pixels_per_second;
-            if (seconds < 0.0f) seconds = 0.0f;
-            if (seconds > geom.visible_seconds) seconds = geom.visible_seconds;
+            float seconds = timeline_x_to_seconds(&geom, state->mouse_x);
+            float window_min = geom.window_start_seconds;
+            float window_max = geom.window_start_seconds + geom.visible_seconds;
+            if (seconds < window_min) seconds = window_min;
+            if (seconds > window_max) seconds = window_max;
             float snap_threshold = 0.05f;
             snap_time_to_any_clip(state, sample_rate, snap_threshold, &seconds);
             uint64_t frame = 0;
@@ -806,8 +868,9 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
 
             double start_sec = (double)clip->timeline_start_frames / (double)sample_rate;
             double clip_sec = (double)frame_count / (double)sample_rate;
-            int clip_x = geom.content_left + (int)round(start_sec * geom.pixels_per_second);
-            int clip_w = (int)round(clip_sec * geom.pixels_per_second);
+                float clip_offset = start_sec - geom.window_start_seconds;
+                int clip_x = geom.content_left + (int)round(clip_offset * geom.pixels_per_second);
+                int clip_w = (int)round(clip_sec * geom.pixels_per_second);
             if (clip_w < 4) {
                 clip_w = 4;
             }
@@ -857,8 +920,10 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
     if (!was_down && is_down && shift_held && over_timeline) {
         bool over_clip = (hit_clip >= 0 && hit_track >= 0);
         if (!over_clip) {
-            float seconds = (float)(state->mouse_x - geom.content_left) / geom.pixels_per_second;
-            seconds = clamp_scalar(seconds, 0.0f, geom.visible_seconds);
+            float seconds = timeline_x_to_seconds(&geom, state->mouse_x);
+            float window_min = geom.window_start_seconds;
+            float window_max = geom.window_start_seconds + geom.visible_seconds;
+            seconds = clamp_scalar(seconds, window_min, window_max);
             uint64_t frame = (uint64_t)llroundf(seconds * (float)sample_rate);
             engine_transport_seek(state->engine, frame);
             manager->last_click_clip = -1;
@@ -1010,7 +1075,7 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
             drag->track_index = hit_track;
             drag->clip_index = hit_clip;
             drag->start_mouse_x = state->mouse_x;
-            drag->start_mouse_seconds = (float)(state->mouse_x - geom.content_left) / geom.pixels_per_second;
+            drag->start_mouse_seconds = timeline_x_to_seconds(&geom, state->mouse_x);
             drag->initial_start_frames = clip->timeline_start_frames;
             drag->initial_offset_frames = clip->offset_frames;
             drag->initial_duration_frames = clip->duration_frames;
@@ -1054,6 +1119,9 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
                 drag->multi_clip_count = 0;
             }
         } else if (!hit_left && !hit_right && over_timeline) {
+            if (state->layout_runtime.drag.active) {
+                return;
+            }
             timeline_clear_selection(state);
             timeline_end_drag(state);
         }
@@ -1263,7 +1331,7 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
         state->inspector.adjusting_fade_out = false;
     }
 
-    float mouse_seconds = (float)(state->mouse_x - geom.content_left) / geom.pixels_per_second;
+    float mouse_seconds = timeline_x_to_seconds(&geom, state->mouse_x);
     float trim_min_start_sec = (float)drag->initial_start_frames / (float)sample_rate -
                                (float)drag->initial_offset_frames / (float)sample_rate;
     if (trim_min_start_sec < 0.0f) {
@@ -1285,7 +1353,7 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
         }
         double clip_length_sec = (double)clip_frames / (double)sample_rate;
 
-        int clip_x = geom.content_left + (int)round(clip_start_sec * geom.pixels_per_second);
+        int clip_x = geom.content_left + (int)round((clip_start_sec - geom.window_start_seconds) * geom.pixels_per_second);
         int clip_w = (int)round(clip_length_sec * geom.pixels_per_second);
         if (clip_w < 1) {
             clip_w = 1;
@@ -1531,8 +1599,13 @@ void timeline_input_handle_event(InputManager* manager, AppState* state, const S
             if (incoming > free_space) {
                 incoming = free_space;
             }
-            strncat(editor->buffer, event->text.text, incoming);
-            editor->cursor = (int)strlen(editor->buffer);
+            int cursor = editor->cursor;
+            if (cursor < 0) cursor = 0;
+            if (cursor > (int)len) cursor = (int)len;
+            // Make room for incoming text at cursor
+            memmove(editor->buffer + cursor + incoming, editor->buffer + cursor, len - cursor + 1);
+            memcpy(editor->buffer + cursor, event->text.text, incoming);
+            editor->cursor = cursor + (int)incoming;
         }
         return;
     }
@@ -1562,9 +1635,25 @@ void timeline_input_handle_event(InputManager* manager, AppState* state, const S
                 track_name_editor_stop(state, false);
             } else if (key == SDLK_BACKSPACE) {
                 size_t len = strlen(editor->buffer);
-                if (len > 0) {
-                    editor->buffer[len - 1] = '\0';
-                    editor->cursor = (int)(len - 1);
+                if (len > 0 && editor->cursor > 0) {
+                    int cur = editor->cursor;
+                    memmove(editor->buffer + cur - 1, editor->buffer + cur, len - (size_t)cur + 1);
+                    editor->cursor = cur - 1;
+                }
+            } else if (key == SDLK_DELETE) {
+                size_t len = strlen(editor->buffer);
+                int cur = editor->cursor;
+                if (len > 0 && cur >= 0 && cur < (int)len) {
+                    memmove(editor->buffer + cur, editor->buffer + cur + 1, len - (size_t)cur);
+                }
+            } else if (key == SDLK_LEFT) {
+                if (editor->cursor > 0) {
+                    editor->cursor -= 1;
+                }
+            } else if (key == SDLK_RIGHT) {
+                int len = (int)strlen(editor->buffer);
+                if (editor->cursor < len) {
+                    editor->cursor += 1;
                 }
             }
             return;
