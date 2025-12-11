@@ -18,12 +18,20 @@ typedef uint32_t FxInstId;   // per-track or master instance id
 
 #define FX_MASTER_MAX 16
 
+typedef enum {
+    FX_PARAM_MODE_NATIVE = 0,   // seconds/ms for time, Hz for rate
+    FX_PARAM_MODE_BEATS,        // time expressed in beats
+    FX_PARAM_MODE_BEAT_RATE     // rate expressed as a beat-period
+} FxParamMode;
+
 typedef struct {
     FxInstId  id;
     FxTypeId  type;
     bool      enabled;
     uint32_t  param_count;
     float     params[FX_MAX_PARAMS];
+    FxParamMode param_mode[FX_MAX_PARAMS];
+    float     param_beats[FX_MAX_PARAMS];
 } FxMasterInstanceInfo;
 
 typedef struct {
@@ -52,6 +60,12 @@ bool     fxm_master_reorder(EffectsManager* fm, FxInstId id, int new_index);
 
 // Params / enable-bypass (non-RT)
 bool     fxm_master_set_param(EffectsManager* fm, FxInstId id, uint32_t pidx, float value);
+bool     fxm_master_set_param_with_mode(EffectsManager* fm,
+                                        FxInstId id,
+                                        uint32_t pidx,
+                                        float value,
+                                        FxParamMode mode,
+                                        float beat_value);
 bool     fxm_master_set_enabled(EffectsManager* fm, FxInstId id, bool enabled);
 
 // REAL-TIME render on the MASTER bus.
@@ -66,8 +80,14 @@ void     fxm_render_master(EffectsManager* fm,
 FxInstId fxm_track_add(EffectsManager* fm, int track_index, FxTypeId type);
 bool     fxm_track_remove(EffectsManager* fm, int track_index, FxInstId id);
 bool     fxm_track_reorder(EffectsManager* fm, int track_index, FxInstId id, int new_index);
-bool     fxm_track_set_param(EffectsManager* fm, int track_index, FxInstId id, uint32_t pidx, 
-float value);
+bool     fxm_track_set_param(EffectsManager* fm, int track_index, FxInstId id, uint32_t pidx, float value);
+bool     fxm_track_set_param_with_mode(EffectsManager* fm,
+                                       int track_index,
+                                       FxInstId id,
+                                       uint32_t pidx,
+                                       float value,
+                                       FxParamMode mode,
+                                       float beat_value);
 bool     fxm_track_set_enabled(EffectsManager* fm, int track_index, FxInstId id, bool enabled);
 bool     fxm_track_snapshot(const EffectsManager* fm, int track_index, FxMasterSnapshot* out);
 

@@ -13,6 +13,9 @@ typedef struct {
     SDL_Rect stop_rect;
     SDL_Rect grid_rect;
     SDL_Rect time_label_rect;
+    SDL_Rect bpm_rect;
+    SDL_Rect ts_rect;
+    SDL_Rect beat_toggle_rect;
     SDL_Rect seek_track_rect;
     SDL_Rect seek_handle_rect;
     SDL_Rect window_track_rect;
@@ -28,6 +31,9 @@ typedef struct {
     bool play_hovered;
     bool stop_hovered;
     bool grid_hovered;
+    bool bpm_hovered;
+    bool ts_hovered;
+    bool beat_toggle_hovered;
     bool seek_hovered;
     bool window_hovered;
     bool horiz_hovered;

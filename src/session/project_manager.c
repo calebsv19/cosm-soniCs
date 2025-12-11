@@ -229,9 +229,13 @@ bool project_manager_new(AppState* state) {
     SessionDocument doc;
     session_document_init(&doc);
     doc.engine = state->runtime_cfg;
+    doc.tempo.bpm = (float)state->tempo.bpm;
+    doc.tempo.ts_num = state->tempo.ts_num;
+    doc.tempo.ts_den = state->tempo.ts_den;
     doc.timeline.visible_seconds = TIMELINE_DEFAULT_VISIBLE_SECONDS;
     doc.timeline.vertical_scale = 1.0f;
     doc.timeline.show_all_grid_lines = false;
+    doc.timeline.view_in_beats = state->timeline_view_in_beats;
     doc.loop.enabled = false;
     doc.loop.start_frame = 0;
     doc.loop.end_frame = state->runtime_cfg.sample_rate > 0 ? (uint64_t)state->runtime_cfg.sample_rate : 48000;

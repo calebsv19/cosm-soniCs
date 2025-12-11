@@ -6,6 +6,7 @@
 #include "config.h"
 #include "session.h"
 #include "engine/engine.h"
+#include "effects/param_utils.h"
 #include "input/input_manager.h"
 #include "ui/panes.h"
 #include "ui/resize.h"
@@ -14,6 +15,7 @@
 #include "ui/library_browser.h"
 #include "ui/effects_panel_slot.h"
 #include "session/project_manager.h"
+#include "time/tempo.h"
 
 #define TIMELINE_MAX_SELECTION 256
 
@@ -47,6 +49,7 @@ typedef struct {
     float start_right_seconds;
     float current_start_seconds;
     float current_duration_seconds;
+    bool started_moving;
     uint64_t initial_start_frames;
     uint64_t initial_offset_frames;
     uint64_t initial_duration_frames;
@@ -97,6 +100,7 @@ typedef struct {
     float param_defaults[FX_MAX_PARAMS];
     float param_min[FX_MAX_PARAMS];
     float param_max[FX_MAX_PARAMS];
+    FxParamKind param_kind[FX_MAX_PARAMS];
 } FxTypeUIInfo;
 
 typedef struct {
@@ -110,6 +114,8 @@ typedef struct {
     FxTypeId type_id;
     uint32_t param_count;
     float param_values[FX_MAX_PARAMS];
+    FxParamMode param_mode[FX_MAX_PARAMS];
+    float param_beats[FX_MAX_PARAMS];
     bool enabled;
 } FxSlotUIState;
 
@@ -166,6 +172,8 @@ typedef struct {
     bool enabled;
     uint32_t param_count;
     float param_values[FX_MAX_PARAMS];
+    FxParamMode param_mode[FX_MAX_PARAMS];
+    float param_beats[FX_MAX_PARAMS];
 } PendingMasterFx;
 
 typedef struct {
@@ -194,6 +202,20 @@ typedef struct {
     Uint32 last_click_ticks;
     int last_click_index;
 } ProjectLoadModal;
+
+typedef enum {
+    TEMPO_FOCUS_NONE = 0,
+    TEMPO_FOCUS_BPM,
+    TEMPO_FOCUS_TS
+} TempoFocus;
+
+typedef struct {
+    TempoFocus focus;
+    bool editing;
+    char buffer[16];
+    int cursor;
+    Uint32 last_click_ticks;
+} TempoUIState;
 
 typedef struct AppState AppState;
 
@@ -232,6 +254,12 @@ struct AppState {
     float timeline_drop_preview_duration;
     char timeline_drop_label[LIBRARY_NAME_MAX];
     bool timeline_show_all_grid_lines;
+    bool timeline_view_in_beats;
+    bool timeline_marquee_active;
+    SDL_Rect timeline_marquee_rect;
+    bool timeline_marquee_extend;
+    int timeline_marquee_start_x;
+    int timeline_marquee_start_y;
     int timeline_drop_track_index;
     bool loop_enabled;
     uint64_t loop_start_frame;
@@ -252,6 +280,8 @@ struct AppState {
     PendingTrackFxEntry* pending_track_fx;
     int pending_track_fx_count;
     bool pending_track_fx_dirty;
+    TempoState tempo;
+    TempoUIState tempo_ui;
     ProjectState project;
     ProjectSavePrompt project_prompt;
     ProjectLoadModal project_load;

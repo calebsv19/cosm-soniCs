@@ -21,6 +21,8 @@ typedef struct FxInstance {
     FxTypeId  type;
     uint32_t  param_count;
     float     param_values[FX_MAX_PARAMS];
+    FxParamMode param_mode[FX_MAX_PARAMS];
+    float     param_beats[FX_MAX_PARAMS];
 } FxInstance;
 
 typedef struct FxChain {
@@ -287,6 +289,8 @@ static bool instantiate_fx(EffectsManager* fm, const FxRegistryEntry* ent, FxIns
     out_inst->param_count = desc.num_params > FX_MAX_PARAMS ? FX_MAX_PARAMS : desc.num_params;
     for (uint32_t i = 0; i < FX_MAX_PARAMS; ++i) {
         out_inst->param_values[i] = 0.0f;
+        out_inst->param_mode[i] = FX_PARAM_MODE_NATIVE;
+        out_inst->param_beats[i] = 0.0f;
     }
 
     // Initialize defaults
@@ -382,6 +386,26 @@ bool fxm_master_set_param(EffectsManager* fm, FxInstId id, uint32_t pidx, float 
     inst->vt.set_param(inst->handle, pidx, value);
     if (pidx < FX_MAX_PARAMS) {
         inst->param_values[pidx] = value;
+        inst->param_mode[pidx] = FX_PARAM_MODE_NATIVE;
+        inst->param_beats[pidx] = 0.0f;
+    }
+    return true;
+}
+
+bool fxm_master_set_param_with_mode(EffectsManager* fm,
+                                    FxInstId id,
+                                    uint32_t pidx,
+                                    float value,
+                                    FxParamMode mode,
+                                    float beat_value) {
+    FxInstance* inst = master_get_by_id(fm, id, NULL);
+    if (!inst || pidx >= inst->desc.num_params) return false;
+    if (!inst->vt.set_param) return false;
+    inst->vt.set_param(inst->handle, pidx, value);
+    if (pidx < FX_MAX_PARAMS) {
+        inst->param_values[pidx] = value;
+        inst->param_mode[pidx] = mode;
+        inst->param_beats[pidx] = beat_value;
     }
     return true;
 }
@@ -413,6 +437,8 @@ bool fxm_master_snapshot(const EffectsManager* fm, FxMasterSnapshot* out) {
         info.param_count = pc;
         for (uint32_t p = 0; p < pc; ++p) {
             info.params[p] = inst->param_values[p];
+            info.param_mode[p] = inst->param_mode[p];
+            info.param_beats[p] = inst->param_beats[p];
         }
         snap.items[snap.count++] = info;
     }
@@ -480,7 +506,30 @@ bool fxm_track_set_param(EffectsManager* fm, int track_index, FxInstId id, uint3
     if (!inst || pidx >= inst->desc.num_params) return false;
     if (!inst->vt.set_param) return false;
     inst->vt.set_param(inst->handle, pidx, value);
-    if (pidx < FX_MAX_PARAMS) inst->param_values[pidx] = value;
+    if (pidx < FX_MAX_PARAMS) {
+        inst->param_values[pidx] = value;
+        inst->param_mode[pidx] = FX_PARAM_MODE_NATIVE;
+        inst->param_beats[pidx] = 0.0f;
+    }
+    return true;
+}
+
+bool fxm_track_set_param_with_mode(EffectsManager* fm,
+                                   int track_index,
+                                   FxInstId id,
+                                   uint32_t pidx,
+                                   float value,
+                                   FxParamMode mode,
+                                   float beat_value) {
+    FxInstance* inst = track_get_by_id(fm, track_index, id, NULL);
+    if (!inst || pidx >= inst->desc.num_params) return false;
+    if (!inst->vt.set_param) return false;
+    inst->vt.set_param(inst->handle, pidx, value);
+    if (pidx < FX_MAX_PARAMS) {
+        inst->param_values[pidx] = value;
+        inst->param_mode[pidx] = mode;
+        inst->param_beats[pidx] = beat_value;
+    }
     return true;
 }
 
@@ -509,6 +558,8 @@ bool fxm_track_snapshot(const EffectsManager* fm, int track_index, FxMasterSnaps
         info.param_count = pc;
         for (uint32_t p = 0; p < pc; ++p) {
             info.params[p] = inst->param_values[p];
+            info.param_mode[p] = inst->param_mode[p];
+            info.param_beats[p] = inst->param_beats[p];
         }
         snap.items[snap.count++] = info;
     }

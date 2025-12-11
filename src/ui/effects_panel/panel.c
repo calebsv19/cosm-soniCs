@@ -2,6 +2,7 @@
 
 #include "app_state.h"
 #include "engine/engine.h"
+#include "effects/param_utils.h"
 #include "ui/font.h"
 #include "ui/layout.h"
 
@@ -325,6 +326,7 @@ void effects_panel_refresh_catalog(AppState* state) {
                 float def_v = desc.param_defaults[p];
                 info->param_defaults[p] = def_v;
                 derive_param_range(pname, def_v, &info->param_min[p], &info->param_max[p]);
+                info->param_kind[p] = fx_param_kind_from_name(pname);
             }
         }
     }
@@ -366,6 +368,8 @@ void effects_panel_sync_from_engine(AppState* state) {
         }
         for (uint32_t p = 0; p < slot->param_count; ++p) {
             slot->param_values[p] = snap.items[i].params[p];
+            slot->param_mode[p] = snap.items[i].param_mode[p];
+            slot->param_beats[p] = snap.items[i].param_beats[p];
         }
     }
     for (int i = snap.count; i < FX_MASTER_MAX; ++i) {

@@ -30,6 +30,23 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
         session_set_error(error_message, error_message_len, "invalid block size: %d", doc->engine.block_size);
         return false;
     }
+    if (doc->tempo.bpm <= 0.0f) {
+        session_set_error(error_message, error_message_len, "invalid tempo bpm: %.3f", doc->tempo.bpm);
+        return false;
+    }
+    if (doc->tempo.ts_num <= 0) {
+        session_set_error(error_message, error_message_len, "invalid tempo numerator: %d", doc->tempo.ts_num);
+        return false;
+    }
+    if (doc->tempo.ts_den <= 0) {
+        session_set_error(error_message, error_message_len, "invalid tempo denominator: %d", doc->tempo.ts_den);
+        return false;
+    }
+    bool ts_den_power_of_two = (doc->tempo.ts_den & (doc->tempo.ts_den - 1)) == 0;
+    if (!ts_den_power_of_two) {
+        session_set_error(error_message, error_message_len, "tempo denominator must be power of two: %d", doc->tempo.ts_den);
+        return false;
+    }
     if (doc->engine.default_fade_in_ms < 0.0f || doc->engine.default_fade_out_ms < 0.0f) {
         session_set_error(error_message, error_message_len, "default fades must be non-negative");
         return false;
@@ -122,4 +139,3 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
     }
     return true;
 }
-

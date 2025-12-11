@@ -3,6 +3,8 @@
 #include "engine/engine.h"
 #include "ui/library_browser.h"
 #include "ui/timeline_view.h"
+#include "time/tempo.h"
+#include "effects/param_utils.h"
 
 #include <SDL2/SDL.h>
 #include <stdlib.h>
@@ -100,6 +102,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     state->timeline_window_start_seconds = doc->timeline.window_start_seconds;
     state->timeline_vertical_scale = doc->timeline.vertical_scale;
     state->timeline_show_all_grid_lines = doc->timeline.show_all_grid_lines;
+    state->timeline_view_in_beats = doc->timeline.view_in_beats;
 
     state->layout_runtime.transport_ratio = clamp_ratio(doc->layout.transport_ratio);
     state->layout_runtime.library_ratio = clamp_ratio(doc->layout.library_ratio);
@@ -124,6 +127,20 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     state->active_track_index = -1;
     state->selected_track_index = -1;
     state->selected_clip_index = -1;
+
+    // Tempo: apply document values with clamping and align sample rate to current engine config.
+    state->tempo = tempo_state_default(state->runtime_cfg.sample_rate);
+    if (doc->tempo.bpm > 0.0f) {
+        state->tempo.bpm = doc->tempo.bpm;
+    }
+    if (doc->tempo.ts_num > 0) {
+        state->tempo.ts_num = doc->tempo.ts_num;
+    }
+    if (doc->tempo.ts_den > 0) {
+        state->tempo.ts_den = doc->tempo.ts_den;
+    }
+    state->tempo.sample_rate = state->runtime_cfg.sample_rate;
+    tempo_state_clamp(&state->tempo);
 
     clear_pending_track_fx(state);
     if (doc->track_count > 0) {
@@ -201,6 +218,8 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
             dst->param_count = src->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : src->param_count;
             for (uint32_t p = 0; p < dst->param_count; ++p) {
                 dst->param_values[p] = src->params[p];
+                dst->param_mode[p] = src->param_mode[p];
+                dst->param_beats[p] = src->param_beats[p];
             }
         }
         state->pending_master_fx_dirty = true;
@@ -250,9 +269,23 @@ void session_apply_pending_master_fx(AppState* state) {
         if (!id) {
             continue;
         }
+        FxDesc desc = {0};
+        engine_fx_registry_get_desc(state->engine, fx->type_id, &desc);
         uint32_t count = fx->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : fx->param_count;
         for (uint32_t p = 0; p < count; ++p) {
-            engine_fx_master_set_param(state->engine, id, p, fx->param_values[p]);
+            FxParamMode mode = fx->param_mode[p];
+            float beat_value = fx->param_beats[p];
+            float native_value = fx->param_values[p];
+            FxParamKind kind = fx_param_kind_from_name((p < desc.num_params) ? desc.param_names[p] : NULL);
+            bool use_sync = (mode != FX_PARAM_MODE_NATIVE) && fx_param_kind_is_syncable(kind);
+            if (use_sync) {
+                native_value = fx_param_beats_to_native(kind, beat_value, &state->tempo);
+            }
+            if (use_sync) {
+                engine_fx_master_set_param_with_mode(state->engine, id, p, native_value, mode, beat_value);
+            } else {
+                engine_fx_master_set_param(state->engine, id, p, native_value);
+            }
         }
         if (!fx->enabled) {
             engine_fx_master_set_enabled(state->engine, id, false);
@@ -286,9 +319,23 @@ void session_apply_pending_track_fx(AppState* state) {
             if (id == 0) {
                 continue;
             }
+            FxDesc desc = {0};
+            engine_fx_registry_get_desc(state->engine, fx->type, &desc);
             uint32_t pcount = fx->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : fx->param_count;
             for (uint32_t p = 0; p < pcount; ++p) {
-                engine_fx_track_set_param(state->engine, t, id, p, fx->params[p]);
+                FxParamMode mode = fx->param_mode[p];
+                float beat_value = fx->param_beats[p];
+                float native_value = fx->params[p];
+                FxParamKind kind = fx_param_kind_from_name((p < desc.num_params) ? desc.param_names[p] : NULL);
+                bool use_sync = (mode != FX_PARAM_MODE_NATIVE) && fx_param_kind_is_syncable(kind);
+                if (use_sync) {
+                    native_value = fx_param_beats_to_native(kind, beat_value, &state->tempo);
+                }
+                if (use_sync) {
+                    engine_fx_track_set_param_with_mode(state->engine, t, id, p, native_value, mode, beat_value);
+                } else {
+                    engine_fx_track_set_param(state->engine, t, id, p, native_value);
+                }
             }
             if (!fx->enabled) {
                 engine_fx_track_set_enabled(state->engine, t, id, false);

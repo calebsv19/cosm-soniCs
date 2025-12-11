@@ -5,9 +5,14 @@
 #include "ui/transport.h"
 #include "ui/timeline_view.h"
 #include "ui/layout.h"
+#include "ui/effects_panel.h"
 #include "session/project_manager.h"
+#include "effects/param_utils.h"
+#include "time/tempo.h"
 
 #include <SDL2/SDL.h>
+#include <stdlib.h>
+#include <string.h>
 
 static float clamp_scalar(float value, float min, float max) {
     if (value < min) return min;
@@ -87,12 +92,178 @@ static void clamp_timeline_window(AppState* state) {
     state->timeline_window_start_seconds = start;
 }
 
+static float playhead_seconds(const AppState* state) {
+    if (!state || !state->engine) {
+        return 0.0f;
+    }
+    const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
+    int sample_rate = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
+    if (sample_rate <= 0) {
+        return 0.0f;
+    }
+    uint64_t frame = engine_get_transport_frame(state->engine);
+    return (float)((double)frame / (double)sample_rate);
+}
+
+static void zoom_keep_playhead(AppState* state, float old_visible, float new_visible) {
+    if (!state) return;
+    if (new_visible < TIMELINE_MIN_VISIBLE_SECONDS) new_visible = TIMELINE_MIN_VISIBLE_SECONDS;
+    if (new_visible > TIMELINE_MAX_VISIBLE_SECONDS) new_visible = TIMELINE_MAX_VISIBLE_SECONDS;
+    float ph_sec = playhead_seconds(state);
+    float ratio = 0.0f;
+    if (old_visible > 1e-6f) {
+        ratio = (ph_sec - state->timeline_window_start_seconds) / old_visible;
+    }
+    state->timeline_visible_seconds = new_visible;
+    float new_start = ph_sec - ratio * new_visible;
+    state->timeline_window_start_seconds = new_start;
+    clamp_timeline_window(state);
+}
+
+static float snap_window_start(const AppState* state, float seconds, float max_start) {
+    if (!state || !state->timeline_view_in_beats) {
+        if (seconds < 0.0f) seconds = 0.0f;
+        if (seconds > max_start) seconds = max_start;
+        return seconds;
+    }
+    const EngineRuntimeConfig* cfg = state->engine ? engine_get_config(state->engine) : NULL;
+    int sample_rate = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
+    if (sample_rate <= 0 || state->tempo.bpm <= 0.0) {
+        if (seconds < 0.0f) seconds = 0.0f;
+        if (seconds > max_start) seconds = max_start;
+        return seconds;
+    }
+    TempoState tempo = state->tempo;
+    tempo.sample_rate = sample_rate;
+    tempo_state_clamp(&tempo);
+    double visible_beats = tempo_seconds_to_beats(state->timeline_visible_seconds, &tempo);
+    double subdivision = 1.0;
+    if (visible_beats <= 2.0) {
+        subdivision = 1.0 / 16.0;
+    } else if (visible_beats <= 4.0) {
+        subdivision = 1.0 / 8.0;
+    } else if (visible_beats <= 8.0) {
+        subdivision = 1.0 / 4.0;
+    } else if (visible_beats <= 16.0) {
+        subdivision = 1.0 / 2.0;
+    } else {
+        subdivision = 1.0;
+    }
+    double beats = tempo_seconds_to_beats((double)seconds, &tempo);
+    double snapped_beats = floor(beats / subdivision + 0.5) * subdivision;
+    double snapped_sec = tempo_beats_to_seconds(snapped_beats, &tempo);
+    if (snapped_sec < 0.0) snapped_sec = 0.0;
+    if (snapped_sec > (double)max_start) snapped_sec = (double)max_start;
+    return (float)snapped_sec;
+}
+
 static void open_project_prompt(AppState* state) {
     if (!state) return;
     state->project_prompt.active = true;
     state->project_prompt.buffer[0] = '\0';
     state->project_prompt.cursor = 0;
     SDL_StartTextInput();
+}
+
+static void tempo_cancel_edit(AppState* state) {
+    if (!state) return;
+    if (state->tempo_ui.editing) {
+        SDL_StopTextInput();
+    }
+    state->tempo_ui.editing = false;
+    state->tempo_ui.focus = TEMPO_FOCUS_NONE;
+    state->tempo_ui.buffer[0] = '\0';
+    state->tempo_ui.cursor = 0;
+}
+
+static void tempo_focus(AppState* state, TempoFocus focus, bool editing) {
+    if (!state) return;
+    state->tempo_ui.focus = focus;
+    if (editing) {
+        state->tempo_ui.editing = true;
+        snprintf(state->tempo_ui.buffer, sizeof(state->tempo_ui.buffer), "%.0f", state->tempo.bpm);
+        state->tempo_ui.cursor = (int)strlen(state->tempo_ui.buffer);
+        SDL_StartTextInput();
+    } else {
+        state->tempo_ui.editing = false;
+        state->tempo_ui.buffer[0] = '\0';
+        state->tempo_ui.cursor = 0;
+    }
+}
+
+static void resync_tempo_synced_fx(AppState* state);
+
+static void tempo_apply_buffer(AppState* state) {
+    if (!state) return;
+    if (!state->tempo_ui.editing) return;
+    double val = atof(state->tempo_ui.buffer);
+    if (val > 0.0) {
+        state->tempo.bpm = val;
+        const EngineRuntimeConfig* cfg = state->engine ? engine_get_config(state->engine) : NULL;
+        state->tempo.sample_rate = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
+        tempo_state_clamp(&state->tempo);
+        resync_tempo_synced_fx(state);
+    }
+    SDL_StopTextInput();
+    state->tempo_ui.editing = false;
+    state->tempo_ui.buffer[0] = '\0';
+    state->tempo_ui.cursor = 0;
+}
+
+static void resync_tempo_synced_fx(AppState* state) {
+    if (!state || !state->engine) {
+        return;
+    }
+    FxMasterSnapshot master = {0};
+    if (engine_fx_master_snapshot(state->engine, &master)) {
+        for (int i = 0; i < master.count && i < FX_MASTER_MAX; ++i) {
+            const FxMasterInstanceInfo* inst = &master.items[i];
+            FxDesc desc = {0};
+            engine_fx_registry_get_desc(state->engine, inst->type, &desc);
+            uint32_t pc = inst->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : inst->param_count;
+            for (uint32_t p = 0; p < pc; ++p) {
+                FxParamMode mode = inst->param_mode[p];
+                if (mode == FX_PARAM_MODE_NATIVE) {
+                    continue;
+                }
+                FxParamKind kind = fx_param_kind_from_name((p < desc.num_params) ? desc.param_names[p] : NULL);
+                if (!fx_param_kind_is_syncable(kind)) {
+                    continue;
+                }
+                float beat_value = inst->param_beats[p];
+                float native_value = fx_param_beats_to_native(kind, beat_value, &state->tempo);
+                engine_fx_master_set_param_with_mode(state->engine, inst->id, p, native_value, mode, beat_value);
+            }
+        }
+    }
+
+    int track_count = engine_get_track_count(state->engine);
+    for (int t = 0; t < track_count; ++t) {
+        FxMasterSnapshot snap = {0};
+        if (!engine_fx_track_snapshot(state->engine, t, &snap)) {
+            continue;
+        }
+        for (int i = 0; i < snap.count && i < FX_MASTER_MAX; ++i) {
+            const FxMasterInstanceInfo* inst = &snap.items[i];
+            FxDesc desc = {0};
+            engine_fx_registry_get_desc(state->engine, inst->type, &desc);
+            uint32_t pc = inst->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : inst->param_count;
+            for (uint32_t p = 0; p < pc; ++p) {
+                FxParamMode mode = inst->param_mode[p];
+                if (mode == FX_PARAM_MODE_NATIVE) {
+                    continue;
+                }
+                FxParamKind kind = fx_param_kind_from_name((p < desc.num_params) ? desc.param_names[p] : NULL);
+                if (!fx_param_kind_is_syncable(kind)) {
+                    continue;
+                }
+                float beat_value = inst->param_beats[p];
+                float native_value = fx_param_beats_to_native(kind, beat_value, &state->tempo);
+                engine_fx_track_set_param_with_mode(state->engine, t, inst->id, p, native_value, mode, beat_value);
+            }
+        }
+    }
+    effects_panel_sync_from_engine(state);
 }
 
 static void transport_seek_to(AppState* state, float t) {
@@ -137,6 +308,28 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
     case SDL_MOUSEBUTTONDOWN:
         if (event->button.button == SDL_BUTTON_LEFT) {
             SDL_Point p = {event->button.x, event->button.y};
+            Uint32 now = SDL_GetTicks();
+            if (SDL_PointInRect(&p, &transport->bpm_rect)) {
+                bool is_double = (now - state->tempo_ui.last_click_ticks) <= 300;
+                state->tempo_ui.last_click_ticks = now;
+                tempo_focus(state, TEMPO_FOCUS_BPM, is_double);
+                transport_ui_sync(transport, state);
+                break;
+            }
+            if (SDL_PointInRect(&p, &transport->ts_rect)) {
+                // Stub for future TS editing: keep focus but no edit.
+                state->tempo_ui.last_click_ticks = now;
+                tempo_focus(state, TEMPO_FOCUS_TS, false);
+                break;
+            }
+            if (SDL_PointInRect(&p, &transport->beat_toggle_rect)) {
+                state->timeline_view_in_beats = !state->timeline_view_in_beats;
+                break;
+            }
+            // Clicked elsewhere: drop tempo focus/edit if active.
+            if (state->tempo_ui.focus != TEMPO_FOCUS_NONE || state->tempo_ui.editing) {
+                tempo_cancel_edit(state);
+            }
             if (SDL_PointInRect(&p, &transport->save_rect)) {
                 if (state->project.has_name) {
                     project_manager_save(state, state->project.name, true);
@@ -226,7 +419,8 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
                 float t = (float)(p.x - transport->window_track_rect.x) / (float)transport->window_track_rect.w;
                 t = clamp_scalar(t, 0.0f, 1.0f);
                 float max_start = timeline_window_max_start(state);
-                state->timeline_window_start_seconds = t * max_start;
+                float target = t * max_start;
+                state->timeline_window_start_seconds = snap_window_start(state, target, max_start);
                 clamp_timeline_window(state);
                 transport_ui_sync(transport, state);
                 break;
@@ -235,9 +429,10 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
                 manager->prev_horiz_slider_down = true;
                 float t = (float)(p.x - transport->horiz_track_rect.x) / (float)transport->horiz_track_rect.w;
                 t = clamp_scalar(t, 0.0f, 1.0f);
-                state->timeline_visible_seconds = TIMELINE_MIN_VISIBLE_SECONDS +
+                float old_vis = state->timeline_visible_seconds;
+                float new_vis = TIMELINE_MIN_VISIBLE_SECONDS +
                     t * (TIMELINE_MAX_VISIBLE_SECONDS - TIMELINE_MIN_VISIBLE_SECONDS);
-                clamp_timeline_window(state);
+                zoom_keep_playhead(state, old_vis, new_vis);
                 transport_ui_sync(transport, state);
             } else if (SDL_PointInRect(&p, &transport->vert_track_rect)) {
                 manager->prev_vert_slider_down = true;
@@ -262,16 +457,18 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
         if (manager->prev_horiz_slider_down && transport->horiz_track_rect.w > 0) {
             float t = (float)(event->motion.x - transport->horiz_track_rect.x) / (float)transport->horiz_track_rect.w;
             t = clamp_scalar(t, 0.0f, 1.0f);
-            state->timeline_visible_seconds = TIMELINE_MIN_VISIBLE_SECONDS +
+            float old_vis = state->timeline_visible_seconds;
+            float new_vis = TIMELINE_MIN_VISIBLE_SECONDS +
                 t * (TIMELINE_MAX_VISIBLE_SECONDS - TIMELINE_MIN_VISIBLE_SECONDS);
-            clamp_timeline_window(state);
+            zoom_keep_playhead(state, old_vis, new_vis);
             transport_ui_sync(transport, state);
         }
         if (manager->prev_window_slider_down && transport->window_track_rect.w > 0) {
             float t = (float)(event->motion.x - transport->window_track_rect.x) / (float)transport->window_track_rect.w;
             t = clamp_scalar(t, 0.0f, 1.0f);
             float max_start = timeline_window_max_start(state);
-            state->timeline_window_start_seconds = t * max_start;
+            float target = t * max_start;
+            state->timeline_window_start_seconds = snap_window_start(state, target, max_start);
             clamp_timeline_window(state);
             transport_ui_sync(transport, state);
         }
@@ -286,6 +483,69 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
             float t = (float)(event->motion.x - transport->seek_track_rect.x) / (float)transport->seek_track_rect.w;
             transport_seek_to(state, t);
             transport_ui_sync(transport, state);
+        }
+        break;
+    case SDL_TEXTINPUT:
+        if (state->tempo_ui.editing) {
+            int len = (int)strlen(state->tempo_ui.buffer);
+            int cur = state->tempo_ui.cursor;
+            if (cur < 0) cur = 0;
+            if (cur > len) cur = len;
+            for (const char* p = event->text.text; *p; ++p) {
+                if ((int)strlen(state->tempo_ui.buffer) >= (int)sizeof(state->tempo_ui.buffer) - 1) {
+                    break;
+                }
+                memmove(state->tempo_ui.buffer + cur + 1,
+                        state->tempo_ui.buffer + cur,
+                        strlen(state->tempo_ui.buffer + cur) + 1);
+                state->tempo_ui.buffer[cur] = *p;
+                cur++;
+            }
+            state->tempo_ui.cursor = cur;
+        }
+        break;
+    case SDL_KEYDOWN:
+        if (state->tempo_ui.editing) {
+            SDL_Keycode key = event->key.keysym.sym;
+            if (key == SDLK_BACKSPACE) {
+                int len = (int)strlen(state->tempo_ui.buffer);
+                int cur = state->tempo_ui.cursor;
+                if (cur > 0 && len > 0) {
+                    memmove(state->tempo_ui.buffer + cur - 1,
+                            state->tempo_ui.buffer + cur,
+                            (size_t)(len - cur + 1));
+                    state->tempo_ui.cursor = cur - 1;
+                }
+            } else if (key == SDLK_LEFT) {
+                if (state->tempo_ui.cursor > 0) state->tempo_ui.cursor--;
+            } else if (key == SDLK_RIGHT) {
+                int len = (int)strlen(state->tempo_ui.buffer);
+                if (state->tempo_ui.cursor < len) state->tempo_ui.cursor++;
+            } else if (key == SDLK_ESCAPE) {
+                tempo_cancel_edit(state);
+            } else if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
+                tempo_apply_buffer(state);
+            }
+            break;
+        }
+        if (state->tempo_ui.focus == TEMPO_FOCUS_BPM) {
+            SDL_Keycode key = event->key.keysym.sym;
+            int step = (SDL_GetModState() & KMOD_SHIFT) ? 5 : 1;
+            if (key == SDLK_UP) {
+                state->tempo.bpm += step;
+                const EngineRuntimeConfig* cfg = state->engine ? engine_get_config(state->engine) : NULL;
+                state->tempo.sample_rate = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
+                tempo_state_clamp(&state->tempo);
+                resync_tempo_synced_fx(state);
+                break;
+            } else if (key == SDLK_DOWN) {
+                state->tempo.bpm -= step;
+                const EngineRuntimeConfig* cfg = state->engine ? engine_get_config(state->engine) : NULL;
+                state->tempo.sample_rate = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
+                tempo_state_clamp(&state->tempo);
+                resync_tempo_synced_fx(state);
+                break;
+            }
         }
         break;
     default:
@@ -315,7 +575,8 @@ void transport_input_update(InputManager* manager, AppState* state) {
             float t = (float)(mouse_x - transport->window_track_rect.x) / (float)transport->window_track_rect.w;
             t = clamp_scalar(t, 0.0f, 1.0f);
             float max_start = timeline_window_max_start(state);
-            state->timeline_window_start_seconds = t * max_start;
+            float target = t * max_start;
+            state->timeline_window_start_seconds = snap_window_start(state, target, max_start);
             clamp_timeline_window(state);
             transport_ui_sync(transport, state);
         }

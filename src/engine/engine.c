@@ -827,7 +827,13 @@ static void engine_fx_restore_all(Engine* engine, const EngineFxSnapshot* snap) 
         if (!id) continue;
         uint32_t pc = src->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : src->param_count;
         for (uint32_t p = 0; p < pc; ++p) {
-            fxm_master_set_param(engine->fxm, id, p, src->params[p]);
+            FxParamMode mode = src->param_mode[p];
+            float beat_value = src->param_beats[p];
+            if (mode == FX_PARAM_MODE_NATIVE) {
+                fxm_master_set_param(engine->fxm, id, p, src->params[p]);
+            } else {
+                fxm_master_set_param_with_mode(engine->fxm, id, p, src->params[p], mode, beat_value);
+            }
         }
         if (!src->enabled) {
             fxm_master_set_enabled(engine->fxm, id, false);
@@ -841,7 +847,13 @@ static void engine_fx_restore_all(Engine* engine, const EngineFxSnapshot* snap) 
             if (!id) continue;
             uint32_t pc = src->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : src->param_count;
             for (uint32_t p = 0; p < pc; ++p) {
-                fxm_track_set_param(engine->fxm, t, id, p, src->params[p]);
+                FxParamMode mode = src->param_mode[p];
+                float beat_value = src->param_beats[p];
+                if (mode == FX_PARAM_MODE_NATIVE) {
+                    fxm_track_set_param(engine->fxm, t, id, p, src->params[p]);
+                } else {
+                    fxm_track_set_param_with_mode(engine->fxm, t, id, p, src->params[p], mode, beat_value);
+                }
             }
             if (!src->enabled) {
                 fxm_track_set_enabled(engine->fxm, t, id, false);
@@ -1063,6 +1075,24 @@ bool engine_fx_master_set_param(Engine* engine, FxInstId id, uint32_t param_inde
     return ok;
 }
 
+bool engine_fx_master_set_param_with_mode(Engine* engine,
+                                          FxInstId id,
+                                          uint32_t param_index,
+                                          float value,
+                                          FxParamMode mode,
+                                          float beat_value) {
+    if (!engine || !engine->fxm_mutex || id == 0) {
+        return false;
+    }
+    bool ok = false;
+    SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) {
+        ok = fxm_master_set_param_with_mode(engine->fxm, id, param_index, value, mode, beat_value);
+    }
+    SDL_UnlockMutex(engine->fxm_mutex);
+    return ok;
+}
+
 bool engine_fx_master_set_enabled(Engine* engine, FxInstId id, bool enabled) {
     if (!engine || !engine->fxm_mutex || id == 0) {
         return false;
@@ -1110,6 +1140,21 @@ bool engine_fx_track_set_param(Engine* engine, int track_index, FxInstId id, uin
     bool ok = false;
     SDL_LockMutex(engine->fxm_mutex);
     if (engine->fxm) ok = fxm_track_set_param(engine->fxm, track_index, id, param_index, value);
+    SDL_UnlockMutex(engine->fxm_mutex);
+    return ok;
+}
+
+bool engine_fx_track_set_param_with_mode(Engine* engine,
+                                         int track_index,
+                                         FxInstId id,
+                                         uint32_t param_index,
+                                         float value,
+                                         FxParamMode mode,
+                                         float beat_value) {
+    if (!engine || !engine->fxm_mutex || id == 0) return false;
+    bool ok = false;
+    SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) ok = fxm_track_set_param_with_mode(engine->fxm, track_index, id, param_index, value, mode, beat_value);
     SDL_UnlockMutex(engine->fxm_mutex);
     return ok;
 }

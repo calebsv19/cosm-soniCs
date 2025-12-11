@@ -1,10 +1,12 @@
 #include "ui/transport.h"
 #include "app_state.h"
 #include "ui/timeline_view.h"
+#include "time/tempo.h"
 
 #include "ui/font.h"
 
 #include <string.h>
+#include <math.h>
 
 void transport_ui_init(TransportUI* ui) {
     if (!ui) {
@@ -15,6 +17,9 @@ void transport_ui_init(TransportUI* ui) {
     ui->save_rect = (SDL_Rect){0, 0, 0, 0};
     ui->play_rect = (SDL_Rect){0, 0, 0, 0};
     ui->stop_rect = (SDL_Rect){0, 0, 0, 0};
+    ui->bpm_rect = (SDL_Rect){0, 0, 0, 0};
+    ui->ts_rect = (SDL_Rect){0, 0, 0, 0};
+    ui->beat_toggle_rect = (SDL_Rect){0, 0, 0, 0};
     ui->play_hovered = false;
     ui->stop_hovered = false;
     ui->load_hovered = false;
@@ -30,6 +35,9 @@ void transport_ui_init(TransportUI* ui) {
     ui->vert_track_rect = (SDL_Rect){0,0,0,0};
     ui->vert_handle_rect = (SDL_Rect){0,0,0,0};
     ui->grid_hovered = false;
+    ui->bpm_hovered = false;
+    ui->ts_hovered = false;
+    ui->beat_toggle_hovered = false;
     ui->seek_hovered = false;
     ui->window_hovered = false;
     ui->horiz_hovered = false;
@@ -50,7 +58,9 @@ void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
     const int button_height = 26;
     const int padding = 12;
     const int button_v_gap = 4;
-    const int label_width = 96;
+    const int label_width = 120;
+    const int bpm_height = 20;
+    const int bpm_gap = 4;
     const int seek_height = 8;
     const int handle_width = 12;
 
@@ -72,9 +82,18 @@ void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
     int slider_row_gap = 20;
 
     x = ui->stop_rect.x + ui->stop_rect.w + padding;
-    int label_y = container->y + (container->h - button_height) / 2;
+    int stack_h = bpm_height + bpm_gap + button_height;
+    int stack_y = container->y + (container->h - stack_h) / 2;
+    int bpm_y = stack_y;
+    int label_y = bpm_y + bpm_height + bpm_gap;
     ui->time_label_rect = (SDL_Rect){x, label_y, label_width, button_height};
-    x += label_width + padding;
+    int bpm_col_width = label_width / 2;
+    ui->bpm_rect = (SDL_Rect){x, bpm_y, bpm_col_width, bpm_height};
+    ui->ts_rect = (SDL_Rect){x + bpm_col_width, bpm_y, label_width - bpm_col_width, bpm_height};
+    int toggle_size = button_height;
+    int toggle_y = container->y + (container->h - toggle_size) / 2;
+    ui->beat_toggle_rect = (SDL_Rect){x + label_width + 6, toggle_y, 26, toggle_size};
+    x += label_width + padding + ui->beat_toggle_rect.w + 6;
 
 
     int right_edge = container->x + container->w - padding;
@@ -160,6 +179,9 @@ void transport_ui_update_hover(TransportUI* ui, int mouse_x, int mouse_y) {
     ui->play_hovered = SDL_PointInRect(&p, &ui->play_rect);
     ui->stop_hovered = SDL_PointInRect(&p, &ui->stop_rect);
     ui->grid_hovered = SDL_PointInRect(&p, &ui->grid_rect);
+    ui->bpm_hovered = SDL_PointInRect(&p, &ui->bpm_rect);
+    ui->ts_hovered = SDL_PointInRect(&p, &ui->ts_rect);
+    ui->beat_toggle_hovered = SDL_PointInRect(&p, &ui->beat_toggle_rect);
     ui->seek_hovered = SDL_PointInRect(&p, &ui->seek_track_rect) || SDL_PointInRect(&p, &ui->seek_handle_rect);
     ui->window_hovered = SDL_PointInRect(&p, &ui->window_track_rect) || SDL_PointInRect(&p, &ui->window_handle_rect);
     ui->horiz_hovered = SDL_PointInRect(&p, &ui->horiz_track_rect);
@@ -349,19 +371,100 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         int sample_rate = cfg ? cfg->sample_rate : 0;
         uint64_t frame = engine_get_transport_frame(state->engine);
         double seconds = (sample_rate > 0) ? (double)frame / (double)sample_rate : 0.0;
-        int total_ms = (int)llround(seconds * 1000.0);
-        int minutes = total_ms / 60000;
-        int seconds_part = (total_ms / 1000) % 60;
-        int millis = total_ms % 1000;
-        char time_text[32];
-        snprintf(time_text, sizeof(time_text), "%02d:%02d.%03d", minutes, seconds_part, millis);
-        SDL_Color time_color = {225, 225, 235, 255};
-        int tw = ui_measure_text_width(time_text, 2);
-        int th = ui_font_line_height(2);
+
+        char time_text[48];
+        SDL_Color time_color = state->timeline_view_in_beats ? (SDL_Color){200, 210, 230, 255} : (SDL_Color){225, 225, 235, 255};
+        if (state->timeline_view_in_beats && state->tempo.bpm > 0.0) {
+            TempoState tempo = state->tempo;
+            tempo.sample_rate = sample_rate;
+            tempo_state_clamp(&tempo);
+            double beats = tempo_seconds_to_beats(seconds, &tempo);
+            int bar = tempo.ts_num > 0 ? (int)floor(beats / (double)tempo.ts_num) + 1 : 1;
+            double beat_in_bar_f = tempo.ts_num > 0 ? fmod(beats, (double)tempo.ts_num) : beats;
+            int beat_idx = (int)floor(beat_in_bar_f) + 1;
+            double sub = beat_in_bar_f - floor(beat_in_bar_f);
+            int sub_ms = (int)llround(sub * 1000.0);
+            if (bar < 1) bar = 1;
+            if (beat_idx < 1) beat_idx = 1;
+            snprintf(time_text, sizeof(time_text), "%03d.%02d.%03d", bar, beat_idx, sub_ms);
+        } else {
+            int total_ms = (int)llround(seconds * 1000.0);
+            int minutes = total_ms / 60000;
+            int seconds_part = (total_ms / 1000) % 60;
+            int millis = total_ms % 1000;
+            snprintf(time_text, sizeof(time_text), "%02d:%02d.%03d", minutes, seconds_part, millis);
+        }
+        int time_scale = state->timeline_view_in_beats ? 1 : 2;
+        int tw = ui_measure_text_width(time_text, time_scale);
         int time_x = ui->time_label_rect.x + (ui->time_label_rect.w - tw) / 2;
+        int th = ui_font_line_height(time_scale);
         int time_y = ui->time_label_rect.y + (ui->time_label_rect.h - th) / 2;
         if (time_x < ui->time_label_rect.x) time_x = ui->time_label_rect.x;
-        ui_draw_text(renderer, time_x, time_y, time_text, time_color, 2);
+        ui_draw_text(renderer, time_x, time_y, time_text, time_color, time_scale);
+
+        // BPM field and TS stub
+        SDL_Rect bpm_rect = ui->bpm_rect;
+        SDL_Rect ts_rect = ui->ts_rect;
+        SDL_Color bpm_bg = {36, 36, 44, 255};
+        SDL_Color bpm_border = {90, 90, 110, 255};
+        SDL_Color bpm_text_color = {230, 230, 240, 255};
+        if (state->tempo_ui.focus == TEMPO_FOCUS_BPM) {
+            bpm_bg = (SDL_Color){50, 60, 80, 255};
+        }
+        if (state->tempo_ui.editing) {
+            bpm_bg = (SDL_Color){60, 80, 110, 255};
+        }
+        SDL_SetRenderDrawColor(renderer, bpm_bg.r, bpm_bg.g, bpm_bg.b, bpm_bg.a);
+        SDL_RenderFillRect(renderer, &bpm_rect);
+        SDL_SetRenderDrawColor(renderer, bpm_border.r, bpm_border.g, bpm_border.b, bpm_border.a);
+        SDL_RenderDrawRect(renderer, &bpm_rect);
+        char bpm_text[32];
+        if (state->tempo_ui.editing && state->tempo_ui.buffer[0]) {
+            snprintf(bpm_text, sizeof(bpm_text), "%s", state->tempo_ui.buffer);
+        } else {
+            snprintf(bpm_text, sizeof(bpm_text), "%.0f", state->tempo.bpm);
+        }
+        int bpm_scale = 2;
+        int bpm_tw = ui_measure_text_width(bpm_text, bpm_scale);
+        int bpm_th = ui_font_line_height(bpm_scale);
+        int bpm_tx = bpm_rect.x + (bpm_rect.w - bpm_tw) / 2;
+        int bpm_ty = bpm_rect.y + (bpm_rect.h - bpm_th) / 2;
+        ui_draw_text(renderer, bpm_tx, bpm_ty, bpm_text, bpm_text_color, bpm_scale);
+
+        SDL_Color ts_bg = {36, 36, 44, 255};
+        if (state->tempo_ui.focus == TEMPO_FOCUS_TS) {
+            ts_bg = (SDL_Color){50, 60, 80, 255};
+        }
+        SDL_SetRenderDrawColor(renderer, ts_bg.r, ts_bg.g, ts_bg.b, ts_bg.a);
+        SDL_RenderFillRect(renderer, &ts_rect);
+        SDL_SetRenderDrawColor(renderer, bpm_border.r, bpm_border.g, bpm_border.b, bpm_border.a);
+        SDL_RenderDrawRect(renderer, &ts_rect);
+        char ts_text[16];
+        snprintf(ts_text, sizeof(ts_text), "%d/%d", state->tempo.ts_num, state->tempo.ts_den);
+        int ts_scale = 2;
+        int ts_tw = ui_measure_text_width(ts_text, ts_scale);
+        int ts_th = ui_font_line_height(ts_scale);
+        int ts_tx = ts_rect.x + (ts_rect.w - ts_tw) / 2;
+        int ts_ty = ts_rect.y + (ts_rect.h - ts_th) / 2;
+        ui_draw_text(renderer, ts_tx, ts_ty, ts_text, bpm_text_color, ts_scale);
+
+        SDL_Color toggle_bg = state->timeline_view_in_beats ? (SDL_Color){70, 110, 140, 255} : (SDL_Color){36, 36, 44, 255};
+        if (ui->beat_toggle_hovered) {
+            toggle_bg.r = (Uint8)((toggle_bg.r + 30) > 255 ? 255 : toggle_bg.r + 30);
+            toggle_bg.g = (Uint8)((toggle_bg.g + 30) > 255 ? 255 : toggle_bg.g + 30);
+            toggle_bg.b = (Uint8)((toggle_bg.b + 30) > 255 ? 255 : toggle_bg.b + 30);
+        }
+        SDL_SetRenderDrawColor(renderer, toggle_bg.r, toggle_bg.g, toggle_bg.b, toggle_bg.a);
+        SDL_RenderFillRect(renderer, &ui->beat_toggle_rect);
+        SDL_SetRenderDrawColor(renderer, bpm_border.r, bpm_border.g, bpm_border.b, bpm_border.a);
+        SDL_RenderDrawRect(renderer, &ui->beat_toggle_rect);
+        const char* toggle_label = "B";
+        int toggle_scale = 1;
+        int togg_tw = ui_measure_text_width(toggle_label, toggle_scale);
+        int togg_th = ui_font_line_height(toggle_scale);
+        int togg_tx = ui->beat_toggle_rect.x + (ui->beat_toggle_rect.w - togg_tw) / 2;
+        int togg_ty = ui->beat_toggle_rect.y + (ui->beat_toggle_rect.h - togg_th) / 2;
+        ui_draw_text(renderer, togg_tx, togg_ty, toggle_label, (SDL_Color){230, 230, 240, 255}, toggle_scale);
     }
 
     SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);

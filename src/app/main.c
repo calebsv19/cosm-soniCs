@@ -12,6 +12,7 @@
 #include "ui/effects_panel.h"
 #include "ui/font.h"
 #include "session/project_manager.h"
+#include "time/tempo.h"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
@@ -214,6 +215,7 @@ int main(void) {
         SDL_Log("Loaded audio config: sample_rate=%d block_size=%d",
                 state.runtime_cfg.sample_rate, state.runtime_cfg.block_size);
     }
+    state.tempo = tempo_state_default(state.runtime_cfg.sample_rate);
 
     state.engine_logging_enabled = state.runtime_cfg.enable_engine_logs;
     state.cache_logging_enabled = state.runtime_cfg.enable_cache_logs;
@@ -245,6 +247,7 @@ int main(void) {
         state.timeline_visible_seconds = TIMELINE_DEFAULT_VISIBLE_SECONDS;
         state.timeline_window_start_seconds = 0.0f;
         state.timeline_vertical_scale = 1.0f;
+        state.timeline_view_in_beats = false;
         state.timeline_show_all_grid_lines = false;
         state.loop_enabled = false;
         state.loop_start_frame = 0;

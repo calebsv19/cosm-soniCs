@@ -2,6 +2,7 @@
 
 #include "app_state.h"
 #include "engine/engine.h"
+#include "effects/param_utils.h"
 #include "input/timeline_input.h"
 #include "ui/effects_panel.h"
 #include "ui/font.h"
@@ -69,9 +70,28 @@ static float slider_value_from_mouse(const AppState* state,
     if (max_v - min_v < 1e-6f) {
         max_v = min_v + 1.0f;
     }
+    FxParamMode mode = slot->param_mode[param_index];
+    FxParamKind kind = info ? info->param_kind[param_index] : FX_PARAM_KIND_GENERIC;
+    const float beat_min = 1.0f / 64.0f;
+    const float beat_max = 8.0f;
+    if (mode != FX_PARAM_MODE_NATIVE && fx_param_kind_is_syncable(kind)) {
+        min_v = beat_min;
+        max_v = beat_max;
+    }
+    if (min_v > max_v) {
+        float tmp = min_v;
+        min_v = max_v;
+        max_v = tmp;
+    }
     float t = (float)(mouse_x - slider_rect->x) / (float)slider_rect->w;
     t = clampf(t, 0.0f, 1.0f);
-    return min_v + t * (max_v - min_v);
+    float value = min_v + t * (max_v - min_v);
+    if (mode != FX_PARAM_MODE_NATIVE && fx_param_kind_is_syncable(kind)) {
+        value = fx_param_quantize_beats(value);
+        if (value < beat_min) value = beat_min;
+        if (value > beat_max) value = beat_max;
+    }
+    return value;
 }
 
 static void apply_slider_value(AppState* state, int slot_index, int param_index, float value) {
@@ -86,19 +106,93 @@ static void apply_slider_value(AppState* state, int slot_index, int param_index,
     if (param_index < 0 || param_index >= (int)slot->param_count) {
         return;
     }
+    const FxTypeUIInfo* info = find_type_info(panel, slot->type_id);
+    FxParamMode mode = slot->param_mode[param_index];
+    FxParamKind kind = info ? info->param_kind[param_index] : FX_PARAM_KIND_GENERIC;
+    float beat_value = slot->param_beats[param_index];
+    float native_value = value;
+    if (mode != FX_PARAM_MODE_NATIVE && fx_param_kind_is_syncable(kind)) {
+        beat_value = value;
+        native_value = fx_param_beats_to_native(kind, beat_value, &state->tempo);
+    } else if (fx_param_kind_is_syncable(kind)) {
+        beat_value = fx_param_native_to_beats(kind, value, &state->tempo);
+    }
     bool updated = false;
+    bool use_sync = (mode != FX_PARAM_MODE_NATIVE) && fx_param_kind_is_syncable(kind);
     if (panel_targets_track(panel)) {
-        updated = engine_fx_track_set_param(state->engine,
-                                            panel->target_track_index,
-                                            slot->id,
-                                            (uint32_t)param_index,
-                                            value);
+        if (use_sync) {
+            updated = engine_fx_track_set_param_with_mode(state->engine,
+                                                          panel->target_track_index,
+                                                          slot->id,
+                                                          (uint32_t)param_index,
+                                                          native_value,
+                                                          mode,
+                                                          beat_value);
+        } else {
+            updated = engine_fx_track_set_param(state->engine,
+                                                panel->target_track_index,
+                                                slot->id,
+                                                (uint32_t)param_index,
+                                                native_value);
+        }
     } else {
-        updated = engine_fx_master_set_param(state->engine, slot->id, (uint32_t)param_index, value);
+        if (use_sync) {
+            updated = engine_fx_master_set_param_with_mode(state->engine,
+                                                           slot->id,
+                                                           (uint32_t)param_index,
+                                                           native_value,
+                                                           mode,
+                                                           beat_value);
+        } else {
+            updated = engine_fx_master_set_param(state->engine, slot->id, (uint32_t)param_index, native_value);
+        }
     }
     if (updated) {
-        slot->param_values[param_index] = value;
+        slot->param_values[param_index] = native_value;
+        slot->param_beats[param_index] = beat_value;
     }
+}
+
+static void toggle_param_mode(AppState* state, int slot_index, int param_index) {
+    if (!state || !state->engine) {
+        return;
+    }
+    EffectsPanelState* panel = &state->effects_panel;
+    if (slot_index < 0 || slot_index >= panel->chain_count) {
+        return;
+    }
+    FxSlotUIState* slot = &panel->chain[slot_index];
+    if (param_index < 0 || param_index >= (int)slot->param_count) {
+        return;
+    }
+    const FxTypeUIInfo* info = find_type_info(panel, slot->type_id);
+    FxParamKind kind = info ? info->param_kind[param_index] : FX_PARAM_KIND_GENERIC;
+    if (!fx_param_kind_is_syncable(kind)) {
+        return;
+    }
+    FxParamMode current = slot->param_mode[param_index];
+    FxParamMode next = FX_PARAM_MODE_NATIVE;
+    if (current == FX_PARAM_MODE_NATIVE) {
+        next = (kind == FX_PARAM_KIND_RATE_HZ) ? FX_PARAM_MODE_BEAT_RATE : FX_PARAM_MODE_BEATS;
+    } else {
+        next = FX_PARAM_MODE_NATIVE;
+    }
+    float native_value = slot->param_values[param_index];
+    float beat_value = slot->param_beats[param_index];
+    const float beat_min = 1.0f / 64.0f;
+    const float beat_max = 8.0f;
+    if (next != FX_PARAM_MODE_NATIVE) {
+        beat_value = fx_param_native_to_beats(kind, native_value, &state->tempo);
+        beat_value = fx_param_quantize_beats(beat_value);
+        if (beat_value < beat_min) beat_value = beat_min;
+        if (beat_value > beat_max) beat_value = beat_max;
+        native_value = fx_param_beats_to_native(kind, beat_value, &state->tempo);
+    } else if (fx_param_kind_is_syncable(kind)) {
+        beat_value = fx_param_native_to_beats(kind, native_value, &state->tempo);
+    }
+    slot->param_mode[param_index] = next;
+    slot->param_beats[param_index] = beat_value;
+    apply_slider_value(state, slot_index, param_index, next == FX_PARAM_MODE_NATIVE ? native_value : beat_value);
 }
 
 static void close_overlay(EffectsPanelState* panel) {
@@ -297,6 +391,11 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
             for (int i = 0; i < layout.column_count && i < panel->chain_count; ++i) {
                 FxSlotUIState* slot = &panel->chain[i];
                 for (uint32_t p = 0; p < slot->param_count && p < FX_MAX_PARAMS; ++p) {
+                    SDL_Rect mode_rect = layout.slots[i].mode_rects[p];
+                    if (mode_rect.w > 0 && mode_rect.h > 0 && SDL_PointInRect(&pt, &mode_rect)) {
+                        toggle_param_mode(state, i, (int)p);
+                        return;
+                    }
                     if (SDL_PointInRect(&pt, &layout.slots[i].slider_rects[p])) {
                         panel->dragging_slider = true;
                         panel->active_slot_index = i;

@@ -33,6 +33,7 @@ SRCS := \
 	$(SRC_DIR)/engine/engine.c \
 	$(SRC_DIR)/engine/graph.c \
 	$(SRC_DIR)/engine/buffer_pool.c \
+	$(SRC_DIR)/time/tempo.c \
 	$(SRC_DIR)/engine/source_tone.c \
 	$(SRC_DIR)/engine/sampler.c \
 	$(SRC_DIR)/effects/effects_manager.c \

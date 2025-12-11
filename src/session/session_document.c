@@ -1,6 +1,7 @@
 #include "session.h"
 #include "app_state.h"
 #include "engine/engine.h"
+#include "time/tempo.h"
 
 #include <SDL2/SDL.h>
 
@@ -26,6 +27,10 @@ void session_document_init(SessionDocument* doc) {
     memset(doc, 0, sizeof(*doc));
     doc->version = SESSION_DOCUMENT_VERSION;
     config_set_defaults(&doc->engine);
+    doc->tempo.bpm = 120.0f;
+    doc->tempo.ts_num = 4;
+    doc->tempo.ts_den = 4;
+    doc->timeline.view_in_beats = false;
     doc->master_fx = NULL;
     doc->master_fx_count = 0;
 }
@@ -97,6 +102,12 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
     } else {
         out_doc->engine = state->runtime_cfg;
     }
+    TempoState tempo_copy = state->tempo;
+    tempo_copy.sample_rate = out_doc->engine.sample_rate;
+    tempo_state_clamp(&tempo_copy);
+    out_doc->tempo.bpm = (float)tempo_copy.bpm;
+    out_doc->tempo.ts_num = tempo_copy.ts_num;
+    out_doc->tempo.ts_den = tempo_copy.ts_den;
 
     out_doc->transport_playing = state->engine ? engine_transport_is_playing(state->engine) : false;
     out_doc->transport_frame = state->engine ? engine_get_transport_frame(state->engine) : 0;
@@ -109,6 +120,7 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
     out_doc->timeline.window_start_seconds = state->timeline_window_start_seconds;
     out_doc->timeline.vertical_scale = state->timeline_vertical_scale;
     out_doc->timeline.show_all_grid_lines = state->timeline_show_all_grid_lines;
+    out_doc->timeline.view_in_beats = state->timeline_view_in_beats;
     out_doc->timeline.playhead_frame = out_doc->transport_frame;
 
     out_doc->layout.transport_ratio = state->layout_runtime.transport_ratio;
@@ -192,6 +204,8 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
                 dst_fx->param_count = src->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : src->param_count;
                 for (uint32_t p = 0; p < dst_fx->param_count; ++p) {
                     dst_fx->params[p] = src->params[p];
+                    dst_fx->param_mode[p] = src->param_mode[p];
+                    dst_fx->param_beats[p] = src->param_beats[p];
                 }
                 dst_fx->name[0] = '\0';
                 if (state->engine) {
@@ -229,6 +243,8 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
             dst->param_count = src->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : src->param_count;
             for (uint32_t p = 0; p < dst->param_count; ++p) {
                 dst->params[p] = src->params[p];
+                dst->param_mode[p] = src->param_mode[p];
+                dst->param_beats[p] = src->param_beats[p];
             }
             dst->name[0] = '\0';
             if (state->engine) {

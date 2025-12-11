@@ -122,6 +122,19 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     fprintf(file, "},\n");
 
     json_write_indent(file, 1);
+    fprintf(file, "\"tempo\": {\n");
+    json_write_indent(file, 2);
+    fprintf(file, "\"bpm\": ");
+    json_write_float(file, doc->tempo.bpm);
+    fprintf(file, ",\n");
+    json_write_indent(file, 2);
+    fprintf(file, "\"ts_num\": %d,\n", doc->tempo.ts_num);
+    json_write_indent(file, 2);
+    fprintf(file, "\"ts_den\": %d\n", doc->tempo.ts_den);
+    json_write_indent(file, 1);
+    fprintf(file, "},\n");
+
+    json_write_indent(file, 1);
     fprintf(file, "\"transport_playing\": %s,\n", doc->transport_playing ? "true" : "false");
     json_write_indent(file, 1);
     fprintf(file, "\"transport_frame\": %" PRIu64 ",\n", doc->transport_frame);
@@ -153,6 +166,8 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     fprintf(file, ",\n");
     json_write_indent(file, 2);
     fprintf(file, "\"show_all_grid_lines\": %s,\n", doc->timeline.show_all_grid_lines ? "true" : "false");
+    json_write_indent(file, 2);
+    fprintf(file, "\"view_in_beats\": %s,\n", doc->timeline.view_in_beats ? "true" : "false");
     json_write_indent(file, 2);
     fprintf(file, "\"playhead_frame\": %" PRIu64 "\n", doc->timeline.playhead_frame);
     json_write_indent(file, 1);
@@ -209,6 +224,24 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
                 fprintf(file, ", ");
             }
             json_write_float(file, fx->params[p]);
+        }
+        fprintf(file, "],\n");
+        json_write_indent(file, 3);
+        fprintf(file, "\"param_modes\": [");
+        for (uint32_t p = 0; p < fx->param_count; ++p) {
+            if (p > 0) {
+                fprintf(file, ", ");
+            }
+            fprintf(file, "%d", (int)fx->param_mode[p]);
+        }
+        fprintf(file, "],\n");
+        json_write_indent(file, 3);
+        fprintf(file, "\"param_beats\": [");
+        for (uint32_t p = 0; p < fx->param_count; ++p) {
+            if (p > 0) {
+                fprintf(file, ", ");
+            }
+            json_write_float(file, fx->param_beats[p]);
         }
         fprintf(file, "],\n");
         json_write_indent(file, 3);
@@ -303,6 +336,24 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
                     fprintf(file, ", ");
                 }
                 json_write_float(file, fx->params[p]);
+            }
+            fprintf(file, "],\n");
+            json_write_indent(file, 5);
+            fprintf(file, "\"param_modes\": [");
+            for (uint32_t p = 0; p < fx->param_count; ++p) {
+                if (p > 0) {
+                    fprintf(file, ", ");
+                }
+                fprintf(file, "%d", (int)fx->param_mode[p]);
+            }
+            fprintf(file, "],\n");
+            json_write_indent(file, 5);
+            fprintf(file, "\"param_beats\": [");
+            for (uint32_t p = 0; p < fx->param_count; ++p) {
+                if (p > 0) {
+                    fprintf(file, ", ");
+                }
+                json_write_float(file, fx->param_beats[p]);
             }
             fprintf(file, "],\n");
             json_write_indent(file, 5);

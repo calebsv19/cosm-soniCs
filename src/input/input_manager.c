@@ -267,7 +267,7 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
     if (!manager || !state || !state->engine) {
         return;
     }
-    if (library_input_is_editing(state) || state->track_name_editor.editing) {
+    if (state->tempo_ui.editing || library_input_is_editing(state) || state->track_name_editor.editing) {
         return;
     }
 
@@ -298,28 +298,6 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
 
     bool l_now = keys[SDL_SCANCODE_L] != 0;
     if (l_now && !manager->previous_l) {
-        if (state->library.selected_index >= 0 &&
-            state->library.selected_index < state->library.count) {
-            char path[512];
-            snprintf(path, sizeof(path), "%s/%s", state->library.directory,
-                     state->library.items[state->library.selected_index].name);
-            if (!engine_add_clip(state->engine, path, 0)) {
-                SDL_Log("Failed to load clip: %s", path);
-            }
-        } else if (!engine_load_wav(state->engine, "config/test.wav")) {
-            SDL_Log("Failed to load test clip");
-        }
-    }
-    manager->previous_l = l_now;
-
-    bool delete_now = keys[SDL_SCANCODE_DELETE] != 0 || keys[SDL_SCANCODE_BACKSPACE] != 0;
-    if (!state->inspector.editing_name && delete_now && !manager->previous_delete) {
-        timeline_selection_delete(state);
-    }
-    manager->previous_delete = delete_now;
-
-    bool c_now = keys[SDL_SCANCODE_C] != 0;
-    if (c_now && !manager->previous_c) {
         bool new_state = !state->loop_enabled;
         if (new_state && state->loop_end_frame <= state->loop_start_frame) {
             const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
@@ -334,6 +312,16 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
         state->loop_restart_pending = false;
         engine_transport_set_loop(state->engine, state->loop_enabled, state->loop_start_frame, state->loop_end_frame);
     }
+    manager->previous_l = l_now;
+
+    bool delete_now = keys[SDL_SCANCODE_DELETE] != 0 || keys[SDL_SCANCODE_BACKSPACE] != 0;
+    if (!state->inspector.editing_name && delete_now && !manager->previous_delete) {
+        timeline_selection_delete(state);
+    }
+    manager->previous_delete = delete_now;
+
+    bool c_now = keys[SDL_SCANCODE_C] != 0;
+    manager->previous_c = c_now;
     manager->previous_c = c_now;
 
     bool enter_now = keys[SDL_SCANCODE_RETURN] != 0 || keys[SDL_SCANCODE_KP_ENTER] != 0;
@@ -442,6 +430,11 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
     }
     if (state->project_prompt.active) {
         project_prompt_handle_event(state, event);
+        return;
+    }
+
+    if (state->tempo_ui.editing) {
+        transport_input_handle_event(manager, state, event);
         return;
     }
 

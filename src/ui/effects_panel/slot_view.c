@@ -1,7 +1,9 @@
 #include "app_state.h"
+#include "effects/param_utils.h"
 #include "ui/effects_panel_slot.h"
 #include "ui/font.h"
 
+#include <math.h>
 void effects_slot_reset_runtime(EffectsSlotRuntime* runtime) {
     if (!runtime) {
         return;
@@ -66,11 +68,58 @@ static void draw_slider(SDL_Renderer* renderer, const SDL_Rect* rect, float t) {
     SDL_RenderDrawRect(renderer, &handle);
 }
 
-static void format_value_label(const char* param_name, float value, char* out, size_t out_size) {
+static void format_beat_label(float beats, char* out, size_t out_size) {
+    static const struct {
+        float beats;
+        const char* label;
+    } kNotes[] = {
+        {4.0f,    "4/1"},
+        {2.0f,    "2/1"},
+        {1.0f,    "1/1"},
+        {0.75f,   "3/4"},
+        {0.5f,    "1/2"},
+        {0.333f,  "1/2T"},
+        {0.25f,   "1/4"},
+        {0.1875f, "1/4."},
+        {0.167f,  "1/4T"},
+        {0.125f,  "1/8"},
+        {0.09375f,"1/8."},
+        {0.083f,  "1/8T"},
+        {0.0625f, "1/16"},
+        {0.0468f, "1/16."},
+        {0.0416f, "1/16T"},
+        {0.03125f,"1/32"}
+    };
+    float best_diff = 1e9f;
+    const char* best = NULL;
+    for (size_t i = 0; i < sizeof(kNotes)/sizeof(kNotes[0]); ++i) {
+        float diff = fabsf(beats - kNotes[i].beats);
+        if (diff < best_diff) {
+            best_diff = diff;
+            best = kNotes[i].label;
+        }
+    }
+    if (best && best_diff < 0.02f) {
+        snprintf(out, out_size, "%s", best);
+    } else {
+        snprintf(out, out_size, "%.3f b", beats);
+    }
+}
+
+static void format_value_label(const char* param_name,
+                               float value,
+                               FxParamMode mode,
+                               FxParamKind kind,
+                               char* out,
+                               size_t out_size) {
     if (!out || out_size == 0) {
         return;
     }
     out[0] = '\0';
+    if (mode != FX_PARAM_MODE_NATIVE && fx_param_kind_is_syncable(kind)) {
+        format_beat_label(value, out, out_size);
+        return;
+    }
     char lower[64];
     for (size_t i = 0; i + 1 < sizeof(lower); ++i) {
         if (!param_name || param_name[i] == '\0') {
@@ -107,6 +156,23 @@ static void draw_remove_button(SDL_Renderer* renderer, const SDL_Rect* rect, boo
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, rect);
     ui_draw_text(renderer, rect->x + 8, rect->y + (rect->h - 14) / 2, "-", text, 2);
+}
+
+static void draw_mode_toggle(SDL_Renderer* renderer, const SDL_Rect* rect, FxParamMode mode) {
+    if (!renderer || !rect || rect->w <= 0 || rect->h <= 0) {
+        return;
+    }
+    SDL_Color base = {52, 56, 64, 255};
+    SDL_Color active = {120, 180, 255, 230};
+    SDL_Color border = {90, 95, 110, 255};
+    SDL_Color text = {220, 230, 240, 255};
+    SDL_Color fill = (mode == FX_PARAM_MODE_NATIVE) ? base : active;
+    SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
+    SDL_RenderFillRect(renderer, rect);
+    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+    SDL_RenderDrawRect(renderer, rect);
+    const char* label = (mode == FX_PARAM_MODE_NATIVE) ? "N" : "B";
+    ui_draw_text(renderer, rect->x + 5, rect->y + (rect->h - 12) / 2, label, text, 1.3f);
 }
 
 void effects_slot_compute_layout(struct EffectsPanelState* panel,
@@ -189,15 +255,36 @@ void effects_slot_compute_layout(struct EffectsPanelState* panel,
             max_label_w,
             label_h
         };
+        bool tempo_syncable = info && fx_param_kind_is_syncable(info->param_kind[p]);
+        const int mode_w = 20;
+        const int mode_gap = 6;
+        int slider_w_param = slider_w;
+        if (tempo_syncable) {
+            slider_w_param -= (mode_w + mode_gap);
+            if (slider_w_param < 48) {
+                slider_w_param = 48;
+            }
+        }
         SDL_Rect slider_rect = {
             slider_x,
             param_y + (block_h - 18) / 2,
-            slider_w,
+            slider_w_param,
             18
         };
         int val_h = ui_font_line_height(1.0f);
+        SDL_Rect mode_rect = {0, 0, 0, 0};
+        int value_x = slider_rect.x + slider_rect.w + 8;
+        if (tempo_syncable) {
+            mode_rect = (SDL_Rect){
+                slider_rect.x + slider_rect.w + 4,
+                param_y + (block_h - 18) / 2,
+                mode_w,
+                18
+            };
+            value_x = mode_rect.x + mode_rect.w + mode_gap;
+        }
         SDL_Rect value_rect = {
-            slider_rect.x + slider_rect.w + 8,
+            value_x,
             param_y + (block_h - val_h) / 2,
             value_w,
             val_h
@@ -205,6 +292,7 @@ void effects_slot_compute_layout(struct EffectsPanelState* panel,
         out_layout->label_rects[p] = label_rect;
         out_layout->slider_rects[p] = slider_rect;
         out_layout->value_rects[p] = value_rect;
+        out_layout->mode_rects[p] = mode_rect;
         param_y += block_h + param_gap;
     }
 
@@ -285,12 +373,32 @@ void effects_slot_render(SDL_Renderer* renderer,
             }
 
             const char* pname = info ? info->param_names[p] : "Param";
+            FxParamMode mode = slot->param_mode[p];
+            FxParamKind kind = info ? info->param_kind[p] : FX_PARAM_KIND_GENERIC;
+            bool tempo_syncable = fx_param_kind_is_syncable(kind);
             float min_v = info ? info->param_min[p] : 0.0f;
             float max_v = info ? info->param_max[p] : 1.0f;
+            float value = slot->param_values[p];
+            const float beat_min = 1.0f / 64.0f;
+            const float beat_max = 8.0f;
+            if (mode != FX_PARAM_MODE_NATIVE && tempo_syncable) {
+                min_v = beat_min;
+                max_v = beat_max;
+                value = slot->param_beats[p];
+                if (fabsf(value) < 1e-6f) {
+                    value = fx_param_native_to_beats(kind, slot->param_values[p], &state->tempo);
+                }
+                if (value < beat_min) value = beat_min;
+                if (value > beat_max) value = beat_max;
+            }
+            if (min_v > max_v) {
+                float tmp = min_v;
+                min_v = max_v;
+                max_v = tmp;
+            }
             if (fabsf(max_v - min_v) < 1e-6f) {
                 max_v = min_v + 1.0f;
             }
-            float value = slot->param_values[p];
             float t = (value - min_v) / (max_v - min_v);
             draw_slider(renderer, &slider_rect, t);
 
@@ -299,8 +407,12 @@ void effects_slot_render(SDL_Renderer* renderer,
             ui_draw_text(renderer, label_rect.x, label_rect.y, label_line, label_color, 1.5f);
 
             char value_line[64];
-            format_value_label(pname, value, value_line, sizeof(value_line));
+            format_value_label(pname, value, mode, kind, value_line, sizeof(value_line));
             ui_draw_text(renderer, value_rect.x, value_rect.y, value_line, text_dim, 1.5f);
+            SDL_Rect mode_rect = slot_layout->mode_rects[p];
+            if (tempo_syncable && mode_rect.w > 0 && mode_rect.h > 0) {
+                draw_mode_toggle(renderer, &mode_rect, mode);
+            }
         }
 
         SDL_RenderSetClipRect(renderer, had_clip ? &prev_clip : NULL);

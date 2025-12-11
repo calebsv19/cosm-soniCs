@@ -13,6 +13,7 @@
 #include "ui/panes.h"
 #include "ui/timeline_view.h"
 #include "ui/effects_panel.h"
+#include "time/tempo.h"
 
 #include <SDL2/SDL.h>
 #include <math.h>
@@ -59,6 +60,32 @@ static void clear_timeline_drop(AppState* state) {
     state->timeline_drop_label[0] = '\0';
 }
 
+static void timeline_marquee_clear(AppState* state) {
+    if (!state) return;
+    state->timeline_marquee_active = false;
+    state->timeline_marquee_rect = (SDL_Rect){0,0,0,0};
+    state->timeline_marquee_extend = false;
+    state->timeline_marquee_start_x = 0;
+    state->timeline_marquee_start_y = 0;
+}
+
+typedef struct {
+    EngineSamplerSource* sampler;
+    int track_index;
+    uint64_t start_frame;
+} TimelineClipboardEntry;
+
+static struct {
+    TimelineClipboardEntry entries[TIMELINE_MAX_SELECTION];
+    int count;
+    uint64_t anchor_start_frame;
+} g_timeline_clipboard = {0};
+
+static void timeline_clipboard_clear(void) {
+    g_timeline_clipboard.count = 0;
+    g_timeline_clipboard.anchor_start_frame = 0;
+}
+
 static void set_drop_label(AppState* state, const char* filename, float duration_seconds) {
     if (!state) {
         return;
@@ -79,6 +106,150 @@ static void set_drop_label(AppState* state, const char* filename, float duration
     } else {
         strncpy(state->timeline_drop_label, temp, sizeof(state->timeline_drop_label) - 1);
         state->timeline_drop_label[sizeof(state->timeline_drop_label) - 1] = '\0';
+    }
+}
+
+static void timeline_clipboard_copy(AppState* state) {
+    if (!state || !state->engine) {
+        return;
+    }
+    timeline_clipboard_clear();
+
+    const EngineTrack* tracks = engine_get_tracks(state->engine);
+    int track_count = engine_get_track_count(state->engine);
+    if (!tracks || track_count <= 0) {
+        return;
+    }
+
+    TimelineSelectionEntry temp_entries[TIMELINE_MAX_SELECTION];
+    int temp_count = 0;
+    if (state->selection_count > 0) {
+        int count = state->selection_count;
+        if (count > TIMELINE_MAX_SELECTION) count = TIMELINE_MAX_SELECTION;
+        for (int i = 0; i < count; ++i) {
+            temp_entries[temp_count++] = state->selection[i];
+        }
+    } else if (state->selected_track_index >= 0 && state->selected_clip_index >= 0) {
+        temp_entries[temp_count++] = (TimelineSelectionEntry){
+            .track_index = state->selected_track_index,
+            .clip_index = state->selected_clip_index
+        };
+    }
+
+    if (temp_count <= 0) {
+        return;
+    }
+
+    uint64_t anchor = UINT64_MAX;
+    uint64_t selected_anchor = UINT64_MAX;
+    for (int i = 0; i < temp_count && g_timeline_clipboard.count < TIMELINE_MAX_SELECTION; ++i) {
+        TimelineSelectionEntry entry = temp_entries[i];
+        if (entry.track_index < 0 || entry.track_index >= track_count) {
+            continue;
+        }
+        const EngineTrack* track = &tracks[entry.track_index];
+        if (!track || entry.clip_index < 0 || entry.clip_index >= track->clip_count) {
+            continue;
+        }
+        const EngineClip* clip = &track->clips[entry.clip_index];
+        if (!clip || !clip->sampler) {
+            continue;
+        }
+        TimelineClipboardEntry* dst = &g_timeline_clipboard.entries[g_timeline_clipboard.count++];
+        dst->sampler = clip->sampler;
+        dst->track_index = entry.track_index;
+        dst->start_frame = clip->timeline_start_frames;
+        if (dst->start_frame < anchor) {
+            anchor = dst->start_frame;
+        }
+        if (entry.track_index == state->selected_track_index &&
+            entry.clip_index == state->selected_clip_index) {
+            selected_anchor = dst->start_frame;
+        }
+    }
+
+    if (anchor == UINT64_MAX) {
+        timeline_clipboard_clear();
+        return;
+    }
+    if (selected_anchor != UINT64_MAX) {
+        g_timeline_clipboard.anchor_start_frame = selected_anchor;
+    } else {
+        g_timeline_clipboard.anchor_start_frame = anchor;
+    }
+}
+
+static void timeline_clipboard_paste(AppState* state) {
+    if (!state || !state->engine) {
+        return;
+    }
+    if (g_timeline_clipboard.count <= 0) {
+        return;
+    }
+    const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
+    int sample_rate = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
+    if (sample_rate <= 0) {
+        return;
+    }
+    uint64_t playhead = engine_get_transport_frame(state->engine);
+    uint64_t anchor = g_timeline_clipboard.anchor_start_frame;
+    int track_count = engine_get_track_count(state->engine);
+    int target_track = state->selected_track_index;
+    if (target_track < 0 || target_track >= track_count) {
+        target_track = g_timeline_clipboard.entries[0].track_index;
+    }
+    if (target_track < 0) target_track = 0;
+    while (target_track >= track_count) {
+        engine_add_track(state->engine);
+        track_count = engine_get_track_count(state->engine);
+    }
+
+    TimelineSelectionEntry new_sel[TIMELINE_MAX_SELECTION];
+    int new_count = 0;
+
+    for (int i = 0; i < g_timeline_clipboard.count && new_count < TIMELINE_MAX_SELECTION; ++i) {
+        const TimelineClipboardEntry* src = &g_timeline_clipboard.entries[i];
+        if (!src->sampler) {
+            continue;
+        }
+        int clip_track = -1;
+        int clip_idx = -1;
+        if (!timeline_find_clip_by_sampler(state, src->sampler, &clip_track, &clip_idx)) {
+            continue;
+        }
+        uint64_t desired_start = playhead + (src->start_frame > anchor ? (src->start_frame - anchor) : 0);
+        int dup_index = -1;
+        // duplicate on source track
+        if (!engine_duplicate_clip(state->engine, clip_track, clip_idx, 0, &dup_index) || dup_index < 0) {
+            continue;
+        }
+        // Set start on the duplicate
+        int updated_index = dup_index;
+        engine_clip_set_timeline_start(state->engine, clip_track, dup_index, desired_start, &updated_index);
+        dup_index = updated_index;
+
+        // If target track differs, move duplicate to that track keeping desired start.
+        if (target_track != clip_track) {
+            int moved = timeline_move_clip_to_track(state, clip_track, dup_index, target_track, desired_start);
+            if (moved >= 0) {
+                dup_index = moved;
+                clip_track = target_track;
+            }
+        }
+
+        new_sel[new_count].track_index = clip_track;
+        new_sel[new_count].clip_index = dup_index;
+        new_count++;
+    }
+
+    if (new_count > 0) {
+        timeline_selection_clear(state);
+        for (int i = 0; i < new_count; ++i) {
+            timeline_selection_add(state, new_sel[i].track_index, new_sel[i].clip_index);
+        }
+        state->active_track_index = new_sel[0].track_index;
+        state->selected_track_index = new_sel[0].track_index;
+        state->selected_clip_index = new_sel[0].clip_index;
     }
 }
 
@@ -124,6 +295,7 @@ static void timeline_end_drag(AppState* state) {
     state->timeline_drag.adjusting_fade_in = false;
     state->timeline_drag.adjusting_fade_out = false;
     state->timeline_drag.destination_track_index = -1;
+    state->timeline_drag.started_moving = false;
     state->timeline_drag.current_start_seconds = 0.0f;
     state->timeline_drag.current_duration_seconds = 0.0f;
     state->inspector.adjusting_fade_in = false;
@@ -135,6 +307,7 @@ static void timeline_end_drag(AppState* state) {
         state->timeline_drag.multi_initial_track[i] = -1;
         state->timeline_drag.multi_initial_start[i] = 0;
     }
+    timeline_marquee_clear(state);
 }
 
 void track_name_editor_stop(AppState* state, bool commit) {
@@ -439,7 +612,34 @@ static void update_timeline_drop_hint(AppState* state) {
     float window_start = geom.window_start_seconds;
     float window_end = window_start + visible_seconds;
     float seconds = pixels_per_second > 0.0f ? window_start + (float)rel_x / pixels_per_second : window_start;
+    // Snap interval respects beat view: use tempo-based subdivision when enabled.
     float snap_interval = TIMELINE_SNAP_SECONDS > 0.0f ? TIMELINE_SNAP_SECONDS : 0.25f;
+    if (state->timeline_view_in_beats && state->tempo.bpm > 0.0f && state->engine) {
+        const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
+        int sr = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
+        if (sr > 0) {
+            TempoState tempo = state->tempo;
+            tempo.sample_rate = sr;
+            tempo_state_clamp(&tempo);
+            double visible_beats = tempo_seconds_to_beats(state->timeline_visible_seconds, &tempo);
+            double subdivision = 1.0;
+            if (visible_beats <= 2.0) {
+                subdivision = 1.0 / 16.0;
+            } else if (visible_beats <= 4.0) {
+                subdivision = 1.0 / 8.0;
+            } else if (visible_beats <= 8.0) {
+                subdivision = 1.0 / 4.0;
+            } else if (visible_beats <= 16.0) {
+                subdivision = 1.0 / 2.0;
+            } else {
+                subdivision = 1.0;
+            }
+            double interval_sec = tempo_beats_to_seconds(subdivision, &tempo);
+            if (interval_sec > 0.0 && interval_sec < snap_interval * 2.0f) {
+                snap_interval = (float)interval_sec;
+            }
+        }
+    }
 
     float best_sec = clamp_scalar(seconds, window_start, window_end);
     float best_diff = FLT_MAX;
@@ -771,6 +971,50 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
 
     TimelineDragState* drag = &state->timeline_drag;
 
+    if (state->timeline_marquee_active) {
+        if (is_down) {
+            state->timeline_marquee_rect.w = state->mouse_x - state->timeline_marquee_start_x;
+            state->timeline_marquee_rect.h = state->mouse_y - state->timeline_marquee_start_y;
+        } else {
+            SDL_Rect rect = state->timeline_marquee_rect;
+            if (rect.w < 0) { rect.x += rect.w; rect.w = -rect.w; }
+            if (rect.h < 0) { rect.y += rect.h; rect.h = -rect.h; }
+            const EngineTrack* tracks_all = engine_get_tracks(state->engine);
+            int track_count_all = engine_get_track_count(state->engine);
+            if (tracks_all && track_count_all > 0 && rect.w > 0 && rect.h > 0) {
+                if (!state->timeline_marquee_extend) {
+                    timeline_clear_selection(state);
+                }
+                for (int t = 0; t < track_count_all; ++t) {
+                    const EngineTrack* track = &tracks_all[t];
+                    if (!track || track->clip_count <= 0) continue;
+                    int lane_top = geom.track_top + t * (geom.track_height + geom.track_spacing);
+                    int clip_y = lane_top + 8;
+                    int clip_h = geom.track_height - 16;
+                    if (clip_h < 8) clip_h = geom.track_height;
+                    for (int i = 0; i < track->clip_count; ++i) {
+                        const EngineClip* clip = &track->clips[i];
+                        if (!clip || !clip->sampler) continue;
+                        uint64_t frame_count = clip->duration_frames;
+                        if (frame_count == 0) frame_count = engine_sampler_get_frame_count(clip->sampler);
+                        double start_sec = (double)clip->timeline_start_frames / (double)sample_rate;
+                        double clip_sec = (double)frame_count / (double)sample_rate;
+                        float clip_offset = start_sec - geom.window_start_seconds;
+                        int clip_x = geom.content_left + (int)round(clip_offset * geom.pixels_per_second);
+                        int clip_w = (int)round(clip_sec * geom.pixels_per_second);
+                        if (clip_w < 4) clip_w = 4;
+                        SDL_Rect crect = {clip_x, clip_y, clip_w, clip_h};
+                        if (SDL_HasIntersection(&rect, &crect)) {
+                            timeline_selection_add(state, t, i);
+                        }
+                    }
+                }
+            }
+            timeline_marquee_clear(state);
+        }
+        return;
+    }
+
     SDL_Point mouse_point = {state->mouse_x, state->mouse_y};
     bool over_timeline = SDL_PointInRect(&mouse_point, &timeline->rect);
     TimelineControlsUI* controls = &state->timeline_controls;
@@ -924,6 +1168,34 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
             float window_min = geom.window_start_seconds;
             float window_max = geom.window_start_seconds + geom.visible_seconds;
             seconds = clamp_scalar(seconds, window_min, window_max);
+            if (state->timeline_view_in_beats && !alt_held && state->tempo.bpm > 0.0f && state->engine) {
+                const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
+                int sr = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
+                if (sr > 0) {
+                    TempoState tempo = state->tempo;
+                    tempo.sample_rate = sr;
+                    tempo_state_clamp(&tempo);
+                    double visible_beats = tempo_seconds_to_beats(state->timeline_visible_seconds, &tempo);
+                    double subdiv = 1.0;
+                    if (visible_beats <= 2.0) {
+                        subdiv = 1.0 / 16.0;
+                    } else if (visible_beats <= 4.0) {
+                        subdiv = 1.0 / 8.0;
+                    } else if (visible_beats <= 8.0) {
+                        subdiv = 1.0 / 4.0;
+                    } else if (visible_beats <= 16.0) {
+                        subdiv = 1.0 / 2.0;
+                    } else {
+                        subdiv = 1.0;
+                    }
+                    double beat_pos = tempo_seconds_to_beats((double)seconds, &tempo);
+                    double snapped_beats = floor(beat_pos / subdiv + 0.5) * subdiv;
+                    double snapped_sec = tempo_beats_to_seconds(snapped_beats, &tempo);
+                    if (snapped_sec < window_min) snapped_sec = window_min;
+                    if (snapped_sec > window_max) snapped_sec = window_max;
+                    seconds = (float)snapped_sec;
+                }
+            }
             uint64_t frame = (uint64_t)llroundf(seconds * (float)sample_rate);
             engine_transport_seek(state->engine, frame);
             manager->last_click_clip = -1;
@@ -1079,6 +1351,7 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
             drag->initial_start_frames = clip->timeline_start_frames;
             drag->initial_offset_frames = clip->offset_frames;
             drag->initial_duration_frames = clip->duration_frames;
+            drag->started_moving = false;
             if (drag->initial_duration_frames == 0) {
                 drag->initial_duration_frames = engine_sampler_get_frame_count(clip->sampler);
             }
@@ -1124,6 +1397,16 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
             }
             timeline_clear_selection(state);
             timeline_end_drag(state);
+        }
+
+        if (hit_clip < 0 && hit_track < 0 && over_timeline) {
+            state->timeline_marquee_active = true;
+            state->timeline_marquee_extend = shift_held;
+            state->timeline_marquee_start_x = state->mouse_x;
+            state->timeline_marquee_start_y = state->mouse_y;
+            state->timeline_marquee_rect = (SDL_Rect){state->mouse_x, state->mouse_y, 0, 0};
+            timeline_end_drag(state);
+            return;
         }
     }
 
@@ -1389,10 +1672,21 @@ static void handle_timeline_clip_interactions(InputManager* manager, AppState* s
     } else if (!drag->trimming_left && !drag->trimming_right) {
         float initial_start_sec = (float)drag->initial_start_frames / (float)sample_rate;
         float delta_sec = mouse_seconds - drag->start_mouse_seconds;
+        if (!drag->started_moving) {
+            int dx = state->mouse_x - drag->start_mouse_x;
+            if (dx < 0) dx = -dx;
+            if (dx >= 2) {
+                drag->started_moving = true;
+            } else {
+                delta_sec = 0.0f;
+            }
+        }
         float new_start_sec = clamp_scalar(initial_start_sec + delta_sec, 0.0f, geom.visible_seconds);
         float snap_interval = TIMELINE_SNAP_SECONDS > 0.0f ? TIMELINE_SNAP_SECONDS : 0.25f;
-        new_start_sec = snap_time_to_interval(new_start_sec, snap_interval);
-        snap_to_neighbor_clip(drag_track, drag->clip_index, sample_rate, snap_interval, &new_start_sec);
+        if (drag->started_moving) {
+            new_start_sec = snap_time_to_interval(new_start_sec, snap_interval);
+            snap_to_neighbor_clip(drag_track, drag->clip_index, sample_rate, snap_interval, &new_start_sec);
+        }
         new_start_sec = clamp_scalar(new_start_sec, 0.0f, geom.visible_seconds);
         if (new_start_sec < move_min_start_sec) {
             new_start_sec = move_min_start_sec;
@@ -1656,6 +1950,15 @@ void timeline_input_handle_event(InputManager* manager, AppState* state, const S
                     editor->cursor += 1;
                 }
             }
+            return;
+        }
+        bool copy_trigger = (key == SDLK_c) && (mods & (KMOD_CTRL | KMOD_GUI));
+        bool paste_trigger = (key == SDLK_v) && (mods & (KMOD_CTRL | KMOD_GUI));
+        if (copy_trigger) {
+            timeline_clipboard_copy(state);
+            return;
+        } else if (paste_trigger) {
+            timeline_clipboard_paste(state);
             return;
         }
         bool duplicate_trigger = (key == SDLK_d) && (mods & (KMOD_CTRL | KMOD_GUI));

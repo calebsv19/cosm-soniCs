@@ -262,6 +262,64 @@ static bool parse_session_track(JsonReader* r, SessionTrack* track) {
                                 }
                             }
                             fx->param_count = pcount;
+                        } else if (strcmp(fx_key, "param_modes") == 0) {
+                            if (!json_expect(r, '[')) {
+                                return false;
+                            }
+                            json_skip_whitespace(r);
+                            uint32_t idx = 0;
+                            if (r->pos < r->length && r->data[r->pos] == ']') {
+                                ++r->pos;
+                            } else {
+                                while (true) {
+                                    double val;
+                                    if (!json_parse_number(r, &val)) {
+                                        return false;
+                                    }
+                                    if (idx < FX_MAX_PARAMS) {
+                                        fx->param_mode[idx] = (FxParamMode)((int)val);
+                                    }
+                                    ++idx;
+                                    json_skip_whitespace(r);
+                                    if (r->pos < r->length && r->data[r->pos] == ',') {
+                                        ++r->pos;
+                                        continue;
+                                    }
+                                    break;
+                                }
+                                if (!json_expect(r, ']')) {
+                                    return false;
+                                }
+                            }
+                        } else if (strcmp(fx_key, "param_beats") == 0) {
+                            if (!json_expect(r, '[')) {
+                                return false;
+                            }
+                            json_skip_whitespace(r);
+                            uint32_t idx = 0;
+                            if (r->pos < r->length && r->data[r->pos] == ']') {
+                                ++r->pos;
+                            } else {
+                                while (true) {
+                                    double val;
+                                    if (!json_parse_number(r, &val)) {
+                                        return false;
+                                    }
+                                    if (idx < FX_MAX_PARAMS) {
+                                        fx->param_beats[idx] = (float)val;
+                                    }
+                                    ++idx;
+                                    json_skip_whitespace(r);
+                                    if (r->pos < r->length && r->data[r->pos] == ',') {
+                                        ++r->pos;
+                                        continue;
+                                    }
+                                    break;
+                                }
+                                if (!json_expect(r, ']')) {
+                                    return false;
+                                }
+                            }
                         } else if (strcmp(fx_key, "param_count") == 0) {
                             double val;
                             if (!json_parse_number(r, &val)) {
@@ -424,6 +482,66 @@ bool parse_master_fx(JsonReader* r, SessionDocument* doc) {
                 }
                 fx->param_count = params_found > FX_MAX_PARAMS ? FX_MAX_PARAMS : params_found;
                 params_set = true;
+            } else if (strcmp(key, "param_modes") == 0) {
+                if (!json_expect(r, '[')) {
+                    return false;
+                }
+                json_skip_whitespace(r);
+                uint32_t idx = 0;
+                if (r->pos < r->length && r->data[r->pos] == ']') {
+                    ++r->pos;
+                } else {
+                    while (true) {
+                        double val;
+                        if (!json_parse_number(r, &val)) {
+                            return false;
+                        }
+                        if (idx < FX_MAX_PARAMS) {
+                            fx->param_mode[idx] = (FxParamMode)((int)val);
+                        }
+                        ++idx;
+                        json_skip_whitespace(r);
+                        if (r->pos < r->length && r->data[r->pos] == ',') {
+                            ++r->pos;
+                            continue;
+                        }
+                        if (r->pos < r->length && r->data[r->pos] == ']') {
+                            ++r->pos;
+                            break;
+                        }
+                        return false;
+                    }
+                }
+            } else if (strcmp(key, "param_beats") == 0) {
+                if (!json_expect(r, '[')) {
+                    return false;
+                }
+                json_skip_whitespace(r);
+                uint32_t idx = 0;
+                if (r->pos < r->length && r->data[r->pos] == ']') {
+                    ++r->pos;
+                } else {
+                    while (true) {
+                        double val;
+                        if (!json_parse_number(r, &val)) {
+                            return false;
+                        }
+                        if (idx < FX_MAX_PARAMS) {
+                            fx->param_beats[idx] = (float)val;
+                        }
+                        ++idx;
+                        json_skip_whitespace(r);
+                        if (r->pos < r->length && r->data[r->pos] == ',') {
+                            ++r->pos;
+                            continue;
+                        }
+                        if (r->pos < r->length && r->data[r->pos] == ']') {
+                            ++r->pos;
+                            break;
+                        }
+                        return false;
+                    }
+                }
             } else if (strcmp(key, "param_count") == 0) {
                 double val;
                 if (!json_parse_number(r, &val)) {
@@ -605,6 +723,55 @@ bool parse_session_document(JsonReader* r, SessionDocument* doc) {
                 return false;
             }
             doc->transport_frame = (uint64_t)(val < 0 ? 0 : val);
+        } else if (strcmp(key, "tempo") == 0) {
+            if (!json_expect(r, '{')) {
+                return false;
+            }
+            while (true) {
+                json_skip_whitespace(r);
+                if (r->pos < r->length && r->data[r->pos] == '}') {
+                    ++r->pos;
+                    break;
+                }
+                char tempo_key[64];
+                if (!json_parse_string(r, tempo_key, sizeof(tempo_key))) {
+                    return false;
+                }
+                if (!json_expect(r, ':')) {
+                    return false;
+                }
+                double val;
+                if (strcmp(tempo_key, "bpm") == 0) {
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->tempo.bpm = (float)val;
+                } else if (strcmp(tempo_key, "ts_num") == 0) {
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->tempo.ts_num = (int)val;
+                } else if (strcmp(tempo_key, "ts_den") == 0) {
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->tempo.ts_den = (int)val;
+                } else {
+                    if (!json_skip_value(r)) {
+                        return false;
+                    }
+                }
+                json_skip_whitespace(r);
+                if (r->pos < r->length && r->data[r->pos] == ',') {
+                    ++r->pos;
+                    continue;
+                }
+                if (r->pos < r->length && r->data[r->pos] == '}') {
+                    ++r->pos;
+                    break;
+                }
+                return false;
+            }
         } else if (strcmp(key, "loop") == 0) {
             if (!json_expect(r, '{')) {
                 return false;
@@ -689,6 +856,10 @@ bool parse_session_document(JsonReader* r, SessionDocument* doc) {
                     doc->timeline.vertical_scale = (float)val;
                 } else if (strcmp(timeline_key, "show_all_grid_lines") == 0) {
                     if (!json_parse_bool(r, &doc->timeline.show_all_grid_lines)) {
+                        return false;
+                    }
+                } else if (strcmp(timeline_key, "view_in_beats") == 0) {
+                    if (!json_parse_bool(r, &doc->timeline.view_in_beats)) {
                         return false;
                     }
                 } else if (strcmp(timeline_key, "playhead_frame") == 0) {

@@ -19,6 +19,7 @@ typedef struct {
     SDL_Rect label_rects[FX_MAX_PARAMS];
     SDL_Rect slider_rects[FX_MAX_PARAMS];
     SDL_Rect value_rects[FX_MAX_PARAMS];
+    SDL_Rect mode_rects[FX_MAX_PARAMS];
     SDL_Rect scrollbar_track;
     SDL_Rect scrollbar_thumb;
     uint32_t param_count;
