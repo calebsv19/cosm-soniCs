@@ -483,6 +483,7 @@ void input_manager_update(InputManager* manager, AppState* state) {
     bool left_is_down = (manager->current_buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
 
     transport_input_update(manager, state);
+    transport_input_follow_playhead(manager, state);
     timeline_input_update(manager, state, left_was_down, left_is_down);
     effects_panel_input_update(manager, state, left_was_down, left_is_down);
 

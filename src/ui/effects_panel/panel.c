@@ -267,6 +267,9 @@ void effects_panel_init(AppState* state) {
     state->effects_panel.hovered_effect_index = -1;
     state->effects_panel.active_category_index = -1;
     state->effects_panel.highlighted_slot_index = -1;
+    state->effects_panel.hovered_toggle_slot_index = -1;
+    state->effects_panel.selected_slot_index = -1;
+    state->effects_panel.focused = false;
     state->effects_panel.active_slot_index = -1;
     state->effects_panel.active_param_index = -1;
     state->effects_panel.overlay_scroll_index = 0;
@@ -343,6 +346,10 @@ void effects_panel_sync_from_engine(AppState* state) {
         return;
     }
     EffectsPanelState* panel = &state->effects_panel;
+    FxInstId selected_id = 0;
+    if (panel->selected_slot_index >= 0 && panel->selected_slot_index < panel->chain_count) {
+        selected_id = panel->chain[panel->selected_slot_index].id;
+    }
     effects_panel_update_target(state);
     FxMasterSnapshot snap;
     bool ok = false;
@@ -353,6 +360,7 @@ void effects_panel_sync_from_engine(AppState* state) {
     }
     if (!ok) {
         panel->chain_count = 0;
+        panel->selected_slot_index = -1;
         return;
     }
     panel->chain_count = snap.count;
@@ -379,8 +387,22 @@ void effects_panel_sync_from_engine(AppState* state) {
     if (panel->highlighted_slot_index >= panel->chain_count) {
         panel->highlighted_slot_index = -1;
     }
+    if (panel->hovered_toggle_slot_index >= panel->chain_count) {
+        panel->hovered_toggle_slot_index = -1;
+    }
     if (panel->active_slot_index >= panel->chain_count) {
         panel->active_slot_index = -1;
+    }
+    if (panel->selected_slot_index >= panel->chain_count) {
+        panel->selected_slot_index = -1;
+    }
+    if (selected_id != 0) {
+        for (int i = 0; i < panel->chain_count; ++i) {
+            if (panel->chain[i].id == selected_id) {
+                panel->selected_slot_index = i;
+                break;
+            }
+        }
     }
 }
 
@@ -813,6 +835,8 @@ void effects_panel_render(SDL_Renderer* renderer, const AppState* state, const E
                             i,
                             &layout->slots[i],
                             panel->highlighted_slot_index == i,
+                            panel->hovered_toggle_slot_index == i,
+                            panel->selected_slot_index == i,
                             label_color,
                             text_dim);
     }

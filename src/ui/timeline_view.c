@@ -4,6 +4,7 @@
 #include "engine/engine.h"
 #include "engine/sampler.h"
 #include "ui/font.h"
+#include "ui/timeline_waveform.h"
 #include "time/tempo.h"
 
 #include <math.h>
@@ -27,13 +28,17 @@ static bool timeline_clip_is_selected(const AppState* state, int track_index, in
     return state->selected_track_index == track_index && state->selected_clip_index == clip_index;
 }
 
-#define CLIP_COLOR_R 85
-#define CLIP_COLOR_G 125
-#define CLIP_COLOR_B 210
+#define CLIP_COLOR_R 36
+#define CLIP_COLOR_G 40
+#define CLIP_COLOR_B 52
 #define TRACK_BG_R 38
 #define TRACK_BG_G 44
 #define TRACK_BG_B 58
 #define CLIP_HANDLE_WIDTH 8
+
+#define WAVEFORM_COLOR_R 120
+#define WAVEFORM_COLOR_G 140
+#define WAVEFORM_COLOR_B 170
 
 static inline float clamp_float(float value, float min, float max) {
     if (value < min) return min;
@@ -45,6 +50,21 @@ static inline Uint8 clamp_u8(int value) {
     if (value < 0) return 0;
     if (value > 255) return 255;
     return (Uint8)value;
+}
+
+static int quantize_samples_per_pixel(int spp) {
+    if (spp < 1) {
+        return 1;
+    }
+    int upper = 1;
+    while (upper < spp && upper < (1 << 30)) {
+        upper <<= 1;
+    }
+    int lower = upper >> 1;
+    if (lower < 1) {
+        return upper;
+    }
+    return (spp - lower) < (upper - spp) ? lower : upper;
 }
 
 static float timeline_total_seconds(const AppState* state) {
@@ -618,14 +638,16 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
 
             for (int i = 0; i < track->clip_count; ++i) {
                 const EngineClip* clip = &track->clips[i];
-                if (!clip || !clip->sampler) {
+                if (!clip) {
                     continue;
                 }
 
                 const uint64_t start_frame = clip->timeline_start_frames;
                 uint64_t frame_count = clip->duration_frames;
-                if (frame_count == 0) {
-                    frame_count = engine_sampler_get_frame_count(clip->sampler);
+                uint64_t media_frames = (clip->media && clip->media->frame_count > 0) ? clip->media->frame_count : 0;
+                uint64_t clip_available = media_frames > clip->offset_frames ? media_frames - clip->offset_frames : 0;
+                if (frame_count == 0 || (clip_available > 0 && frame_count > clip_available)) {
+                    frame_count = clip_available;
                 }
                 const double clip_sec = (double)frame_count / (double)sample_rate;
                 const double start_sec = (double)start_frame / (double)sample_rate;
@@ -659,20 +681,103 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                 };
 
                 bool is_selected = timeline_clip_is_selected(state, t, i);
-                Uint8 fill_r = CLIP_COLOR_R;
-                Uint8 fill_g = CLIP_COLOR_G;
-                Uint8 fill_b = CLIP_COLOR_B;
-                if (is_selected) {
-                    int boost = state->selection_count > 1 ? 60 : 35;
-                    fill_r = clamp_u8(fill_r + boost);
-                    fill_g = clamp_u8(fill_g + boost + 20);
-                    fill_b = clamp_u8(fill_b + boost + (state->selection_count > 1 ? 40 : 20));
-                }
-                SDL_SetRenderDrawColor(renderer, fill_r, fill_g, fill_b, 220);
+                SDL_SetRenderDrawColor(renderer, CLIP_COLOR_R, CLIP_COLOR_G, CLIP_COLOR_B, 230);
                 SDL_RenderFillRect(renderer, &clip_rect);
 
-                SDL_SetRenderDrawColor(renderer, 20, 20, 26, 255);
+                if (is_selected) {
+                    SDL_SetRenderDrawColor(renderer, 200, 220, 255, 220);
+                } else {
+                    SDL_SetRenderDrawColor(renderer, 20, 20, 26, 255);
+                }
                 SDL_RenderDrawRect(renderer, &clip_rect);
+
+                if (clip->media && clip->media->samples && clip->media->frame_count > 0) {
+                    int wave_label_pad = 4;
+                    float label_scale = 1.3f;
+                    int label_h = ui_font_line_height(label_scale);
+                    SDL_Rect waveform_rect = clip_rect;
+                    waveform_rect.y += label_h + wave_label_pad;
+                    waveform_rect.h -= label_h + wave_label_pad + 2;
+                    if (waveform_rect.h < 8) {
+                        waveform_rect = clip_rect;
+                    }
+                    if (waveform_rect.w > 0 && waveform_rect.h > 0) {
+                        double visible_duration = visible_end_sec - visible_start_sec;
+                        if (visible_duration > 0.0) {
+                            double pixels_per_second_wave = (double)waveform_rect.w / visible_duration;
+                            double exact_spp = (double)sample_rate / pixels_per_second_wave;
+                            int samples_per_pixel = (int)llround(exact_spp);
+                            if (samples_per_pixel < 1) samples_per_pixel = 1;
+                            int bucket_spp = quantize_samples_per_pixel(samples_per_pixel);
+                            const WaveformCacheEntry* entry = waveform_cache_get(&state->waveform_cache,
+                                                                                 clip->media,
+                                                                                 clip->media_path,
+                                                                                 bucket_spp);
+                            if (entry && entry->bucket_count > 0) {
+                                uint64_t local_visible_start = clip->offset_frames;
+                                double local_offset_sec = visible_start_sec - start_sec;
+                                if (local_offset_sec > 0.0) {
+                                    local_visible_start += (uint64_t)llround(local_offset_sec * (double)sample_rate);
+                                }
+                                uint64_t max_frame = clip->offset_frames + frame_count;
+                                if (local_visible_start > max_frame) {
+                                    local_visible_start = max_frame;
+                                }
+                                double bucket_scale = exact_spp / (double)bucket_spp;
+                                double bucket_start = (double)local_visible_start / (double)bucket_spp;
+                                int mid_y = waveform_rect.y + waveform_rect.h / 2;
+                                int amp = waveform_rect.h / 2 - 1;
+                                if (amp < 1) {
+                                    amp = 1;
+                                }
+                                SDL_SetRenderDrawColor(renderer, WAVEFORM_COLOR_R, WAVEFORM_COLOR_G, WAVEFORM_COLOR_B, 200);
+                                bool line_mode = exact_spp <= 2.0;
+                                int prev_x = 0;
+                                int prev_y = 0;
+                                for (int px = 0; px < waveform_rect.w; ++px) {
+                                    double pos = bucket_start + (double)px * bucket_scale;
+                                    int bucket = (int)floor(pos);
+                                    if (bucket < 0 || bucket >= entry->bucket_count) {
+                                        continue;
+                                    }
+                                    if (bucket + 1 >= entry->bucket_count) {
+                                        break;
+                                    }
+                                    double t = pos - (double)bucket;
+                                    float min_a = entry->mins[bucket];
+                                    float max_a = entry->maxs[bucket];
+                                    float min_b = entry->mins[bucket + 1];
+                                    float max_b = entry->maxs[bucket + 1];
+                                    float min_v = (float)((1.0 - t) * min_a + t * min_b);
+                                    float max_v = (float)((1.0 - t) * max_a + t * max_b);
+                                    if (line_mode) {
+                                        float v = 0.5f * (min_v + max_v);
+                                        int y = mid_y - (int)llround((double)v * (double)amp);
+                                        int x = waveform_rect.x + px;
+                                        if (px > 0) {
+                                            SDL_RenderDrawLine(renderer, prev_x, prev_y, x, y);
+                                        }
+                                        prev_x = x;
+                                        prev_y = y;
+                                    } else {
+                                        int y_top = mid_y - (int)llround((double)max_v * (double)amp);
+                                        int y_bot = mid_y - (int)llround((double)min_v * (double)amp);
+                                        if (y_top > y_bot) {
+                                            int tmp = y_top;
+                                            y_top = y_bot;
+                                            y_bot = tmp;
+                                        }
+                                        SDL_RenderDrawLine(renderer,
+                                                           waveform_rect.x + px,
+                                                           y_top,
+                                                           waveform_rect.x + px,
+                                                           y_bot);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
                 if (sample_rate > 0) {
                     int fade_in_px = (int)round((double)clip->fade_in_frames / (double)sample_rate * pixels_per_second);
@@ -680,11 +785,12 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                     int clip_clip_left_px = (int)round((visible_start_sec - start_sec) * pixels_per_second);
                     int clip_clip_right_px = (int)round((clip_end_sec - visible_end_sec) * pixels_per_second);
 
+                    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
                     int fade_in_draw = fade_in_px - clip_clip_left_px;
                     if (fade_in_draw < 0) fade_in_draw = 0;
                     if (fade_in_draw > clip_rect.w) fade_in_draw = clip_rect.w;
                     if (fade_in_draw > 0) {
-                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 80);
+                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 28);
                         for (int fx = 0; fx < fade_in_draw; ++fx) {
                             float tf = fade_in_draw > 0 ? (float)fx / (float)fade_in_draw : 0.0f;
                             if (tf > 1.0f) tf = 1.0f;
@@ -701,7 +807,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                     if (fade_out_draw < 0) fade_out_draw = 0;
                     if (fade_out_draw > clip_rect.w) fade_out_draw = clip_rect.w;
                     if (fade_out_draw > 0) {
-                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 80);
+                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 28);
                         for (int fx = 0; fx < fade_out_draw; ++fx) {
                             float tf = fade_out_draw > 0 ? (float)fx / (float)fade_out_draw : 0.0f;
                             if (tf > 1.0f) tf = 1.0f;
@@ -714,18 +820,15 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                                                clip_rect.y + h);
                         }
                     }
+                    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
                 }
 
                 SDL_Color text_color = {200, 200, 210, 255};
                 const char* name = clip->name[0] ? clip->name : "Clip";
                 int label_padding = 6;
                 int label_width = clip_rect.w - label_padding * 2;
-                float scale_f = 1.5f; // mid-size for readability on clips
-                int text_h = ui_font_line_height(scale_f);
-                int label_y = clip_rect.y + (clip_rect.h - text_h) / 2;
-                if (label_y < clip_rect.y + 2) {
-                    label_y = clip_rect.y + 2;
-                }
+                float scale_f = 1.3f;
+                int label_y = clip_rect.y + 4;
                 if (label_width > 0) {
                     ui_draw_text_clipped(renderer,
                                          clip_rect.x + label_padding,
@@ -902,14 +1005,62 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
         if (ghost_w < 6) {
             ghost_w = 6;
         }
+        if (ghost_x < content_left) {
+            ghost_w -= (content_left - ghost_x);
+            ghost_x = content_left;
+        }
+        if (ghost_x + ghost_w > content_left + content_width) {
+            ghost_w = content_left + content_width - ghost_x;
+        }
+        if (ghost_w < 1) {
+            ghost_w = 1;
+        }
         int drop_track = state->timeline_drop_track_index;
         if (drop_track < 0) {
             drop_track = 0;
         }
-        if (drop_track >= track_count) {
-            drop_track = track_count > 0 ? track_count - 1 : 0;
+        if (track_count == 0) {
+            drop_track = 0;
         }
         int lane_top = track_y + drop_track * (track_height + track_spacing);
+        bool is_preview_track = (track_count == 0) || (drop_track >= track_count);
+        if (is_preview_track) {
+            SDL_Rect header_rect = {
+                rect->x + 8,
+                lane_top,
+                header_width - 16,
+                track_height
+            };
+            SDL_SetRenderDrawColor(renderer, 46, 54, 72, 220);
+            SDL_RenderFillRect(renderer, &header_rect);
+            SDL_SetRenderDrawColor(renderer, 90, 110, 150, 200);
+            SDL_RenderDrawRect(renderer, &header_rect);
+            SDL_Color header_text = {210, 220, 235, 230};
+            ui_draw_text(renderer, header_rect.x + 8, header_rect.y + 8, "New Track", header_text, 1);
+
+            SDL_Rect lane_rect = {
+                content_left,
+                lane_top,
+                content_width,
+                track_height
+            };
+            SDL_SetRenderDrawColor(renderer, 52, 62, 86, 120);
+            SDL_RenderFillRect(renderer, &lane_rect);
+            SDL_SetRenderDrawColor(renderer, 90, 110, 150, 140);
+            SDL_RenderDrawRect(renderer, &lane_rect);
+
+            draw_timeline_grid(renderer,
+                               content_left,
+                               content_width,
+                               lane_top,
+                               track_height,
+                               pixels_per_second,
+                               visible_seconds,
+                               state->timeline_show_all_grid_lines,
+                               window_start,
+                               state->timeline_view_in_beats,
+                               &tempo);
+        }
         SDL_Rect ghost_rect = {
             ghost_x,
             lane_top + 12,

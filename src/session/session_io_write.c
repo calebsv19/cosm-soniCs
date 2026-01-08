@@ -169,6 +169,8 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     json_write_indent(file, 2);
     fprintf(file, "\"view_in_beats\": %s,\n", doc->timeline.view_in_beats ? "true" : "false");
     json_write_indent(file, 2);
+    fprintf(file, "\"follow_mode\": %d,\n", doc->timeline.follow_mode);
+    json_write_indent(file, 2);
     fprintf(file, "\"playhead_frame\": %" PRIu64 "\n", doc->timeline.playhead_frame);
     json_write_indent(file, 1);
     fprintf(file, "},\n");

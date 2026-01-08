@@ -54,6 +54,7 @@ bool    engine_fx_registry_get_desc(const Engine* engine, FxTypeId type, FxDesc*
 bool    engine_fx_master_snapshot(const Engine* engine, FxMasterSnapshot* out_snapshot);
 FxInstId engine_fx_master_add(Engine* engine, FxTypeId type);
 bool    engine_fx_master_remove(Engine* engine, FxInstId id);
+bool    engine_fx_master_reorder(Engine* engine, FxInstId id, int new_index);
 bool    engine_fx_master_set_param(Engine* engine, FxInstId id, uint32_t param_index, float value);
 bool    engine_fx_master_set_param_with_mode(Engine* engine,
                                              FxInstId id,

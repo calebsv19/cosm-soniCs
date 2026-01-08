@@ -14,6 +14,7 @@
 #include "ui/timeline_view.h"
 #include "ui/effects_panel.h"
 #include "time/tempo.h"
+#include "audio/media_clip.h"
 
 #include <SDL2/SDL.h>
 #include <math.h>
@@ -308,6 +309,38 @@ static void timeline_end_drag(AppState* state) {
         state->timeline_drag.multi_initial_start[i] = 0;
     }
     timeline_marquee_clear(state);
+}
+
+static float library_item_preview_duration(const AppState* state, const LibraryItem* item) {
+    if (!state || !item) {
+        return 0.0f;
+    }
+    int target_rate = state->runtime_cfg.sample_rate;
+    if (state->engine) {
+        const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
+        if (cfg && cfg->sample_rate > 0) {
+            target_rate = cfg->sample_rate;
+        }
+    }
+    if (target_rate <= 0) {
+        return item->duration_seconds;
+    }
+    char full_path[512];
+    snprintf(full_path, sizeof(full_path), "%s/%s", state->library.directory, item->name);
+    AudioMediaClip clip;
+    SDL_zero(clip);
+    if (!audio_media_clip_load(full_path, target_rate, &clip)) {
+        return item->duration_seconds;
+    }
+    float seconds = 0.0f;
+    if (clip.sample_rate > 0 && clip.frame_count > 0) {
+        seconds = (float)clip.frame_count / (float)clip.sample_rate;
+    }
+    audio_media_clip_free(&clip);
+    if (seconds <= 0.0f) {
+        seconds = item->duration_seconds;
+    }
+    return seconds;
 }
 
 void track_name_editor_stop(AppState* state, bool commit) {
@@ -660,23 +693,29 @@ static void update_timeline_drop_hint(AppState* state) {
     const EngineTrack* tracks = engine_get_tracks(state->engine);
     const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
     int sample_rate = cfg ? cfg->sample_rate : 0;
+    int track_count = engine_get_track_count(state->engine);
     int drop_track = 0;
     if (tracks && sample_rate > 0) {
         int track_height = geom.track_height;
         int track_spacing = geom.track_spacing;
-        drop_track = timeline_track_at_position(state, state->mouse_y, track_height, track_spacing);
-        if (drop_track < 0) {
-            drop_track = 0;
-        }
-        int track_count = engine_get_track_count(state->engine);
+        int track_top = timeline->rect.y + TIMELINE_CONTROLS_HEIGHT + 8;
+        int lane_height = track_height + track_spacing;
+        int last_lane_bottom = track_top + track_count * lane_height;
         if (track_count == 0) {
             drop_track = 0;
-        } else if (drop_track >= track_count) {
-            drop_track = track_count - 1;
+        } else if (state->mouse_y >= last_lane_bottom) {
+            drop_track = track_count;
+        } else {
+            drop_track = timeline_track_at_position(state, state->mouse_y, track_height, track_spacing);
+            if (drop_track < 0) {
+                drop_track = 0;
+            } else if (drop_track >= track_count) {
+                drop_track = track_count - 1;
+            }
         }
 
-        const EngineTrack* track = (track_count > 0) ? &tracks[drop_track] : NULL;
-        if (track) {
+        if (drop_track < track_count && drop_track >= 0) {
+            const EngineTrack* track = &tracks[drop_track];
             for (int i = 0; i < track->clip_count; ++i) {
                 const EngineClip* clip = &track->clips[i];
                 if (!clip || !clip->media) {
@@ -706,7 +745,10 @@ static void update_timeline_drop_hint(AppState* state) {
         state->drag_library_index >= 0 &&
         state->drag_library_index < state->library.count) {
         const LibraryItem* item = &state->library.items[state->drag_library_index];
-        set_drop_label(state, item->name, item->duration_seconds);
+        float label_duration = state->timeline_drop_preview_duration > 0.0f
+                                   ? state->timeline_drop_preview_duration
+                                   : library_item_preview_duration(state, item);
+        set_drop_label(state, item->name, label_duration);
     }
 
     best_sec = clamp_scalar(best_sec, window_start, window_end);
@@ -716,8 +758,10 @@ static void update_timeline_drop_hint(AppState* state) {
     float preview_seconds = state->timeline_drop_preview_duration;
     if (state->dragging_library &&
         state->drag_library_index >= 0 &&
-        state->drag_library_index < state->library.count) {
-        float candidate = state->library.items[state->drag_library_index].duration_seconds;
+        state->drag_library_index < state->library.count &&
+        preview_seconds <= 0.0f) {
+        const LibraryItem* item = &state->library.items[state->drag_library_index];
+        float candidate = library_item_preview_duration(state, item);
         if (candidate > 0.0f) {
             preview_seconds = candidate;
         }
@@ -759,8 +803,9 @@ static void handle_library_drag(InputManager* manager, AppState* state, bool was
             state->drag_library_index = lib->hovered_index;
             if (state->drag_library_index >= 0 && state->drag_library_index < lib->count) {
                 const LibraryItem* item = &lib->items[state->drag_library_index];
-                set_drop_label(state, item->name, item->duration_seconds);
-                state->timeline_drop_preview_duration = item->duration_seconds > 0.0f ? item->duration_seconds : 2.0f;
+                float preview = library_item_preview_duration(state, item);
+                set_drop_label(state, item->name, preview);
+                state->timeline_drop_preview_duration = preview > 0.0f ? preview : 2.0f;
             } else {
                 clear_timeline_drop(state);
             }

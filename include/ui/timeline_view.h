@@ -16,4 +16,10 @@ struct AppState;
 #define TIMELINE_TRACK_HEADER_WIDTH 120
 #define TIMELINE_CONTROLS_HEIGHT 40
 
+typedef enum {
+    TIMELINE_FOLLOW_OFF = 0,
+    TIMELINE_FOLLOW_JUMP = 1,
+    TIMELINE_FOLLOW_SMOOTH = 2
+} TimelineFollowMode;
+
 void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const struct AppState* state);

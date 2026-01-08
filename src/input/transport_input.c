@@ -594,3 +594,36 @@ void transport_input_update(InputManager* manager, AppState* state) {
         }
     }
 }
+
+void transport_input_follow_playhead(InputManager* manager, AppState* state) {
+    if (!state || !state->engine) {
+        return;
+    }
+    if (manager && (manager->prev_window_slider_down || state->transport_ui.adjusting_window)) {
+        return;
+    }
+    if (!engine_transport_is_playing(state->engine)) {
+        return;
+    }
+    if (state->timeline_follow_mode != TIMELINE_FOLLOW_JUMP) {
+        return;
+    }
+    float visible = clamp_scalar(state->timeline_visible_seconds,
+                                 TIMELINE_MIN_VISIBLE_SECONDS,
+                                 TIMELINE_MAX_VISIBLE_SECONDS);
+    if (visible <= 0.0f) {
+        return;
+    }
+    float window_start = state->timeline_window_start_seconds;
+    float window_end = window_start + visible;
+    float ph_sec = playhead_seconds(state);
+    if (ph_sec < window_start || ph_sec >= window_end) {
+        float max_start = timeline_window_max_start(state);
+        float new_start = ph_sec;
+        if (new_start < 0.0f) new_start = 0.0f;
+        if (new_start > max_start) new_start = max_start;
+        state->timeline_window_start_seconds = new_start;
+        clamp_timeline_window(state);
+        transport_ui_sync(&state->transport_ui, state);
+    }
+}

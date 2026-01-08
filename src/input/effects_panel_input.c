@@ -232,11 +232,67 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
     bool overlay_open = (panel->overlay_layer != FX_PANEL_OVERLAY_CLOSED);
 
     switch (event->type) {
+        case SDL_KEYDOWN: {
+            if (!panel->focused || panel->selected_slot_index < 0 || overlay_open) {
+                break;
+            }
+            if (state->track_name_editor.editing) {
+                break;
+            }
+            SDL_Keycode key = event->key.keysym.sym;
+            if (key != SDLK_LEFT && key != SDLK_RIGHT) {
+                break;
+            }
+            int selected = panel->selected_slot_index;
+            if (selected < 0 || selected >= panel->chain_count) {
+                break;
+            }
+            SDL_Keymod mods = SDL_GetModState();
+            int new_index = selected;
+            if (key == SDLK_LEFT) {
+                new_index = (mods & KMOD_SHIFT) ? 0 : (selected - 1);
+            } else if (key == SDLK_RIGHT) {
+                new_index = (mods & KMOD_SHIFT) ? (panel->chain_count - 1) : (selected + 1);
+            }
+            if (new_index < 0) new_index = 0;
+            if (new_index >= panel->chain_count) new_index = panel->chain_count - 1;
+            if (new_index != selected && state->engine) {
+                FxInstId id = panel->chain[selected].id;
+                bool reordered = false;
+                if (panel_targets_track(panel)) {
+                    reordered = engine_fx_track_reorder(state->engine, panel->target_track_index, id, new_index);
+                } else {
+                    reordered = engine_fx_master_reorder(state->engine, id, new_index);
+                }
+                if (reordered) {
+                    effects_panel_sync_from_engine(state);
+                }
+            }
+            break;
+        }
         case SDL_MOUSEBUTTONDOWN: {
             if (event->button.button != SDL_BUTTON_LEFT) {
                 break;
             }
             SDL_Point pt = {event->button.x, event->button.y};
+            if (!SDL_PointInRect(&pt, &layout.panel_rect)) {
+                panel->focused = false;
+                panel->selected_slot_index = -1;
+                panel->highlighted_slot_index = -1;
+                panel->hovered_toggle_slot_index = -1;
+                if (overlay_open) {
+                    close_overlay(panel);
+                }
+                return;
+            }
+            panel->focused = true;
+
+            if (!overlay_open) {
+                int column_hit = hit_column_index(&layout, panel, &pt);
+                if (column_hit >= 0) {
+                    panel->selected_slot_index = column_hit;
+                }
+            }
 
             // Scrollbar drag start (per slot)
             for (int i = 0; i < layout.column_count && i < panel->chain_count; ++i) {
@@ -369,6 +425,25 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
 
             // Remove buttons (only when overlay is closed)
             for (int i = 0; i < layout.column_count && i < panel->chain_count; ++i) {
+                if (SDL_PointInRect(&pt, &layout.slots[i].toggle_rect)) {
+                    if (state->engine) {
+                        FxInstId id = panel->chain[i].id;
+                        bool enabled = !panel->chain[i].enabled;
+                        bool updated = false;
+                        if (panel_targets_track(panel)) {
+                            updated = engine_fx_track_set_enabled(state->engine,
+                                                                  panel->target_track_index,
+                                                                  id,
+                                                                  enabled);
+                        } else {
+                            updated = engine_fx_master_set_enabled(state->engine, id, enabled);
+                        }
+                        if (id != 0 && updated) {
+                            effects_panel_sync_from_engine(state);
+                        }
+                    }
+                    return;
+                }
                 if (SDL_PointInRect(&pt, &layout.slots[i].remove_rect)) {
                     if (state->engine) {
                         FxInstId id = panel->chain[i].id;
@@ -383,6 +458,7 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                         }
                     }
                     panel->highlighted_slot_index = -1;
+                    panel->selected_slot_index = -1;
                     return;
                 }
             }
@@ -478,7 +554,11 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                 apply_slider_value(state, slot_index, param_index, value);
             } else {
                 panel->highlighted_slot_index = -1;
+                panel->hovered_toggle_slot_index = -1;
                 for (int i = 0; i < layout.column_count && i < panel->chain_count; ++i) {
+                    if (SDL_PointInRect(&pt, &layout.slots[i].toggle_rect)) {
+                        panel->hovered_toggle_slot_index = i;
+                    }
                     if (SDL_PointInRect(&pt, &layout.slots[i].remove_rect)) {
                         panel->highlighted_slot_index = i;
                         break;
@@ -544,6 +624,8 @@ void effects_panel_input_update(InputManager* manager, AppState* state, bool lef
     }
     if (state->inspector.visible) {
         close_overlay(&state->effects_panel);
+        state->effects_panel.focused = false;
+        state->effects_panel.selected_slot_index = -1;
         return;
     }
     if (state->engine) {

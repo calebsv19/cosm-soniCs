@@ -7,7 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SESSION_DOCUMENT_VERSION 6
+#define SESSION_DOCUMENT_VERSION 7
 #define SESSION_PATH_MAX 512
 #define SESSION_NAME_MAX 128
 #define SESSION_FX_NAME_MAX 64
@@ -36,6 +36,7 @@ typedef struct {
     float vertical_scale;
     bool show_all_grid_lines;
     bool view_in_beats;
+    int follow_mode;
     uint64_t playhead_frame;
 } SessionTimelineView;
 

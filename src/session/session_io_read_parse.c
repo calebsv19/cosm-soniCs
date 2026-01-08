@@ -862,6 +862,11 @@ bool parse_session_document(JsonReader* r, SessionDocument* doc) {
                     if (!json_parse_bool(r, &doc->timeline.view_in_beats)) {
                         return false;
                     }
+                } else if (strcmp(timeline_key, "follow_mode") == 0) {
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->timeline.follow_mode = (int)val;
                 } else if (strcmp(timeline_key, "playhead_frame") == 0) {
                     if (!json_parse_number(r, &val)) {
                         return false;

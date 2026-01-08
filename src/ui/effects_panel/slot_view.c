@@ -158,6 +158,20 @@ static void draw_remove_button(SDL_Renderer* renderer, const SDL_Rect* rect, boo
     ui_draw_text(renderer, rect->x + 8, rect->y + (rect->h - 14) / 2, "-", text, 2);
 }
 
+static void draw_enable_toggle(SDL_Renderer* renderer, const SDL_Rect* rect, bool enabled, bool highlighted) {
+    if (!renderer || !rect) {
+        return;
+    }
+    SDL_Color border = highlighted ? (SDL_Color){140, 180, 230, 255} : (SDL_Color){90, 95, 110, 255};
+    SDL_Color fill_off = {180, 60, 60, 220};
+    if (!enabled) {
+        SDL_SetRenderDrawColor(renderer, fill_off.r, fill_off.g, fill_off.b, fill_off.a);
+        SDL_RenderFillRect(renderer, rect);
+    }
+    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+    SDL_RenderDrawRect(renderer, rect);
+}
+
 static void draw_mode_toggle(SDL_Renderer* renderer, const SDL_Rect* rect, FxParamMode mode) {
     if (!renderer || !rect || rect->w <= 0 || rect->h <= 0) {
         return;
@@ -189,6 +203,7 @@ void effects_slot_compute_layout(struct EffectsPanelState* panel,
     out_layout->column_rect = *column_rect;
     out_layout->header_rect = (SDL_Rect){column_rect->x, column_rect->y, column_rect->w, header_height - 8};
     out_layout->remove_rect = (SDL_Rect){column_rect->x + column_rect->w - 28, column_rect->y + 6, 22, 22};
+    out_layout->toggle_rect = (SDL_Rect){out_layout->remove_rect.x - 26, out_layout->remove_rect.y, 22, 22};
     out_layout->body_rect = (SDL_Rect){
         column_rect->x + inner_margin / 2,
         column_rect->y + header_height,
@@ -327,6 +342,8 @@ void effects_slot_render(SDL_Renderer* renderer,
                          int slot_index,
                          const EffectsSlotLayout* slot_layout,
                          bool remove_highlight,
+                         bool toggle_highlight,
+                         bool selected,
                          SDL_Color label_color,
                          SDL_Color text_dim) {
     if (!renderer || !state || !slot_layout) {
@@ -345,6 +362,10 @@ void effects_slot_render(SDL_Renderer* renderer,
     SDL_RenderFillRect(renderer, &slot_layout->column_rect);
     SDL_SetRenderDrawColor(renderer, box_border.r, box_border.g, box_border.b, box_border.a);
     SDL_RenderDrawRect(renderer, &slot_layout->column_rect);
+    if (selected) {
+        SDL_SetRenderDrawColor(renderer, 120, 160, 220, 180);
+        SDL_RenderDrawRect(renderer, &slot_layout->column_rect);
+    }
 
     SDL_Rect header = slot_layout->header_rect;
     SDL_SetRenderDrawColor(renderer, 44, 48, 58, 255);
@@ -354,6 +375,7 @@ void effects_slot_render(SDL_Renderer* renderer,
     const char* fx_name = info ? info->name : "Effect";
     ui_draw_text(renderer, header.x + 8, header.y + 8, fx_name, label_color, 2);
 
+    draw_enable_toggle(renderer, &slot_layout->toggle_rect, slot->enabled, toggle_highlight);
     draw_remove_button(renderer, &slot_layout->remove_rect, remove_highlight);
 
     SDL_Rect body_clip = slot_layout->body_rect;

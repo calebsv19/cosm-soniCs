@@ -1062,6 +1062,19 @@ bool engine_fx_master_remove(Engine* engine, FxInstId id) {
     return ok;
 }
 
+bool engine_fx_master_reorder(Engine* engine, FxInstId id, int new_index) {
+    if (!engine || !engine->fxm_mutex || id == 0) {
+        return false;
+    }
+    bool ok = false;
+    SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) {
+        ok = fxm_master_reorder(engine->fxm, id, new_index);
+    }
+    SDL_UnlockMutex(engine->fxm_mutex);
+    return ok;
+}
+
 bool engine_fx_master_set_param(Engine* engine, FxInstId id, uint32_t param_index, float value) {
     if (!engine || !engine->fxm_mutex || id == 0) {
         return false;

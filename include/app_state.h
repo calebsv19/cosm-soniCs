@@ -14,6 +14,7 @@
 #include "ui/timeline_view.h"
 #include "ui/library_browser.h"
 #include "ui/effects_panel_slot.h"
+#include "ui/timeline_waveform.h"
 #include "session/project_manager.h"
 #include "time/tempo.h"
 
@@ -129,6 +130,9 @@ typedef struct EffectsPanelState {
     int hovered_effect_index;
     int active_category_index;
     int highlighted_slot_index;
+    int hovered_toggle_slot_index;
+    int selected_slot_index;
+    bool focused;
     bool dragging_slider;
     int active_slot_index;
     int active_param_index;
@@ -248,6 +252,7 @@ struct AppState {
     float timeline_visible_seconds;
     float timeline_window_start_seconds;
     float timeline_vertical_scale;
+    TimelineFollowMode timeline_follow_mode;
     bool timeline_drop_active;
     float timeline_drop_seconds;
     float timeline_drop_seconds_snapped;
@@ -285,4 +290,5 @@ struct AppState {
     ProjectState project;
     ProjectSavePrompt project_prompt;
     ProjectLoadModal project_load;
+    WaveformCache waveform_cache;
 };

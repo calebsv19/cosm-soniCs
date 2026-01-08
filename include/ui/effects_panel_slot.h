@@ -14,6 +14,7 @@ typedef struct {
 typedef struct {
     SDL_Rect column_rect;
     SDL_Rect header_rect;
+    SDL_Rect toggle_rect;
     SDL_Rect remove_rect;
     SDL_Rect body_rect;
     SDL_Rect label_rects[FX_MAX_PARAMS];
@@ -43,5 +44,7 @@ void effects_slot_render(SDL_Renderer* renderer,
                          int slot_index,
                          const EffectsSlotLayout* slot_layout,
                          bool remove_highlight,
+                         bool toggle_highlight,
+                         bool selected,
                          SDL_Color label_color,
                          SDL_Color text_dim);

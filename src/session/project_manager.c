@@ -236,6 +236,7 @@ bool project_manager_new(AppState* state) {
     doc.timeline.vertical_scale = 1.0f;
     doc.timeline.show_all_grid_lines = false;
     doc.timeline.view_in_beats = state->timeline_view_in_beats;
+    doc.timeline.follow_mode = state->timeline_follow_mode;
     doc.loop.enabled = false;
     doc.loop.start_frame = 0;
     doc.loop.end_frame = state->runtime_cfg.sample_rate > 0 ? (uint64_t)state->runtime_cfg.sample_rate : 48000;

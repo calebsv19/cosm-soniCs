@@ -49,6 +49,7 @@ SRCS := \
 	$(SRC_DIR)/ui/layout.c \
 	$(SRC_DIR)/ui/layout_config.c \
 	$(SRC_DIR)/ui/library_browser.c \
+	$(SRC_DIR)/ui/timeline_waveform.c \
 	$(SRC_DIR)/ui/timeline_view.c \
 	$(SRC_DIR)/ui/font.c \
 	$(SRC_DIR)/ui/transport.c \

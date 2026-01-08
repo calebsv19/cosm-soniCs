@@ -207,6 +207,7 @@ int main(void) {
     const char* last_session_path = "config/last_session.json";
 
     AppState state = {0};
+    waveform_cache_init(&state.waveform_cache);
     if (!config_load_file("config/engine.cfg", &state.runtime_cfg)) {
         config_set_defaults(&state.runtime_cfg);
         SDL_Log("Using default audio config: sample_rate=%d block_size=%d",
@@ -249,6 +250,7 @@ int main(void) {
         state.timeline_vertical_scale = 1.0f;
         state.timeline_view_in_beats = false;
         state.timeline_show_all_grid_lines = false;
+        state.timeline_follow_mode = TIMELINE_FOLLOW_JUMP;
         state.loop_enabled = false;
         state.loop_start_frame = 0;
         state.loop_end_frame = state.runtime_cfg.sample_rate > 0 ? (uint64_t)state.runtime_cfg.sample_rate : 48000;
@@ -337,6 +339,7 @@ int main(void) {
     }
 
     ui_font_shutdown();
+    waveform_cache_shutdown(&state.waveform_cache);
     TTF_Quit();
     App_Shutdown(&ctx);
 

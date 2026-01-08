@@ -31,6 +31,7 @@ void session_document_init(SessionDocument* doc) {
     doc->tempo.ts_num = 4;
     doc->tempo.ts_den = 4;
     doc->timeline.view_in_beats = false;
+    doc->timeline.follow_mode = TIMELINE_FOLLOW_JUMP;
     doc->master_fx = NULL;
     doc->master_fx_count = 0;
 }
@@ -121,6 +122,7 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
     out_doc->timeline.vertical_scale = state->timeline_vertical_scale;
     out_doc->timeline.show_all_grid_lines = state->timeline_show_all_grid_lines;
     out_doc->timeline.view_in_beats = state->timeline_view_in_beats;
+    out_doc->timeline.follow_mode = (int)state->timeline_follow_mode;
     out_doc->timeline.playhead_frame = out_doc->transport_frame;
 
     out_doc->layout.transport_ratio = state->layout_runtime.transport_ratio;

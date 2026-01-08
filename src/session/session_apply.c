@@ -103,6 +103,11 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     state->timeline_vertical_scale = doc->timeline.vertical_scale;
     state->timeline_show_all_grid_lines = doc->timeline.show_all_grid_lines;
     state->timeline_view_in_beats = doc->timeline.view_in_beats;
+    state->timeline_follow_mode = (TimelineFollowMode)doc->timeline.follow_mode;
+    if (state->timeline_follow_mode < TIMELINE_FOLLOW_OFF ||
+        state->timeline_follow_mode > TIMELINE_FOLLOW_SMOOTH) {
+        state->timeline_follow_mode = TIMELINE_FOLLOW_JUMP;
+    }
 
     state->layout_runtime.transport_ratio = clamp_ratio(doc->layout.transport_ratio);
     state->layout_runtime.library_ratio = clamp_ratio(doc->layout.library_ratio);
