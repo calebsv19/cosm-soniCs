@@ -56,9 +56,18 @@ SRCS := \
 	$(SRC_DIR)/ui/clip_inspector.c \
 	$(SRC_DIR)/ui/effects_panel/panel.c \
 	$(SRC_DIR)/ui/effects_panel/slot_view.c \
+	$(SRC_DIR)/ui/effects_panel/list_view.c \
 	$(SRC_DIR)/input/input_manager.c \
 	$(SRC_DIR)/input/library_input.c \
+	$(SRC_DIR)/input/timeline/timeline_clipboard.c \
+	$(SRC_DIR)/input/timeline/timeline_drop.c \
+	$(SRC_DIR)/input/timeline/timeline_geometry.c \
 	$(SRC_DIR)/input/timeline/timeline_input.c \
+	$(SRC_DIR)/input/timeline/timeline_input_keyboard.c \
+	$(SRC_DIR)/input/timeline/timeline_input_mouse.c \
+	$(SRC_DIR)/input/timeline/timeline_input_mouse_click.c \
+	$(SRC_DIR)/input/timeline/timeline_input_mouse_drag.c \
+	$(SRC_DIR)/input/timeline/timeline_input_mouse_scroll.c \
 	$(SRC_DIR)/input/timeline/timeline_selection.c \
 	$(SRC_DIR)/input/timeline/timeline_drag.c \
 	$(SRC_DIR)/input/inspector_input.c \

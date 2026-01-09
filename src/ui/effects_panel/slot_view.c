@@ -155,7 +155,11 @@ static void draw_remove_button(SDL_Renderer* renderer, const SDL_Rect* rect, boo
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, rect);
-    ui_draw_text(renderer, rect->x + 8, rect->y + (rect->h - 14) / 2, "-", text, 2);
+    float scale = rect->h >= 18 ? 1.5f : 1.2f;
+    int text_h = ui_font_line_height(scale);
+    int text_x = rect->x + (rect->w - ui_measure_text_width("-", scale)) / 2;
+    int text_y = rect->y + (rect->h - text_h) / 2;
+    ui_draw_text(renderer, text_x, text_y, "-", text, scale);
 }
 
 static void draw_enable_toggle(SDL_Renderer* renderer, const SDL_Rect* rect, bool enabled, bool highlighted) {
@@ -186,7 +190,11 @@ static void draw_mode_toggle(SDL_Renderer* renderer, const SDL_Rect* rect, FxPar
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, rect);
     const char* label = (mode == FX_PARAM_MODE_NATIVE) ? "N" : "B";
-    ui_draw_text(renderer, rect->x + 5, rect->y + (rect->h - 12) / 2, label, text, 1.3f);
+    float scale = 1.1f;
+    int text_h = ui_font_line_height(scale);
+    int text_x = rect->x + (rect->w - ui_measure_text_width(label, scale)) / 2;
+    int text_y = rect->y + (rect->h - text_h) / 2;
+    ui_draw_text(renderer, text_x, text_y, label, text, scale);
 }
 
 void effects_slot_compute_layout(struct EffectsPanelState* panel,
@@ -201,9 +209,16 @@ void effects_slot_compute_layout(struct EffectsPanelState* panel,
     }
     SDL_zero(*out_layout);
     out_layout->column_rect = *column_rect;
-    out_layout->header_rect = (SDL_Rect){column_rect->x, column_rect->y, column_rect->w, header_height - 8};
-    out_layout->remove_rect = (SDL_Rect){column_rect->x + column_rect->w - 28, column_rect->y + 6, 22, 22};
-    out_layout->toggle_rect = (SDL_Rect){out_layout->remove_rect.x - 26, out_layout->remove_rect.y, 22, 22};
+    int header_h = header_height - 4;
+    if (header_h < 16) header_h = header_height;
+    int header_y = column_rect->y + 2;
+    out_layout->header_rect = (SDL_Rect){column_rect->x, header_y, column_rect->w, header_h};
+    int button_size = header_h - 6;
+    if (button_size < 12) button_size = 12;
+    if (button_size > header_h) button_size = header_h;
+    int button_y = header_y + (header_h - button_size) / 2;
+    out_layout->remove_rect = (SDL_Rect){column_rect->x + column_rect->w - 6 - button_size, button_y, button_size, button_size};
+    out_layout->toggle_rect = (SDL_Rect){out_layout->remove_rect.x - 6 - button_size, button_y, button_size, button_size};
     out_layout->body_rect = (SDL_Rect){
         column_rect->x + inner_margin / 2,
         column_rect->y + header_height,
@@ -247,10 +262,11 @@ void effects_slot_compute_layout(struct EffectsPanelState* panel,
     if (runtime->scroll > runtime->scroll_max) runtime->scroll = runtime->scroll_max;
 
     int max_label_w = 0;
+    const float text_scale = 1.3f;
     const FxTypeUIInfo* info = find_type_info(panel, slot->type_id);
     for (uint32_t p = 0; p < slot->param_count && p < FX_MAX_PARAMS; ++p) {
         const char* pname = (info && info->param_names[p]) ? info->param_names[p] : "Param";
-        int w = ui_measure_text_width(pname, 1.0f);
+        int w = ui_measure_text_width(pname, text_scale);
         if (w > max_label_w) {
             max_label_w = w;
         }
@@ -263,7 +279,7 @@ void effects_slot_compute_layout(struct EffectsPanelState* panel,
 
     int param_y = column_rect->y + header_height + inner_margin / 2 - (int)runtime->scroll;
     for (uint32_t p = 0; p < slot->param_count && p < FX_MAX_PARAMS; ++p) {
-        int label_h = ui_font_line_height(1.0f);
+        int label_h = ui_font_line_height(text_scale);
         SDL_Rect label_rect = {
             column_rect->x + inner_margin,
             param_y + (block_h - label_h) / 2,
@@ -273,6 +289,7 @@ void effects_slot_compute_layout(struct EffectsPanelState* panel,
         bool tempo_syncable = info && fx_param_kind_is_syncable(info->param_kind[p]);
         const int mode_w = 20;
         const int mode_gap = 6;
+        const int slider_h = 14;
         int slider_w_param = slider_w;
         if (tempo_syncable) {
             slider_w_param -= (mode_w + mode_gap);
@@ -282,19 +299,19 @@ void effects_slot_compute_layout(struct EffectsPanelState* panel,
         }
         SDL_Rect slider_rect = {
             slider_x,
-            param_y + (block_h - 18) / 2,
+            param_y + (block_h - slider_h) / 2,
             slider_w_param,
-            18
+            slider_h
         };
-        int val_h = ui_font_line_height(1.0f);
+        int val_h = ui_font_line_height(text_scale);
         SDL_Rect mode_rect = {0, 0, 0, 0};
         int value_x = slider_rect.x + slider_rect.w + 8;
         if (tempo_syncable) {
             mode_rect = (SDL_Rect){
                 slider_rect.x + slider_rect.w + 4,
-                param_y + (block_h - 18) / 2,
+                param_y + (block_h - slider_h) / 2,
                 mode_w,
-                18
+                slider_h
             };
             value_x = mode_rect.x + mode_rect.w + mode_gap;
         }
@@ -360,12 +377,6 @@ void effects_slot_render(SDL_Renderer* renderer,
     SDL_Color box_border = {80, 85, 100, 255};
     SDL_SetRenderDrawColor(renderer, box_bg.r, box_bg.g, box_bg.b, box_bg.a);
     SDL_RenderFillRect(renderer, &slot_layout->column_rect);
-    SDL_SetRenderDrawColor(renderer, box_border.r, box_border.g, box_border.b, box_border.a);
-    SDL_RenderDrawRect(renderer, &slot_layout->column_rect);
-    if (selected) {
-        SDL_SetRenderDrawColor(renderer, 120, 160, 220, 180);
-        SDL_RenderDrawRect(renderer, &slot_layout->column_rect);
-    }
 
     SDL_Rect header = slot_layout->header_rect;
     SDL_SetRenderDrawColor(renderer, 44, 48, 58, 255);
@@ -373,10 +384,20 @@ void effects_slot_render(SDL_Renderer* renderer,
     SDL_SetRenderDrawColor(renderer, box_border.r, box_border.g, box_border.b, box_border.a);
     SDL_RenderDrawRect(renderer, &header);
     const char* fx_name = info ? info->name : "Effect";
-    ui_draw_text(renderer, header.x + 8, header.y + 8, fx_name, label_color, 2);
+    float title_scale = 1.5f;
+    int title_h = ui_font_line_height(title_scale);
+    int title_y = header.y + (header.h - title_h) / 2;
+    ui_draw_text(renderer, header.x + 8, title_y, fx_name, label_color, title_scale);
 
     draw_enable_toggle(renderer, &slot_layout->toggle_rect, slot->enabled, toggle_highlight);
     draw_remove_button(renderer, &slot_layout->remove_rect, remove_highlight);
+
+    SDL_SetRenderDrawColor(renderer, box_border.r, box_border.g, box_border.b, box_border.a);
+    SDL_RenderDrawRect(renderer, &slot_layout->column_rect);
+    if (selected) {
+        SDL_SetRenderDrawColor(renderer, 120, 160, 220, 180);
+        SDL_RenderDrawRect(renderer, &slot_layout->column_rect);
+    }
 
     SDL_Rect body_clip = slot_layout->body_rect;
     if (body_clip.w > 0 && body_clip.h > 0) {
@@ -426,11 +447,11 @@ void effects_slot_render(SDL_Renderer* renderer,
 
             char label_line[96];
             snprintf(label_line, sizeof(label_line), "%s", pname);
-            ui_draw_text(renderer, label_rect.x, label_rect.y, label_line, label_color, 1.5f);
+            ui_draw_text(renderer, label_rect.x, label_rect.y, label_line, label_color, 1.3f);
 
             char value_line[64];
             format_value_label(pname, value, mode, kind, value_line, sizeof(value_line));
-            ui_draw_text(renderer, value_rect.x, value_rect.y, value_line, text_dim, 1.5f);
+            ui_draw_text(renderer, value_rect.x, value_rect.y, value_line, text_dim, 1.3f);
             SDL_Rect mode_rect = slot_layout->mode_rects[p];
             if (tempo_syncable && mode_rect.w > 0 && mode_rect.h > 0) {
                 draw_mode_toggle(renderer, &mode_rect, mode);

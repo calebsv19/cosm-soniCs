@@ -108,6 +108,14 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
         state->timeline_follow_mode > TIMELINE_FOLLOW_SMOOTH) {
         state->timeline_follow_mode = TIMELINE_FOLLOW_JUMP;
     }
+    state->effects_panel.view_mode = doc->effects_panel.view_mode == FX_PANEL_VIEW_LIST
+                                         ? FX_PANEL_VIEW_LIST
+                                         : FX_PANEL_VIEW_STACK;
+    state->effects_panel.selected_slot_index = -1;
+    state->effects_panel.list_open_slot_index = -1;
+    state->effects_panel.restore_selected_index = doc->effects_panel.selected_index;
+    state->effects_panel.restore_open_index = doc->effects_panel.open_index;
+    state->effects_panel.restore_pending = true;
 
     state->layout_runtime.transport_ratio = clamp_ratio(doc->layout.transport_ratio);
     state->layout_runtime.library_ratio = clamp_ratio(doc->layout.library_ratio);

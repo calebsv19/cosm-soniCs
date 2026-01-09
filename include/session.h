@@ -7,7 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SESSION_DOCUMENT_VERSION 7
+#define SESSION_DOCUMENT_VERSION 8
 #define SESSION_PATH_MAX 512
 #define SESSION_NAME_MAX 128
 #define SESSION_FX_NAME_MAX 64
@@ -39,6 +39,12 @@ typedef struct {
     int follow_mode;
     uint64_t playhead_frame;
 } SessionTimelineView;
+
+typedef struct {
+    int view_mode;
+    int selected_index;
+    int open_index;
+} SessionEffectsPanelState;
 
 typedef struct {
     float transport_ratio;
@@ -84,6 +90,7 @@ typedef struct {
     SessionTempo tempo;
     SessionLoopState loop;
     SessionTimelineView timeline;
+    SessionEffectsPanelState effects_panel;
     SessionLayoutState layout;
     SessionLibraryState library;
     bool transport_playing;

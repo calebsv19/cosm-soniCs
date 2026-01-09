@@ -93,6 +93,11 @@ typedef enum {
     FX_PANEL_TARGET_TRACK
 } EffectsPanelTarget;
 
+typedef enum {
+    FX_PANEL_VIEW_STACK = 0,
+    FX_PANEL_VIEW_LIST
+} EffectsPanelViewMode;
+
 typedef struct {
     FxTypeId type_id;
     char name[32];
@@ -126,6 +131,7 @@ typedef struct EffectsPanelState {
     EffectsPanelTarget target;
     int target_track_index;
     char target_label[64];
+    EffectsPanelViewMode view_mode;
     int hovered_category_index;
     int hovered_effect_index;
     int active_category_index;
@@ -136,6 +142,12 @@ typedef struct EffectsPanelState {
     bool dragging_slider;
     int active_slot_index;
     int active_param_index;
+    int list_open_slot_index;
+    Uint32 list_last_click_ticks;
+    int list_last_click_index;
+    bool restore_pending;
+    int restore_selected_index;
+    int restore_open_index;
     int overlay_scroll_index;
     FxTypeUIInfo types[FX_PANEL_MAX_TYPES];
     int type_count;
@@ -253,6 +265,7 @@ struct AppState {
     float timeline_window_start_seconds;
     float timeline_vertical_scale;
     TimelineFollowMode timeline_follow_mode;
+    bool timeline_hovered;
     bool timeline_drop_active;
     float timeline_drop_seconds;
     float timeline_drop_seconds_snapped;

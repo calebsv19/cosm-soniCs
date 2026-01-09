@@ -176,6 +176,17 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     fprintf(file, "},\n");
 
     json_write_indent(file, 1);
+    fprintf(file, "\"effects_panel\": {\n");
+    json_write_indent(file, 2);
+    fprintf(file, "\"view_mode\": %d,\n", doc->effects_panel.view_mode);
+    json_write_indent(file, 2);
+    fprintf(file, "\"selected_index\": %d,\n", doc->effects_panel.selected_index);
+    json_write_indent(file, 2);
+    fprintf(file, "\"open_index\": %d\n", doc->effects_panel.open_index);
+    json_write_indent(file, 1);
+    fprintf(file, "},\n");
+
+    json_write_indent(file, 1);
     fprintf(file, "\"layout\": {\n");
     json_write_indent(file, 2);
     fprintf(file, "\"transport_ratio\": ");

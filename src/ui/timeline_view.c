@@ -784,16 +784,22 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                     int fade_out_px = (int)round((double)clip->fade_out_frames / (double)sample_rate * pixels_per_second);
                     int clip_clip_left_px = (int)round((visible_start_sec - start_sec) * pixels_per_second);
                     int clip_clip_right_px = (int)round((clip_end_sec - visible_end_sec) * pixels_per_second);
+                    int clip_offset_px = clip_clip_left_px;
+                    if (clip_offset_px < 0) clip_offset_px = 0;
+                    double clip_total_px = (clip_end_sec - start_sec) * pixels_per_second;
 
                     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-                    int fade_in_draw = fade_in_px - clip_clip_left_px;
-                    if (fade_in_draw < 0) fade_in_draw = 0;
-                    if (fade_in_draw > clip_rect.w) fade_in_draw = clip_rect.w;
-                    if (fade_in_draw > 0) {
+                    int fade_in_draw = 0;
+                    if (fade_in_px > 0 && clip_offset_px < fade_in_px) {
+                        fade_in_draw = fade_in_px - clip_offset_px;
+                        if (fade_in_draw > clip_rect.w) fade_in_draw = clip_rect.w;
+                    }
+                    if (fade_in_draw > 0 && fade_in_px > 0) {
                         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 28);
                         for (int fx = 0; fx < fade_in_draw; ++fx) {
-                            float tf = fade_in_draw > 0 ? (float)fx / (float)fade_in_draw : 0.0f;
+                            float tf = (float)(clip_offset_px + fx) / (float)fade_in_px;
                             if (tf > 1.0f) tf = 1.0f;
+                            if (tf < 0.0f) tf = 0.0f;
                             int h = (int)((1.0f - tf) * clip_rect.h);
                             SDL_RenderDrawLine(renderer,
                                                clip_rect.x + fx,
@@ -803,16 +809,28 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                         }
                     }
 
-                    int fade_out_draw = fade_out_px - clip_clip_right_px;
-                    if (fade_out_draw < 0) fade_out_draw = 0;
-                    if (fade_out_draw > clip_rect.w) fade_out_draw = clip_rect.w;
-                    if (fade_out_draw > 0) {
+                    int fade_out_draw = 0;
+                    double fade_out_start_px = clip_total_px - (double)fade_out_px;
+                    if (fade_out_px > 0 && clip_total_px > 0.0) {
+                        int visible_right = clip_offset_px + clip_rect.w;
+                        if ((double)visible_right > fade_out_start_px) {
+                            int start_x = (int)floor(fade_out_start_px - (double)clip_offset_px);
+                            if (start_x < 0) start_x = 0;
+                            if (start_x < clip_rect.w) {
+                                fade_out_draw = clip_rect.w - start_x;
+                            }
+                        }
+                    }
+                    if (fade_out_draw > 0 && fade_out_px > 0) {
                         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 28);
+                        int start_x = clip_rect.w - fade_out_draw;
                         for (int fx = 0; fx < fade_out_draw; ++fx) {
-                            float tf = fade_out_draw > 0 ? (float)fx / (float)fade_out_draw : 0.0f;
+                            int local_px = clip_offset_px + start_x + fx;
+                            float tf = (float)((double)local_px - fade_out_start_px) / (float)fade_out_px;
                             if (tf > 1.0f) tf = 1.0f;
+                            if (tf < 0.0f) tf = 0.0f;
                             int h = (int)(tf * clip_rect.h);
-                            int px = clip_rect.x + clip_rect.w - fade_out_draw + fx;
+                            int px = clip_rect.x + start_x + fx;
                             SDL_RenderDrawLine(renderer,
                                                px,
                                                clip_rect.y,

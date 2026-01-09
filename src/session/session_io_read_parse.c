@@ -888,6 +888,57 @@ bool parse_session_document(JsonReader* r, SessionDocument* doc) {
                 }
                 return false;
             }
+        } else if (strcmp(key, "effects_panel") == 0) {
+            if (!json_expect(r, '{')) {
+                return false;
+            }
+            while (true) {
+                json_skip_whitespace(r);
+                if (r->pos < r->length && r->data[r->pos] == '}') {
+                    ++r->pos;
+                    break;
+                }
+                char panel_key[64];
+                if (!json_parse_string(r, panel_key, sizeof(panel_key))) {
+                    return false;
+                }
+                if (!json_expect(r, ':')) {
+                    return false;
+                }
+                if (strcmp(panel_key, "view_mode") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.view_mode = (int)val;
+                } else if (strcmp(panel_key, "selected_index") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.selected_index = (int)val;
+                } else if (strcmp(panel_key, "open_index") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.open_index = (int)val;
+                } else {
+                    if (!json_skip_value(r)) {
+                        return false;
+                    }
+                }
+                json_skip_whitespace(r);
+                if (r->pos < r->length && r->data[r->pos] == ',') {
+                    ++r->pos;
+                    continue;
+                }
+                if (r->pos < r->length && r->data[r->pos] == '}') {
+                    ++r->pos;
+                    break;
+                }
+                return false;
+            }
         } else if (strcmp(key, "layout") == 0) {
             if (!json_expect(r, '{')) {
                 return false;
