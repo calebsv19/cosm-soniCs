@@ -73,6 +73,12 @@ static bool parse_session_track(JsonReader* r, SessionTrack* track) {
                 return false;
             }
             track->gain = (float)val;
+        } else if (strcmp(key, "pan") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            track->pan = (float)val;
         } else if (strcmp(key, "muted") == 0) {
             if (!json_parse_bool(r, &track->muted)) {
                 return false;

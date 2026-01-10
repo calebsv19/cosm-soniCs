@@ -16,11 +16,25 @@
 struct AppState;
 
 typedef struct {
+    SDL_Rect container_rect;
+    SDL_Rect eq_rect;
+    SDL_Rect gain_label_rect;
+    SDL_Rect gain_rect;
+    SDL_Rect gain_hit_rect;
+    SDL_Rect pan_label_rect;
+    SDL_Rect pan_rect;
+    SDL_Rect pan_hit_rect;
+    SDL_Rect mute_rect;
+    SDL_Rect solo_rect;
+} EffectsPanelTrackSnapshotLayout;
+
+typedef struct {
     SDL_Rect panel_rect;
     SDL_Rect dropdown_button_rect;
     SDL_Rect view_toggle_rect;
     SDL_Rect target_label_rect;
     SDL_Rect list_rect;
+    EffectsPanelTrackSnapshotLayout track_snapshot;
     SDL_Rect detail_rect;
     SDL_Rect list_row_rects[FX_MASTER_MAX];
     SDL_Rect list_toggle_rects[FX_MASTER_MAX];
@@ -55,6 +69,14 @@ typedef struct {
 #define FX_PANEL_LIST_ROW_HEIGHT 22
 #define FX_PANEL_LIST_ROW_GAP 4
 #define FX_PANEL_LIST_PAD 8
+#define FX_PANEL_SNAPSHOT_EQ_HEIGHT 46
+#define FX_PANEL_SNAPSHOT_LABEL_HEIGHT 14
+#define FX_PANEL_SNAPSHOT_SLIDER_HEIGHT 6
+#define FX_PANEL_SNAPSHOT_SLIDER_HIT_HEIGHT 14
+#define FX_PANEL_SNAPSHOT_GAP 8
+#define FX_PANEL_SNAPSHOT_LIST_GAP 10
+#define FX_PANEL_SNAPSHOT_FOOTER_HEIGHT 26
+#define FX_PANEL_SNAPSHOT_BUTTON_GAP 6
 #define FX_PANEL_DROPDOWN_ITEM_HEIGHT 22
 
 void effects_panel_init(struct AppState* state);
@@ -63,3 +85,4 @@ void effects_panel_sync_from_engine(struct AppState* state);
 void effects_panel_compute_layout(const struct AppState* state, EffectsPanelLayout* layout);
 void effects_panel_render(SDL_Renderer* renderer, const struct AppState* state, const EffectsPanelLayout* layout);
 void effects_panel_render_list(SDL_Renderer* renderer, const struct AppState* state, const EffectsPanelLayout* layout);
+void effects_panel_render_track_snapshot(SDL_Renderer* renderer, const struct AppState* state, const EffectsPanelLayout* layout);

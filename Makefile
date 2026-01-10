@@ -30,7 +30,14 @@ SRCS := \
 	$(SRC_DIR)/audio/media_clip.c \
 	$(SRC_DIR)/audio/wav_writer.c \
 	$(SRC_DIR)/audio/media_cache.c \
-	$(SRC_DIR)/engine/engine.c \
+	$(SRC_DIR)/engine/engine_core.c \
+	$(SRC_DIR)/engine/engine_io.c \
+	$(SRC_DIR)/engine/engine_fx.c \
+	$(SRC_DIR)/engine/engine_transport.c \
+	$(SRC_DIR)/engine/engine_tracks.c \
+	$(SRC_DIR)/engine/engine_clips.c \
+	$(SRC_DIR)/engine/engine_audio.c \
+	$(SRC_DIR)/engine/engine_spectrum.c \
 	$(SRC_DIR)/engine/graph.c \
 	$(SRC_DIR)/engine/buffer_pool.c \
 	$(SRC_DIR)/time/tempo.c \
@@ -57,6 +64,8 @@ SRCS := \
 	$(SRC_DIR)/ui/effects_panel/panel.c \
 	$(SRC_DIR)/ui/effects_panel/slot_view.c \
 	$(SRC_DIR)/ui/effects_panel/list_view.c \
+	$(SRC_DIR)/ui/effects_panel/eq_detail_view.c \
+	$(SRC_DIR)/ui/effects_panel/track_snapshot_view.c \
 	$(SRC_DIR)/input/input_manager.c \
 	$(SRC_DIR)/input/library_input.c \
 	$(SRC_DIR)/input/timeline/timeline_clipboard.c \
@@ -73,6 +82,8 @@ SRCS := \
 	$(SRC_DIR)/input/inspector_input.c \
 	$(SRC_DIR)/input/transport_input.c \
 	$(SRC_DIR)/input/effects_panel_input.c \
+	$(SRC_DIR)/input/effects_panel_eq_detail_input.c \
+	$(SRC_DIR)/input/effects_panel_track_snapshot.c \
 	$(EFFECTS_SRCS)
 
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS))
@@ -169,7 +180,7 @@ SMOKE_TEST_BIN := $(BUILD_DIR)/tests/engine_smoke_test
 # ---- Engine test support: keep your existing set, but replace the giant FX list
 # with the auto-discovered EFFECTS_SRCS so it always stays in sync.
 ENGINE_TEST_SUPPORT_OBJS := \
-	$(BUILD_DIR)/src/engine/engine.o \
+	$(BUILD_DIR)/src/engine/engine_core.o \
 	$(BUILD_DIR)/src/engine/graph.o \
 	$(BUILD_DIR)/src/engine/buffer_pool.o \
 	$(BUILD_DIR)/src/engine/source_tone.o \

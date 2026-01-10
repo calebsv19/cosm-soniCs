@@ -70,6 +70,7 @@ typedef struct SessionFxInstance {
 typedef struct {
     char name[SESSION_NAME_MAX];
     float gain;
+    float pan;
     bool muted;
     bool solo;
     int clip_count;

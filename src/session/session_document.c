@@ -156,6 +156,7 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
         SessionTrack* dst_track = &out_doc->tracks[t];
         copy_string(dst_track->name, sizeof(dst_track->name), src_track->name);
         dst_track->gain = src_track->gain;
+        dst_track->pan = src_track->pan;
         dst_track->muted = src_track->muted;
         dst_track->solo = src_track->solo;
         dst_track->fx = NULL;

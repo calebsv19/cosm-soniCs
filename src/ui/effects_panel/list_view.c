@@ -1,6 +1,8 @@
 #include "ui/effects_panel.h"
+#include "ui/effects_panel_eq_detail.h"
 
 #include "app_state.h"
+#include "engine/engine.h"
 #include "ui/font.h"
 
 static const FxTypeUIInfo* find_type_info(const EffectsPanelState* panel, FxTypeId type_id) {
@@ -50,6 +52,8 @@ void effects_panel_render_list(SDL_Renderer* renderer, const AppState* state, co
     SDL_SetRenderDrawColor(renderer, 70, 75, 92, 255);
     SDL_RenderDrawRect(renderer, &detail_rect);
 
+    effects_panel_render_track_snapshot(renderer, state, layout);
+
     for (int i = 0; i < layout->list_row_count && i < panel->chain_count; ++i) {
         SDL_Rect row = layout->list_row_rects[i];
         bool selected = (panel->selected_slot_index == i);
@@ -78,7 +82,12 @@ void effects_panel_render_list(SDL_Renderer* renderer, const AppState* state, co
                      1.3f);
     }
 
-    if (panel->list_open_slot_index >= 0 && panel->list_open_slot_index < panel->chain_count) {
+    if (panel->list_detail_mode == FX_LIST_DETAIL_EQ) {
+        effects_panel_eq_detail_render(renderer, state, layout);
+    } else if (panel->list_open_slot_index >= 0 && panel->list_open_slot_index < panel->chain_count) {
+        if (state->engine) {
+            engine_set_spectrum_target(state->engine, ENGINE_SPECTRUM_VIEW_MASTER, -1, false);
+        }
         int open_index = panel->list_open_slot_index;
         SDL_Rect slot_rect = detail_rect;
         EffectsSlotLayout slot_layout;
@@ -100,6 +109,9 @@ void effects_panel_render_list(SDL_Renderer* renderer, const AppState* state, co
                             label_color,
                             text_dim);
     } else {
+        if (state->engine) {
+            engine_set_spectrum_target(state->engine, ENGINE_SPECTRUM_VIEW_MASTER, -1, false);
+        }
         ui_draw_text(renderer,
                      detail_rect.x + 12,
                      detail_rect.y + 12,

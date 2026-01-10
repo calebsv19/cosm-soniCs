@@ -94,13 +94,59 @@ static void compute_list_layout(const EffectsPanelState* panel,
     layout->detail_rect = (SDL_Rect){content_x + list_w + gap, body_y, detail_w, body_h};
 
     layout->list_row_count = 0;
+    int list_inner_x = layout->list_rect.x + FX_PANEL_LIST_PAD;
+    int list_inner_w = layout->list_rect.w - FX_PANEL_LIST_PAD * 2;
+    if (list_inner_w < 0) list_inner_w = 0;
     int row_y = layout->list_rect.y + FX_PANEL_LIST_PAD;
+
+    int eq_h = FX_PANEL_SNAPSHOT_EQ_HEIGHT;
+    int label_h = FX_PANEL_SNAPSHOT_LABEL_HEIGHT;
+    int slider_h = FX_PANEL_SNAPSHOT_SLIDER_HEIGHT;
+    int slider_hit_h = FX_PANEL_SNAPSHOT_SLIDER_HIT_HEIGHT;
+    int footer_h = FX_PANEL_SNAPSHOT_FOOTER_HEIGHT;
+    int footer_y = layout->list_rect.y + layout->list_rect.h - FX_PANEL_LIST_PAD - footer_h;
+    int snapshot_y = row_y;
+    layout->track_snapshot.container_rect = layout->list_rect;
+    layout->track_snapshot.eq_rect = (SDL_Rect){list_inner_x, snapshot_y, list_inner_w, eq_h};
+    snapshot_y += eq_h + (FX_PANEL_SNAPSHOT_GAP / 2);
+    layout->track_snapshot.gain_label_rect = (SDL_Rect){list_inner_x, snapshot_y, list_inner_w, label_h};
+    snapshot_y += label_h;
+    layout->track_snapshot.gain_rect = (SDL_Rect){list_inner_x, snapshot_y, list_inner_w, slider_h};
+    layout->track_snapshot.gain_hit_rect = (SDL_Rect){
+        list_inner_x,
+        snapshot_y - (slider_hit_h - slider_h) / 2,
+        list_inner_w,
+        slider_hit_h
+    };
+    snapshot_y += slider_h + FX_PANEL_SNAPSHOT_GAP;
+    layout->track_snapshot.pan_label_rect = (SDL_Rect){list_inner_x, snapshot_y, list_inner_w, label_h};
+    snapshot_y += label_h;
+    layout->track_snapshot.pan_rect = (SDL_Rect){list_inner_x, snapshot_y, list_inner_w, slider_h};
+    layout->track_snapshot.pan_hit_rect = (SDL_Rect){
+        list_inner_x,
+        snapshot_y - (slider_hit_h - slider_h) / 2,
+        list_inner_w,
+        slider_hit_h
+    };
+
+    int button_gap = FX_PANEL_SNAPSHOT_BUTTON_GAP;
+    int button_w = (list_inner_w - button_gap) / 2;
+    if (button_w < 0) button_w = 0;
+    layout->track_snapshot.mute_rect = (SDL_Rect){list_inner_x, footer_y, button_w, footer_h};
+    layout->track_snapshot.solo_rect = (SDL_Rect){list_inner_x + button_w + button_gap, footer_y, button_w, footer_h};
+
+    int list_top = snapshot_y + slider_h + FX_PANEL_SNAPSHOT_LIST_GAP;
+    int list_bottom = footer_y - FX_PANEL_LIST_PAD;
+    if (list_bottom < list_top) {
+        list_bottom = list_top;
+    }
+    row_y = list_top;
     for (int i = 0; i < panel->chain_count && i < FX_MASTER_MAX; ++i) {
-        SDL_Rect row = {layout->list_rect.x + FX_PANEL_LIST_PAD,
+        SDL_Rect row = {list_inner_x,
                         row_y,
-                        layout->list_rect.w - FX_PANEL_LIST_PAD * 2,
+                        list_inner_w,
                         FX_PANEL_LIST_ROW_HEIGHT};
-        if (row.y + row.h > layout->list_rect.y + layout->list_rect.h - FX_PANEL_LIST_PAD) {
+        if (row.y + row.h > list_bottom) {
             break;
         }
         int toggle_size = FX_PANEL_LIST_ROW_HEIGHT - 6;
@@ -346,6 +392,7 @@ void effects_panel_init(AppState* state) {
     state->effects_panel.active_slot_index = -1;
     state->effects_panel.active_param_index = -1;
     state->effects_panel.list_open_slot_index = -1;
+    state->effects_panel.list_detail_mode = FX_LIST_DETAIL_EFFECT;
     state->effects_panel.list_last_click_ticks = 0;
     state->effects_panel.list_last_click_index = -1;
     state->effects_panel.restore_pending = false;
@@ -357,6 +404,11 @@ void effects_panel_init(AppState* state) {
         effects_slot_reset_runtime(&state->effects_panel.slot_runtime[i]);
     }
     state->effects_panel.param_scroll_drag_slot = -1;
+    state->effects_panel.track_snapshot.gain = 1.0f;
+    state->effects_panel.track_snapshot.pan = 0.0f;
+    state->effects_panel.eq_detail.view_mode = EQ_DETAIL_VIEW_MASTER;
+    state->effects_panel.eq_detail.spectrum_ready = false;
+    state->effects_panel.eq_detail.last_track_index = -1;
 }
 
 void effects_panel_refresh_catalog(AppState* state) {

@@ -125,6 +125,43 @@ typedef struct {
     bool enabled;
 } FxSlotUIState;
 
+typedef enum {
+    FX_SNAPSHOT_CONTROL_NONE = 0,
+    FX_SNAPSHOT_CONTROL_GAIN,
+    FX_SNAPSHOT_CONTROL_PAN
+} FxSnapshotControl;
+
+typedef enum {
+    FX_LIST_DETAIL_EFFECT = 0,
+    FX_LIST_DETAIL_EQ
+} EffectsPanelListDetailMode;
+
+typedef enum {
+    EQ_DETAIL_VIEW_MASTER = 0,
+    EQ_DETAIL_VIEW_TRACK
+} EffectsPanelEqDetailView;
+
+typedef struct {
+    bool eq_open;
+    bool dragging;
+    FxSnapshotControl active_control;
+    float pan;
+    float gain;
+    bool muted;
+    bool solo;
+    Uint32 last_click_ticks;
+} EffectsPanelTrackSnapshotState;
+
+typedef struct {
+    bool hovered;
+    bool dragging;
+    SDL_Point last_mouse;
+    bool spectrum_ready;
+    float spectrum_smooth[ENGINE_SPECTRUM_BINS];
+    EffectsPanelEqDetailView view_mode;
+    int last_track_index;
+} EffectsPanelEqDetailState;
+
 typedef struct EffectsPanelState {
     bool initialized;
     EffectsPanelOverlayLayer overlay_layer;
@@ -143,6 +180,7 @@ typedef struct EffectsPanelState {
     int active_slot_index;
     int active_param_index;
     int list_open_slot_index;
+    EffectsPanelListDetailMode list_detail_mode;
     Uint32 list_last_click_ticks;
     int list_last_click_index;
     bool restore_pending;
@@ -159,6 +197,8 @@ typedef struct EffectsPanelState {
     int param_scroll_drag_slot;
     Uint32 title_last_click_ticks;
     bool title_debug_last_click; // transient debug flag
+    EffectsPanelTrackSnapshotState track_snapshot;
+    EffectsPanelEqDetailState eq_detail;
 } EffectsPanelState;
 
 typedef struct {

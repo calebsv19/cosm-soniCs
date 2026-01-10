@@ -172,6 +172,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
         }
         engine_track_set_name(state->engine, track_index, track_doc->name);
         engine_track_set_gain(state->engine, track_index, track_doc->gain == 0.0f ? 1.0f : track_doc->gain);
+        engine_track_set_pan(state->engine, track_index, track_doc->pan);
         engine_track_set_muted(state->engine, track_index, track_doc->muted);
         engine_track_set_solo(state->engine, track_index, track_doc->solo);
 

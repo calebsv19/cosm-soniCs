@@ -3,6 +3,8 @@
 #include "app_state.h"
 #include "engine/engine.h"
 #include "effects/param_utils.h"
+#include "input/effects_panel_eq_detail_input.h"
+#include "input/effects_panel_track_snapshot.h"
 #include "input/timeline_input.h"
 #include "ui/effects_panel.h"
 #include "ui/font.h"
@@ -356,6 +358,9 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
 
             if (!overlay_open && panel->view_mode == FX_PANEL_VIEW_LIST) {
                 if (SDL_PointInRect(&pt, &layout.list_rect)) {
+                    if (effects_panel_track_snapshot_handle_mouse_down(state, &layout, event)) {
+                        return;
+                    }
                     for (int i = 0; i < layout.list_row_count && i < panel->chain_count; ++i) {
                         if (SDL_PointInRect(&pt, &layout.list_toggle_rects[i])) {
                             toggle_slot_enabled(state, panel, i);
@@ -363,9 +368,28 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                         }
                         if (SDL_PointInRect(&pt, &layout.list_row_rects[i])) {
                             panel->selected_slot_index = i;
-                            panel->list_open_slot_index = i;
+                            Uint32 now = SDL_GetTicks();
+                            bool is_double = event->button.clicks >= 2;
+                            if (!is_double &&
+                                panel->list_last_click_ticks != 0 &&
+                                panel->list_last_click_index == i &&
+                                now - panel->list_last_click_ticks <= 500) {
+                                is_double = true;
+                            }
+                            panel->list_last_click_ticks = now;
+                            panel->list_last_click_index = i;
+                            if (is_double) {
+                                panel->list_open_slot_index = i;
+                                panel->list_detail_mode = FX_LIST_DETAIL_EFFECT;
+                                panel->track_snapshot.eq_open = false;
+                            }
                             return;
                         }
+                    }
+                }
+                if (panel->list_detail_mode == FX_LIST_DETAIL_EQ) {
+                    if (effects_panel_eq_detail_handle_mouse_down(state, &layout, event)) {
+                        return;
                     }
                 }
             }
@@ -648,6 +672,14 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                     effects_panel_sync_from_engine(state);
                 }
             }
+            if (effects_panel_track_snapshot_handle_mouse_up(state, event)) {
+                break;
+            }
+            if (panel->view_mode == FX_PANEL_VIEW_LIST && panel->list_detail_mode == FX_LIST_DETAIL_EQ) {
+                if (effects_panel_eq_detail_handle_mouse_up(state, event)) {
+                    break;
+                }
+            }
             if (panel->param_scroll_drag_slot >= 0 &&
                 panel->param_scroll_drag_slot < FX_MASTER_MAX) {
                 int slot = panel->param_scroll_drag_slot;
@@ -707,6 +739,16 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                 break;
             }
 
+            if (panel->view_mode == FX_PANEL_VIEW_LIST) {
+                if (effects_panel_track_snapshot_handle_mouse_motion(state, &layout, event)) {
+                    break;
+                }
+                if (panel->list_detail_mode == FX_LIST_DETAIL_EQ) {
+                    if (effects_panel_eq_detail_handle_mouse_motion(state, &layout, event)) {
+                        break;
+                    }
+                }
+            }
             if (panel->dragging_slider) {
                 int slot_index = panel->active_slot_index;
                 int param_index = panel->active_param_index;

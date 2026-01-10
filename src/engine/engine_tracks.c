@@ -1,0 +1,244 @@
+#include "engine/engine_internal.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+void engine_track_init(EngineTrack* track) {
+    if (!track) {
+        return;
+    }
+    track->clips = NULL;
+    track->clip_count = 0;
+    track->clip_capacity = 0;
+    track->gain = 1.0f;
+    track->pan = 0.0f;
+    track->muted = false;
+    track->solo = false;
+    track->active = true;
+    track->name[0] = '\0';
+}
+
+void engine_track_clear(Engine* engine, EngineTrack* track) {
+    if (!track) {
+        return;
+    }
+    for (int i = 0; i < track->clip_count; ++i) {
+        engine_clip_destroy(engine, &track->clips[i]);
+    }
+    free(track->clips);
+    track->clips = NULL;
+    track->clip_count = 0;
+    track->clip_capacity = 0;
+    track->gain = 1.0f;
+    track->pan = 0.0f;
+    track->muted = false;
+    track->solo = false;
+    track->active = true;
+    track->name[0] = '\0';
+}
+
+bool engine_ensure_track_capacity(Engine* engine, int required_tracks) {
+    if (!engine) {
+        return false;
+    }
+    if (required_tracks <= engine->track_capacity) {
+        return true;
+    }
+    int new_capacity = engine->track_capacity;
+    while (new_capacity < required_tracks) {
+        new_capacity *= 2;
+    }
+    EngineTrack* resized = (EngineTrack*)realloc(engine->tracks, sizeof(EngineTrack) * (size_t)new_capacity);
+    if (!resized) {
+        return false;
+    }
+    engine->tracks = resized;
+    for (int i = engine->track_capacity; i < new_capacity; ++i) {
+        engine_track_init(&resized[i]);
+    }
+    if (engine->track_spectra) {
+        if (engine->spectrum_mutex) {
+            SDL_LockMutex(engine->spectrum_mutex);
+        }
+        size_t count = (size_t)new_capacity * ENGINE_SPECTRUM_BINS;
+        float* resized_spec = (float*)realloc(engine->track_spectra, sizeof(float) * count);
+        if (!resized_spec) {
+            if (engine->spectrum_mutex) {
+                SDL_UnlockMutex(engine->spectrum_mutex);
+            }
+            return false;
+        }
+        engine->track_spectra = resized_spec;
+        for (int t = engine->track_capacity; t < new_capacity; ++t) {
+            for (int b = 0; b < ENGINE_SPECTRUM_BINS; ++b) {
+                resized_spec[t * ENGINE_SPECTRUM_BINS + b] = ENGINE_SPECTRUM_DB_FLOOR;
+            }
+        }
+        engine->track_spectrum_capacity = new_capacity;
+        if (engine->spectrum_mutex) {
+            SDL_UnlockMutex(engine->spectrum_mutex);
+        }
+    }
+    engine->track_capacity = new_capacity;
+    return true;
+}
+
+EngineTrack* engine_get_track_mutable(Engine* engine, int track_index) {
+    if (!engine || track_index < 0) {
+        return NULL;
+    }
+    if (!engine_ensure_track_capacity(engine, track_index + 1)) {
+        return NULL;
+    }
+    while (engine->track_count <= track_index) {
+        engine_track_init(&engine->tracks[engine->track_count]);
+        engine->tracks[engine->track_count].active = false;
+        ++engine->track_count;
+    }
+    return &engine->tracks[track_index];
+}
+
+int engine_add_track(Engine* engine) {
+    if (!engine) {
+        return -1;
+    }
+    int index = engine->track_count;
+    if (!engine_get_track_mutable(engine, index)) {
+        return -1;
+    }
+    engine->tracks[index].active = false;
+    engine_track_set_name(engine, index, NULL);
+    return index;
+}
+
+bool engine_remove_track(Engine* engine, int track_index) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+
+    EngineTrack* track = &engine->tracks[track_index];
+    engine_track_clear(engine, track);
+
+    if (track_index < engine->track_count - 1) {
+        memmove(&engine->tracks[track_index],
+                &engine->tracks[track_index + 1],
+                (size_t)(engine->track_count - track_index - 1) * sizeof(EngineTrack));
+        if (engine->track_spectra) {
+            if (engine->spectrum_mutex) {
+                SDL_LockMutex(engine->spectrum_mutex);
+            }
+            memmove(&engine->track_spectra[track_index * ENGINE_SPECTRUM_BINS],
+                    &engine->track_spectra[(track_index + 1) * ENGINE_SPECTRUM_BINS],
+                    (size_t)(engine->track_count - track_index - 1) * ENGINE_SPECTRUM_BINS * sizeof(float));
+            if (engine->spectrum_mutex) {
+                SDL_UnlockMutex(engine->spectrum_mutex);
+            }
+        }
+    }
+
+    engine->track_count--;
+    if (engine->track_count < 0) {
+        engine->track_count = 0;
+    }
+    if (engine->track_count >= 0 && engine->track_count < engine->track_capacity) {
+        engine_track_init(&engine->tracks[engine->track_count]);
+        if (engine->track_spectra) {
+            if (engine->spectrum_mutex) {
+                SDL_LockMutex(engine->spectrum_mutex);
+            }
+            for (int b = 0; b < ENGINE_SPECTRUM_BINS; ++b) {
+                engine->track_spectra[engine->track_count * ENGINE_SPECTRUM_BINS + b] = ENGINE_SPECTRUM_DB_FLOOR;
+            }
+            if (engine->spectrum_mutex) {
+                SDL_UnlockMutex(engine->spectrum_mutex);
+            }
+        }
+    }
+
+    engine_rebuild_sources(engine);
+    return true;
+}
+
+bool engine_track_set_name(Engine* engine, int track_index, const char* name) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    EngineTrack* track = &engine->tracks[track_index];
+    if (!track) {
+        return false;
+    }
+    if (name && name[0] != '\0') {
+        strncpy(track->name, name, sizeof(track->name) - 1);
+        track->name[sizeof(track->name) - 1] = '\0';
+    } else {
+        snprintf(track->name, sizeof(track->name), "Track %d", track_index + 1);
+    }
+    return true;
+}
+
+const EngineTrack* engine_get_tracks(const Engine* engine) {
+    if (!engine) {
+        return NULL;
+    }
+    return engine->tracks;
+}
+
+int engine_get_track_count(const Engine* engine) {
+    if (!engine) {
+        return 0;
+    }
+    return engine->track_count;
+}
+
+bool engine_track_set_muted(Engine* engine, int track_index, bool muted) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    EngineTrack* track = &engine->tracks[track_index];
+    if (!track) {
+        return false;
+    }
+    track->muted = muted;
+    engine_rebuild_sources(engine);
+    return true;
+}
+
+bool engine_track_set_solo(Engine* engine, int track_index, bool solo) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    EngineTrack* track = &engine->tracks[track_index];
+    if (!track) {
+        return false;
+    }
+    track->solo = solo;
+    engine_rebuild_sources(engine);
+    return true;
+}
+
+bool engine_track_set_gain(Engine* engine, int track_index, float gain) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    EngineTrack* track = &engine->tracks[track_index];
+    if (!track) {
+        return false;
+    }
+    track->gain = gain;
+    engine_rebuild_sources(engine);
+    return true;
+}
+
+bool engine_track_set_pan(Engine* engine, int track_index, float pan) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    EngineTrack* track = &engine->tracks[track_index];
+    if (!track) {
+        return false;
+    }
+    track->pan = pan;
+    engine_rebuild_sources(engine);
+    return true;
+}

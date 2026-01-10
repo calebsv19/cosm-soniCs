@@ -284,6 +284,10 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
         json_write_float(file, track->gain);
         fprintf(file, ",\n");
         json_write_indent(file, 3);
+        fprintf(file, "\"pan\": ");
+        json_write_float(file, track->pan);
+        fprintf(file, ",\n");
+        json_write_indent(file, 3);
         fprintf(file, "\"muted\": %s,\n", track->muted ? "true" : "false");
         json_write_indent(file, 3);
         fprintf(file, "\"solo\": %s,\n", track->solo ? "true" : "false");

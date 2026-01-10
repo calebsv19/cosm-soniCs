@@ -16,6 +16,17 @@ struct EngineSamplerSource;
 
 #define ENGINE_CLIP_NAME_MAX 128
 #define ENGINE_CLIP_PATH_MAX 512
+#define ENGINE_SPECTRUM_BINS 256
+#define ENGINE_SPECTRUM_HISTORY 4
+#define ENGINE_SPECTRUM_MIN_HZ 20.0f
+#define ENGINE_SPECTRUM_MAX_HZ 20000.0f
+#define ENGINE_SPECTRUM_DB_FLOOR -60.0f
+#define ENGINE_SPECTRUM_DB_CEIL 6.0f
+
+typedef enum {
+    ENGINE_SPECTRUM_VIEW_MASTER = 0,
+    ENGINE_SPECTRUM_VIEW_TRACK
+} EngineSpectrumView;
 
 struct EngineClip {
     struct EngineSamplerSource* sampler;
@@ -38,6 +49,7 @@ struct EngineTrack {
     int clip_count;
     int clip_capacity;
     float gain;
+    float pan;
     bool muted;
     bool solo;
     bool active;
@@ -115,6 +127,10 @@ bool    engine_track_set_muted(Engine* engine, int track_index, bool muted);
 bool    engine_track_set_solo(Engine* engine, int track_index, bool solo);
 bool    engine_track_set_muted(Engine* engine, int track_index, bool muted);
 bool    engine_track_set_gain(Engine* engine, int track_index, float gain);
+bool    engine_track_set_pan(Engine* engine, int track_index, float pan);
+int     engine_get_spectrum_snapshot(const Engine* engine, float* out_bins, int max_bins);
+int     engine_get_track_spectrum_snapshot(const Engine* engine, int track_index, float* out_bins, int max_bins);
+void    engine_set_spectrum_target(Engine* engine, EngineSpectrumView view, int track_index, bool enabled);
 void    engine_set_logging(Engine* engine, bool engine_logs, bool cache_logs, bool timing_logs);
 bool    engine_bounce_range(Engine* engine,
                             uint64_t start_frame,
