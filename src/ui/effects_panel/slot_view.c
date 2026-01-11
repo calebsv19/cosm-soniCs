@@ -2,6 +2,7 @@
 #include "effects/param_utils.h"
 #include "ui/effects_panel_slot.h"
 #include "ui/font.h"
+#include "ui/render_utils.h"
 
 #include <math.h>
 void effects_slot_reset_runtime(EffectsSlotRuntime* runtime) {
@@ -402,9 +403,9 @@ void effects_slot_render(SDL_Renderer* renderer,
     SDL_Rect body_clip = slot_layout->body_rect;
     if (body_clip.w > 0 && body_clip.h > 0) {
         SDL_Rect prev_clip;
-        SDL_bool had_clip = SDL_RenderIsClipEnabled(renderer);
-        SDL_RenderGetClipRect(renderer, &prev_clip);
-        SDL_RenderSetClipRect(renderer, &body_clip);
+        SDL_bool had_clip = ui_clip_is_enabled(renderer);
+        ui_get_clip_rect(renderer, &prev_clip);
+        ui_set_clip_rect(renderer, &body_clip);
 
         for (uint32_t p = 0; p < slot->param_count && p < FX_MAX_PARAMS; ++p) {
             SDL_Rect label_rect = slot_layout->label_rects[p];
@@ -458,7 +459,7 @@ void effects_slot_render(SDL_Renderer* renderer,
             }
         }
 
-        SDL_RenderSetClipRect(renderer, had_clip ? &prev_clip : NULL);
+        ui_set_clip_rect(renderer, had_clip ? &prev_clip : NULL);
     }
 
     const EffectsSlotRuntime* runtime = &panel->slot_runtime[slot_index];

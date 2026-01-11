@@ -1,6 +1,7 @@
 #include "ui/font.h"
 
 #include <SDL2/SDL_ttf.h>
+#include "vk_renderer.h"
 #include <math.h>
 #include <string.h>
 
@@ -67,28 +68,25 @@ static TTF_Font* get_font_for_scale(float scale) {
     return font;
 }
 
-static SDL_Texture* render_text(SDL_Renderer* renderer,
-                                TTF_Font* font,
-                                const char* text,
-                                SDL_Color color,
-                                int* out_w,
-                                int* out_h) {
-    if (!renderer || !font || !text) {
-        return NULL;
+static bool render_text(SDL_Renderer* renderer,
+                        TTF_Font* font,
+                        const char* text,
+                        SDL_Color color,
+                        VkRendererTexture* out_texture,
+                        int* out_w,
+                        int* out_h) {
+    if (!renderer || !font || !text || !out_texture) {
+        return false;
     }
     SDL_Surface* surface = TTF_RenderUTF8_Blended(font, text, color);
     if (!surface) {
-        return NULL;
-    }
-    SDL_Texture* tex = SDL_CreateTextureFromSurface(renderer, surface);
-    if (!tex) {
-        SDL_FreeSurface(surface);
-        return NULL;
+        return false;
     }
     if (out_w) *out_w = surface->w;
     if (out_h) *out_h = surface->h;
+    VkResult result = vk_renderer_upload_sdl_surface(renderer, surface, out_texture);
     SDL_FreeSurface(surface);
-    return tex;
+    return result == VK_SUCCESS;
 }
 
 void ui_draw_text(SDL_Renderer* renderer, int x, int y, const char* text, SDL_Color color, float scale) {
@@ -100,13 +98,13 @@ void ui_draw_text(SDL_Renderer* renderer, int x, int y, const char* text, SDL_Co
         return;
     }
     int w = 0, h = 0;
-    SDL_Texture* tex = render_text(renderer, font, text, color, &w, &h);
-    if (!tex) {
+    VkRendererTexture tex;
+    if (!render_text(renderer, font, text, color, &tex, &w, &h)) {
         return;
     }
     SDL_Rect dst = {x, y, w, h};
-    SDL_RenderCopy(renderer, tex, NULL, &dst);
-    SDL_DestroyTexture(tex);
+    vk_renderer_draw_texture(renderer, &tex, NULL, &dst);
+    vk_renderer_queue_texture_destroy(renderer, &tex);
 }
 
 int ui_measure_text_width(const char* text, float scale) {
@@ -140,15 +138,15 @@ void ui_draw_text_clipped(SDL_Renderer* renderer,
         return;
     }
     int w = 0, h = 0;
-    SDL_Texture* tex = render_text(renderer, font, text, color, &w, &h);
-    if (!tex) {
+    VkRendererTexture tex;
+    if (!render_text(renderer, font, text, color, &tex, &w, &h)) {
         return;
     }
     int clip_w = w < max_width ? w : max_width;
     SDL_Rect src = {0, 0, clip_w, h};
     SDL_Rect dst = {x, y, clip_w, h};
-    SDL_RenderCopy(renderer, tex, &src, &dst);
-    SDL_DestroyTexture(tex);
+    vk_renderer_draw_texture(renderer, &tex, &src, &dst);
+    vk_renderer_queue_texture_destroy(renderer, &tex);
 }
 
 int ui_font_line_height(float scale) {

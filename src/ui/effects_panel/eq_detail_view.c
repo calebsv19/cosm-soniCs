@@ -4,6 +4,7 @@
 #include "engine/engine.h"
 #include "ui/effects_panel.h"
 #include "ui/font.h"
+#include "ui/render_utils.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -278,7 +279,7 @@ static void draw_spectrum_line(SDL_Renderer* renderer,
     if (!renderer || !graph || !spectrum || count <= 1) {
         return;
     }
-    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+    ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
     SDL_SetRenderDrawColor(renderer, 120, 180, 220, 120);
     int prev_x = graph->x;
     float h0 = clampf(spectrum[0], 0.0f, 1.0f);

@@ -4,6 +4,7 @@
 #include "engine/engine.h"
 #include "engine/sampler.h"
 #include "ui/font.h"
+#include "ui/render_utils.h"
 #include "ui/timeline_waveform.h"
 #include "time/tempo.h"
 #include "input/timeline/timeline_geometry.h"
@@ -179,7 +180,8 @@ static void draw_timeline_grid(SDL_Renderer* renderer,
                                bool view_in_beats,
                                const TempoState* tempo_opt) {
     SDL_SetRenderDrawColor(renderer, 60, 60, 72, 255);
-    SDL_RenderDrawRect(renderer, &(SDL_Rect){x0, top, width, height});
+    SDL_Rect border = {x0, top, width, height};
+    SDL_RenderDrawRect(renderer, &border);
 
     SDL_Color label_color = {150, 150, 160, 255};
     SDL_Color minor_line = {65, 65, 85, 255};
@@ -787,7 +789,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                     if (clip_offset_px < 0) clip_offset_px = 0;
                     double clip_total_px = (clip_end_sec - start_sec) * pixels_per_second;
 
-                    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+                    ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
                     int fade_in_draw = 0;
                     if (fade_in_px > 0 && clip_offset_px < fade_in_px) {
                         fade_in_draw = fade_in_px - clip_offset_px;
@@ -837,7 +839,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                                                clip_rect.y + h);
                         }
                     }
-                    SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+                    ui_set_blend_mode(renderer, SDL_BLENDMODE_NONE);
                 }
 
                 SDL_Color text_color = {200, 200, 210, 255};
@@ -1097,11 +1099,11 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
 
     if (state->timeline_marquee_active && state->timeline_marquee_rect.w != 0 && state->timeline_marquee_rect.h != 0) {
         SDL_Rect m = state->timeline_marquee_rect;
-        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
+        ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
         SDL_SetRenderDrawColor(renderer, 120, 170, 240, 60);
         SDL_RenderFillRect(renderer, &m);
         SDL_SetRenderDrawColor(renderer, 120, 180, 255, 180);
         SDL_RenderDrawRect(renderer, &m);
-        SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_NONE);
+        ui_set_blend_mode(renderer, SDL_BLENDMODE_NONE);
     }
 }

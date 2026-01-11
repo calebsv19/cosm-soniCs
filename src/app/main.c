@@ -46,7 +46,7 @@ static void handle_update(AppContext* ctx) {
     if (state->bounce_active) {
         return;
     }
-    ui_ensure_layout(state, ctx->renderer);
+    ui_ensure_layout(state, ctx->window, ctx->renderer);
     input_manager_update(&state->input_manager, state);
 }
 
@@ -56,14 +56,10 @@ static void handle_render(AppContext* ctx) {
         return;
     }
     SDL_Renderer* renderer = ctx->renderer;
-    SDL_SetRenderDrawColor(renderer, 18, 18, 22, 255);
-    SDL_RenderClear(renderer);
 
     ui_render_panes(renderer, state);
     ui_render_controls(renderer, state);
     ui_render_overlays(renderer, state);
-
-    SDL_RenderPresent(renderer);
 }
 
 static bool path_exists(const char* path) {
@@ -134,7 +130,7 @@ static void bounce_progress_cb(uint64_t done_frames, uint64_t total_frames, void
         Uint32 now = SDL_GetTicks();
         if (now - prog->last_render_ms >= prog->render_interval_ms) {
             prog->last_render_ms = now;
-            handle_render(prog->ctx);
+            App_RenderOnce(prog->ctx, handle_render);
         }
     }
 }

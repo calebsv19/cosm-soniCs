@@ -86,6 +86,13 @@ SRCS := \
 	$(SRC_DIR)/input/effects_panel_input.c \
 	$(SRC_DIR)/input/effects_panel_eq_detail_input.c \
 	$(SRC_DIR)/input/effects_panel_track_snapshot.c \
+	$(SRC_DIR)/render/vk_renderer_ref/src/vk_renderer.c \
+	$(SRC_DIR)/render/vk_renderer_ref/src/vk_renderer_config.c \
+	$(SRC_DIR)/render/vk_renderer_ref/src/vk_renderer_context.c \
+	$(SRC_DIR)/render/vk_renderer_ref/src/vk_renderer_commands.c \
+	$(SRC_DIR)/render/vk_renderer_ref/src/vk_renderer_pipeline.c \
+	$(SRC_DIR)/render/vk_renderer_ref/src/vk_renderer_memory.c \
+	$(SRC_DIR)/render/vk_renderer_ref/src/vk_renderer_textures.c \
 	$(EFFECTS_SRCS)
 
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS))
@@ -100,8 +107,17 @@ SDL2_CFLAGS :=
 SDL2_LDFLAGS :=
 SDL2_LIBS := -lSDL2 -lSDL2_ttf
 SDL2_FRAMEWORKS :=
+VULKAN_CFLAGS :=
+VULKAN_LIBS :=
 
 ifeq ($(UNAME_S),Darwin)
+	VULKAN_CFLAGS := $(shell pkg-config --cflags vulkan 2>/dev/null)
+	VULKAN_LIBS := $(shell pkg-config --libs vulkan 2>/dev/null)
+	ifeq ($(strip $(VULKAN_CFLAGS)$(VULKAN_LIBS)),)
+		VULKAN_CFLAGS := -I/opt/homebrew/include
+		VULKAN_LIBS := -L/opt/homebrew/lib -lvulkan
+	endif
+
 	# Prefer explicit Homebrew prefixes for both Apple Silicon (/opt/homebrew) and Intel (/usr/local).
 	ifneq ($(wildcard /opt/homebrew/include/SDL2/SDL.h),)
 		SDL2_CFLAGS += -I/opt/homebrew/include -D_THREAD_SAFE
@@ -130,6 +146,13 @@ ifeq ($(UNAME_S),Darwin)
 		endif
 	endif
 else
+	VULKAN_CFLAGS := $(shell pkg-config --cflags vulkan 2>/dev/null)
+	VULKAN_LIBS := $(shell pkg-config --libs vulkan 2>/dev/null)
+	ifeq ($(strip $(VULKAN_CFLAGS)$(VULKAN_LIBS)),)
+		VULKAN_CFLAGS := -I/usr/include
+		VULKAN_LIBS := -lvulkan
+	endif
+
 	# Non-macOS: prefer sdl2-config, then pkg-config, then a basic system fallback.
 	ifneq ($(SDL_CONFIG),)
 		SDL2_CFLAGS += $(shell $(SDL_CONFIG) --cflags)
@@ -146,11 +169,12 @@ else
 	endif
 endif
 
-CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) $(SDL2_CFLAGS)
+CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) -I$(SRC_DIR)/render/vk_renderer_ref/include $(SDL2_CFLAGS) $(VULKAN_CFLAGS) -include $(SRC_DIR)/render/vk_renderer_ref/include/vk_renderer_sdl.h
 
-LDFLAGS := $(SDL2_LDFLAGS) $(SDL2_LIBS) $(SDL2_FRAMEWORKS)
+LDFLAGS := $(SDL2_LDFLAGS) $(SDL2_LIBS) $(SDL2_FRAMEWORKS) $(VULKAN_LIBS)
 ifeq ($(UNAME_S),Darwin)
-LDFLAGS += -framework AudioToolbox -framework CoreFoundation
+	CFLAGS += -DVK_USE_PLATFORM_METAL_EXT
+	LDFLAGS += -framework AudioToolbox -framework CoreFoundation -framework Metal -framework QuartzCore -framework Cocoa -framework IOKit -framework CoreVideo
 endif
 
 APP_BIN := $(BUILD_DIR)/$(APP_NAME)

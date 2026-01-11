@@ -1,5 +1,6 @@
 #pragma once
 #include <SDL2/SDL.h>
+#include "vk_renderer_sdl.h"
 #include <stdbool.h>
 
 #ifdef __cplusplus
@@ -14,6 +15,7 @@ typedef enum {
 typedef struct {
     SDL_Window* window;
     SDL_Renderer* renderer;
+    VkRenderer renderer_storage;
     float deltaTime;
     bool quit;
     void* userData;
@@ -41,6 +43,7 @@ typedef struct {
  */
 bool App_Init(AppContext* ctx, const char* title, int width, int height, bool vsync);
 void App_SetRenderMode(AppContext* ctx, RenderMode mode, float threshold);
+bool App_RenderOnce(AppContext* ctx, void (*handleRender)(AppContext* ctx));
 
 
 /**

@@ -3,6 +3,7 @@
 #include "app_state.h"
 #include "engine/engine.h"
 #include "ui/font.h"
+#include "ui/render_utils.h"
 #include "ui/layout_config.h"
 #include "ui/library_browser.h"
 #include "ui/transport.h"
@@ -267,16 +268,29 @@ void ui_layout_panes(AppState* state, int width, int height) {
     ui_layout_update_zones(state);
 }
 
-void ui_ensure_layout(AppState* state, SDL_Renderer* renderer) {
-    if (!state || !renderer) {
+void ui_ensure_layout(AppState* state, SDL_Window* window, SDL_Renderer* renderer) {
+    if (!state) {
         return;
     }
+#ifdef VK_RENDERER_ENABLE_SDL_COMPAT
+    (void)renderer;
+#endif
     int width = 0;
     int height = 0;
+#ifdef VK_RENDERER_ENABLE_SDL_COMPAT
+    if (!window) {
+        return;
+    }
+    SDL_GetWindowSize(window, &width, &height);
+#else
+    if (!renderer) {
+        return;
+    }
     if (SDL_GetRendererOutputSize(renderer, &width, &height) != 0) {
         SDL_Log("SDL_GetRendererOutputSize failed: %s", SDL_GetError());
         return;
     }
+#endif
     if (width != state->window_width || height != state->window_height) {
         ui_layout_panes(state, width, height);
     }
@@ -428,7 +442,7 @@ void ui_render_overlays(SDL_Renderer* renderer, const AppState* state) {
         if (scroll > (float)max_scroll) scroll = (float)max_scroll;
 
         SDL_Rect clip_rect = list_rect;
-        SDL_RenderSetClipRect(renderer, &clip_rect);
+        ui_set_clip_rect(renderer, &clip_rect);
         for (int i = 0; i < state->project_load.count; ++i) {
             int y = list_rect.y + (int)((float)i * item_h - scroll);
             if (y > list_rect.y + list_rect.h) {
@@ -448,7 +462,7 @@ void ui_render_overlays(SDL_Renderer* renderer, const AppState* state) {
             const char* name = state->project_load.entries[i].name[0] ? state->project_load.entries[i].name : "project";
             ui_draw_text(renderer, row.x + 8, row.y + 4, name, text_col, 1.2f);
         }
-        SDL_RenderSetClipRect(renderer, NULL);
+        ui_set_clip_rect(renderer, NULL);
 
         if (max_scroll > 0) {
             float t = scroll / (float)max_scroll;
@@ -521,9 +535,9 @@ void ui_render_controls(SDL_Renderer* renderer, AppState* state) {
 
     const Pane* timeline = ui_layout_get_pane(state, 1);
     if (timeline) {
-        SDL_RenderSetClipRect(renderer, &timeline->rect);
+        ui_set_clip_rect(renderer, &timeline->rect);
         timeline_view_render(renderer, &timeline->rect, state);
-        SDL_RenderSetClipRect(renderer, NULL);
+        ui_set_clip_rect(renderer, NULL);
     }
 }
 
