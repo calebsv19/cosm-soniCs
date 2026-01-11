@@ -155,12 +155,52 @@ typedef struct {
 typedef struct {
     bool hovered;
     bool dragging;
+    bool pending_apply;
+    Uint32 last_apply_ticks;
     SDL_Point last_mouse;
     bool spectrum_ready;
     float spectrum_smooth[ENGINE_SPECTRUM_BINS];
+    float spectrum_norm_lo;
+    float spectrum_norm_hi;
+    bool spectrum_norm_ready;
+    int spectrum_hold_frames;
     EffectsPanelEqDetailView view_mode;
     int last_track_index;
 } EffectsPanelEqDetailState;
+
+typedef enum {
+    EQ_CURVE_HANDLE_NONE = 0,
+    EQ_CURVE_HANDLE_POINT,
+    EQ_CURVE_HANDLE_WIDTH,
+    EQ_CURVE_HANDLE_CUT_LOW,
+    EQ_CURVE_HANDLE_CUT_HIGH
+} EqCurveHandle;
+
+typedef struct {
+    bool enabled;
+    float freq_hz;
+    float gain_db;
+    float q_width;
+} EqCurveBand;
+
+typedef struct {
+    bool enabled;
+    float freq_hz;
+    float slope;
+} EqCurveCut;
+
+typedef struct {
+    EqCurveBand bands[4];
+    EqCurveCut low_cut;
+    EqCurveCut high_cut;
+    int selected_band;
+    EqCurveHandle selected_handle;
+    int hover_band;
+    EqCurveHandle hover_handle;
+    int hover_toggle_band;
+    bool hover_toggle_low;
+    bool hover_toggle_high;
+} EqCurveState;
 
 typedef struct EffectsPanelState {
     bool initialized;
@@ -199,6 +239,10 @@ typedef struct EffectsPanelState {
     bool title_debug_last_click; // transient debug flag
     EffectsPanelTrackSnapshotState track_snapshot;
     EffectsPanelEqDetailState eq_detail;
+    EqCurveState eq_curve;
+    EqCurveState eq_curve_master;
+    EqCurveState* eq_curve_tracks;
+    int eq_curve_tracks_count;
 } EffectsPanelState;
 
 typedef struct {
@@ -305,6 +349,7 @@ struct AppState {
     float timeline_window_start_seconds;
     float timeline_vertical_scale;
     TimelineFollowMode timeline_follow_mode;
+    bool timeline_follow_override;
     bool timeline_hovered;
     bool timeline_drop_active;
     float timeline_drop_seconds;

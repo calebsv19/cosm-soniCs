@@ -6,17 +6,17 @@
 #include "input/inspector_input.h"
 #include "input/timeline_drag.h"
 #include "input/timeline/timeline_geometry.h"
+#include "input/timeline_snap.h"
 #include "input/timeline_selection.h"
 #include "ui/effects_panel.h"
 #include "ui/layout.h"
 #include "ui/library_browser.h"
 #include "ui/panes.h"
 #include "ui/timeline_view.h"
-#include "time/tempo.h"
-
 #include <float.h>
 #include <math.h>
 #include <string.h>
+#include <SDL2/SDL.h>
 
 static float clamp_scalar(float value, float min, float max) {
     if (value < min) return min;
@@ -121,52 +121,30 @@ void timeline_drop_update_hint(AppState* state) {
     if (rel_x < 0) rel_x = 0;
     if (rel_x > content_width) rel_x = content_width;
 
+    SDL_Keymod mods = SDL_GetModState();
+    bool alt_held = (mods & KMOD_ALT) != 0;
     float visible_seconds = geom.visible_seconds;
     float pixels_per_second = geom.pixels_per_second;
     float window_start = geom.window_start_seconds;
     float window_end = window_start + visible_seconds;
     float seconds = pixels_per_second > 0.0f ? window_start + (float)rel_x / pixels_per_second : window_start;
-    float snap_interval = TIMELINE_SNAP_SECONDS > 0.0f ? TIMELINE_SNAP_SECONDS : 0.25f;
-    if (state->timeline_view_in_beats && state->tempo.bpm > 0.0f && state->engine) {
-        const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
-        int sr = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
-        if (sr > 0) {
-            TempoState tempo = state->tempo;
-            tempo.sample_rate = sr;
-            tempo_state_clamp(&tempo);
-            double visible_beats = tempo_seconds_to_beats(state->timeline_visible_seconds, &tempo);
-            double subdivision = 1.0;
-            if (visible_beats <= 2.0) {
-                subdivision = 1.0 / 16.0;
-            } else if (visible_beats <= 4.0) {
-                subdivision = 1.0 / 8.0;
-            } else if (visible_beats <= 8.0) {
-                subdivision = 1.0 / 4.0;
-            } else if (visible_beats <= 16.0) {
-                subdivision = 1.0 / 2.0;
-            } else {
-                subdivision = 1.0;
-            }
-            double interval_sec = tempo_beats_to_seconds(subdivision, &tempo);
-            if (interval_sec > 0.0 && interval_sec < snap_interval * 2.0f) {
-                snap_interval = (float)interval_sec;
-            }
-        }
-    }
+    float snap_interval = timeline_get_snap_interval_seconds(state, visible_seconds);
 
     float best_sec = clamp_scalar(seconds, window_start, window_end);
     float best_diff = FLT_MAX;
 
-    int base_tick = (int)roundf(seconds / snap_interval);
-    for (int offset = -2; offset <= 2; ++offset) {
-        float candidate = (float)(base_tick + offset) * snap_interval;
-        if (candidate < window_start || candidate > window_end) {
-            continue;
-        }
-        float diff = fabsf(candidate - seconds);
-        if (diff < best_diff) {
-            best_diff = diff;
-            best_sec = candidate;
+    if (!alt_held) {
+        int base_tick = (int)roundf(seconds / snap_interval);
+        for (int offset = -2; offset <= 2; ++offset) {
+            float candidate = (float)(base_tick + offset) * snap_interval;
+            if (candidate < window_start || candidate > window_end) {
+                continue;
+            }
+            float diff = fabsf(candidate - seconds);
+            if (diff < best_diff) {
+                best_diff = diff;
+                best_sec = candidate;
+            }
         }
     }
 

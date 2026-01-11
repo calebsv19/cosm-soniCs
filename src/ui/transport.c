@@ -54,15 +54,15 @@ void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
     }
     ui->panel_rect = *container;
 
-    const int button_width = 64;
-    const int button_height = 26;
-    const int padding = 12;
-    const int button_v_gap = 4;
-    const int label_width = 120;
-    const int bpm_height = 20;
-    const int bpm_gap = 4;
-    const int seek_height = 8;
-    const int handle_width = 12;
+    const int button_width = 56;
+    const int button_height = 20;
+    const int padding = 10;
+    const int button_v_gap = 3;
+    const int label_width = 108;
+    const int bpm_height = 18;
+    const int bpm_gap = 3;
+    const int seek_height = 7;
+    const int handle_width = 10;
 
     int x = container->x + padding;
     int button_stack_height = button_height * 2 + button_v_gap;
@@ -75,11 +75,11 @@ void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
     ui->stop_rect = (SDL_Rect){x + button_width + padding, buttons_y + button_height + button_v_gap, button_width, button_height};
 
     const int group_spacing = padding * 2;
-    int grid_width = 88;
+    int grid_width = 80;
     int slider_width = 132;
-    int slider_height = 8;
-    int slider_y = container->y + (container->h - slider_height) / 2 - 8;
-    int slider_row_gap = 20;
+    int slider_height = 7;
+    int slider_y = container->y + (container->h - slider_height) / 2 - 6;
+    int slider_row_gap = 18;
 
     x = ui->stop_rect.x + ui->stop_rect.w + padding;
     int stack_h = bpm_height + bpm_gap + button_height;
@@ -92,16 +92,16 @@ void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
     ui->ts_rect = (SDL_Rect){x + bpm_col_width, bpm_y, label_width - bpm_col_width, bpm_height};
     int toggle_size = button_height;
     int toggle_y = container->y + (container->h - toggle_size) / 2;
-    ui->beat_toggle_rect = (SDL_Rect){x + label_width + 6, toggle_y, 26, toggle_size};
+    ui->beat_toggle_rect = (SDL_Rect){x + label_width + 6, toggle_y, 22, toggle_size};
     x += label_width + padding + ui->beat_toggle_rect.w + 6;
 
 
     int right_edge = container->x + container->w - padding;
     int grid_x = right_edge - grid_width;
-    ui->grid_rect = (SDL_Rect){grid_x, container->y + (container->h - 24) / 2, grid_width, 24};
+    ui->grid_rect = (SDL_Rect){grid_x, container->y + (container->h - button_height) / 2, grid_width, button_height};
 
-    int fit_button_width = 20;
-    int fit_button_height = 16;
+    int fit_button_width = 18;
+    int fit_button_height = 14;
     int fit_spacing = padding / 2;
 
     // Leave a little breathing room between sliders and the grid button.
@@ -161,8 +161,8 @@ void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
     if (button_stack_x + fit_button_width > grid_x) {
         button_stack_x = grid_x - fit_button_width;
     }
-    ui->fit_width_rect = (SDL_Rect){button_stack_x, slider_y - 10, fit_button_width, fit_button_height};
-    ui->fit_height_rect = (SDL_Rect){button_stack_x, slider_y + 12, fit_button_width, fit_button_height};
+    ui->fit_width_rect = (SDL_Rect){button_stack_x, slider_y - 8, fit_button_width, fit_button_height};
+    ui->fit_height_rect = (SDL_Rect){button_stack_x, slider_y + 10, fit_button_width, fit_button_height};
 
     int vert_slider_y = slider_y + slider_row_gap;
     ui->vert_track_rect = (SDL_Rect){slider_x, vert_slider_y, slider_width, slider_height};
@@ -330,12 +330,62 @@ static void render_button(SDL_Renderer* renderer, const SDL_Rect* rect, bool hov
     SDL_RenderDrawRect(renderer, rect);
 
     SDL_Color text = {220, 220, 230, 255};
-    const int scale = 2;
+    const int scale = 1;
     int text_width = ui_measure_text_width(label, scale);
     int text_height = ui_font_line_height(scale);
     int text_x = rect->x + (rect->w - text_width) / 2;
     int text_y = rect->y + (rect->h - text_height) / 2;
     ui_draw_text(renderer, text_x, text_y, label, text, scale);
+}
+
+static void draw_time_with_decimal(SDL_Renderer* renderer, const SDL_Rect* rect, const char* text, SDL_Color color, int scale, float dot_ratio, int dot_index) {
+    if (!renderer || !rect || !text) {
+        return;
+    }
+    if (dot_index < 1) {
+        dot_index = 1;
+    }
+    const char* dot = text;
+    for (int i = 0; i < dot_index; ++i) {
+        dot = strchr(dot, '.');
+        if (!dot) {
+            break;
+        }
+        if (i < dot_index - 1) {
+            dot += 1;
+        }
+    }
+    if (!dot) {
+        int tw = ui_measure_text_width(text, scale);
+        int th = ui_font_line_height(scale);
+        int tx = rect->x + (rect->w - tw) / 2;
+        int ty = rect->y + (rect->h - th) / 2;
+        ui_draw_text(renderer, tx, ty, text, color, scale);
+        return;
+    }
+
+    char left[32];
+    char right[32];
+    size_t left_len = (size_t)(dot - text);
+    if (left_len >= sizeof(left)) {
+        left_len = sizeof(left) - 1;
+    }
+    memcpy(left, text, left_len);
+    left[left_len] = '\0';
+    snprintf(right, sizeof(right), "%s", dot + 1);
+
+    int left_w = ui_measure_text_width(left, scale);
+    int dot_w = ui_measure_text_width(".", scale);
+    int th = ui_font_line_height(scale);
+    int baseline_y = rect->y + (rect->h - th) / 2;
+
+    int dot_x = rect->x + (int)lroundf((float)rect->w * dot_ratio) - dot_w / 2;
+    int left_x = dot_x - left_w;
+    int right_x = dot_x + dot_w;
+
+    ui_draw_text(renderer, left_x, baseline_y, left, color, scale);
+    ui_draw_text(renderer, dot_x, baseline_y, ".", color, scale);
+    ui_draw_text(renderer, right_x, baseline_y, right, color, scale);
 }
 
 void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const AppState* state, bool is_playing) {
@@ -394,13 +444,10 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
             int millis = total_ms % 1000;
             snprintf(time_text, sizeof(time_text), "%02d:%02d.%03d", minutes, seconds_part, millis);
         }
-        int time_scale = state->timeline_view_in_beats ? 1 : 2;
-        int tw = ui_measure_text_width(time_text, time_scale);
-        int time_x = ui->time_label_rect.x + (ui->time_label_rect.w - tw) / 2;
-        int th = ui_font_line_height(time_scale);
-        int time_y = ui->time_label_rect.y + (ui->time_label_rect.h - th) / 2;
-        if (time_x < ui->time_label_rect.x) time_x = ui->time_label_rect.x;
-        ui_draw_text(renderer, time_x, time_y, time_text, time_color, time_scale);
+        int time_scale = 2;
+        float dot_ratio = state->timeline_view_in_beats ? (5.0f / 8.0f) : (4.0f / 7.0f);
+        int dot_index = state->timeline_view_in_beats ? 2 : 1;
+        draw_time_with_decimal(renderer, &ui->time_label_rect, time_text, time_color, time_scale, dot_ratio, dot_index);
 
         // BPM field and TS stub
         SDL_Rect bpm_rect = ui->bpm_rect;
@@ -523,7 +570,7 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         SDL_RenderFillRect(renderer, &buttons[i]);
         SDL_SetRenderDrawColor(renderer, fit_border.r, fit_border.g, fit_border.b, fit_border.a);
         SDL_RenderDrawRect(renderer, &buttons[i]);
-        int scale = 2;
+        int scale = 1;
         int tw = ui_measure_text_width(labels[i], scale);
         int th = ui_font_line_height(scale);
         int tx = buttons[i].x + (buttons[i].w - tw) / 2;
@@ -531,10 +578,10 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         ui_draw_text(renderer, tx, ty, labels[i], (SDL_Color){220, 220, 230, 255}, scale);
     }
 
-    ui_draw_text(renderer, ui->seek_track_rect.x, ui->seek_track_rect.y - 18, "Playhead", label_zoom, 2);
-    ui_draw_text(renderer, ui->window_track_rect.x, ui->window_track_rect.y - 18, "Window", label_zoom, 2);
-    ui_draw_text(renderer, ui->horiz_track_rect.x, ui->horiz_track_rect.y - 18, "Timeline", label_zoom, 2);
-    ui_draw_text(renderer, ui->vert_track_rect.x, ui->vert_track_rect.y - 18, "Track Size", label_zoom, 2);
+    ui_draw_text(renderer, ui->seek_track_rect.x, ui->seek_track_rect.y - 12, "Playhead", label_zoom, 1);
+    ui_draw_text(renderer, ui->window_track_rect.x, ui->window_track_rect.y - 12, "Window", label_zoom, 1);
+    ui_draw_text(renderer, ui->horiz_track_rect.x, ui->horiz_track_rect.y - 12, "Timeline", label_zoom, 1);
+    ui_draw_text(renderer, ui->vert_track_rect.x, ui->vert_track_rect.y - 12, "Track Size", label_zoom, 1);
 }
 
 bool transport_ui_click_play(const TransportUI* ui, int mouse_x, int mouse_y) {

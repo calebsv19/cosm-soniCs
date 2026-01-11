@@ -8,12 +8,13 @@
 
 #include <ctype.h>
 #include <math.h>
+#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
 #define FX_PANEL_SLIDER_HEIGHT 18
 #define FX_PANEL_OVERLAY_WIDTH 260
-#define FX_PANEL_OVERLAY_HEADER_HEIGHT 34
+#define FX_PANEL_OVERLAY_HEADER_HEIGHT 24
 #define FX_PANEL_OVERLAY_PADDING 8
 
 typedef struct {
@@ -306,6 +307,145 @@ static void effects_panel_build_categories(EffectsPanelState* panel) {
     }
 }
 
+static void eq_curve_set_defaults(EqCurveState* curve) {
+    if (!curve) {
+        return;
+    }
+    SDL_zero(*curve);
+    curve->low_cut.enabled = false;
+    curve->low_cut.freq_hz = 80.0f;
+    curve->low_cut.slope = 12.0f;
+    curve->high_cut.enabled = false;
+    curve->high_cut.freq_hz = 12000.0f;
+    curve->high_cut.slope = 12.0f;
+    curve->selected_band = -1;
+    curve->selected_handle = EQ_CURVE_HANDLE_NONE;
+    curve->hover_band = -1;
+    curve->hover_handle = EQ_CURVE_HANDLE_NONE;
+    curve->hover_toggle_band = -1;
+    curve->hover_toggle_low = false;
+    curve->hover_toggle_high = false;
+    for (int i = 0; i < 4; ++i) {
+        curve->bands[i].enabled = true;
+        curve->bands[i].gain_db = 0.0f;
+        curve->bands[i].q_width = 1.0f;
+    }
+    curve->bands[0].freq_hz = 120.0f;
+    curve->bands[1].freq_hz = 500.0f;
+    curve->bands[2].freq_hz = 2000.0f;
+    curve->bands[3].freq_hz = 8000.0f;
+}
+
+static void eq_curve_copy_settings(EqCurveState* dst, const EqCurveState* src) {
+    if (!dst || !src) {
+        return;
+    }
+    dst->low_cut = src->low_cut;
+    dst->high_cut = src->high_cut;
+    for (int i = 0; i < 4; ++i) {
+        dst->bands[i] = src->bands[i];
+    }
+}
+
+static void eq_curve_clear_transient(EqCurveState* curve) {
+    if (!curve) {
+        return;
+    }
+    curve->selected_band = -1;
+    curve->selected_handle = EQ_CURVE_HANDLE_NONE;
+    curve->hover_band = -1;
+    curve->hover_handle = EQ_CURVE_HANDLE_NONE;
+    curve->hover_toggle_band = -1;
+    curve->hover_toggle_low = false;
+    curve->hover_toggle_high = false;
+}
+
+static void eq_curve_store_for_view(EffectsPanelState* panel,
+                                    EffectsPanelEqDetailView view_mode,
+                                    EffectsPanelTarget target,
+                                    int track_index) {
+    if (!panel) {
+        return;
+    }
+    if (view_mode == EQ_DETAIL_VIEW_TRACK &&
+        target == FX_PANEL_TARGET_TRACK &&
+        track_index >= 0 &&
+        track_index < panel->eq_curve_tracks_count &&
+        panel->eq_curve_tracks) {
+        eq_curve_copy_settings(&panel->eq_curve_tracks[track_index], &panel->eq_curve);
+    } else {
+        eq_curve_copy_settings(&panel->eq_curve_master, &panel->eq_curve);
+    }
+}
+
+static void eq_curve_load_for_view(EffectsPanelState* panel,
+                                   EffectsPanelEqDetailView view_mode,
+                                   EffectsPanelTarget target,
+                                   int track_index) {
+    if (!panel) {
+        return;
+    }
+    if (view_mode == EQ_DETAIL_VIEW_TRACK &&
+        target == FX_PANEL_TARGET_TRACK &&
+        track_index >= 0 &&
+        track_index < panel->eq_curve_tracks_count &&
+        panel->eq_curve_tracks) {
+        eq_curve_copy_settings(&panel->eq_curve, &panel->eq_curve_tracks[track_index]);
+    } else {
+        eq_curve_copy_settings(&panel->eq_curve, &panel->eq_curve_master);
+    }
+    eq_curve_clear_transient(&panel->eq_curve);
+}
+
+void effects_panel_set_eq_detail_view(AppState* state, int view_mode) {
+    if (!state) {
+        return;
+    }
+    EffectsPanelState* panel = &state->effects_panel;
+    EffectsPanelEqDetailView next_view = (EffectsPanelEqDetailView)view_mode;
+    if (next_view == EQ_DETAIL_VIEW_TRACK &&
+        (panel->target != FX_PANEL_TARGET_TRACK || panel->target_track_index < 0)) {
+        next_view = EQ_DETAIL_VIEW_MASTER;
+    }
+    if (panel->eq_detail.view_mode == next_view) {
+        return;
+    }
+    eq_curve_store_for_view(panel, panel->eq_detail.view_mode, panel->target, panel->target_track_index);
+    panel->eq_detail.view_mode = next_view;
+    eq_curve_load_for_view(panel, panel->eq_detail.view_mode, panel->target, panel->target_track_index);
+    panel->eq_detail.spectrum_ready = false;
+}
+
+void effects_panel_ensure_eq_curve_tracks(AppState* state, int track_count) {
+    if (!state) {
+        return;
+    }
+    EffectsPanelState* panel = &state->effects_panel;
+    if (track_count <= 0) {
+        free(panel->eq_curve_tracks);
+        panel->eq_curve_tracks = NULL;
+        panel->eq_curve_tracks_count = 0;
+        return;
+    }
+    if (panel->eq_curve_tracks && panel->eq_curve_tracks_count == track_count) {
+        return;
+    }
+    EqCurveState* next = (EqCurveState*)calloc((size_t)track_count, sizeof(EqCurveState));
+    if (!next) {
+        return;
+    }
+    int copy_count = panel->eq_curve_tracks_count < track_count ? panel->eq_curve_tracks_count : track_count;
+    for (int i = 0; i < copy_count; ++i) {
+        next[i] = panel->eq_curve_tracks[i];
+    }
+    for (int i = copy_count; i < track_count; ++i) {
+        eq_curve_set_defaults(&next[i]);
+    }
+    free(panel->eq_curve_tracks);
+    panel->eq_curve_tracks = next;
+    panel->eq_curve_tracks_count = track_count;
+}
+
 static bool effects_panel_update_target(AppState* state) {
     if (!state) {
         return false;
@@ -316,6 +456,10 @@ static bool effects_panel_update_target(AppState* state) {
     char prev_label[sizeof(panel->target_label)];
     strncpy(prev_label, panel->target_label, sizeof(prev_label) - 1);
     prev_label[sizeof(prev_label) - 1] = '\0';
+
+    if (state->engine) {
+        effects_panel_ensure_eq_curve_tracks(state, engine_get_track_count(state->engine));
+    }
 
     panel->target = FX_PANEL_TARGET_MASTER;
     panel->target_track_index = -1;
@@ -346,7 +490,16 @@ static bool effects_panel_update_target(AppState* state) {
     panel->target_label[sizeof(panel->target_label) - 1] = '\0';
 
     bool label_changed = strncmp(prev_label, panel->target_label, sizeof(prev_label)) != 0;
-    return label_changed || prev_target != panel->target || prev_track != panel->target_track_index;
+    bool target_changed = label_changed || prev_target != panel->target || prev_track != panel->target_track_index;
+    if (target_changed) {
+        eq_curve_store_for_view(panel, panel->eq_detail.view_mode, prev_target, prev_track);
+        if (panel->eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK &&
+            (panel->target != FX_PANEL_TARGET_TRACK || panel->target_track_index < 0)) {
+            panel->eq_detail.view_mode = EQ_DETAIL_VIEW_MASTER;
+        }
+        eq_curve_load_for_view(panel, panel->eq_detail.view_mode, panel->target, panel->target_track_index);
+    }
+    return target_changed;
 }
 
 static void draw_button(SDL_Renderer* renderer, const SDL_Rect* rect, bool highlighted, const char* label, float scale) {
@@ -409,6 +562,16 @@ void effects_panel_init(AppState* state) {
     state->effects_panel.eq_detail.view_mode = EQ_DETAIL_VIEW_MASTER;
     state->effects_panel.eq_detail.spectrum_ready = false;
     state->effects_panel.eq_detail.last_track_index = -1;
+    state->effects_panel.eq_detail.spectrum_norm_lo = ENGINE_SPECTRUM_DB_FLOOR;
+    state->effects_panel.eq_detail.spectrum_norm_hi = ENGINE_SPECTRUM_DB_CEIL;
+    state->effects_panel.eq_detail.spectrum_norm_ready = false;
+    state->effects_panel.eq_detail.spectrum_hold_frames = 0;
+    state->effects_panel.eq_detail.pending_apply = false;
+    state->effects_panel.eq_detail.last_apply_ticks = 0;
+    eq_curve_set_defaults(&state->effects_panel.eq_curve_master);
+    eq_curve_set_defaults(&state->effects_panel.eq_curve);
+    state->effects_panel.eq_curve_tracks = NULL;
+    state->effects_panel.eq_curve_tracks_count = 0;
 }
 
 void effects_panel_refresh_catalog(AppState* state) {
@@ -477,6 +640,8 @@ void effects_panel_sync_from_engine(AppState* state) {
         return;
     }
     EffectsPanelState* panel = &state->effects_panel;
+    int track_count = engine_get_track_count(state->engine);
+    effects_panel_ensure_eq_curve_tracks(state, track_count);
     FxInstId selected_id = 0;
     if (panel->selected_slot_index >= 0 && panel->selected_slot_index < panel->chain_count) {
         selected_id = panel->chain[panel->selected_slot_index].id;

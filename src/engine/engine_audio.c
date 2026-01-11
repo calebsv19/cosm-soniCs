@@ -85,6 +85,7 @@ void engine_mix_tracks(Engine* engine,
             fxm_render_track(engine->fxm, t, track_buffer, frames, channels);
             SDL_UnlockMutex(engine->fxm_mutex);
         }
+        engine_eq_process(&engine->tracks[t].track_eq, track_buffer, frames, channels);
         engine_spectrum_update_track(engine, t, track_buffer, frames, channels);
         apply_track_pan(&engine->tracks[t], track_buffer, frames, channels);
         for (int s = 0; s < frames * channels; ++s) {
@@ -92,6 +93,7 @@ void engine_mix_tracks(Engine* engine,
         }
     }
 
+    engine_eq_process(&engine->master_eq, out, frames, channels);
     if (engine->fxm && engine->fxm_mutex) {
         SDL_LockMutex(engine->fxm_mutex);
         fxm_render_master(engine->fxm, out, frames, channels);

@@ -3,6 +3,7 @@
 #include "app_state.h"
 #include "engine/engine.h"
 #include "ui/font.h"
+#include "ui/effects_panel_eq_detail.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -46,6 +47,88 @@ static float linear_to_db(float linear) {
     return 20.0f * log10f(linear);
 }
 
+static void compute_eq_preview_curve(const EqCurveState* curve,
+                                     const SDL_Rect* graph,
+                                     float* curve_db,
+                                     int samples) {
+    if (!curve || !graph || !curve_db || samples <= 1) {
+        return;
+    }
+    for (int i = 0; i < samples; ++i) {
+        float t = (float)i / (float)(samples - 1);
+        float x = (float)graph->x + t * (float)graph->w;
+        float freq = effects_eq_x_to_freq(graph, x);
+        float db = 0.0f;
+        if (curve->low_cut.enabled && freq < curve->low_cut.freq_hz) {
+            float tcut = log2f(curve->low_cut.freq_hz / freq);
+            float max_oct = 0.8f;
+            float s = tcut / max_oct;
+            if (s < 0.0f) s = 0.0f;
+            if (s > 1.0f) s = 1.0f;
+            float drop = s * s * (3.0f - 2.0f * s);
+            db += (EQ_DETAIL_DB_MIN - db) * drop;
+        }
+        if (curve->high_cut.enabled && freq > curve->high_cut.freq_hz) {
+            float tcut = log2f(freq / curve->high_cut.freq_hz);
+            float max_oct = 1.2f;
+            float s = tcut / max_oct;
+            if (s < 0.0f) s = 0.0f;
+            if (s > 1.0f) s = 1.0f;
+            float drop = s * s * (3.0f - 2.0f * s);
+            db += (EQ_DETAIL_DB_MIN - db) * drop;
+        }
+        for (int b = 0; b < 4; ++b) {
+            if (!curve->bands[b].enabled) {
+                continue;
+            }
+            float width = curve->bands[b].q_width;
+            if (width < 0.1f) {
+                width = 0.1f;
+            }
+            float x_oct = log2f(freq / curve->bands[b].freq_hz);
+            float sigma = width * 0.35f;
+            float influence = expf(-(x_oct * x_oct) / (2.0f * sigma * sigma));
+            db += curve->bands[b].gain_db * influence;
+        }
+        curve_db[i] = clampf(db, EQ_DETAIL_DB_MIN, EQ_DETAIL_DB_MAX);
+    }
+}
+
+static void draw_eq_preview(SDL_Renderer* renderer, const SDL_Rect* rect, const EqCurveState* curve) {
+    if (!renderer || !rect || !curve || rect->w <= 0 || rect->h <= 0) {
+        return;
+    }
+    SDL_Color bg = {22, 24, 30, 255};
+    SDL_Color border = {70, 75, 92, 255};
+    SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
+    SDL_RenderFillRect(renderer, rect);
+    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+    SDL_RenderDrawRect(renderer, rect);
+
+    SDL_Rect graph = *rect;
+    graph.x += 6;
+    graph.y += 6;
+    graph.w -= 12;
+    graph.h -= 12;
+    if (graph.w <= 1 || graph.h <= 1) {
+        return;
+    }
+    enum { PREVIEW_SAMPLES = 64 };
+    float curve_db[PREVIEW_SAMPLES];
+    compute_eq_preview_curve(curve, &graph, curve_db, PREVIEW_SAMPLES);
+    SDL_SetRenderDrawColor(renderer, 70, 160, 230, 255);
+    int prev_x = graph.x;
+    int prev_y = (int)lroundf(effects_eq_db_to_y(&graph, curve_db[0]));
+    for (int i = 1; i < PREVIEW_SAMPLES; ++i) {
+        float t = (float)i / (float)(PREVIEW_SAMPLES - 1);
+        int x = graph.x + (int)lroundf(t * (float)graph.w);
+        int y = (int)lroundf(effects_eq_db_to_y(&graph, curve_db[i]));
+        SDL_RenderDrawLine(renderer, prev_x, prev_y, x, y);
+        prev_x = x;
+        prev_y = y;
+    }
+}
+
 void effects_panel_render_track_snapshot(SDL_Renderer* renderer, const AppState* state, const EffectsPanelLayout* layout) {
     if (!renderer || !state || !layout) {
         return;
@@ -53,8 +136,6 @@ void effects_panel_render_track_snapshot(SDL_Renderer* renderer, const AppState*
     const EffectsPanelState* panel = &state->effects_panel;
     const EffectsPanelTrackSnapshotLayout* snap = &layout->track_snapshot;
     SDL_Color label = {210, 210, 220, 255};
-    SDL_Color text_dim = {150, 160, 180, 255};
-    SDL_Color card_bg = {34, 36, 44, 255};
     SDL_Color card_border = {70, 75, 92, 255};
     SDL_Color button_bg = {44, 48, 58, 255};
     SDL_Color active_bg = {90, 120, 170, 200};
@@ -86,22 +167,7 @@ void effects_panel_render_track_snapshot(SDL_Renderer* renderer, const AppState*
     bool solo = track ? track->solo : panel->track_snapshot.solo;
 
     if (snap->eq_rect.w > 0 && snap->eq_rect.h > 0) {
-        SDL_SetRenderDrawColor(renderer, card_bg.r, card_bg.g, card_bg.b, card_bg.a);
-        SDL_RenderFillRect(renderer, &snap->eq_rect);
-        SDL_SetRenderDrawColor(renderer, card_border.r, card_border.g, card_border.b, card_border.a);
-        SDL_RenderDrawRect(renderer, &snap->eq_rect);
-        ui_draw_text(renderer,
-                     snap->eq_rect.x + 6,
-                     snap->eq_rect.y + 6,
-                     "EQ",
-                     label,
-                     1.4f);
-        ui_draw_text(renderer,
-                     snap->eq_rect.x + 6,
-                     snap->eq_rect.y + 24,
-                     "Double-click to open",
-                     text_dim,
-                     1.0f);
+        draw_eq_preview(renderer, &snap->eq_rect, &panel->eq_curve);
     }
 
     if (snap->gain_rect.w > 0 && snap->gain_rect.h > 0) {

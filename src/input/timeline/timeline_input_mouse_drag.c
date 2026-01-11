@@ -5,6 +5,7 @@
 #include "engine/sampler.h"
 #include "input/inspector_input.h"
 #include "input/timeline_drag.h"
+#include "input/timeline_snap.h"
 #include "input/timeline/timeline_geometry.h"
 #include "input/timeline_selection.h"
 #include "ui/layout.h"
@@ -42,17 +43,6 @@ static void add_unique_sampler(EngineSamplerSource** list,
     }
     list[current] = sampler;
     *count = current + 1;
-}
-
-static float snap_time_to_interval(float seconds, float interval) {
-    if (interval <= 0.0f) {
-        return seconds;
-    }
-    float snapped = roundf(seconds / interval) * interval;
-    if (snapped < 0.0f) {
-        snapped = 0.0f;
-    }
-    return snapped;
 }
 
 static bool snap_to_neighbor_clip(const EngineTrack* track, int exclude_index, int sample_rate, float threshold_sec, float* inout_start_sec) {
@@ -147,6 +137,8 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
     }
 
     TimelineDragState* drag = &state->timeline_drag;
+    SDL_Keymod mods = SDL_GetModState();
+    bool alt_held = (mods & KMOD_ALT) != 0;
 
     if (!is_down && was_down) {
         if (drag->active && !drag->trimming_left && !drag->trimming_right &&
@@ -420,9 +412,9 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
             }
         }
         float new_start_sec = initial_start_sec + delta_sec;
-        float snap_interval = TIMELINE_SNAP_SECONDS > 0.0f ? TIMELINE_SNAP_SECONDS : 0.25f;
-        if (drag->started_moving) {
-            new_start_sec = snap_time_to_interval(new_start_sec, snap_interval);
+        float snap_interval = timeline_get_snap_interval_seconds(state, geom.visible_seconds);
+        if (drag->started_moving && !alt_held) {
+            new_start_sec = timeline_snap_seconds_to_grid(state, new_start_sec, geom.visible_seconds);
             snap_to_neighbor_clip(drag_track, drag->clip_index, sample_rate, snap_interval, &new_start_sec);
         }
         if (new_start_sec < move_min_start_sec) {
@@ -483,15 +475,19 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
         if (new_start_sec > max_start_sec) {
             new_start_sec = max_start_sec;
         }
-        float snap_interval = TIMELINE_SNAP_SECONDS > 0.0f ? TIMELINE_SNAP_SECONDS : 0.25f;
-        new_start_sec = snap_time_to_interval(new_start_sec, snap_interval);
+        float snap_interval = timeline_get_snap_interval_seconds(state, geom.visible_seconds);
+        if (!alt_held) {
+            new_start_sec = timeline_snap_seconds_to_grid(state, new_start_sec, geom.visible_seconds);
+        }
         if (new_start_sec < trim_min_start_sec) {
             new_start_sec = trim_min_start_sec;
         }
         if (new_start_sec > max_start_sec) {
             new_start_sec = max_start_sec;
         }
-        snap_to_neighbor_clip(drag_track, drag->clip_index, sample_rate, snap_interval, &new_start_sec);
+        if (!alt_held) {
+            snap_to_neighbor_clip(drag_track, drag->clip_index, sample_rate, snap_interval, &new_start_sec);
+        }
         if (new_start_sec < trim_min_start_sec) {
             new_start_sec = trim_min_start_sec;
         }
@@ -548,15 +544,19 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
         if (new_right_sec > max_right_sec) {
             new_right_sec = max_right_sec;
         }
-        float snap_interval = TIMELINE_SNAP_SECONDS > 0.0f ? TIMELINE_SNAP_SECONDS : 0.25f;
-        new_right_sec = snap_time_to_interval(new_right_sec, snap_interval);
+        float snap_interval = timeline_get_snap_interval_seconds(state, geom.visible_seconds);
+        if (!alt_held) {
+            new_right_sec = timeline_snap_seconds_to_grid(state, new_right_sec, geom.visible_seconds);
+        }
         if (new_right_sec < min_right_sec) {
             new_right_sec = min_right_sec;
         }
         if (new_right_sec > max_right_sec) {
             new_right_sec = max_right_sec;
         }
-        snap_to_neighbor_clip(drag_track, drag->clip_index, sample_rate, snap_interval, &new_right_sec);
+        if (!alt_held) {
+            snap_to_neighbor_clip(drag_track, drag->clip_index, sample_rate, snap_interval, &new_right_sec);
+        }
         if (new_right_sec < min_right_sec) {
             new_right_sec = min_right_sec;
         }

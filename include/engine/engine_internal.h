@@ -16,12 +16,17 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#define ENGINE_SPECTRUM_FFT_SIZE 2048
+#define ENGINE_SPECTRUM_AVG_FRAMES 2
+#define ENGINE_SPECTRUM_QUEUE_BYTES (1u << 20)
+
 typedef enum {
     ENGINE_CMD_PLAY = 1,
     ENGINE_CMD_STOP = 2,
     ENGINE_CMD_GRAPH_SWAP = 3,
     ENGINE_CMD_SEEK = 4,
     ENGINE_CMD_SET_LOOP = 5,
+    ENGINE_CMD_SET_EQ = 6,
 } EngineCommandType;
 
 typedef struct {
@@ -38,6 +43,11 @@ typedef struct {
             uint64_t start_frame;
             uint64_t end_frame;
         } loop;
+        struct {
+            int target; // 0 = master, 1 = track
+            int track_index;
+            EngineEqCurve curve;
+        } eq;
     } payload;
 } EngineCommand;
 
@@ -58,10 +68,12 @@ struct Engine {
     RingBuffer command_queue;
     EffectsManager* fxm;
     SDL_mutex* fxm_mutex;
+    SDL_mutex* eq_mutex;
     EngineGraph* graph;
     EngineToneSource* tone_source;
     EngineGraphSourceOps tone_ops;
     EngineGraphSourceOps sampler_ops;
+    EngineEqState master_eq;
     EngineTrack* tracks;
     int track_count;
     int track_capacity;
@@ -72,6 +84,9 @@ struct Engine {
     atomic_uint_fast64_t loop_start_frame;
     atomic_uint_fast64_t loop_end_frame;
     SDL_mutex* spectrum_mutex;
+    RingBuffer spectrum_queue;
+    SDL_Thread* spectrum_thread;
+    atomic_bool spectrum_running;
     float spectrum_history[ENGINE_SPECTRUM_HISTORY][ENGINE_SPECTRUM_BINS];
     float* track_spectra;
     int track_spectrum_capacity;
@@ -83,6 +98,14 @@ struct Engine {
     bool spectrum_update_master;
     bool spectrum_update_track;
     int spectrum_active_track;
+    float spectrum_window[ENGINE_SPECTRUM_FFT_SIZE];
+    int spectrum_window_index;
+    int spectrum_window_filled;
+    float spectrum_avg_history[ENGINE_SPECTRUM_AVG_FRAMES][ENGINE_SPECTRUM_BINS];
+    int spectrum_avg_index;
+    int spectrum_avg_count;
+    int spectrum_last_view;
+    int spectrum_last_track;
     atomic_bool spectrum_enabled;
     atomic_int spectrum_view;
     atomic_int spectrum_target_track;
@@ -100,6 +123,7 @@ void engine_mix_tracks(Engine* engine,
                        float* interleaved_out,
                        float* track_buffer,
                        int channels);
+int engine_spectrum_thread_main(void* userdata);
 bool engine_spectrum_begin_block(Engine* engine);
 void engine_spectrum_update(Engine* engine, const float* interleaved, int frames, int channels);
 void engine_spectrum_update_track(Engine* engine, int track_index, const float* interleaved, int frames, int channels);

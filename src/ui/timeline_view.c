@@ -6,6 +6,7 @@
 #include "ui/font.h"
 #include "ui/timeline_waveform.h"
 #include "time/tempo.h"
+#include "input/timeline/timeline_geometry.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -65,44 +66,6 @@ static int quantize_samples_per_pixel(int spp) {
         return upper;
     }
     return (spp - lower) < (upper - spp) ? lower : upper;
-}
-
-static float timeline_total_seconds(const AppState* state) {
-    if (!state || !state->engine) {
-        return 0.0f;
-    }
-    const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
-    int sample_rate = cfg ? cfg->sample_rate : 0;
-    if (sample_rate <= 0) {
-        return 0.0f;
-    }
-    const EngineTrack* tracks = engine_get_tracks(state->engine);
-    int track_count = engine_get_track_count(state->engine);
-    uint64_t max_frames = 0;
-    for (int t = 0; t < track_count; ++t) {
-        const EngineTrack* track = &tracks[t];
-        if (!track) continue;
-        for (int i = 0; i < track->clip_count; ++i) {
-            const EngineClip* clip = &track->clips[i];
-            if (!clip) continue;
-            uint64_t start = clip->timeline_start_frames;
-            uint64_t length = clip->duration_frames;
-            if (length == 0 && clip->media) {
-                length = clip->media->frame_count;
-            }
-            if (length == 0) {
-                length = engine_clip_get_total_frames(state->engine, t, i);
-            }
-            uint64_t end = start + length;
-            if (end > max_frames) {
-                max_frames = end;
-            }
-        }
-    }
-    if (max_frames == 0) {
-        return 0.0f;
-    }
-    return (float)max_frames / (float)sample_rate;
 }
 
 static void draw_timeline_button(SDL_Renderer* renderer,
@@ -219,7 +182,11 @@ static void draw_timeline_grid(SDL_Renderer* renderer,
     SDL_RenderDrawRect(renderer, &(SDL_Rect){x0, top, width, height});
 
     SDL_Color label_color = {150, 150, 160, 255};
-    SDL_SetRenderDrawColor(renderer, 48, 48, 60, 255);
+    SDL_Color minor_line = {65, 65, 85, 255};
+    SDL_Color sub_line = {66, 70, 100, 200};
+    SDL_Color major_line = {80, 82, 115, 255};
+    SDL_Color downbeat_line = {90, 100, 130, 255};
+    SDL_SetRenderDrawColor(renderer, minor_line.r, minor_line.g, minor_line.b, minor_line.a);
 
     TempoState tempo = {0};
     if (tempo_opt) {
@@ -229,17 +196,17 @@ static void draw_timeline_grid(SDL_Renderer* renderer,
 
     if (!view_in_beats || tempo.bpm <= 0.0 || tempo.sample_rate <= 0.0) {
         if (show_all_lines) {
-            int full_ticks = (int)ceilf(visible_seconds);
-            for (int t = 0; t <= full_ticks; ++t) {
-                float sec = (float)t;
-                if (sec > visible_seconds) {
-                    sec = visible_seconds;
+            float first_minor = floorf(window_start_seconds);
+            float last_minor = window_start_seconds + visible_seconds;
+            SDL_SetRenderDrawColor(renderer, minor_line.r, minor_line.g, minor_line.b, minor_line.a);
+            for (float sec_abs = first_minor; sec_abs <= last_minor + 0.5f; sec_abs += 1.0f) {
+                float local = sec_abs - window_start_seconds;
+                if (local < 0.0f || local > visible_seconds * 1.5f) {
+                    continue;
                 }
-                int x = x0 + (int)roundf(sec * pixels_per_second);
-                SDL_SetRenderDrawColor(renderer, 58, 58, 68, 255);
+                int x = x0 + (int)roundf(local * pixels_per_second);
                 SDL_RenderDrawLine(renderer, x, top, x, top + height);
             }
-            SDL_SetRenderDrawColor(renderer, 48, 48, 60, 255);
         }
 
         float major_interval = 1.0f;
@@ -259,6 +226,7 @@ static void draw_timeline_grid(SDL_Renderer* renderer,
                 continue;
             }
             int x = x0 + (int)roundf(local * pixels_per_second);
+            SDL_SetRenderDrawColor(renderer, major_line.r, major_line.g, major_line.b, major_line.a);
             SDL_RenderDrawLine(renderer, x, top, x, top + height);
 
             float label_sec = sec_abs;
@@ -281,23 +249,21 @@ static void draw_timeline_grid(SDL_Renderer* renderer,
 
     // Minor lines at every beat when show_all_lines is on.
     if (show_all_lines) {
-        int full_ticks = (int)ceil(visible_beats);
-        for (int i = 0; i <= full_ticks; ++i) {
-            double beat = (double)i;
-            if (beat > visible_beats) {
-                beat = visible_beats;
-            }
-            double global_beats = start_beats + beat;
-            double sec = tempo_beats_to_seconds(global_beats, &tempo);
+        double first_minor = floor(start_beats);
+        double last_minor = end_beats;
+        SDL_SetRenderDrawColor(renderer, minor_line.r, minor_line.g, minor_line.b, minor_line.a);
+        for (double gb = first_minor; gb <= last_minor + 0.5; gb += 1.0) {
+            double sec = tempo_beats_to_seconds(gb, &tempo);
             double local_sec = sec - window_start_seconds;
-            if (local_sec < 0.0) local_sec = 0.0;
+            if (local_sec < 0.0 || local_sec > visible_seconds * 1.5) {
+                continue;
+            }
             int x = x0 + (int)round(local_sec * (double)pixels_per_second);
-            SDL_SetRenderDrawColor(renderer, 58, 58, 68, 255);
             SDL_RenderDrawLine(renderer, x, top, x, top + height);
         }
-        SDL_SetRenderDrawColor(renderer, 48, 48, 60, 255);
     }
 
+    int beats_per_bar = tempo.ts_num > 0 ? tempo.ts_num : 4;
     double major_interval_beats = 1.0;
     if (visible_beats > 128.0) {
         major_interval_beats = 8.0;
@@ -307,8 +273,6 @@ static void draw_timeline_grid(SDL_Renderer* renderer,
         major_interval_beats = 2.0;
     }
 
-    int beats_per_bar = tempo.ts_num > 0 ? tempo.ts_num : 4;
-
     // Extra subdivision lines at high zoom: quarter-beat at tight zoom, half-beat at medium zoom (no labels).
     double sub_interval = 0.0;
     if (visible_beats <= 8.0) {
@@ -317,7 +281,7 @@ static void draw_timeline_grid(SDL_Renderer* renderer,
         sub_interval = 0.5; // half-beat
     }
     if (sub_interval > 0.0) {
-        SDL_SetRenderDrawColor(renderer, 70, 70, 80, 200);
+        SDL_SetRenderDrawColor(renderer, sub_line.r, sub_line.g, sub_line.b, sub_line.a);
         double first_sub = floor(start_beats / sub_interval) * sub_interval;
         double last_sub = end_beats + sub_interval * 0.5;
         for (double gb = first_sub; gb <= last_sub; gb += sub_interval) {
@@ -329,7 +293,45 @@ static void draw_timeline_grid(SDL_Renderer* renderer,
             int x = x0 + (int)round(local_sec * (double)pixels_per_second);
             SDL_RenderDrawLine(renderer, x, top, x, top + height);
         }
-        SDL_SetRenderDrawColor(renderer, 48, 48, 60, 255);
+    }
+
+    if (!show_all_lines) {
+        double visible_bars = visible_beats / (double)beats_per_bar;
+        int bar_interval = 1;
+        if (visible_bars > 128.0) {
+            bar_interval = 16;
+        } else if (visible_bars > 64.0) {
+            bar_interval = 8;
+        } else if (visible_bars > 32.0) {
+            bar_interval = 4;
+        } else if (visible_bars > 16.0) {
+            bar_interval = 2;
+        }
+
+        int first_bar = (int)floor(start_beats / (double)beats_per_bar);
+        int last_bar = (int)ceil(end_beats / (double)beats_per_bar);
+        int aligned_first = (first_bar / bar_interval) * bar_interval;
+        for (int bar = aligned_first; bar <= last_bar; bar += bar_interval) {
+            double gb = (double)bar * (double)beats_per_bar;
+            double sec = tempo_beats_to_seconds(gb, &tempo);
+            double local_sec = sec - window_start_seconds;
+            if (local_sec < 0.0 || local_sec > visible_seconds * 1.5) {
+                continue;
+            }
+            int x = x0 + (int)round(local_sec * (double)pixels_per_second);
+            SDL_SetRenderDrawColor(renderer, downbeat_line.r, downbeat_line.g, downbeat_line.b, downbeat_line.a);
+            SDL_RenderDrawLine(renderer, x, top, x, top + height);
+
+            char label[24];
+            snprintf(label, sizeof(label), "%d", bar + 1);
+            int label_scale = 1;
+            int base_h = ui_font_line_height(1);
+            int scaled_h = ui_font_line_height(label_scale);
+            int extra = (scaled_h - base_h) / 2;
+            int label_y = top - 10 - extra;
+            ui_draw_text(renderer, x + 4, label_y, label, label_color, label_scale);
+        }
+        return;
     }
 
     // Major beats aligned to absolute bars/beats (not reset per window).
@@ -344,12 +346,11 @@ static void draw_timeline_grid(SDL_Renderer* renderer,
         int x = x0 + (int)round(local_sec * (double)pixels_per_second);
         bool is_downbeat = ((int)floor(gb) % beats_per_bar) == 0;
         if (is_downbeat) {
-            SDL_SetRenderDrawColor(renderer, 90, 90, 105, 255);
-            SDL_RenderDrawLine(renderer, x, top, x, top + height);
-            SDL_SetRenderDrawColor(renderer, 48, 48, 60, 255);
+            SDL_SetRenderDrawColor(renderer, downbeat_line.r, downbeat_line.g, downbeat_line.b, downbeat_line.a);
         } else {
-            SDL_RenderDrawLine(renderer, x, top, x, top + height);
+            SDL_SetRenderDrawColor(renderer, major_line.r, major_line.g, major_line.b, major_line.a);
         }
+        SDL_RenderDrawLine(renderer, x, top, x, top + height);
 
         int bar = (int)floor(gb / (double)beats_per_bar) + 1;
         double beat_in_bar_f = fmod(gb, (double)beats_per_bar);
@@ -408,12 +409,10 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
 
     float visible_seconds = clamp_float(state->timeline_visible_seconds, TIMELINE_MIN_VISIBLE_SECONDS, TIMELINE_MAX_VISIBLE_SECONDS);
     float vertical_scale = clamp_float(state->timeline_vertical_scale, TIMELINE_MIN_VERTICAL_SCALE, TIMELINE_MAX_VERTICAL_SCALE);
-    float total_seconds = timeline_total_seconds(state);
-    float max_window_start = total_seconds > visible_seconds ? total_seconds - visible_seconds : 0.0f;
-    if (max_window_start < 0.0f) {
-        max_window_start = 0.0f;
-    }
-    float window_start = clamp_float(state->timeline_window_start_seconds, 0.0f, max_window_start);
+    float min_window_start = 0.0f;
+    float max_window_start = 0.0f;
+    timeline_get_scroll_bounds(state, visible_seconds, &min_window_start, &max_window_start);
+    float window_start = clamp_float(state->timeline_window_start_seconds, min_window_start, max_window_start);
     float window_end = window_start + visible_seconds;
 
     const int controls_height = TIMELINE_CONTROLS_HEIGHT;

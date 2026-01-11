@@ -2,6 +2,7 @@
 
 #include "config.h"
 #include "effects/effects_manager.h"
+#include "engine/engine_eq.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -54,6 +55,7 @@ struct EngineTrack {
     bool solo;
     bool active;
     char name[ENGINE_CLIP_NAME_MAX];
+    EngineEqState track_eq;
 };
 
 Engine* engine_create(const EngineRuntimeConfig* cfg);
@@ -128,6 +130,8 @@ bool    engine_track_set_solo(Engine* engine, int track_index, bool solo);
 bool    engine_track_set_muted(Engine* engine, int track_index, bool muted);
 bool    engine_track_set_gain(Engine* engine, int track_index, float gain);
 bool    engine_track_set_pan(Engine* engine, int track_index, float pan);
+bool    engine_set_master_eq_curve(Engine* engine, const EngineEqCurve* curve);
+bool    engine_set_track_eq_curve(Engine* engine, int track_index, const EngineEqCurve* curve);
 int     engine_get_spectrum_snapshot(const Engine* engine, float* out_bins, int max_bins);
 int     engine_get_track_spectrum_snapshot(const Engine* engine, int track_index, float* out_bins, int max_bins);
 void    engine_set_spectrum_target(Engine* engine, EngineSpectrumView view, int track_index, bool enabled);

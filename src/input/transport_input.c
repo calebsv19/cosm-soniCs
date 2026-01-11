@@ -5,6 +5,7 @@
 #include "ui/transport.h"
 #include "ui/timeline_view.h"
 #include "ui/layout.h"
+#include "input/timeline/timeline_geometry.h"
 #include "ui/effects_panel.h"
 #include "session/project_manager.h"
 #include "effects/param_utils.h"
@@ -85,11 +86,10 @@ static void clamp_timeline_window(AppState* state) {
                                  TIMELINE_MIN_VISIBLE_SECONDS,
                                  TIMELINE_MAX_VISIBLE_SECONDS);
     state->timeline_visible_seconds = visible;
-    float max_start = timeline_window_max_start(state);
-    float start = state->timeline_window_start_seconds;
-    if (start < 0.0f) start = 0.0f;
-    if (start > max_start) start = max_start;
-    state->timeline_window_start_seconds = start;
+    float min_start = 0.0f;
+    float max_start = 0.0f;
+    timeline_get_scroll_bounds(state, visible, &min_start, &max_start);
+    state->timeline_window_start_seconds = clamp_scalar(state->timeline_window_start_seconds, min_start, max_start);
 }
 
 static float playhead_seconds(const AppState* state) {
@@ -416,6 +416,7 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
             if (SDL_PointInRect(&p, &transport->window_track_rect) || SDL_PointInRect(&p, &transport->window_handle_rect)) {
                 manager->prev_window_slider_down = true;
                 transport->adjusting_window = true;
+                state->timeline_follow_override = true;
                 float t = (float)(p.x - transport->window_track_rect.x) / (float)transport->window_track_rect.w;
                 t = clamp_scalar(t, 0.0f, 1.0f);
                 float max_start = timeline_window_max_start(state);
@@ -602,6 +603,9 @@ void transport_input_follow_playhead(InputManager* manager, AppState* state) {
     if (manager && (manager->prev_window_slider_down || state->transport_ui.adjusting_window)) {
         return;
     }
+    if (state->timeline_follow_override) {
+        return;
+    }
     if (!engine_transport_is_playing(state->engine)) {
         return;
     }
@@ -618,11 +622,11 @@ void transport_input_follow_playhead(InputManager* manager, AppState* state) {
     float window_end = window_start + visible;
     float ph_sec = playhead_seconds(state);
     if (ph_sec < window_start || ph_sec >= window_end) {
-        float max_start = timeline_window_max_start(state);
         float new_start = ph_sec;
-        if (new_start < 0.0f) new_start = 0.0f;
-        if (new_start > max_start) new_start = max_start;
-        state->timeline_window_start_seconds = new_start;
+        float min_start = 0.0f;
+        float max_start = 0.0f;
+        timeline_get_scroll_bounds(state, visible, &min_start, &max_start);
+        state->timeline_window_start_seconds = clamp_scalar(new_start, min_start, max_start);
         clamp_timeline_window(state);
         transport_ui_sync(&state->transport_ui, state);
     }

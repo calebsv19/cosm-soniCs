@@ -259,13 +259,25 @@ void effects_panel_input_init(AppState* state) {
         return;
     }
     EffectsPanelViewMode preserved_view = state->effects_panel.view_mode;
+    EffectsPanelListDetailMode preserved_detail = state->effects_panel.list_detail_mode;
+    EffectsPanelEqDetailView preserved_eq_view = state->effects_panel.eq_detail.view_mode;
     bool preserved_restore = state->effects_panel.restore_pending;
     int preserved_selected = preserved_restore ? state->effects_panel.restore_selected_index
                                                : state->effects_panel.selected_slot_index;
     int preserved_open = preserved_restore ? state->effects_panel.restore_open_index
                                            : state->effects_panel.list_open_slot_index;
+    EqCurveState preserved_curve = state->effects_panel.eq_curve;
+    EqCurveState preserved_master = state->effects_panel.eq_curve_master;
+    EqCurveState* preserved_tracks = state->effects_panel.eq_curve_tracks;
+    int preserved_tracks_count = state->effects_panel.eq_curve_tracks_count;
     effects_panel_init(state);
     state->effects_panel.view_mode = preserved_view;
+    state->effects_panel.list_detail_mode = preserved_detail;
+    state->effects_panel.eq_detail.view_mode = preserved_eq_view;
+    state->effects_panel.eq_curve = preserved_curve;
+    state->effects_panel.eq_curve_master = preserved_master;
+    state->effects_panel.eq_curve_tracks = preserved_tracks;
+    state->effects_panel.eq_curve_tracks_count = preserved_tracks_count;
     if (preserved_selected >= 0 || preserved_open >= 0) {
         state->effects_panel.restore_pending = true;
         state->effects_panel.restore_selected_index = preserved_selected;

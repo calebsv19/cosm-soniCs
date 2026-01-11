@@ -7,7 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SESSION_DOCUMENT_VERSION 8
+#define SESSION_DOCUMENT_VERSION 10
 #define SESSION_PATH_MAX 512
 #define SESSION_NAME_MAX 128
 #define SESSION_FX_NAME_MAX 64
@@ -44,6 +44,24 @@ typedef struct {
     int view_mode;
     int selected_index;
     int open_index;
+    int list_detail_mode;
+    int eq_view_mode;
+    struct {
+        bool enabled;
+        float freq_hz;
+        float slope;
+    } low_cut;
+    struct {
+        bool enabled;
+        float freq_hz;
+        float slope;
+    } high_cut;
+    struct {
+        bool enabled;
+        float freq_hz;
+        float gain_db;
+        float q_width;
+    } bands[4];
 } SessionEffectsPanelState;
 
 typedef struct {
@@ -56,6 +74,25 @@ typedef struct {
     char directory[SESSION_PATH_MAX];
     int selected_index;
 } SessionLibraryState;
+
+typedef struct {
+    bool enabled;
+    float freq_hz;
+    float slope;
+} SessionEqCut;
+
+typedef struct {
+    bool enabled;
+    float freq_hz;
+    float gain_db;
+    float q_width;
+} SessionEqBand;
+
+typedef struct {
+    SessionEqCut low_cut;
+    SessionEqCut high_cut;
+    SessionEqBand bands[4];
+} SessionEqCurve;
 
 typedef struct SessionFxInstance {
     FxTypeId type;
@@ -73,6 +110,7 @@ typedef struct {
     float pan;
     bool muted;
     bool solo;
+    SessionEqCurve eq;
     int clip_count;
     SessionClip* clips;
     SessionFxInstance* fx;

@@ -54,9 +54,8 @@ typedef struct {
     SDL_Rect overlay_scrollbar_track;
     SDL_Rect overlay_scrollbar_thumb;
 } EffectsPanelLayout;
-
-#define FX_PANEL_HEADER_HEIGHT 26
-#define FX_PANEL_HEADER_BUTTON_HEIGHT 20
+#define FX_PANEL_HEADER_HEIGHT 22
+#define FX_PANEL_HEADER_BUTTON_HEIGHT 16
 #define FX_PANEL_HEADER_BUTTON_GAP 6
 #define FX_PANEL_HEADER_BUTTON_PAD_X 6
 #define FX_PANEL_HEADER_BUTTON_PAD_Y 2
@@ -69,19 +68,21 @@ typedef struct {
 #define FX_PANEL_LIST_ROW_HEIGHT 22
 #define FX_PANEL_LIST_ROW_GAP 4
 #define FX_PANEL_LIST_PAD 8
-#define FX_PANEL_SNAPSHOT_EQ_HEIGHT 46
+#define FX_PANEL_SNAPSHOT_EQ_HEIGHT 64
 #define FX_PANEL_SNAPSHOT_LABEL_HEIGHT 14
 #define FX_PANEL_SNAPSHOT_SLIDER_HEIGHT 6
 #define FX_PANEL_SNAPSHOT_SLIDER_HIT_HEIGHT 14
-#define FX_PANEL_SNAPSHOT_GAP 8
+#define FX_PANEL_SNAPSHOT_GAP 4
 #define FX_PANEL_SNAPSHOT_LIST_GAP 10
-#define FX_PANEL_SNAPSHOT_FOOTER_HEIGHT 26
+#define FX_PANEL_SNAPSHOT_FOOTER_HEIGHT 18
 #define FX_PANEL_SNAPSHOT_BUTTON_GAP 6
 #define FX_PANEL_DROPDOWN_ITEM_HEIGHT 22
 
 void effects_panel_init(struct AppState* state);
 void effects_panel_refresh_catalog(struct AppState* state);
 void effects_panel_sync_from_engine(struct AppState* state);
+void effects_panel_ensure_eq_curve_tracks(struct AppState* state, int track_count);
+void effects_panel_set_eq_detail_view(struct AppState* state, int view_mode);
 void effects_panel_compute_layout(const struct AppState* state, EffectsPanelLayout* layout);
 void effects_panel_render(SDL_Renderer* renderer, const struct AppState* state, const EffectsPanelLayout* layout);
 void effects_panel_render_list(SDL_Renderer* renderer, const struct AppState* state, const EffectsPanelLayout* layout);

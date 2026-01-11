@@ -13,6 +13,7 @@
 #include <SDL2/SDL.h>
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 
 static void render_single_pane(SDL_Renderer* renderer, const Pane* pane) {
@@ -22,16 +23,25 @@ static void render_single_pane(SDL_Renderer* renderer, const Pane* pane) {
     SDL_Color fill = pane->fill_color;
     SDL_Color border = pane->border_color;
     if (pane->highlighted) {
-        const int boost = 18;
+        int boost = 18;
+        if (pane->title &&
+            (strcmp(pane->title, "LIBRARY") == 0 || strcmp(pane->title, "CLIP INSPECTOR") == 0)) {
+            boost = 6;
+            border.r = 90;
+            border.g = 120;
+            border.b = 170;
+        }
         int r = fill.r + boost;
         int g = fill.g + boost;
         int b = fill.b + boost;
         fill.r = (Uint8)(r > 255 ? 255 : r);
         fill.g = (Uint8)(g > 255 ? 255 : g);
         fill.b = (Uint8)(b > 255 ? 255 : b);
-        border.r = 120;
-        border.g = 160;
-        border.b = 220;
+        if (boost == 18) {
+            border.r = 120;
+            border.g = 160;
+            border.b = 220;
+        }
     }
 
     SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);

@@ -12,6 +12,21 @@ static SessionTrack* session_document_append_track(SessionDocument* doc) {
     doc->tracks = resized;
     SessionTrack* track = &doc->tracks[new_count - 1];
     memset(track, 0, sizeof(*track));
+    track->eq.low_cut.enabled = false;
+    track->eq.low_cut.freq_hz = 80.0f;
+    track->eq.low_cut.slope = 12.0f;
+    track->eq.high_cut.enabled = false;
+    track->eq.high_cut.freq_hz = 12000.0f;
+    track->eq.high_cut.slope = 12.0f;
+    for (int i = 0; i < 4; ++i) {
+        track->eq.bands[i].enabled = true;
+        track->eq.bands[i].gain_db = 0.0f;
+        track->eq.bands[i].q_width = 1.0f;
+    }
+    track->eq.bands[0].freq_hz = 120.0f;
+    track->eq.bands[1].freq_hz = 500.0f;
+    track->eq.bands[2].freq_hz = 2000.0f;
+    track->eq.bands[3].freq_hz = 8000.0f;
     doc->track_count = new_count;
     return track;
 }
@@ -87,6 +102,126 @@ static bool parse_session_track(JsonReader* r, SessionTrack* track) {
             if (!json_parse_bool(r, &track->solo)) {
                 return false;
             }
+        } else if (strcmp(key, "eq_low_cut_enabled") == 0) {
+            if (!json_parse_bool(r, &track->eq.low_cut.enabled)) {
+                return false;
+            }
+        } else if (strcmp(key, "eq_low_cut_freq") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            track->eq.low_cut.freq_hz = (float)val;
+        } else if (strcmp(key, "eq_low_cut_slope") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            track->eq.low_cut.slope = (float)val;
+        } else if (strcmp(key, "eq_high_cut_enabled") == 0) {
+            if (!json_parse_bool(r, &track->eq.high_cut.enabled)) {
+                return false;
+            }
+        } else if (strcmp(key, "eq_high_cut_freq") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            track->eq.high_cut.freq_hz = (float)val;
+        } else if (strcmp(key, "eq_high_cut_slope") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            track->eq.high_cut.slope = (float)val;
+        } else if (strcmp(key, "eq_band_0_enabled") == 0) {
+            if (!json_parse_bool(r, &track->eq.bands[0].enabled)) {
+                return false;
+            }
+        } else if (strcmp(key, "eq_band_0_freq") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            track->eq.bands[0].freq_hz = (float)val;
+        } else if (strcmp(key, "eq_band_0_gain") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            track->eq.bands[0].gain_db = (float)val;
+        } else if (strcmp(key, "eq_band_0_q") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            track->eq.bands[0].q_width = (float)val;
+        } else if (strcmp(key, "eq_band_1_enabled") == 0) {
+            if (!json_parse_bool(r, &track->eq.bands[1].enabled)) {
+                return false;
+            }
+        } else if (strcmp(key, "eq_band_1_freq") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            track->eq.bands[1].freq_hz = (float)val;
+        } else if (strcmp(key, "eq_band_1_gain") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            track->eq.bands[1].gain_db = (float)val;
+        } else if (strcmp(key, "eq_band_1_q") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            track->eq.bands[1].q_width = (float)val;
+        } else if (strcmp(key, "eq_band_2_enabled") == 0) {
+            if (!json_parse_bool(r, &track->eq.bands[2].enabled)) {
+                return false;
+            }
+        } else if (strcmp(key, "eq_band_2_freq") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            track->eq.bands[2].freq_hz = (float)val;
+        } else if (strcmp(key, "eq_band_2_gain") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            track->eq.bands[2].gain_db = (float)val;
+        } else if (strcmp(key, "eq_band_2_q") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            track->eq.bands[2].q_width = (float)val;
+        } else if (strcmp(key, "eq_band_3_enabled") == 0) {
+            if (!json_parse_bool(r, &track->eq.bands[3].enabled)) {
+                return false;
+            }
+        } else if (strcmp(key, "eq_band_3_freq") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            track->eq.bands[3].freq_hz = (float)val;
+        } else if (strcmp(key, "eq_band_3_gain") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            track->eq.bands[3].gain_db = (float)val;
+        } else if (strcmp(key, "eq_band_3_q") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            track->eq.bands[3].q_width = (float)val;
         } else if (strcmp(key, "clips") == 0) {
             if (!json_expect(r, '[')) {
                 return false;
@@ -929,6 +1064,138 @@ bool parse_session_document(JsonReader* r, SessionDocument* doc) {
                         return false;
                     }
                     doc->effects_panel.open_index = (int)val;
+                } else if (strcmp(panel_key, "list_detail_mode") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.list_detail_mode = (int)val;
+                } else if (strcmp(panel_key, "eq_view_mode") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.eq_view_mode = (int)val;
+                } else if (strcmp(panel_key, "low_cut_enabled") == 0) {
+                    if (!json_parse_bool(r, &doc->effects_panel.low_cut.enabled)) {
+                        return false;
+                    }
+                } else if (strcmp(panel_key, "low_cut_freq") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.low_cut.freq_hz = (float)val;
+                } else if (strcmp(panel_key, "low_cut_slope") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.low_cut.slope = (float)val;
+                } else if (strcmp(panel_key, "high_cut_enabled") == 0) {
+                    if (!json_parse_bool(r, &doc->effects_panel.high_cut.enabled)) {
+                        return false;
+                    }
+                } else if (strcmp(panel_key, "high_cut_freq") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.high_cut.freq_hz = (float)val;
+                } else if (strcmp(panel_key, "high_cut_slope") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.high_cut.slope = (float)val;
+                } else if (strcmp(panel_key, "band_0_enabled") == 0) {
+                    if (!json_parse_bool(r, &doc->effects_panel.bands[0].enabled)) {
+                        return false;
+                    }
+                } else if (strcmp(panel_key, "band_0_freq") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.bands[0].freq_hz = (float)val;
+                } else if (strcmp(panel_key, "band_0_gain") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.bands[0].gain_db = (float)val;
+                } else if (strcmp(panel_key, "band_0_q") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.bands[0].q_width = (float)val;
+                } else if (strcmp(panel_key, "band_1_enabled") == 0) {
+                    if (!json_parse_bool(r, &doc->effects_panel.bands[1].enabled)) {
+                        return false;
+                    }
+                } else if (strcmp(panel_key, "band_1_freq") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.bands[1].freq_hz = (float)val;
+                } else if (strcmp(panel_key, "band_1_gain") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.bands[1].gain_db = (float)val;
+                } else if (strcmp(panel_key, "band_1_q") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.bands[1].q_width = (float)val;
+                } else if (strcmp(panel_key, "band_2_enabled") == 0) {
+                    if (!json_parse_bool(r, &doc->effects_panel.bands[2].enabled)) {
+                        return false;
+                    }
+                } else if (strcmp(panel_key, "band_2_freq") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.bands[2].freq_hz = (float)val;
+                } else if (strcmp(panel_key, "band_2_gain") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.bands[2].gain_db = (float)val;
+                } else if (strcmp(panel_key, "band_2_q") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.bands[2].q_width = (float)val;
+                } else if (strcmp(panel_key, "band_3_enabled") == 0) {
+                    if (!json_parse_bool(r, &doc->effects_panel.bands[3].enabled)) {
+                        return false;
+                    }
+                } else if (strcmp(panel_key, "band_3_freq") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.bands[3].freq_hz = (float)val;
+                } else if (strcmp(panel_key, "band_3_gain") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.bands[3].gain_db = (float)val;
+                } else if (strcmp(panel_key, "band_3_q") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.bands[3].q_width = (float)val;
                 } else {
                     if (!json_skip_value(r)) {
                         return false;

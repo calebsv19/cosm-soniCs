@@ -1,6 +1,7 @@
 #include "session.h"
 #include "app_state.h"
 #include "engine/engine.h"
+#include "ui/effects_panel.h"
 #include "ui/library_browser.h"
 #include "ui/timeline_view.h"
 #include "time/tempo.h"
@@ -20,6 +21,40 @@ static float clamp_float(float value, float min, float max) {
     if (value < min) return min;
     if (value > max) return max;
     return value;
+}
+
+static void eq_curve_from_session(EqCurveState* dst, const SessionEqCurve* src) {
+    if (!dst || !src) {
+        return;
+    }
+    dst->low_cut.enabled = src->low_cut.enabled;
+    dst->low_cut.freq_hz = clamp_float(src->low_cut.freq_hz, 20.0f, 20000.0f);
+    dst->low_cut.slope = src->low_cut.slope;
+    dst->high_cut.enabled = src->high_cut.enabled;
+    dst->high_cut.freq_hz = clamp_float(src->high_cut.freq_hz, 20.0f, 20000.0f);
+    dst->high_cut.slope = src->high_cut.slope;
+    for (int i = 0; i < 4; ++i) {
+        dst->bands[i].enabled = src->bands[i].enabled;
+        dst->bands[i].freq_hz = clamp_float(src->bands[i].freq_hz, 20.0f, 20000.0f);
+        dst->bands[i].gain_db = clamp_float(src->bands[i].gain_db, -20.0f, 20.0f);
+        dst->bands[i].q_width = clamp_float(src->bands[i].q_width, 0.1f, 4.0f);
+    }
+}
+
+static void eq_curve_to_engine(const EqCurveState* src, EngineEqCurve* dst) {
+    if (!src || !dst) {
+        return;
+    }
+    dst->low_cut.enabled = src->low_cut.enabled;
+    dst->low_cut.freq_hz = src->low_cut.freq_hz;
+    dst->high_cut.enabled = src->high_cut.enabled;
+    dst->high_cut.freq_hz = src->high_cut.freq_hz;
+    for (int i = 0; i < ENGINE_EQ_BANDS; ++i) {
+        dst->bands[i].enabled = src->bands[i].enabled;
+        dst->bands[i].freq_hz = src->bands[i].freq_hz;
+        dst->bands[i].gain_db = src->bands[i].gain_db;
+        dst->bands[i].q_width = src->bands[i].q_width;
+    }
 }
 
 static float compute_total_seconds(const AppState* state) {
@@ -111,11 +146,58 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     state->effects_panel.view_mode = doc->effects_panel.view_mode == FX_PANEL_VIEW_LIST
                                          ? FX_PANEL_VIEW_LIST
                                          : FX_PANEL_VIEW_STACK;
+    state->effects_panel.list_detail_mode =
+        doc->effects_panel.list_detail_mode == FX_LIST_DETAIL_EQ ? FX_LIST_DETAIL_EQ : FX_LIST_DETAIL_EFFECT;
+    state->effects_panel.eq_detail.view_mode =
+        doc->effects_panel.eq_view_mode == EQ_DETAIL_VIEW_TRACK ? EQ_DETAIL_VIEW_TRACK : EQ_DETAIL_VIEW_MASTER;
     state->effects_panel.selected_slot_index = -1;
     state->effects_panel.list_open_slot_index = -1;
     state->effects_panel.restore_selected_index = doc->effects_panel.selected_index;
     state->effects_panel.restore_open_index = doc->effects_panel.open_index;
     state->effects_panel.restore_pending = true;
+    state->effects_panel.eq_curve.selected_band = -1;
+    state->effects_panel.eq_curve.selected_handle = EQ_CURVE_HANDLE_NONE;
+    state->effects_panel.eq_curve.hover_band = -1;
+    state->effects_panel.eq_curve.hover_handle = EQ_CURVE_HANDLE_NONE;
+    state->effects_panel.eq_curve.hover_toggle_band = -1;
+    state->effects_panel.eq_curve.hover_toggle_low = false;
+    state->effects_panel.eq_curve.hover_toggle_high = false;
+    state->effects_panel.eq_curve_master.selected_band = -1;
+    state->effects_panel.eq_curve_master.selected_handle = EQ_CURVE_HANDLE_NONE;
+    state->effects_panel.eq_curve_master.hover_band = -1;
+    state->effects_panel.eq_curve_master.hover_handle = EQ_CURVE_HANDLE_NONE;
+    state->effects_panel.eq_curve_master.hover_toggle_band = -1;
+    state->effects_panel.eq_curve_master.hover_toggle_low = false;
+    state->effects_panel.eq_curve_master.hover_toggle_high = false;
+    state->effects_panel.eq_curve_master.low_cut.enabled = doc->effects_panel.low_cut.enabled;
+    state->effects_panel.eq_curve_master.low_cut.freq_hz =
+        clamp_float(doc->effects_panel.low_cut.freq_hz, 20.0f, 20000.0f);
+    state->effects_panel.eq_curve_master.low_cut.slope = doc->effects_panel.low_cut.slope;
+    state->effects_panel.eq_curve_master.high_cut.enabled = doc->effects_panel.high_cut.enabled;
+    state->effects_panel.eq_curve_master.high_cut.freq_hz =
+        clamp_float(doc->effects_panel.high_cut.freq_hz, 20.0f, 20000.0f);
+    state->effects_panel.eq_curve_master.high_cut.slope = doc->effects_panel.high_cut.slope;
+    if (state->effects_panel.eq_curve_master.low_cut.enabled &&
+        state->effects_panel.eq_curve_master.high_cut.enabled &&
+        state->effects_panel.eq_curve_master.low_cut.freq_hz > state->effects_panel.eq_curve_master.high_cut.freq_hz) {
+        state->effects_panel.eq_curve_master.high_cut.freq_hz =
+            clamp_float(state->effects_panel.eq_curve_master.low_cut.freq_hz * 1.02f, 20.0f, 20000.0f);
+    }
+    for (int i = 0; i < 4; ++i) {
+        state->effects_panel.eq_curve_master.bands[i].enabled = doc->effects_panel.bands[i].enabled;
+        state->effects_panel.eq_curve_master.bands[i].freq_hz =
+            clamp_float(doc->effects_panel.bands[i].freq_hz, 20.0f, 20000.0f);
+        state->effects_panel.eq_curve_master.bands[i].gain_db =
+            clamp_float(doc->effects_panel.bands[i].gain_db, -20.0f, 20.0f);
+        state->effects_panel.eq_curve_master.bands[i].q_width =
+            clamp_float(doc->effects_panel.bands[i].q_width, 0.1f, 4.0f);
+    }
+    state->effects_panel.eq_curve = state->effects_panel.eq_curve_master;
+    if (state->engine) {
+        EngineEqCurve curve;
+        eq_curve_to_engine(&state->effects_panel.eq_curve_master, &curve);
+        engine_set_master_eq_curve(state->engine, &curve);
+    }
 
     state->layout_runtime.transport_ratio = clamp_ratio(doc->layout.transport_ratio);
     state->layout_runtime.library_ratio = clamp_ratio(doc->layout.library_ratio);
@@ -163,6 +245,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
         }
     }
 
+    effects_panel_ensure_eq_curve_tracks(state, doc->track_count);
     for (int t = 0; t < doc->track_count; ++t) {
         const SessionTrack* track_doc = &doc->tracks[t];
         int track_index = engine_add_track(state->engine);
@@ -175,6 +258,14 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
         engine_track_set_pan(state->engine, track_index, track_doc->pan);
         engine_track_set_muted(state->engine, track_index, track_doc->muted);
         engine_track_set_solo(state->engine, track_index, track_doc->solo);
+        if (state->effects_panel.eq_curve_tracks && t < state->effects_panel.eq_curve_tracks_count) {
+            eq_curve_from_session(&state->effects_panel.eq_curve_tracks[t], &track_doc->eq);
+            if (state->engine) {
+                EngineEqCurve curve;
+                eq_curve_to_engine(&state->effects_panel.eq_curve_tracks[t], &curve);
+                engine_set_track_eq_curve(state->engine, track_index, &curve);
+            }
+        }
 
         for (int c = 0; c < track_doc->clip_count; ++c) {
             const SessionClip* clip_doc = &track_doc->clips[c];

@@ -17,6 +17,7 @@ void engine_track_init(EngineTrack* track) {
     track->solo = false;
     track->active = true;
     track->name[0] = '\0';
+    memset(&track->track_eq, 0, sizeof(track->track_eq));
 }
 
 void engine_track_clear(Engine* engine, EngineTrack* track) {
@@ -36,6 +37,7 @@ void engine_track_clear(Engine* engine, EngineTrack* track) {
     track->solo = false;
     track->active = true;
     track->name[0] = '\0';
+    engine_eq_free(&track->track_eq);
 }
 
 bool engine_ensure_track_capacity(Engine* engine, int required_tracks) {
@@ -56,6 +58,7 @@ bool engine_ensure_track_capacity(Engine* engine, int required_tracks) {
     engine->tracks = resized;
     for (int i = engine->track_capacity; i < new_capacity; ++i) {
         engine_track_init(&resized[i]);
+        engine_eq_init(&resized[i].track_eq, (float)engine->config.sample_rate, engine_graph_get_channels(engine->graph));
     }
     if (engine->track_spectra) {
         if (engine->spectrum_mutex) {
@@ -93,6 +96,9 @@ EngineTrack* engine_get_track_mutable(Engine* engine, int track_index) {
     }
     while (engine->track_count <= track_index) {
         engine_track_init(&engine->tracks[engine->track_count]);
+        engine_eq_init(&engine->tracks[engine->track_count].track_eq,
+                       (float)engine->config.sample_rate,
+                       engine_graph_get_channels(engine->graph));
         engine->tracks[engine->track_count].active = false;
         ++engine->track_count;
     }
@@ -241,4 +247,50 @@ bool engine_track_set_pan(Engine* engine, int track_index, float pan) {
     track->pan = pan;
     engine_rebuild_sources(engine);
     return true;
+}
+
+static bool engine_apply_eq_curve(Engine* engine, int target, int track_index, const EngineEqCurve* curve) {
+    if (!engine || !curve) {
+        return false;
+    }
+    if (!engine_is_running(engine)) {
+        if (target == 0) {
+            if (engine->eq_mutex) {
+                SDL_LockMutex(engine->eq_mutex);
+            }
+            engine_eq_set_curve(&engine->master_eq, curve);
+            if (engine->eq_mutex) {
+                SDL_UnlockMutex(engine->eq_mutex);
+            }
+            return true;
+        }
+        if (track_index >= 0 && track_index < engine->track_count) {
+            if (engine->eq_mutex) {
+                SDL_LockMutex(engine->eq_mutex);
+            }
+            engine_eq_set_curve(&engine->tracks[track_index].track_eq, curve);
+            if (engine->eq_mutex) {
+                SDL_UnlockMutex(engine->eq_mutex);
+            }
+            return true;
+        }
+        return false;
+    }
+    EngineCommand cmd = {0};
+    cmd.type = ENGINE_CMD_SET_EQ;
+    cmd.payload.eq.target = target;
+    cmd.payload.eq.track_index = track_index;
+    cmd.payload.eq.curve = *curve;
+    return engine_post_command(engine, &cmd);
+}
+
+bool engine_set_master_eq_curve(Engine* engine, const EngineEqCurve* curve) {
+    return engine_apply_eq_curve(engine, 0, -1, curve);
+}
+
+bool engine_set_track_eq_curve(Engine* engine, int track_index, const EngineEqCurve* curve) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    return engine_apply_eq_curve(engine, 1, track_index, curve);
 }

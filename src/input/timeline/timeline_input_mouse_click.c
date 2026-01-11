@@ -7,6 +7,7 @@
 #include "input/inspector_input.h"
 #include "input/timeline/timeline_geometry.h"
 #include "input/timeline/timeline_input_mouse_drag.h"
+#include "input/timeline_snap.h"
 #include "input/timeline_selection.h"
 #include "input/timeline_input.h"
 #include "ui/layout.h"
@@ -330,6 +331,7 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
             float seconds = timeline_x_to_seconds(&geom, state->mouse_x);
             float window_min = geom.window_start_seconds;
             float window_max = geom.window_start_seconds + geom.visible_seconds;
+            if (window_min < 0.0f) window_min = 0.0f;
             if (seconds < window_min) seconds = window_min;
             if (seconds > window_max) seconds = window_max;
             float snap_threshold = 0.05f;
@@ -471,34 +473,12 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
             float seconds = timeline_x_to_seconds(&geom, state->mouse_x);
             float window_min = geom.window_start_seconds;
             float window_max = geom.window_start_seconds + geom.visible_seconds;
+            if (window_min < 0.0f) window_min = 0.0f;
             seconds = clamp_scalar(seconds, window_min, window_max);
-            if (state->timeline_view_in_beats && !alt_held && state->tempo.bpm > 0.0f && state->engine) {
-                const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
-                int sr = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
-                if (sr > 0) {
-                    TempoState tempo = state->tempo;
-                    tempo.sample_rate = sr;
-                    tempo_state_clamp(&tempo);
-                    double visible_beats = tempo_seconds_to_beats(state->timeline_visible_seconds, &tempo);
-                    double subdiv = 1.0;
-                    if (visible_beats <= 2.0) {
-                        subdiv = 1.0 / 16.0;
-                    } else if (visible_beats <= 4.0) {
-                        subdiv = 1.0 / 8.0;
-                    } else if (visible_beats <= 8.0) {
-                        subdiv = 1.0 / 4.0;
-                    } else if (visible_beats <= 16.0) {
-                        subdiv = 1.0 / 2.0;
-                    } else {
-                        subdiv = 1.0;
-                    }
-                    double beat_pos = tempo_seconds_to_beats((double)seconds, &tempo);
-                    double snapped_beats = floor(beat_pos / subdiv + 0.5) * subdiv;
-                    double snapped_sec = tempo_beats_to_seconds(snapped_beats, &tempo);
-                    if (snapped_sec < window_min) snapped_sec = window_min;
-                    if (snapped_sec > window_max) snapped_sec = window_max;
-                    seconds = (float)snapped_sec;
-                }
+            if (!alt_held) {
+                seconds = timeline_snap_seconds_to_grid(state, seconds, geom.visible_seconds);
+                if (seconds < window_min) seconds = window_min;
+                if (seconds > window_max) seconds = window_max;
             }
             uint64_t frame = (uint64_t)llroundf(seconds * (float)sample_rate);
             engine_transport_seek(state->engine, frame);

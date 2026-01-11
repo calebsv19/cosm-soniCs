@@ -20,6 +20,60 @@ static void copy_string(char* dst, size_t dst_len, const char* src) {
     dst[dst_len - 1] = '\0';
 }
 
+static void session_eq_curve_set_defaults(SessionEqCurve* curve) {
+    if (!curve) {
+        return;
+    }
+    curve->low_cut.enabled = false;
+    curve->low_cut.freq_hz = 80.0f;
+    curve->low_cut.slope = 12.0f;
+    curve->high_cut.enabled = false;
+    curve->high_cut.freq_hz = 12000.0f;
+    curve->high_cut.slope = 12.0f;
+    for (int i = 0; i < 4; ++i) {
+        curve->bands[i].enabled = true;
+        curve->bands[i].gain_db = 0.0f;
+        curve->bands[i].q_width = 1.0f;
+    }
+    curve->bands[0].freq_hz = 120.0f;
+    curve->bands[1].freq_hz = 500.0f;
+    curve->bands[2].freq_hz = 2000.0f;
+    curve->bands[3].freq_hz = 8000.0f;
+}
+
+static void session_eq_curve_from_state(SessionEqCurve* dst, const EqCurveState* src) {
+    if (!dst || !src) {
+        return;
+    }
+    dst->low_cut.enabled = src->low_cut.enabled;
+    dst->low_cut.freq_hz = src->low_cut.freq_hz;
+    dst->low_cut.slope = src->low_cut.slope;
+    dst->high_cut.enabled = src->high_cut.enabled;
+    dst->high_cut.freq_hz = src->high_cut.freq_hz;
+    dst->high_cut.slope = src->high_cut.slope;
+    for (int i = 0; i < 4; ++i) {
+        dst->bands[i].enabled = src->bands[i].enabled;
+        dst->bands[i].freq_hz = src->bands[i].freq_hz;
+        dst->bands[i].gain_db = src->bands[i].gain_db;
+        dst->bands[i].q_width = src->bands[i].q_width;
+    }
+}
+
+static void session_store_active_eq_curve(EffectsPanelState* panel) {
+    if (!panel) {
+        return;
+    }
+    if (panel->eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK &&
+        panel->target == FX_PANEL_TARGET_TRACK &&
+        panel->target_track_index >= 0 &&
+        panel->target_track_index < panel->eq_curve_tracks_count &&
+        panel->eq_curve_tracks) {
+        panel->eq_curve_tracks[panel->target_track_index] = panel->eq_curve;
+    } else {
+        panel->eq_curve_master = panel->eq_curve;
+    }
+}
+
 void session_document_init(SessionDocument* doc) {
     if (!doc) {
         return;
@@ -35,6 +89,23 @@ void session_document_init(SessionDocument* doc) {
     doc->effects_panel.view_mode = 0;
     doc->effects_panel.selected_index = -1;
     doc->effects_panel.open_index = -1;
+    doc->effects_panel.list_detail_mode = 0;
+    doc->effects_panel.eq_view_mode = 0;
+    doc->effects_panel.low_cut.enabled = false;
+    doc->effects_panel.low_cut.freq_hz = 80.0f;
+    doc->effects_panel.low_cut.slope = 12.0f;
+    doc->effects_panel.high_cut.enabled = false;
+    doc->effects_panel.high_cut.freq_hz = 12000.0f;
+    doc->effects_panel.high_cut.slope = 12.0f;
+    for (int i = 0; i < 4; ++i) {
+        doc->effects_panel.bands[i].enabled = true;
+        doc->effects_panel.bands[i].gain_db = 0.0f;
+        doc->effects_panel.bands[i].q_width = 1.0f;
+    }
+    doc->effects_panel.bands[0].freq_hz = 120.0f;
+    doc->effects_panel.bands[1].freq_hz = 500.0f;
+    doc->effects_panel.bands[2].freq_hz = 2000.0f;
+    doc->effects_panel.bands[3].freq_hz = 8000.0f;
     doc->master_fx = NULL;
     doc->master_fx_count = 0;
 }
@@ -127,9 +198,26 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
     out_doc->timeline.view_in_beats = state->timeline_view_in_beats;
     out_doc->timeline.follow_mode = (int)state->timeline_follow_mode;
     out_doc->timeline.playhead_frame = out_doc->transport_frame;
-    out_doc->effects_panel.view_mode = (int)state->effects_panel.view_mode;
-    out_doc->effects_panel.selected_index = state->effects_panel.selected_slot_index;
-    out_doc->effects_panel.open_index = state->effects_panel.list_open_slot_index;
+    EffectsPanelState* panel = &((AppState*)state)->effects_panel;
+    session_store_active_eq_curve(panel);
+    const EqCurveState* master_curve = &panel->eq_curve_master;
+    out_doc->effects_panel.view_mode = (int)panel->view_mode;
+    out_doc->effects_panel.selected_index = panel->selected_slot_index;
+    out_doc->effects_panel.open_index = panel->list_open_slot_index;
+    out_doc->effects_panel.list_detail_mode = (int)panel->list_detail_mode;
+    out_doc->effects_panel.eq_view_mode = (int)panel->eq_detail.view_mode;
+    out_doc->effects_panel.low_cut.enabled = master_curve->low_cut.enabled;
+    out_doc->effects_panel.low_cut.freq_hz = master_curve->low_cut.freq_hz;
+    out_doc->effects_panel.low_cut.slope = master_curve->low_cut.slope;
+    out_doc->effects_panel.high_cut.enabled = master_curve->high_cut.enabled;
+    out_doc->effects_panel.high_cut.freq_hz = master_curve->high_cut.freq_hz;
+    out_doc->effects_panel.high_cut.slope = master_curve->high_cut.slope;
+    for (int i = 0; i < 4; ++i) {
+        out_doc->effects_panel.bands[i].enabled = master_curve->bands[i].enabled;
+        out_doc->effects_panel.bands[i].freq_hz = master_curve->bands[i].freq_hz;
+        out_doc->effects_panel.bands[i].gain_db = master_curve->bands[i].gain_db;
+        out_doc->effects_panel.bands[i].q_width = master_curve->bands[i].q_width;
+    }
 
     out_doc->layout.transport_ratio = state->layout_runtime.transport_ratio;
     out_doc->layout.library_ratio = state->layout_runtime.library_ratio;
@@ -159,6 +247,14 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
         dst_track->pan = src_track->pan;
         dst_track->muted = src_track->muted;
         dst_track->solo = src_track->solo;
+        session_eq_curve_set_defaults(&dst_track->eq);
+        if (panel->target == FX_PANEL_TARGET_TRACK && panel->target_track_index == t) {
+            session_eq_curve_from_state(&dst_track->eq, &panel->eq_curve);
+        } else if (panel->eq_curve_tracks && t < panel->eq_curve_tracks_count) {
+            session_eq_curve_from_state(&dst_track->eq, &panel->eq_curve_tracks[t]);
+        } else {
+            session_eq_curve_from_state(&dst_track->eq, master_curve);
+        }
         dst_track->fx = NULL;
         dst_track->fx_count = 0;
 

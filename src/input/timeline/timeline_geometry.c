@@ -48,6 +48,24 @@ float timeline_total_seconds(const AppState* state) {
     return (float)max_frames / (float)sample_rate;
 }
 
+void timeline_get_scroll_bounds(const AppState* state, float visible_seconds, float* out_min_start, float* out_max_start) {
+    if (!out_min_start || !out_max_start) {
+        return;
+    }
+    float total_seconds = timeline_total_seconds(state);
+    float padding = visible_seconds * 0.5f;
+    if (padding < 0.5f) {
+        padding = 0.5f;
+    }
+    float min_start = -padding;
+    float max_start = (total_seconds > 0.0f ? total_seconds - visible_seconds : 0.0f) + padding;
+    if (max_start < min_start) {
+        max_start = min_start;
+    }
+    *out_min_start = min_start;
+    *out_max_start = max_start;
+}
+
 bool timeline_compute_geometry(const AppState* state, const Pane* timeline, TimelineGeometry* out_geom) {
     if (!state || !timeline || !out_geom) {
         return false;
@@ -72,14 +90,10 @@ bool timeline_compute_geometry(const AppState* state, const Pane* timeline, Time
     if (geom.content_width <= 0) {
         return false;
     }
-    float total_seconds = timeline_total_seconds(state);
-    float max_start = total_seconds > geom.visible_seconds ? total_seconds - geom.visible_seconds : 0.0f;
-    if (max_start < 0.0f) {
-        max_start = 0.0f;
-    }
-    float window_start = state->timeline_window_start_seconds;
-    if (window_start < 0.0f) window_start = 0.0f;
-    if (window_start > max_start) window_start = max_start;
+    float min_start = 0.0f;
+    float max_start = 0.0f;
+    timeline_get_scroll_bounds(state, geom.visible_seconds, &min_start, &max_start);
+    float window_start = clamp_scalar(state->timeline_window_start_seconds, min_start, max_start);
     geom.window_start_seconds = window_start;
     geom.pixels_per_second = geom.visible_seconds > 0.0f
                                  ? (float)geom.content_width / geom.visible_seconds

@@ -32,9 +32,10 @@ static void timeline_zoom_around_seconds(AppState* state, float anchor_seconds, 
     }
     state->timeline_visible_seconds = new_visible;
     float new_start = anchor_seconds - ratio * new_visible;
-    float total_seconds = timeline_total_seconds(state);
-    float max_start = total_seconds > new_visible ? total_seconds - new_visible : 0.0f;
-    state->timeline_window_start_seconds = clamp_scalar(new_start, 0.0f, max_start);
+    float min_start = 0.0f;
+    float max_start = 0.0f;
+    timeline_get_scroll_bounds(state, new_visible, &min_start, &max_start);
+    state->timeline_window_start_seconds = clamp_scalar(new_start, min_start, max_start);
 }
 
 bool timeline_input_mouse_handle_scroll(InputManager* manager, AppState* state, const SDL_Event* event) {
@@ -86,6 +87,7 @@ bool timeline_input_mouse_handle_scroll(InputManager* manager, AppState* state, 
         if (sample_rate <= 0) {
             return true;
         }
+        float total_seconds = timeline_total_seconds(state);
         float ph_sec = (float)((double)engine_get_transport_frame(state->engine) / (double)sample_rate);
         float rel_sec = ph_sec - geom.window_start_seconds;
         float padding_px = 50.0f;
@@ -96,8 +98,9 @@ bool timeline_input_mouse_handle_scroll(InputManager* manager, AppState* state, 
         }
         float rel_target = rel_sec - delta_sec;
         float window_start = geom.window_start_seconds;
-        float total_seconds = timeline_total_seconds(state);
-        float max_start = total_seconds > geom.visible_seconds ? total_seconds - geom.visible_seconds : 0.0f;
+        float min_start = 0.0f;
+        float max_start = 0.0f;
+        timeline_get_scroll_bounds(state, geom.visible_seconds, &min_start, &max_start);
 
         if (rel_target < pad_sec) {
             float past = pad_sec - rel_target;
@@ -108,9 +111,7 @@ bool timeline_input_mouse_handle_scroll(InputManager* manager, AppState* state, 
         } else {
             ph_sec -= delta_sec;
         }
-        if (window_start < 0.0f) window_start = 0.0f;
-        if (window_start > max_start) window_start = max_start;
-        state->timeline_window_start_seconds = window_start;
+        state->timeline_window_start_seconds = clamp_scalar(window_start, min_start, max_start);
 
         if (rel_target < pad_sec) {
             ph_sec = window_start + pad_sec;
@@ -128,11 +129,11 @@ bool timeline_input_mouse_handle_scroll(InputManager* manager, AppState* state, 
         }
     } else {
         float window_start = geom.window_start_seconds - delta_sec;
-        float total_seconds = timeline_total_seconds(state);
-        float max_start = total_seconds > geom.visible_seconds ? total_seconds - geom.visible_seconds : 0.0f;
-        if (window_start < 0.0f) window_start = 0.0f;
-        if (window_start > max_start) window_start = max_start;
-        state->timeline_window_start_seconds = window_start;
+        float min_start = 0.0f;
+        float max_start = 0.0f;
+        timeline_get_scroll_bounds(state, geom.visible_seconds, &min_start, &max_start);
+        state->timeline_window_start_seconds = clamp_scalar(window_start, min_start, max_start);
+        state->timeline_follow_override = true;
     }
 
     return true;
