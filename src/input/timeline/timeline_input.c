@@ -23,6 +23,18 @@ void track_name_editor_stop(AppState* state, bool commit) {
     if (commit && state->engine && editor->track_index >= 0) {
         int track_count = engine_get_track_count(state->engine);
         if (editor->track_index < track_count) {
+            if (strcmp(editor->original, editor->buffer) != 0) {
+                UndoCommand cmd = {0};
+                cmd.type = UNDO_CMD_TRACK_RENAME;
+                cmd.data.track_rename.track_index = editor->track_index;
+                strncpy(cmd.data.track_rename.before_name, editor->original,
+                        sizeof(cmd.data.track_rename.before_name) - 1);
+                cmd.data.track_rename.before_name[sizeof(cmd.data.track_rename.before_name) - 1] = '\0';
+                strncpy(cmd.data.track_rename.after_name, editor->buffer,
+                        sizeof(cmd.data.track_rename.after_name) - 1);
+                cmd.data.track_rename.after_name[sizeof(cmd.data.track_rename.after_name) - 1] = '\0';
+                undo_manager_push(&state->undo, &cmd);
+            }
             engine_track_set_name(state->engine, editor->track_index, editor->buffer);
             effects_panel_sync_from_engine(state);
         }
@@ -30,6 +42,7 @@ void track_name_editor_stop(AppState* state, bool commit) {
     editor->editing = false;
     editor->track_index = -1;
     editor->buffer[0] = '\0';
+    editor->original[0] = '\0';
     editor->cursor = 0;
     SDL_StopTextInput();
 }
@@ -48,6 +61,8 @@ void track_name_editor_start(AppState* state, int track_index) {
     TrackNameEditor* editor = &state->track_name_editor;
     editor->editing = true;
     editor->track_index = track_index;
+    strncpy(editor->original, track->name, sizeof(editor->original) - 1);
+    editor->original[sizeof(editor->original) - 1] = '\0';
     const char* source = track->name[0] ? track->name : NULL;
     char temp[ENGINE_CLIP_NAME_MAX];
     if (!source) {

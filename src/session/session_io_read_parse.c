@@ -255,6 +255,10 @@ static bool parse_session_track(JsonReader* r, SessionTrack* track) {
                             if (!json_parse_string(r, clip->name, sizeof(clip->name))) {
                                 return false;
                             }
+                        } else if (strcmp(clip_key, "media_id") == 0) {
+                            if (!json_parse_string(r, clip->media_id, sizeof(clip->media_id))) {
+                                return false;
+                            }
                         } else if (strcmp(clip_key, "media_path") == 0) {
                             if (!json_parse_string(r, clip->media_path, sizeof(clip->media_path))) {
                                 return false;
@@ -1013,6 +1017,71 @@ bool parse_session_document(JsonReader* r, SessionDocument* doc) {
                         return false;
                     }
                     doc->timeline.playhead_frame = (uint64_t)(val < 0 ? 0 : val);
+                } else {
+                    if (!json_skip_value(r)) {
+                        return false;
+                    }
+                }
+                json_skip_whitespace(r);
+                if (r->pos < r->length && r->data[r->pos] == ',') {
+                    ++r->pos;
+                    continue;
+                }
+                if (r->pos < r->length && r->data[r->pos] == '}') {
+                    ++r->pos;
+                    break;
+                }
+                return false;
+            }
+        } else if (strcmp(key, "clip_inspector") == 0) {
+            if (!json_expect(r, '{')) {
+                return false;
+            }
+            while (true) {
+                json_skip_whitespace(r);
+                if (r->pos < r->length && r->data[r->pos] == '}') {
+                    ++r->pos;
+                    break;
+                }
+                char panel_key[64];
+                if (!json_parse_string(r, panel_key, sizeof(panel_key))) {
+                    return false;
+                }
+                if (!json_expect(r, ':')) {
+                    return false;
+                }
+                if (strcmp(panel_key, "visible") == 0) {
+                    if (!json_parse_bool(r, &doc->clip_inspector.visible)) {
+                        return false;
+                    }
+                } else if (strcmp(panel_key, "track_index") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->clip_inspector.track_index = (int)val;
+                } else if (strcmp(panel_key, "clip_index") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->clip_inspector.clip_index = (int)val;
+                } else if (strcmp(panel_key, "view_source") == 0) {
+                    if (!json_parse_bool(r, &doc->clip_inspector.view_source)) {
+                        return false;
+                    }
+                } else if (strcmp(panel_key, "zoom") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->clip_inspector.zoom = (float)val;
+                } else if (strcmp(panel_key, "scroll") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->clip_inspector.scroll = (float)val;
                 } else {
                     if (!json_skip_value(r)) {
                         return false;

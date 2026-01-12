@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/engine.h"
+#include "engine/audio_source.h"
 #include "engine/graph.h"
 #include "engine/sources.h"
 #include "engine/ringbuf.h"
@@ -57,6 +58,25 @@ typedef struct EngineFxSnapshot {
     int track_count;
 } EngineFxSnapshot;
 
+// Stores the running linear peak/RMS values and clip hold for a meter.
+typedef struct {
+    float peak;
+    float rms;
+    int clip_hold;
+} EngineMeterState;
+
+// Stores the latest FX meter snapshot keyed by instance id.
+typedef struct {
+    FxInstId id;
+    EngineFxMeterSnapshot snapshot;
+} EngineFxMeterTap;
+
+// Stores FX meter taps for a single chain (master or track).
+typedef struct {
+    EngineFxMeterTap taps[FX_MASTER_MAX];
+    int count;
+} EngineFxMeterBank;
+
 struct Engine {
     EngineRuntimeConfig config;
     AudioDevice device;
@@ -80,10 +100,14 @@ struct Engine {
     uint64_t transport_frame;
     uint64_t next_clip_id;
     AudioMediaCache media_cache;
+    EngineAudioSource* audio_sources;
+    int audio_source_count;
+    int audio_source_capacity;
     atomic_bool loop_enabled;
     atomic_uint_fast64_t loop_start_frame;
     atomic_uint_fast64_t loop_end_frame;
     SDL_mutex* spectrum_mutex;
+    SDL_mutex* meter_mutex;
     RingBuffer spectrum_queue;
     SDL_Thread* spectrum_thread;
     atomic_bool spectrum_running;
@@ -109,6 +133,15 @@ struct Engine {
     atomic_bool spectrum_enabled;
     atomic_int spectrum_view;
     atomic_int spectrum_target_track;
+    EngineMeterState master_meter;
+    EngineMeterState* track_meters;
+    int track_meter_capacity;
+    EngineFxMeterBank master_fx_meters;
+    EngineFxMeterBank* track_fx_meters;
+    int track_fx_meter_capacity;
+    FxInstId active_fx_meter_id;
+    bool active_fx_meter_is_master;
+    int active_fx_meter_track;
 };
 
 void engine_trace(const Engine* engine, const char* fmt, ...);
@@ -117,6 +150,12 @@ void engine_audio_callback(float* output, int frames, int channels, void* userda
 void engine_sanitize_block(float* buf, size_t samples);
 bool engine_post_command(Engine* engine, const EngineCommand* cmd);
 void engine_rebuild_sources(Engine* engine);
+// Resets a meter state to silence and clears clip hold.
+void engine_meter_reset_state(EngineMeterState* state);
+// Clears all per-FX meter banks for the current engine state.
+void engine_fx_meter_clear_all(Engine* engine);
+// Registers the FX meter tap callback on the active effects manager.
+void engine_register_fx_meter_tap(Engine* engine);
 void engine_mix_tracks(Engine* engine,
                        uint64_t transport_frame,
                        int frames,

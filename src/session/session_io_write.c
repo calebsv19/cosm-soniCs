@@ -176,6 +176,27 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     fprintf(file, "},\n");
 
     json_write_indent(file, 1);
+    fprintf(file, "\"clip_inspector\": {\n");
+    json_write_indent(file, 2);
+    fprintf(file, "\"visible\": %s,\n", doc->clip_inspector.visible ? "true" : "false");
+    json_write_indent(file, 2);
+    fprintf(file, "\"track_index\": %d,\n", doc->clip_inspector.track_index);
+    json_write_indent(file, 2);
+    fprintf(file, "\"clip_index\": %d,\n", doc->clip_inspector.clip_index);
+    json_write_indent(file, 2);
+    fprintf(file, "\"view_source\": %s,\n", doc->clip_inspector.view_source ? "true" : "false");
+    json_write_indent(file, 2);
+    fprintf(file, "\"zoom\": ");
+    json_write_float(file, doc->clip_inspector.zoom);
+    fprintf(file, ",\n");
+    json_write_indent(file, 2);
+    fprintf(file, "\"scroll\": ");
+    json_write_float(file, doc->clip_inspector.scroll);
+    fprintf(file, "\n");
+    json_write_indent(file, 1);
+    fprintf(file, "},\n");
+
+    json_write_indent(file, 1);
     fprintf(file, "\"effects_panel\": {\n");
     json_write_indent(file, 2);
     fprintf(file, "\"view_mode\": %d,\n", doc->effects_panel.view_mode);
@@ -376,6 +397,10 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
             json_write_indent(file, 5);
             fprintf(file, "\"name\": ");
             json_write_string(file, clip->name);
+            fprintf(file, ",\n");
+            json_write_indent(file, 5);
+            fprintf(file, "\"media_id\": ");
+            json_write_string(file, clip->media_id);
             fprintf(file, ",\n");
             json_write_indent(file, 5);
             fprintf(file, "\"media_path\": ");

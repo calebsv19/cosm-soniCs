@@ -15,6 +15,17 @@
 
 struct AppState;
 
+#define FX_PANEL_SNAPSHOT_METER_WIDTH 36
+#define FX_PANEL_SNAPSHOT_METER_GAP 8
+#define FX_PANEL_SNAPSHOT_METER_LABEL_GAP 4
+#define FX_PANEL_SNAPSHOT_METER_CLIP_HEIGHT 6
+#define FX_PANEL_METER_TICK_COUNT 6
+#define FX_PANEL_METER_DB_MIN -60.0f
+#define FX_PANEL_METER_DB_MAX 6.0f
+#define FX_PANEL_LIST_SCROLLBAR_WIDTH 6
+#define FX_PANEL_LIST_SCROLLBAR_HIT_WIDTH 14
+#define FX_PANEL_LIST_SCROLLBAR_MIN_THUMB 18
+
 typedef struct {
     SDL_Rect container_rect;
     SDL_Rect eq_rect;
@@ -24,8 +35,17 @@ typedef struct {
     SDL_Rect pan_label_rect;
     SDL_Rect pan_rect;
     SDL_Rect pan_hit_rect;
+    SDL_Rect list_rect;
+    SDL_Rect list_clip_rect;
     SDL_Rect mute_rect;
     SDL_Rect solo_rect;
+    SDL_Rect list_scroll_track;
+    SDL_Rect list_scroll_thumb;
+    SDL_Rect list_scroll_thumb_hit;
+    SDL_Rect meter_rect;
+    SDL_Rect meter_clip_rect;
+    SDL_Rect meter_tick_rects[FX_PANEL_METER_TICK_COUNT];
+    SDL_Rect meter_label_rects[FX_PANEL_METER_TICK_COUNT];
 } EffectsPanelTrackSnapshotLayout;
 
 typedef struct {
@@ -65,9 +85,10 @@ typedef struct {
 #define FX_PANEL_COLUMN_GAP 16
 #define FX_PANEL_INNER_MARGIN 12
 #define FX_PANEL_PARAM_GAP 10
-#define FX_PANEL_LIST_ROW_HEIGHT 22
-#define FX_PANEL_LIST_ROW_GAP 4
+#define FX_PANEL_LIST_ROW_HEIGHT 18
+#define FX_PANEL_LIST_ROW_GAP 3
 #define FX_PANEL_LIST_PAD 8
+#define FX_PANEL_LIST_TEXT_SCALE 1.1f
 #define FX_PANEL_SNAPSHOT_EQ_HEIGHT 64
 #define FX_PANEL_SNAPSHOT_LABEL_HEIGHT 14
 #define FX_PANEL_SNAPSHOT_SLIDER_HEIGHT 6

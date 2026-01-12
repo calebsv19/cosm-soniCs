@@ -4,12 +4,26 @@
 #include "ui/effects_panel.h"
 #include "ui/library_browser.h"
 #include "ui/timeline_view.h"
+#include "input/inspector_input.h"
 #include "time/tempo.h"
 #include "effects/param_utils.h"
 
 #include <SDL2/SDL.h>
 #include <stdlib.h>
 #include <string.h>
+
+static void safe_copy_string(char* dst, size_t dst_len, const char* src) {
+    if (!dst || dst_len == 0) {
+        return;
+    }
+    if (!src) {
+        dst[0] = '\0';
+        return;
+    }
+    size_t len = strnlen(src, dst_len - 1);
+    memmove(dst, src, len);
+    dst[len] = '\0';
+}
 
 static float clamp_ratio(float value) {
     if (value < 0.0f) return 0.0f;
@@ -146,8 +160,13 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     state->effects_panel.view_mode = doc->effects_panel.view_mode == FX_PANEL_VIEW_LIST
                                          ? FX_PANEL_VIEW_LIST
                                          : FX_PANEL_VIEW_STACK;
-    state->effects_panel.list_detail_mode =
-        doc->effects_panel.list_detail_mode == FX_LIST_DETAIL_EQ ? FX_LIST_DETAIL_EQ : FX_LIST_DETAIL_EFFECT;
+    if (doc->effects_panel.list_detail_mode == FX_LIST_DETAIL_EQ) {
+        state->effects_panel.list_detail_mode = FX_LIST_DETAIL_EQ;
+    } else if (doc->effects_panel.list_detail_mode == FX_LIST_DETAIL_METER) {
+        state->effects_panel.list_detail_mode = FX_LIST_DETAIL_METER;
+    } else {
+        state->effects_panel.list_detail_mode = FX_LIST_DETAIL_EFFECT;
+    }
     state->effects_panel.eq_detail.view_mode =
         doc->effects_panel.eq_view_mode == EQ_DETAIL_VIEW_TRACK ? EQ_DETAIL_VIEW_TRACK : EQ_DETAIL_VIEW_MASTER;
     state->effects_panel.selected_slot_index = -1;
@@ -212,7 +231,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     }
 
     library_browser_init(&state->library, doc->library.directory[0] ? doc->library.directory : "assets/audio");
-    library_browser_scan(&state->library);
+    library_browser_scan(&state->library, &state->media_registry);
     if (doc->library.selected_index >= 0 && doc->library.selected_index < state->library.count) {
         state->library.selected_index = doc->library.selected_index;
     } else {
@@ -246,6 +265,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     }
 
     effects_panel_ensure_eq_curve_tracks(state, doc->track_count);
+    int migrated_media_id_count = 0;
     for (int t = 0; t < doc->track_count; ++t) {
         const SessionTrack* track_doc = &doc->tracks[t];
         int track_index = engine_add_track(state->engine);
@@ -268,14 +288,52 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
         }
 
         for (int c = 0; c < track_doc->clip_count; ++c) {
-            const SessionClip* clip_doc = &track_doc->clips[c];
-            if (clip_doc->media_path[0] == '\0') {
+            SessionClip* clip_doc = &track_doc->clips[c];
+            const char* resolved_path = clip_doc->media_path;
+            const char* resolved_id = clip_doc->media_id;
+            MediaRegistryEntry resolved_entry = {0};
+            if (clip_doc->media_id[0] != '\0') {
+                const MediaRegistryEntry* entry = media_registry_find_by_id(&state->media_registry, clip_doc->media_id);
+                if (entry && entry->path[0] != '\0') {
+                    resolved_path = entry->path;
+                } else if (clip_doc->media_path[0] != '\0') {
+                    if (media_registry_ensure_for_path(&state->media_registry,
+                                                       clip_doc->media_path,
+                                                       clip_doc->name,
+                                                       &resolved_entry)) {
+                        resolved_id = resolved_entry.id;
+                        resolved_path = resolved_entry.path;
+                        migrated_media_id_count++;
+                    }
+                }
+            } else if (clip_doc->media_path[0] != '\0') {
+                if (media_registry_ensure_for_path(&state->media_registry,
+                                                   clip_doc->media_path,
+                                                   clip_doc->name,
+                                                   &resolved_entry)) {
+                    resolved_id = resolved_entry.id;
+                    migrated_media_id_count++;
+                }
+            }
+            if (resolved_id && resolved_id[0] != '\0') {
+                safe_copy_string(clip_doc->media_id, sizeof(clip_doc->media_id), resolved_id);
+            }
+            if (resolved_path && resolved_path[0] != '\0' &&
+                strcmp(clip_doc->media_path, resolved_path) != 0) {
+                safe_copy_string(clip_doc->media_path, sizeof(clip_doc->media_path), resolved_path);
+            }
+            if (!resolved_path || resolved_path[0] == '\0') {
                 SDL_Log("session_apply_document: track %d clip %d missing media path", t, c);
                 continue;
             }
             int clip_index = -1;
-            if (!engine_add_clip_to_track(state->engine, track_index, clip_doc->media_path, clip_doc->start_frame, &clip_index)) {
-                SDL_Log("session_apply_document: failed to load clip %s", clip_doc->media_path);
+            if (!engine_add_clip_to_track_with_id(state->engine,
+                                                  track_index,
+                                                  resolved_path,
+                                                  resolved_id,
+                                                  clip_doc->start_frame,
+                                                  &clip_index)) {
+                SDL_Log("session_apply_document: failed to load clip %s", resolved_path);
                 continue;
             }
             engine_clip_set_region(state->engine, track_index, clip_index, clip_doc->offset_frames, clip_doc->duration_frames);
@@ -299,11 +357,36 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
             }
         }
     }
+    if (migrated_media_id_count > 0) {
+        SDL_Log("session_apply_document: migrated %d clips to media_id", migrated_media_id_count);
+    }
 
     if (state->selected_track_index == -1 && doc->track_count > 0) {
         state->active_track_index = 0;
         state->selected_track_index = 0;
         state->selected_clip_index = doc->tracks[0].clip_count > 0 ? 0 : -1;
+    }
+
+    if (doc->clip_inspector.visible &&
+        doc->clip_inspector.track_index >= 0 &&
+        doc->clip_inspector.track_index < engine_get_track_count(state->engine)) {
+        const EngineTrack* tracks = engine_get_tracks(state->engine);
+        const EngineTrack* track = tracks ? &tracks[doc->clip_inspector.track_index] : NULL;
+        if (track &&
+            doc->clip_inspector.clip_index >= 0 &&
+            doc->clip_inspector.clip_index < track->clip_count) {
+            inspector_input_show(state,
+                                 doc->clip_inspector.track_index,
+                                 doc->clip_inspector.clip_index,
+                                 &track->clips[doc->clip_inspector.clip_index]);
+            state->inspector.waveform.view_source = doc->clip_inspector.view_source;
+            state->inspector.waveform.zoom = doc->clip_inspector.zoom > 0.0f ? doc->clip_inspector.zoom : 1.0f;
+            state->inspector.waveform.scroll = doc->clip_inspector.scroll;
+        } else {
+            inspector_input_init(state);
+        }
+    } else {
+        inspector_input_init(state);
     }
 
     memset(state->pending_master_fx, 0, sizeof(state->pending_master_fx));

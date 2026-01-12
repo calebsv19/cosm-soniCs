@@ -328,11 +328,22 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         free(engine);
         return NULL;
     }
+    engine->meter_mutex = SDL_CreateMutex();
+    if (!engine->meter_mutex) {
+        SDL_DestroyMutex(engine->fxm_mutex);
+        SDL_DestroyMutex(engine->eq_mutex);
+        SDL_DestroyMutex(engine->spectrum_mutex);
+        ringbuf_free(&engine->spectrum_queue);
+        ringbuf_free(&engine->command_queue);
+        free(engine);
+        return NULL;
+    }
     engine->graph = engine_graph_create(engine->config.sample_rate, 2, engine->config.block_size);
     if (!engine->graph) {
         SDL_DestroyMutex(engine->fxm_mutex);
         SDL_DestroyMutex(engine->eq_mutex);
         SDL_DestroyMutex(engine->spectrum_mutex);
+        SDL_DestroyMutex(engine->meter_mutex);
         ringbuf_free(&engine->spectrum_queue);
         ringbuf_free(&engine->command_queue);
         free(engine);
@@ -347,6 +358,7 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         SDL_DestroyMutex(engine->fxm_mutex);
         SDL_DestroyMutex(engine->eq_mutex);
         SDL_DestroyMutex(engine->spectrum_mutex);
+        SDL_DestroyMutex(engine->meter_mutex);
         ringbuf_free(&engine->spectrum_queue);
         ringbuf_free(&engine->command_queue);
         free(engine);
@@ -361,11 +373,15 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         SDL_DestroyMutex(engine->fxm_mutex);
         SDL_DestroyMutex(engine->eq_mutex);
         SDL_DestroyMutex(engine->spectrum_mutex);
+        SDL_DestroyMutex(engine->meter_mutex);
         ringbuf_free(&engine->spectrum_queue);
         ringbuf_free(&engine->command_queue);
         free(engine);
         return NULL;
     }
+    engine->audio_sources = NULL;
+    engine->audio_source_count = 0;
+    engine->audio_source_capacity = 0;
     engine->track_spectrum_capacity = engine->track_capacity;
     engine->track_spectra = (float*)malloc(sizeof(float) * (size_t)engine->track_capacity * ENGINE_SPECTRUM_BINS);
     if (!engine->track_spectra) {
@@ -374,7 +390,47 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         engine_tone_source_destroy(engine->tone_source);
         engine_graph_destroy(engine->graph);
         SDL_DestroyMutex(engine->fxm_mutex);
+        SDL_DestroyMutex(engine->eq_mutex);
         SDL_DestroyMutex(engine->spectrum_mutex);
+        SDL_DestroyMutex(engine->meter_mutex);
+        ringbuf_free(&engine->spectrum_queue);
+        ringbuf_free(&engine->command_queue);
+        free(engine);
+        return NULL;
+    }
+    engine->track_meter_capacity = engine->track_capacity;
+    engine->track_meters = (EngineMeterState*)malloc(sizeof(EngineMeterState) * (size_t)engine->track_capacity);
+    if (!engine->track_meters) {
+        free(engine->track_spectra);
+        engine->track_spectra = NULL;
+        free(engine->tracks);
+        engine->tracks = NULL;
+        engine_tone_source_destroy(engine->tone_source);
+        engine_graph_destroy(engine->graph);
+        SDL_DestroyMutex(engine->fxm_mutex);
+        SDL_DestroyMutex(engine->eq_mutex);
+        SDL_DestroyMutex(engine->spectrum_mutex);
+        SDL_DestroyMutex(engine->meter_mutex);
+        ringbuf_free(&engine->spectrum_queue);
+        ringbuf_free(&engine->command_queue);
+        free(engine);
+        return NULL;
+    }
+    engine->track_fx_meter_capacity = engine->track_capacity;
+    engine->track_fx_meters = (EngineFxMeterBank*)calloc((size_t)engine->track_capacity, sizeof(EngineFxMeterBank));
+    if (!engine->track_fx_meters) {
+        free(engine->track_meters);
+        engine->track_meters = NULL;
+        free(engine->track_spectra);
+        engine->track_spectra = NULL;
+        free(engine->tracks);
+        engine->tracks = NULL;
+        engine_tone_source_destroy(engine->tone_source);
+        engine_graph_destroy(engine->graph);
+        SDL_DestroyMutex(engine->fxm_mutex);
+        SDL_DestroyMutex(engine->eq_mutex);
+        SDL_DestroyMutex(engine->spectrum_mutex);
+        SDL_DestroyMutex(engine->meter_mutex);
         ringbuf_free(&engine->spectrum_queue);
         ringbuf_free(&engine->command_queue);
         free(engine);
@@ -413,7 +469,13 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         for (int b = 0; b < ENGINE_SPECTRUM_BINS; ++b) {
             engine->track_spectra[t * ENGINE_SPECTRUM_BINS + b] = ENGINE_SPECTRUM_DB_FLOOR;
         }
+        engine_meter_reset_state(&engine->track_meters[t]);
     }
+    engine_meter_reset_state(&engine->master_meter);
+    SDL_zero(engine->master_fx_meters);
+    engine->active_fx_meter_id = 0;
+    engine->active_fx_meter_is_master = true;
+    engine->active_fx_meter_track = -1;
 
     engine_graph_clear_sources(engine->graph);
     engine_graph_add_source(engine->graph, &engine->tone_ops, engine->tone_source, 1.0f, -1);
@@ -453,9 +515,19 @@ void engine_destroy(Engine* engine) {
     engine->tracks = NULL;
     engine->track_count = 0;
     engine->track_capacity = 0;
+    free(engine->audio_sources);
+    engine->audio_sources = NULL;
+    engine->audio_source_count = 0;
+    engine->audio_source_capacity = 0;
     free(engine->track_spectra);
     engine->track_spectra = NULL;
     engine->track_spectrum_capacity = 0;
+    free(engine->track_meters);
+    engine->track_meters = NULL;
+    engine->track_meter_capacity = 0;
+    free(engine->track_fx_meters);
+    engine->track_fx_meters = NULL;
+    engine->track_fx_meter_capacity = 0;
     audio_media_cache_shutdown(&engine->media_cache);
     ringbuf_free(&engine->command_queue);
     audio_queue_free(&engine->output_queue);
@@ -470,6 +542,10 @@ void engine_destroy(Engine* engine) {
     if (engine->spectrum_mutex) {
         SDL_DestroyMutex(engine->spectrum_mutex);
         engine->spectrum_mutex = NULL;
+    }
+    if (engine->meter_mutex) {
+        SDL_DestroyMutex(engine->meter_mutex);
+        engine->meter_mutex = NULL;
     }
     ringbuf_free(&engine->spectrum_queue);
     free(engine);
@@ -547,6 +623,9 @@ bool engine_start(Engine* engine) {
     free(fx_snap.tracks);
 
     SDL_UnlockMutex(engine->fxm_mutex);
+
+    engine_register_fx_meter_tap(engine);
+    engine_fx_meter_clear_all(engine);
 
     engine->transport_frame = 0;
 

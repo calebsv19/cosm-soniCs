@@ -22,4 +22,5 @@ typedef enum {
     TIMELINE_FOLLOW_SMOOTH = 2
 } TimelineFollowMode;
 
-void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const struct AppState* state);
+// Renders the timeline view, including clip waveforms and selection states.
+void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, struct AppState* state);

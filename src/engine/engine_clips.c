@@ -6,6 +6,7 @@
 
 #include <SDL2/SDL.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,10 +28,10 @@ void engine_clip_destroy(Engine* engine, EngineClip* clip) {
         }
         clip->media = NULL;
     }
+    clip->source = NULL;
     clip->gain = 0.0f;
     clip->active = false;
     clip->name[0] = '\0';
-    clip->media_path[0] = '\0';
     clip->timeline_start_frames = 0;
     clip->duration_frames = 0;
     clip->offset_frames = 0;
@@ -39,6 +40,7 @@ void engine_clip_destroy(Engine* engine, EngineClip* clip) {
     clip->creation_index = 0;
     clip->selected = false;
     clip->media = NULL;
+    clip->source = NULL;
 }
 
 static void engine_clip_set_name_from_path(EngineClip* clip, const char* path) {
@@ -84,10 +86,10 @@ static EngineClip* engine_track_append_clip(Engine* engine, EngineTrack* track) 
     EngineClip* clip = &track->clips[track->clip_count++];
     clip->sampler = NULL;
     clip->media = NULL;
+    clip->source = NULL;
     clip->gain = 1.0f;
     clip->active = true;
     clip->name[0] = '\0';
-    clip->media_path[0] = '\0';
     clip->timeline_start_frames = 0;
     clip->duration_frames = 0;
     clip->offset_frames = 0;
@@ -199,8 +201,45 @@ static void engine_compute_default_fades(const EngineRuntimeConfig* cfg,
     *out_fade_out = fade_out;
 }
 
-static void engine_clip_refresh_sampler(EngineClip* clip) {
-    if (!clip || !clip->sampler || !clip->media) {
+static bool engine_clip_resolve_media(Engine* engine, EngineClip* clip) {
+    if (!engine || !clip) {
+        return false;
+    }
+    if (clip->media) {
+        return true;
+    }
+    if (!clip->source || clip->source->path[0] == '\0') {
+        return false;
+    }
+    AudioMediaClip* cached_media = NULL;
+    if (!audio_media_cache_acquire(&engine->media_cache,
+                                   clip->source->media_id,
+                                   clip->source->path,
+                                   engine->config.sample_rate,
+                                   &cached_media)) {
+        SDL_Log("engine_clip_resolve_media: failed to load %s", clip->source->path);
+        return false;
+    }
+    if (!cached_media || cached_media->channels <= 0) {
+        audio_media_cache_release(&engine->media_cache, cached_media);
+        return false;
+    }
+    clip->media = cached_media;
+    if (clip->source) {
+        clip->source->clip = cached_media;
+        clip->source->sample_rate = cached_media->sample_rate;
+        clip->source->channels = cached_media->channels;
+        clip->source->frame_count = cached_media->frame_count;
+    }
+    return true;
+}
+
+static void engine_clip_refresh_sampler(Engine* engine, EngineClip* clip) {
+    if (!clip || !clip->sampler) {
+        return;
+    }
+    if (!engine_clip_resolve_media(engine, clip)) {
+        engine_sampler_source_set_clip(clip->sampler, NULL, 0, 0, 0, 0, 0);
         return;
     }
     engine_sampler_source_set_clip(clip->sampler, clip->media,
@@ -209,6 +248,81 @@ static void engine_clip_refresh_sampler(EngineClip* clip) {
                                    clip->duration_frames,
                                    clip->fade_in_frames,
                                    clip->fade_out_frames);
+}
+
+static EngineClip* engine_clip_create_with_source(Engine* engine,
+                                                  EngineTrack* track,
+                                                  EngineAudioSource* source,
+                                                  const char* filepath,
+                                                  const char* media_id,
+                                                  uint64_t start_frame,
+                                                  uint64_t offset_frames,
+                                                  uint64_t duration_frames,
+                                                  float gain,
+                                                  uint64_t fade_in_frames,
+                                                  uint64_t fade_out_frames,
+                                                  bool use_default_fades) {
+    if (!engine || !track || !filepath) {
+        return NULL;
+    }
+
+    if (!source) {
+        source = engine_audio_source_get_or_create(engine, media_id, filepath);
+    }
+
+    const char* cache_id = source ? source->media_id : media_id;
+    const char* cache_path = (source && source->path[0] != '\0') ? source->path : filepath;
+    AudioMediaClip* cached_media = NULL;
+    if (!audio_media_cache_acquire(&engine->media_cache,
+                                   cache_id,
+                                   cache_path,
+                                   engine->config.sample_rate,
+                                   &cached_media)) {
+        SDL_Log("engine_clip_create_with_source: failed to load %s", cache_path);
+        return NULL;
+    }
+
+    if (!cached_media || cached_media->channels <= 0) {
+        audio_media_cache_release(&engine->media_cache, cached_media);
+        return NULL;
+    }
+
+    EngineClip* clip_slot = engine_track_append_clip(engine, track);
+    if (!clip_slot) {
+        audio_media_cache_release(&engine->media_cache, cached_media);
+        return NULL;
+    }
+
+    clip_slot->sampler = engine_sampler_source_create();
+    if (!clip_slot->sampler) {
+        track->clip_count--;
+        audio_media_cache_release(&engine->media_cache, cached_media);
+        return NULL;
+    }
+
+    clip_slot->media = cached_media;
+    clip_slot->source = source;
+    clip_slot->timeline_start_frames = start_frame;
+    clip_slot->offset_frames = offset_frames;
+    clip_slot->duration_frames = duration_frames > 0 ? duration_frames : cached_media->frame_count;
+    clip_slot->selected = false;
+    engine_clip_set_name_from_path(clip_slot, filepath);
+    clip_slot->gain = gain;
+    clip_slot->active = true;
+    if (use_default_fades) {
+        uint64_t default_fade_in = 0;
+        uint64_t default_fade_out = 0;
+        uint64_t clip_length = clip_slot->duration_frames > 0 ? clip_slot->duration_frames : cached_media->frame_count;
+        engine_compute_default_fades(&engine->config, clip_length, &default_fade_in, &default_fade_out);
+        clip_slot->fade_in_frames = default_fade_in;
+        clip_slot->fade_out_frames = default_fade_out;
+    } else {
+        clip_slot->fade_in_frames = fade_in_frames;
+        clip_slot->fade_out_frames = fade_out_frames;
+    }
+
+    engine_clip_refresh_sampler(engine, clip_slot);
+    return clip_slot;
 }
 
 typedef enum {
@@ -223,6 +337,7 @@ typedef struct {
 } EngineNoOverlapOp;
 
 typedef struct {
+    char media_id[ENGINE_MEDIA_ID_MAX];
     char media_path[ENGINE_CLIP_PATH_MAX];
     char name[ENGINE_CLIP_NAME_MAX];
     float gain;
@@ -252,10 +367,19 @@ static void engine_clip_clamp_fades(Engine* engine, int track_index, int clip_in
 }
 
 bool engine_add_clip(Engine* engine, const char* filepath, uint64_t start_frame) {
-    return engine_add_clip_to_track(engine, 0, filepath, start_frame, NULL);
+    return engine_add_clip_to_track_with_id(engine, 0, filepath, NULL, start_frame, NULL);
 }
 
 bool engine_add_clip_to_track(Engine* engine, int track_index, const char* filepath, uint64_t start_frame, int* out_clip_index) {
+    return engine_add_clip_to_track_with_id(engine, track_index, filepath, NULL, start_frame, out_clip_index);
+}
+
+bool engine_add_clip_to_track_with_id(Engine* engine,
+                                      int track_index,
+                                      const char* filepath,
+                                      const char* media_id,
+                                      uint64_t start_frame,
+                                      int* out_clip_index) {
     if (!engine || !filepath) {
         return false;
     }
@@ -265,47 +389,22 @@ bool engine_add_clip_to_track(Engine* engine, int track_index, const char* filep
         return false;
     }
 
-    AudioMediaClip* cached_media = NULL;
-    if (!audio_media_cache_acquire(&engine->media_cache, filepath, engine->config.sample_rate, &cached_media)) {
-        SDL_Log("engine_add_clip_to_track: failed to load %s", filepath);
-        return false;
-    }
-
-    if (!cached_media || cached_media->channels <= 0) {
-        audio_media_cache_release(&engine->media_cache, cached_media);
-        return false;
-    }
-
-    EngineClip* clip_slot = engine_track_append_clip(engine, track);
+    EngineAudioSource* source = engine_audio_source_get_or_create(engine, media_id, filepath);
+    EngineClip* clip_slot = engine_clip_create_with_source(engine,
+                                                           track,
+                                                           source,
+                                                           filepath,
+                                                           media_id,
+                                                           start_frame,
+                                                           0,
+                                                           0,
+                                                           1.0f,
+                                                           0,
+                                                           0,
+                                                           true);
     if (!clip_slot) {
-        audio_media_cache_release(&engine->media_cache, cached_media);
         return false;
     }
-
-    clip_slot->sampler = engine_sampler_source_create();
-    if (!clip_slot->sampler) {
-        track->clip_count--;
-        audio_media_cache_release(&engine->media_cache, cached_media);
-        return false;
-    }
-
-    clip_slot->media = cached_media;
-    clip_slot->timeline_start_frames = start_frame;
-    clip_slot->offset_frames = 0;
-    clip_slot->duration_frames = cached_media->frame_count;
-    clip_slot->selected = false;
-    engine_clip_set_name_from_path(clip_slot, filepath);
-    strncpy(clip_slot->media_path, filepath, sizeof(clip_slot->media_path) - 1);
-    clip_slot->media_path[sizeof(clip_slot->media_path) - 1] = '\0';
-    clip_slot->gain = 1.0f;
-    clip_slot->active = true;
-    uint64_t default_fade_in = 0;
-    uint64_t default_fade_out = 0;
-    uint64_t clip_length = clip_slot->duration_frames > 0 ? clip_slot->duration_frames : cached_media->frame_count;
-    engine_compute_default_fades(&engine->config, clip_length, &default_fade_in, &default_fade_out);
-    clip_slot->fade_in_frames = default_fade_in;
-    clip_slot->fade_out_frames = default_fade_out;
-    engine_clip_refresh_sampler(clip_slot);
 
     track->active = true;
     engine_track_sort_clips(track);
@@ -338,12 +437,15 @@ bool engine_clip_set_timeline_start(Engine* engine, int track_index, int clip_in
         return false;
     }
     EngineClip* clip = &track->clips[clip_index];
-    if (!clip || !clip->sampler || !clip->media) {
+    if (!clip || !clip->sampler) {
+        return false;
+    }
+    if (!engine_clip_resolve_media(engine, clip)) {
         return false;
     }
 
     clip->timeline_start_frames = start_frame;
-    engine_clip_refresh_sampler(clip);
+    engine_clip_refresh_sampler(engine, clip);
 
     engine_trace(engine, "clip move track=%d clip=%d start=%llu",
                  track_index,
@@ -376,7 +478,10 @@ bool engine_clip_set_region(Engine* engine, int track_index, int clip_index, uin
         return false;
     }
     EngineClip* clip = &track->clips[clip_index];
-    if (!clip || !clip->sampler || !clip->media) {
+    if (!clip || !clip->sampler) {
+        return false;
+    }
+    if (!engine_clip_resolve_media(engine, clip)) {
         return false;
     }
 
@@ -401,7 +506,7 @@ bool engine_clip_set_region(Engine* engine, int track_index, int clip_index, uin
 
     clip->offset_frames = offset_frames;
     clip->duration_frames = duration_frames;
-    engine_clip_refresh_sampler(clip);
+    engine_clip_refresh_sampler(engine, clip);
 
     engine_rebuild_sources(engine);
     return true;
@@ -499,6 +604,9 @@ bool engine_clip_set_fades(Engine* engine, int track_index, int clip_index, uint
     if (!clip) {
         return false;
     }
+    if (!engine_clip_resolve_media(engine, clip)) {
+        return false;
+    }
     uint64_t max_len = clip->duration_frames;
     if (max_len == 0) {
         max_len = engine_clip_get_total_frames(engine, track_index, clip_index);
@@ -523,7 +631,7 @@ bool engine_clip_set_fades(Engine* engine, int track_index, int clip_index, uint
     }
     clip->fade_in_frames = fade_in_frames;
     clip->fade_out_frames = fade_out_frames;
-    engine_clip_refresh_sampler(clip);
+    engine_clip_refresh_sampler(engine, clip);
     engine_trace(engine, "clip fades track=%d clip=%d in=%llu out=%llu",
                  track_index,
                  clip_index,
@@ -560,6 +668,12 @@ bool engine_track_apply_no_overlap(Engine* engine,
     }
 
     uint64_t anchor_start = anchor_clip->timeline_start_frames;
+    if (UINT64_MAX - anchor_start < anchor_duration) {
+        if (out_anchor_index) {
+            *out_anchor_index = anchor_index;
+        }
+        return true;
+    }
     uint64_t anchor_end = anchor_start + anchor_duration;
 
     if (track->clip_count <= 1) {
@@ -630,7 +744,11 @@ bool engine_track_apply_no_overlap(Engine* engine,
             if (right_duration > 0 && spawn_count < track->clip_count) {
                 EngineNoOverlapSpawn* spawn = &spawns[spawn_count++];
                 memset(spawn, 0, sizeof(*spawn));
-                strncpy(spawn->media_path, clip->media_path, sizeof(spawn->media_path) - 1);
+                const char* media_id = engine_clip_get_media_id(clip);
+                const char* media_path = engine_clip_get_media_path(clip);
+                strncpy(spawn->media_id, media_id ? media_id : "", sizeof(spawn->media_id) - 1);
+                spawn->media_id[sizeof(spawn->media_id) - 1] = '\0';
+                strncpy(spawn->media_path, media_path ? media_path : "", sizeof(spawn->media_path) - 1);
                 strncpy(spawn->name, clip->name, sizeof(spawn->name) - 1);
                 spawn->gain = clip->gain;
                 spawn->fade_in_frames = clip->fade_in_frames;
@@ -728,11 +846,12 @@ bool engine_track_apply_no_overlap(Engine* engine,
             continue;
         }
         int new_index = -1;
-        bool ok = engine_add_clip_to_track(engine,
-                                           track_index,
-                                           spawn->media_path,
-                                           spawn->start_frames,
-                                           &new_index);
+        bool ok = engine_add_clip_to_track_with_id(engine,
+                                                   track_index,
+                                                   spawn->media_path,
+                                                   spawn->media_id,
+                                                   spawn->start_frames,
+                                                   &new_index);
         if (!ok || new_index < 0) {
             continue;
         }
@@ -776,7 +895,7 @@ bool engine_add_clip_segment(Engine* engine, int track_index, const EngineClip* 
                              uint64_t segment_length_frames,
                              uint64_t start_frame,
                              int* out_clip_index) {
-    if (!engine || !source_clip || !source_clip->media || segment_length_frames == 0) {
+    if (!engine || !source_clip || segment_length_frames == 0) {
         return false;
     }
     EngineTrack* track = engine_get_track_mutable(engine, track_index);
@@ -784,7 +903,11 @@ bool engine_add_clip_segment(Engine* engine, int track_index, const EngineClip* 
         return false;
     }
 
-    const AudioMediaClip* media_src = source_clip->media;
+    EngineClip* mutable_source = (EngineClip*)source_clip;
+    if (!engine_clip_resolve_media(engine, mutable_source)) {
+        return false;
+    }
+    const AudioMediaClip* media_src = mutable_source->media;
     if (!media_src || media_src->frame_count == 0) {
         return false;
     }
@@ -801,58 +924,34 @@ bool engine_add_clip_segment(Engine* engine, int track_index, const EngineClip* 
         return false;
     }
 
-    AudioMediaClip* media_copy = (AudioMediaClip*)malloc(sizeof(AudioMediaClip));
-    if (!media_copy) {
-        return false;
+    const char* media_id = engine_clip_get_media_id(source_clip);
+    const char* media_path = engine_clip_get_media_path(source_clip);
+    EngineAudioSource* source = source_clip->source;
+    if (!source) {
+        source = engine_audio_source_get_or_create(engine, media_id, media_path);
     }
-
-    size_t total_samples = (size_t)media_src->frame_count * (size_t)media_src->channels;
-    float* sample_copy = (float*)malloc(total_samples * sizeof(float));
-    if (!sample_copy) {
-        free(media_copy);
-        return false;
-    }
-    memcpy(sample_copy, media_src->samples, total_samples * sizeof(float));
-
-    media_copy->samples = sample_copy;
-    media_copy->frame_count = media_src->frame_count;
-    media_copy->channels = media_src->channels;
-    media_copy->sample_rate = media_src->sample_rate;
-
-    EngineClip* new_clip = engine_track_append_clip(engine, track);
+    EngineClip* new_clip = engine_clip_create_with_source(engine,
+                                                          track,
+                                                          source,
+                                                          media_path ? media_path : "",
+                                                          media_id && media_id[0] != '\0' ? media_id : NULL,
+                                                          start_frame,
+                                                          source_clip->offset_frames + source_relative_offset_frames,
+                                                          segment_length_frames,
+                                                          source_clip->gain,
+                                                          source_clip->fade_in_frames,
+                                                          source_clip->fade_out_frames,
+                                                          false);
     if (!new_clip) {
-        audio_media_clip_free(media_copy);
-        free(media_copy);
         return false;
     }
-
-    new_clip->sampler = engine_sampler_source_create();
-    if (!new_clip->sampler) {
-        track->clip_count--;
-        audio_media_clip_free(media_copy);
-        free(media_copy);
-        return false;
-    }
-
-    new_clip->media = media_copy;
-    new_clip->timeline_start_frames = start_frame;
-    new_clip->offset_frames = source_clip->offset_frames + source_relative_offset_frames;
-    new_clip->duration_frames = segment_length_frames;
-    new_clip->gain = source_clip->gain;
-    new_clip->active = source_clip->active;
-    new_clip->selected = false;
-    new_clip->fade_in_frames = source_clip->fade_in_frames;
-    new_clip->fade_out_frames = source_clip->fade_out_frames;
 
     if (source_clip->name[0] != '\0') {
         snprintf(new_clip->name, sizeof(new_clip->name), "%s segment", source_clip->name);
     } else {
         snprintf(new_clip->name, sizeof(new_clip->name), "Clip segment");
     }
-    strncpy(new_clip->media_path, source_clip->media_path, sizeof(new_clip->media_path) - 1);
-    new_clip->media_path[sizeof(new_clip->media_path) - 1] = '\0';
 
-    engine_clip_refresh_sampler(new_clip);
     track->active = true;
     engine_track_sort_clips(track);
 
@@ -879,62 +978,42 @@ bool engine_duplicate_clip(Engine* engine, int track_index, int clip_index, uint
         return false;
     }
     EngineClip* original = &track->clips[clip_index];
-    if (!original || !original->media) {
+    if (!original) {
+        return false;
+    }
+    if (!engine_clip_resolve_media(engine, original)) {
         return false;
     }
 
-    AudioMediaClip* media = (AudioMediaClip*)malloc(sizeof(AudioMediaClip));
-    if (!media) {
-        return false;
-    }
-    size_t samples = (size_t)original->media->frame_count * (size_t)original->media->channels;
-    float* buffer = (float*)malloc(samples * sizeof(float));
-    if (!buffer) {
-        free(media);
-        return false;
-    }
-    memcpy(buffer, original->media->samples, samples * sizeof(float));
-    media->samples = buffer;
-    media->frame_count = original->media->frame_count;
-    media->channels = original->media->channels;
-    media->sample_rate = original->media->sample_rate;
-
-    EngineClip* new_clip = engine_track_append_clip(engine, track);
-    if (!new_clip) {
-        audio_media_clip_free(media);
-        free(media);
-        return false;
-    }
-
-    new_clip->sampler = engine_sampler_source_create();
-    if (!new_clip->sampler) {
-        track->clip_count--;
-        audio_media_clip_free(media);
-        free(media);
-        return false;
-    }
-
-    new_clip->media = media;
     uint64_t offset = start_frame_offset;
     uint64_t new_start = original->timeline_start_frames + original->duration_frames + offset;
-    new_clip->timeline_start_frames = new_start;
-    new_clip->offset_frames = original->offset_frames;
-    new_clip->duration_frames = original->duration_frames;
-    new_clip->gain = original->gain;
-    new_clip->active = original->active;
-    new_clip->selected = false;
-    new_clip->fade_in_frames = original->fade_in_frames;
-    new_clip->fade_out_frames = original->fade_out_frames;
+    const char* media_id = engine_clip_get_media_id(original);
+    const char* media_path = engine_clip_get_media_path(original);
+    EngineAudioSource* source = original->source;
+    if (!source) {
+        source = engine_audio_source_get_or_create(engine, media_id, media_path);
+    }
+    EngineClip* new_clip = engine_clip_create_with_source(engine,
+                                                          track,
+                                                          source,
+                                                          media_path ? media_path : "",
+                                                          media_id && media_id[0] != '\0' ? media_id : NULL,
+                                                          new_start,
+                                                          original->offset_frames,
+                                                          original->duration_frames,
+                                                          original->gain,
+                                                          original->fade_in_frames,
+                                                          original->fade_out_frames,
+                                                          false);
+    if (!new_clip) {
+        return false;
+    }
 
     if (original->name[0] != '\0') {
         snprintf(new_clip->name, sizeof(new_clip->name), "%s copy", original->name);
     } else {
         snprintf(new_clip->name, sizeof(new_clip->name), "Clip copy");
     }
-    strncpy(new_clip->media_path, original->media_path, sizeof(new_clip->media_path) - 1);
-    new_clip->media_path[sizeof(new_clip->media_path) - 1] = '\0';
-
-    engine_clip_refresh_sampler(new_clip);
     track->active = true;
     engine_track_sort_clips(track);
 
@@ -950,4 +1029,24 @@ bool engine_duplicate_clip(Engine* engine, int track_index, int clip_index, uint
 
     engine_rebuild_sources(engine);
     return true;
+}
+
+const char* engine_clip_get_media_id(const EngineClip* clip) {
+    if (!clip) {
+        return NULL;
+    }
+    if (clip->source && clip->source->media_id[0] != '\0') {
+        return clip->source->media_id;
+    }
+    return NULL;
+}
+
+const char* engine_clip_get_media_path(const EngineClip* clip) {
+    if (!clip) {
+        return NULL;
+    }
+    if (clip->source && clip->source->path[0] != '\0') {
+        return clip->source->path;
+    }
+    return NULL;
 }

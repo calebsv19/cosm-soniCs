@@ -104,8 +104,8 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
                 session_set_error(error_message, error_message_len, "track %d clip %d is null", t, c);
                 return false;
             }
-            if (clip->media_path[0] == '\0') {
-                session_set_error(error_message, error_message_len, "track %d clip %d missing media path", t, c);
+            if (clip->media_path[0] == '\0' && clip->media_id[0] == '\0') {
+                session_set_error(error_message, error_message_len, "track %d clip %d missing media id/path", t, c);
                 return false;
             }
             if (clip->duration_frames == 0) {

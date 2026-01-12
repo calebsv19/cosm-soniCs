@@ -1,4 +1,6 @@
 #include "session.h"
+
+#include "engine/audio_source.h"
 #include "app_state.h"
 #include "engine/engine.h"
 #include "time/tempo.h"
@@ -16,8 +18,9 @@ static void copy_string(char* dst, size_t dst_len, const char* src) {
         dst[0] = '\0';
         return;
     }
-    strncpy(dst, src, dst_len - 1);
-    dst[dst_len - 1] = '\0';
+    size_t len = strnlen(src, dst_len - 1);
+    memmove(dst, src, len);
+    dst[len] = '\0';
 }
 
 static void session_eq_curve_set_defaults(SessionEqCurve* curve) {
@@ -106,6 +109,12 @@ void session_document_init(SessionDocument* doc) {
     doc->effects_panel.bands[1].freq_hz = 500.0f;
     doc->effects_panel.bands[2].freq_hz = 2000.0f;
     doc->effects_panel.bands[3].freq_hz = 8000.0f;
+    doc->clip_inspector.visible = false;
+    doc->clip_inspector.track_index = -1;
+    doc->clip_inspector.clip_index = -1;
+    doc->clip_inspector.view_source = true;
+    doc->clip_inspector.zoom = 1.0f;
+    doc->clip_inspector.scroll = 0.0f;
     doc->master_fx = NULL;
     doc->master_fx_count = 0;
 }
@@ -153,7 +162,10 @@ static int count_active_clips(const EngineTrack* track) {
     int active = 0;
     for (int i = 0; i < track->clip_count; ++i) {
         const EngineClip* clip = &track->clips[i];
-        if (clip->active && clip->media) {
+        const char* media_id = engine_clip_get_media_id(clip);
+        const char* media_path = engine_clip_get_media_path(clip);
+        if (clip->active &&
+            ((media_id && media_id[0] != '\0') || (media_path && media_path[0] != '\0'))) {
             ++active;
         }
     }
@@ -218,6 +230,12 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
         out_doc->effects_panel.bands[i].gain_db = master_curve->bands[i].gain_db;
         out_doc->effects_panel.bands[i].q_width = master_curve->bands[i].q_width;
     }
+    out_doc->clip_inspector.visible = state->inspector.visible;
+    out_doc->clip_inspector.track_index = state->inspector.track_index;
+    out_doc->clip_inspector.clip_index = state->inspector.clip_index;
+    out_doc->clip_inspector.view_source = state->inspector.waveform.view_source;
+    out_doc->clip_inspector.zoom = state->inspector.waveform.zoom;
+    out_doc->clip_inspector.scroll = state->inspector.waveform.scroll;
 
     out_doc->layout.transport_ratio = state->layout_runtime.transport_ratio;
     out_doc->layout.library_ratio = state->layout_runtime.library_ratio;
@@ -272,12 +290,18 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
         int clip_out = 0;
         for (int c = 0; c < src_track->clip_count; ++c) {
             const EngineClip* src_clip = &src_track->clips[c];
-            if (!src_clip->active || !src_clip->media) {
+            const char* media_id = engine_clip_get_media_id(src_clip);
+            const char* media_path = engine_clip_get_media_path(src_clip);
+            if (!src_clip->active) {
+                continue;
+            }
+            if ((!media_id || media_id[0] == '\0') && (!media_path || media_path[0] == '\0')) {
                 continue;
             }
             SessionClip* dst_clip = &dst_track->clips[clip_out++];
             copy_string(dst_clip->name, sizeof(dst_clip->name), src_clip->name);
-            copy_string(dst_clip->media_path, sizeof(dst_clip->media_path), src_clip->media_path);
+            copy_string(dst_clip->media_id, sizeof(dst_clip->media_id), media_id ? media_id : "");
+            copy_string(dst_clip->media_path, sizeof(dst_clip->media_path), media_path ? media_path : "");
             dst_clip->start_frame = src_clip->timeline_start_frames;
             dst_clip->duration_frames = src_clip->duration_frames;
             dst_clip->offset_frames = src_clip->offset_frames;

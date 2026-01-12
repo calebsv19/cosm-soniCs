@@ -15,6 +15,47 @@ static inline float sanitize_sample(float v) {
     return v;
 }
 
+static void compute_peak_rms(const float* buffer, int frames, int channels, float* out_peak, float* out_rms) {
+    if (!buffer || frames <= 0 || channels <= 0 || !out_peak || !out_rms) {
+        return;
+    }
+    double sum = 0.0;
+    float peak = 0.0f;
+    int count = frames * channels;
+    for (int i = 0; i < count; ++i) {
+        float v = buffer[i];
+        float a = fabsf(v);
+        if (a > peak) {
+            peak = a;
+        }
+        sum += (double)v * (double)v;
+    }
+    *out_peak = peak;
+    *out_rms = count > 0 ? (float)sqrt(sum / (double)count) : 0.0f;
+}
+
+static void update_meter_state(EngineMeterState* state, float peak, float rms, int hold_blocks) {
+    if (!state) {
+        return;
+    }
+    const float decay = 0.90f;
+    if (peak > state->peak) {
+        state->peak = peak;
+    } else {
+        state->peak *= decay;
+    }
+    if (rms > state->rms) {
+        state->rms = rms;
+    } else {
+        state->rms *= decay;
+    }
+    if (peak > 1.0f) {
+        state->clip_hold = hold_blocks;
+    } else if (state->clip_hold > 0) {
+        state->clip_hold -= 1;
+    }
+}
+
 static void apply_track_pan(const EngineTrack* track, float* buffer, int frames, int channels) {
     if (!track || !buffer || frames <= 0 || channels < 2) {
         return;
@@ -73,6 +114,10 @@ void engine_mix_tracks(Engine* engine,
     memset(out, 0, (size_t)frames * (size_t)channels * sizeof(float));
 
     int tcount = engine->track_count;
+    int hold_blocks = (int)lroundf((0.45f * (float)engine->config.sample_rate) / (float)frames);
+    if (hold_blocks < 1) {
+        hold_blocks = 1;
+    }
     for (int t = 0; t < tcount; ++t) {
         memset(track_buffer, 0, (size_t)frames * (size_t)channels * sizeof(float));
         engine_graph_render_track(engine->graph,
@@ -88,6 +133,18 @@ void engine_mix_tracks(Engine* engine,
         engine_eq_process(&engine->tracks[t].track_eq, track_buffer, frames, channels);
         engine_spectrum_update_track(engine, t, track_buffer, frames, channels);
         apply_track_pan(&engine->tracks[t], track_buffer, frames, channels);
+        if (engine->track_meters && t < engine->track_meter_capacity) {
+            float peak = 0.0f;
+            float rms = 0.0f;
+            compute_peak_rms(track_buffer, frames, channels, &peak, &rms);
+            if (engine->meter_mutex) {
+                SDL_LockMutex(engine->meter_mutex);
+            }
+            update_meter_state(&engine->track_meters[t], peak, rms, hold_blocks);
+            if (engine->meter_mutex) {
+                SDL_UnlockMutex(engine->meter_mutex);
+            }
+        }
         for (int s = 0; s < frames * channels; ++s) {
             out[s] += track_buffer[s];
         }
@@ -101,4 +158,16 @@ void engine_mix_tracks(Engine* engine,
     }
 
     engine_sanitize_block(out, (size_t)frames * (size_t)channels);
+    if (engine->track_meters) {
+        float peak = 0.0f;
+        float rms = 0.0f;
+        compute_peak_rms(out, frames, channels, &peak, &rms);
+        if (engine->meter_mutex) {
+            SDL_LockMutex(engine->meter_mutex);
+        }
+        update_meter_state(&engine->master_meter, peak, rms, hold_blocks);
+        if (engine->meter_mutex) {
+            SDL_UnlockMutex(engine->meter_mutex);
+        }
+    }
 }

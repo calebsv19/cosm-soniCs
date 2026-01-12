@@ -190,7 +190,7 @@ static void perform_bounce(AppContext* ctx, AppState* state) {
     state->bounce_end_frame = 0;
 
     if (ok) {
-        library_browser_scan(&state->library);
+        library_browser_scan(&state->library, &state->media_registry);
         SDL_Log("Bounce completed: %s", path);
     } else {
         SDL_Log("Bounce failed");
@@ -204,6 +204,9 @@ int main(void) {
 
     AppState state = {0};
     waveform_cache_init(&state.waveform_cache);
+    undo_manager_init(&state.undo);
+    media_registry_init(&state.media_registry, "config/library_index.json");
+    media_registry_load(&state.media_registry);
     if (!config_load_file("config/engine.cfg", &state.runtime_cfg)) {
         config_set_defaults(&state.runtime_cfg);
         SDL_Log("Using default audio config: sample_rate=%d block_size=%d",
@@ -240,7 +243,7 @@ int main(void) {
             SDL_Log("Failed to create audio engine");
         }
         library_browser_init(&state.library, "assets/audio");
-        library_browser_scan(&state.library);
+        library_browser_scan(&state.library, &state.media_registry);
         state.timeline_visible_seconds = TIMELINE_DEFAULT_VISIBLE_SECONDS;
         state.timeline_window_start_seconds = 0.0f;
         state.timeline_vertical_scale = 1.0f;
@@ -296,7 +299,9 @@ int main(void) {
     state.timeline_drag.active = false;
     state.timeline_drag.trimming_left = false;
     state.timeline_drag.trimming_right = false;
-    inspector_input_init(&state);
+    if (!loaded_session) {
+        inspector_input_init(&state);
+    }
     effects_panel_input_init(&state);
     state.timeline_drop_track_index = state.active_track_index >= 0 ? state.active_track_index : 0;
 
@@ -336,6 +341,8 @@ int main(void) {
 
     ui_font_shutdown();
     waveform_cache_shutdown(&state.waveform_cache);
+    undo_manager_free(&state.undo);
+    media_registry_shutdown(&state.media_registry);
     TTF_Quit();
     App_Shutdown(&ctx);
 

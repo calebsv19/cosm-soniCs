@@ -57,6 +57,9 @@ struct EffectsManager {
     FxRegistryEntry* reg;
     int reg_count;
     int reg_cap;
+
+    FxMeterTapCallback meter_cb;
+    void* meter_cb_user;
 };
 
 // -------------------------------
@@ -236,8 +239,18 @@ EffectsManager* fxm_create(const FxConfig* cfg) {
     fm->next_inst_id = 1;
     fm->reg = NULL;
     fm->reg_count = fm->reg_cap = 0;
+    fm->meter_cb = NULL;
+    fm->meter_cb_user = NULL;
 
     return fm;
+}
+
+void fxm_set_meter_tap_callback(EffectsManager* fm, FxMeterTapCallback cb, void* user) {
+    if (!fm) {
+        return;
+    }
+    fm->meter_cb = cb;
+    fm->meter_cb_user = user;
 }
 
 void fxm_destroy(EffectsManager* fm) {
@@ -590,6 +603,12 @@ void fxm_render_master(EffectsManager* fm, float* interleaved_io, int frames, in
     for (int i = 0; i < fm->master.count; ++i) {
         FxInstance* inst = &fm->master.items[i];
         if (!inst->enabled) continue;
+        if (inst->type >= 100u && inst->type <= 109u) {
+            if (fm->meter_cb) {
+                fm->meter_cb(fm->meter_cb_user, true, -1, inst->id, inst->type, io, frames, channels);
+            }
+            continue;
+        }
 
         const bool inplace_ok = (inst->desc.flags & FX_FLAG_INPLACE_OK) != 0;
         if (inplace_ok) {
@@ -620,6 +639,12 @@ void fxm_render_track(EffectsManager* fm, int track_index, float* interleaved_io
         if (!inst->enabled) continue;
         FxHandle* h = inst->handle;
         if (!h || !inst->vt.process) continue;
+        if (inst->type >= 100u && inst->type <= 109u) {
+            if (fm->meter_cb) {
+                fm->meter_cb(fm->meter_cb_user, false, track_index, inst->id, inst->type, interleaved_io, frames, channels);
+            }
+            continue;
+        }
 
         if (inst->desc.flags & FX_FLAG_INPLACE_OK) {
             inst->vt.process(h, interleaved_io, interleaved_io, frames, channels);

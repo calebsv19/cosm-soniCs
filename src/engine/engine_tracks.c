@@ -20,6 +20,15 @@ void engine_track_init(EngineTrack* track) {
     memset(&track->track_eq, 0, sizeof(track->track_eq));
 }
 
+void engine_meter_reset_state(EngineMeterState* state) {
+    if (!state) {
+        return;
+    }
+    state->peak = 0.0f;
+    state->rms = 0.0f;
+    state->clip_hold = 0;
+}
+
 void engine_track_clear(Engine* engine, EngineTrack* track) {
     if (!track) {
         return;
@@ -83,6 +92,48 @@ bool engine_ensure_track_capacity(Engine* engine, int required_tracks) {
             SDL_UnlockMutex(engine->spectrum_mutex);
         }
     }
+    if (engine->track_meters) {
+        if (engine->meter_mutex) {
+            SDL_LockMutex(engine->meter_mutex);
+        }
+        EngineMeterState* resized_meters = (EngineMeterState*)realloc(engine->track_meters,
+                                                                      sizeof(EngineMeterState) * (size_t)new_capacity);
+        if (!resized_meters) {
+            if (engine->meter_mutex) {
+                SDL_UnlockMutex(engine->meter_mutex);
+            }
+            return false;
+        }
+        engine->track_meters = resized_meters;
+        for (int t = engine->track_meter_capacity; t < new_capacity; ++t) {
+            engine_meter_reset_state(&engine->track_meters[t]);
+        }
+        engine->track_meter_capacity = new_capacity;
+        if (engine->meter_mutex) {
+            SDL_UnlockMutex(engine->meter_mutex);
+        }
+    }
+    if (engine->track_fx_meters) {
+        if (engine->meter_mutex) {
+            SDL_LockMutex(engine->meter_mutex);
+        }
+        EngineFxMeterBank* resized_banks = (EngineFxMeterBank*)realloc(engine->track_fx_meters,
+                                                                       sizeof(EngineFxMeterBank) * (size_t)new_capacity);
+        if (!resized_banks) {
+            if (engine->meter_mutex) {
+                SDL_UnlockMutex(engine->meter_mutex);
+            }
+            return false;
+        }
+        engine->track_fx_meters = resized_banks;
+        for (int t = engine->track_fx_meter_capacity; t < new_capacity; ++t) {
+            SDL_zero(engine->track_fx_meters[t]);
+        }
+        engine->track_fx_meter_capacity = new_capacity;
+        if (engine->meter_mutex) {
+            SDL_UnlockMutex(engine->meter_mutex);
+        }
+    }
     engine->track_capacity = new_capacity;
     return true;
 }
@@ -118,6 +169,97 @@ int engine_add_track(Engine* engine) {
     return index;
 }
 
+bool engine_insert_track(Engine* engine, int track_index) {
+    if (!engine) {
+        return false;
+    }
+    if (track_index < 0) {
+        track_index = 0;
+    }
+    if (track_index > engine->track_count) {
+        track_index = engine->track_count;
+    }
+    if (!engine_ensure_track_capacity(engine, engine->track_count + 1)) {
+        return false;
+    }
+    if (track_index < engine->track_count) {
+        memmove(&engine->tracks[track_index + 1],
+                &engine->tracks[track_index],
+                (size_t)(engine->track_count - track_index) * sizeof(EngineTrack));
+        if (engine->track_spectra) {
+            if (engine->spectrum_mutex) {
+                SDL_LockMutex(engine->spectrum_mutex);
+            }
+            memmove(&engine->track_spectra[(track_index + 1) * ENGINE_SPECTRUM_BINS],
+                    &engine->track_spectra[track_index * ENGINE_SPECTRUM_BINS],
+                    (size_t)(engine->track_count - track_index) * ENGINE_SPECTRUM_BINS * sizeof(float));
+            if (engine->spectrum_mutex) {
+                SDL_UnlockMutex(engine->spectrum_mutex);
+            }
+        }
+        if (engine->track_meters) {
+            if (engine->meter_mutex) {
+                SDL_LockMutex(engine->meter_mutex);
+            }
+            memmove(&engine->track_meters[track_index + 1],
+                    &engine->track_meters[track_index],
+                    (size_t)(engine->track_count - track_index) * sizeof(EngineMeterState));
+            if (engine->meter_mutex) {
+                SDL_UnlockMutex(engine->meter_mutex);
+            }
+        }
+        if (engine->track_fx_meters) {
+            if (engine->meter_mutex) {
+                SDL_LockMutex(engine->meter_mutex);
+            }
+            memmove(&engine->track_fx_meters[track_index + 1],
+                    &engine->track_fx_meters[track_index],
+                    (size_t)(engine->track_count - track_index) * sizeof(EngineFxMeterBank));
+            if (engine->meter_mutex) {
+                SDL_UnlockMutex(engine->meter_mutex);
+            }
+        }
+    }
+    engine_track_init(&engine->tracks[track_index]);
+    engine_eq_init(&engine->tracks[track_index].track_eq,
+                   (float)engine->config.sample_rate,
+                   engine_graph_get_channels(engine->graph));
+    engine->tracks[track_index].active = false;
+    engine_track_set_name(engine, track_index, NULL);
+    engine->track_count += 1;
+    if (engine->track_spectra) {
+        if (engine->spectrum_mutex) {
+            SDL_LockMutex(engine->spectrum_mutex);
+        }
+        for (int b = 0; b < ENGINE_SPECTRUM_BINS; ++b) {
+            engine->track_spectra[track_index * ENGINE_SPECTRUM_BINS + b] = ENGINE_SPECTRUM_DB_FLOOR;
+        }
+        if (engine->spectrum_mutex) {
+            SDL_UnlockMutex(engine->spectrum_mutex);
+        }
+    }
+    if (engine->track_meters) {
+        if (engine->meter_mutex) {
+            SDL_LockMutex(engine->meter_mutex);
+        }
+        engine_meter_reset_state(&engine->track_meters[track_index]);
+        if (engine->meter_mutex) {
+            SDL_UnlockMutex(engine->meter_mutex);
+        }
+    }
+    if (engine->track_fx_meters) {
+        if (engine->meter_mutex) {
+            SDL_LockMutex(engine->meter_mutex);
+        }
+        SDL_zero(engine->track_fx_meters[track_index]);
+        if (engine->meter_mutex) {
+            SDL_UnlockMutex(engine->meter_mutex);
+        }
+    }
+    engine_rebuild_sources(engine);
+    return true;
+}
+
 bool engine_remove_track(Engine* engine, int track_index) {
     if (!engine || track_index < 0 || track_index >= engine->track_count) {
         return false;
@@ -141,6 +283,28 @@ bool engine_remove_track(Engine* engine, int track_index) {
                 SDL_UnlockMutex(engine->spectrum_mutex);
             }
         }
+        if (engine->track_meters) {
+            if (engine->meter_mutex) {
+                SDL_LockMutex(engine->meter_mutex);
+            }
+            memmove(&engine->track_meters[track_index],
+                    &engine->track_meters[track_index + 1],
+                    (size_t)(engine->track_count - track_index - 1) * sizeof(EngineMeterState));
+            if (engine->meter_mutex) {
+                SDL_UnlockMutex(engine->meter_mutex);
+            }
+        }
+        if (engine->track_fx_meters) {
+            if (engine->meter_mutex) {
+                SDL_LockMutex(engine->meter_mutex);
+            }
+            memmove(&engine->track_fx_meters[track_index],
+                    &engine->track_fx_meters[track_index + 1],
+                    (size_t)(engine->track_count - track_index - 1) * sizeof(EngineFxMeterBank));
+            if (engine->meter_mutex) {
+                SDL_UnlockMutex(engine->meter_mutex);
+            }
+        }
     }
 
     engine->track_count--;
@@ -158,6 +322,24 @@ bool engine_remove_track(Engine* engine, int track_index) {
             }
             if (engine->spectrum_mutex) {
                 SDL_UnlockMutex(engine->spectrum_mutex);
+            }
+        }
+        if (engine->track_meters) {
+            if (engine->meter_mutex) {
+                SDL_LockMutex(engine->meter_mutex);
+            }
+            engine_meter_reset_state(&engine->track_meters[engine->track_count]);
+            if (engine->meter_mutex) {
+                SDL_UnlockMutex(engine->meter_mutex);
+            }
+        }
+        if (engine->track_fx_meters) {
+            if (engine->meter_mutex) {
+                SDL_LockMutex(engine->meter_mutex);
+            }
+            SDL_zero(engine->track_fx_meters[engine->track_count]);
+            if (engine->meter_mutex) {
+                SDL_UnlockMutex(engine->meter_mutex);
             }
         }
     }

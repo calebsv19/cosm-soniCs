@@ -11,6 +11,7 @@
 #include "ui/layout.h"
 #include "ui/panes.h"
 #include "ui/timeline_view.h"
+#include "undo/undo_manager.h"
 #include <SDL2/SDL.h>
 #include <math.h>
 
@@ -43,6 +44,37 @@ static void add_unique_sampler(EngineSamplerSource** list,
     }
     list[current] = sampler;
     *count = current + 1;
+}
+
+static bool clip_state_from_clip(const EngineClip* clip, int track_index, UndoClipState* out_state) {
+    if (!clip || !out_state) {
+        return false;
+    }
+    out_state->sampler = clip->sampler;
+    out_state->track_index = track_index;
+    out_state->start_frame = clip->timeline_start_frames;
+    out_state->offset_frames = clip->offset_frames;
+    out_state->duration_frames = clip->duration_frames;
+    out_state->fade_in_frames = clip->fade_in_frames;
+    out_state->fade_out_frames = clip->fade_out_frames;
+    out_state->gain = clip->gain;
+    if (out_state->duration_frames == 0 && clip->sampler) {
+        out_state->duration_frames = engine_sampler_get_frame_count(clip->sampler);
+    }
+    return true;
+}
+
+static bool clip_state_equal(const UndoClipState* a, const UndoClipState* b) {
+    if (!a || !b) {
+        return true;
+    }
+    return a->track_index == b->track_index &&
+           a->start_frame == b->start_frame &&
+           a->offset_frames == b->offset_frames &&
+           a->duration_frames == b->duration_frames &&
+           a->fade_in_frames == b->fade_in_frames &&
+           a->fade_out_frames == b->fade_out_frames &&
+           fabsf(a->gain - b->gain) < 0.0001f;
 }
 
 static bool snap_to_neighbor_clip(const EngineTrack* track, int exclude_index, int sample_rate, float threshold_sec, float* inout_start_sec) {
@@ -78,15 +110,84 @@ static bool snap_to_neighbor_clip(const EngineTrack* track, int exclude_index, i
     return snapped;
 }
 
+// Applies a ripple delta to downstream clips based on a precomputed target list.
+static void timeline_apply_ripple_delta(AppState* state,
+                                        int track_index,
+                                        EngineSamplerSource** targets,
+                                        int target_count,
+                                        int64_t delta_frames) {
+    if (!state || !state->engine || !targets || target_count <= 0 || delta_frames == 0) {
+        return;
+    }
+    const EngineTrack* tracks = engine_get_tracks(state->engine);
+    int track_count = engine_get_track_count(state->engine);
+    if (!tracks || track_index < 0 || track_index >= track_count) {
+        return;
+    }
+    for (int i = 0; i < target_count; ++i) {
+        EngineSamplerSource* sampler = targets[i];
+        if (!sampler) {
+            continue;
+        }
+        int clip_track = -1;
+        int clip_index = -1;
+        if (!timeline_find_clip_by_sampler(state, sampler, &clip_track, &clip_index)) {
+            continue;
+        }
+        if (clip_track != track_index) {
+            continue;
+        }
+        const EngineTrack* track = engine_get_tracks(state->engine);
+        int track_total = engine_get_track_count(state->engine);
+        if (!track || clip_track < 0 || clip_track >= track_total) {
+            continue;
+        }
+        const EngineTrack* target_track = &track[clip_track];
+        if (!target_track || clip_index < 0 || clip_index >= target_track->clip_count) {
+            continue;
+        }
+        const EngineClip* clip = &target_track->clips[clip_index];
+        if (!clip) {
+            continue;
+        }
+        int64_t start_frames = (int64_t)clip->timeline_start_frames + delta_frames;
+        if (start_frames < 0) {
+            start_frames = 0;
+        }
+        int updated_index = clip_index;
+        if (engine_clip_set_timeline_start(state->engine,
+                                           clip_track,
+                                           clip_index,
+                                           (uint64_t)start_frames,
+                                           &updated_index)) {
+            timeline_selection_update_index(state, clip_track, clip_index, updated_index);
+        }
+    }
+}
+
 void timeline_input_mouse_drag_end(AppState* state) {
     if (!state) {
         return;
+    }
+    if (state->undo.active_drag_valid) {
+        undo_manager_cancel_drag(&state->undo);
     }
     state->timeline_drag.active = false;
     state->timeline_drag.trimming_left = false;
     state->timeline_drag.trimming_right = false;
     state->timeline_drag.adjusting_fade_in = false;
     state->timeline_drag.adjusting_fade_out = false;
+    state->timeline_drag.mode = TIMELINE_DRAG_MODE_SLIDE;
+    if (state->timeline_drag.ripple_targets) {
+        SDL_free(state->timeline_drag.ripple_targets);
+        state->timeline_drag.ripple_targets = NULL;
+    }
+    state->timeline_drag.ripple_target_count = 0;
+    state->timeline_drag.ripple_last_delta_frames = 0;
+    state->timeline_drag.pending_shift_select = false;
+    state->timeline_drag.pending_shift_remove = false;
+    state->timeline_drag.pending_shift_track = -1;
+    state->timeline_drag.pending_shift_clip = -1;
     state->timeline_drag.destination_track_index = -1;
     state->timeline_drag.started_moving = false;
     state->timeline_drag.current_start_seconds = 0.0f;
@@ -100,6 +201,7 @@ void timeline_input_mouse_drag_end(AppState* state) {
         state->timeline_drag.multi_samplers[i] = NULL;
         state->timeline_drag.multi_initial_track[i] = -1;
         state->timeline_drag.multi_initial_start[i] = 0;
+        state->timeline_drag.multi_initial_offset[i] = 0;
     }
     timeline_marquee_clear(state);
 }
@@ -296,11 +398,73 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
 
             for (int i = 0; i < overlap_target_count; ++i) {
                 EngineSamplerSource* sampler = overlap_targets[i];
+                if (drag->mode == TIMELINE_DRAG_MODE_RIPPLE && sampler == anchor_sampler) {
+                    continue;
+                }
                 int target_track = -1;
                 int target_clip = -1;
                 if (timeline_find_clip_by_sampler(state, sampler, &target_track, &target_clip)) {
                     engine_track_apply_no_overlap(state->engine, target_track, sampler, &target_clip);
                 }
+            }
+        }
+        if (state->undo.active_drag_valid) {
+            bool changed = false;
+            UndoCommand* cmd = &state->undo.active_drag;
+            if (cmd->type == UNDO_CMD_CLIP_TRANSFORM) {
+                UndoClipState after = {0};
+                int found_track = -1;
+                int found_clip = -1;
+                if (timeline_find_clip_by_sampler(state, cmd->data.clip_transform.before.sampler,
+                                                  &found_track, &found_clip)) {
+                    const EngineTrack* final_tracks = engine_get_tracks(state->engine);
+                    int final_track_count = engine_get_track_count(state->engine);
+                    if (final_tracks && found_track >= 0 && found_track < final_track_count) {
+                        const EngineTrack* final_track = &final_tracks[found_track];
+                        if (final_track && found_clip >= 0 && found_clip < final_track->clip_count) {
+                            if (clip_state_from_clip(&final_track->clips[found_clip], found_track, &after)) {
+                                cmd->data.clip_transform.after = after;
+                                if (!clip_state_equal(&cmd->data.clip_transform.before, &after)) {
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if (cmd->type == UNDO_CMD_MULTI_CLIP_TRANSFORM) {
+                int count = cmd->data.multi_clip_transform.count;
+                for (int i = 0; i < count; ++i) {
+                    EngineSamplerSource* sampler = cmd->data.multi_clip_transform.before[i].sampler;
+                    if (!sampler) {
+                        continue;
+                    }
+                    int found_track = -1;
+                    int found_clip = -1;
+                    if (!timeline_find_clip_by_sampler(state, sampler, &found_track, &found_clip)) {
+                        continue;
+                    }
+                    const EngineTrack* final_tracks = engine_get_tracks(state->engine);
+                    int final_track_count = engine_get_track_count(state->engine);
+                    if (!final_tracks || found_track < 0 || found_track >= final_track_count) {
+                        continue;
+                    }
+                    const EngineTrack* final_track = &final_tracks[found_track];
+                    if (!final_track || found_clip < 0 || found_clip >= final_track->clip_count) {
+                        continue;
+                    }
+                    UndoClipState after = {0};
+                    if (clip_state_from_clip(&final_track->clips[found_clip], found_track, &after)) {
+                        cmd->data.multi_clip_transform.after[i] = after;
+                        if (!clip_state_equal(&cmd->data.multi_clip_transform.before[i], &after)) {
+                            changed = true;
+                        }
+                    }
+                }
+            }
+            if (changed) {
+                undo_manager_commit_drag(&state->undo, cmd);
+            } else {
+                undo_manager_cancel_drag(&state->undo);
             }
         }
         timeline_input_mouse_drag_end(state);
@@ -325,14 +489,18 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
     const EngineClip* drag_clip = &drag_track->clips[drag->clip_index];
 
     if (!drag->trimming_left && !drag->trimming_right && !drag->adjusting_fade_in && !drag->adjusting_fade_out) {
-        int hover_track = timeline_track_at_position(state, state->mouse_y, geom.track_height, geom.track_spacing);
-        if (hover_track < 0) {
-            hover_track = drag->track_index;
+        if (drag->mode == TIMELINE_DRAG_MODE_SLIP || drag->mode == TIMELINE_DRAG_MODE_RIPPLE) {
+            drag->destination_track_index = drag->track_index;
+        } else {
+            int hover_track = timeline_track_at_position(state, state->mouse_y, geom.track_height, geom.track_spacing);
+            if (hover_track < 0) {
+                hover_track = drag->track_index;
+            }
+            if (hover_track >= track_count) {
+                hover_track = track_count > 0 ? track_count - 1 : drag->track_index;
+            }
+            drag->destination_track_index = hover_track;
         }
-        if (hover_track >= track_count) {
-            hover_track = track_count > 0 ? track_count - 1 : drag->track_index;
-        }
-        drag->destination_track_index = hover_track;
     } else {
         drag->destination_track_index = drag->track_index;
     }
@@ -407,13 +575,74 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
             if (dx < 0) dx = -dx;
             if (dx >= 2) {
                 drag->started_moving = true;
+                drag->pending_shift_select = false;
             } else {
                 return;
             }
         }
+        if (drag->mode == TIMELINE_DRAG_MODE_SLIP) {
+            int64_t delta_frames = (int64_t)llroundf(delta_sec * (float)sample_rate);
+            int64_t max_offset = (int64_t)drag->clip_total_frames - (int64_t)drag->initial_duration_frames;
+            if (max_offset < 0) {
+                max_offset = 0;
+            }
+            int64_t new_offset = (int64_t)drag->initial_offset_frames + delta_frames;
+            if (new_offset < 0) new_offset = 0;
+            if (new_offset > max_offset) new_offset = max_offset;
+
+            engine_clip_set_region(state->engine,
+                                   drag->track_index,
+                                   drag->clip_index,
+                                   (uint64_t)new_offset,
+                                   drag->initial_duration_frames);
+            inspector_input_set_clip(state, drag->track_index, drag->clip_index);
+
+            if (drag->multi_move) {
+                EngineSamplerSource* anchor_sampler = drag_clip ? drag_clip->sampler : NULL;
+                for (int s = 0; s < drag->multi_clip_count; ++s) {
+                    EngineSamplerSource* sampler = drag->multi_samplers[s];
+                    if (!sampler || sampler == anchor_sampler) {
+                        continue;
+                    }
+                    int clip_track = -1;
+                    int clip_idx = -1;
+                    if (!timeline_find_clip_by_sampler(state, sampler, &clip_track, &clip_idx)) {
+                        continue;
+                    }
+                    uint64_t clip_total = engine_clip_get_total_frames(state->engine, clip_track, clip_idx);
+                    uint64_t clip_duration = 0;
+                    const EngineTrack* clip_tracks = engine_get_tracks(state->engine);
+                    int clip_track_count = engine_get_track_count(state->engine);
+                    if (clip_tracks && clip_track >= 0 && clip_track < clip_track_count) {
+                        const EngineTrack* clip_track_ptr = &clip_tracks[clip_track];
+                        if (clip_track_ptr && clip_idx >= 0 && clip_idx < clip_track_ptr->clip_count) {
+                            const EngineClip* clip = &clip_track_ptr->clips[clip_idx];
+                            clip_duration = clip->duration_frames;
+                            if (clip_duration == 0 && clip->sampler) {
+                                clip_duration = engine_sampler_get_frame_count(clip->sampler);
+                            }
+                        }
+                    }
+                    if (clip_duration == 0) {
+                        continue;
+                    }
+                    int64_t max_clip_offset = (int64_t)clip_total - (int64_t)clip_duration;
+                    if (max_clip_offset < 0) {
+                        max_clip_offset = 0;
+                    }
+                    int64_t clip_offset = (int64_t)drag->multi_initial_offset[s] + delta_frames;
+                    if (clip_offset < 0) clip_offset = 0;
+                    if (clip_offset > max_clip_offset) clip_offset = max_clip_offset;
+                    engine_clip_set_region(state->engine, clip_track, clip_idx,
+                                           (uint64_t)clip_offset, clip_duration);
+                }
+            }
+            return;
+        }
         float new_start_sec = initial_start_sec + delta_sec;
         float snap_interval = timeline_get_snap_interval_seconds(state, geom.visible_seconds);
-        if (drag->started_moving && !alt_held) {
+        bool allow_snap = !alt_held || drag->mode == TIMELINE_DRAG_MODE_RIPPLE;
+        if (drag->started_moving && allow_snap) {
             new_start_sec = timeline_snap_seconds_to_grid(state, new_start_sec, geom.visible_seconds);
             snap_to_neighbor_clip(drag_track, drag->clip_index, sample_rate, snap_interval, &new_start_sec);
         }
@@ -432,6 +661,18 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
             drag->clip_index = new_index;
             timeline_selection_update_index(state, drag->track_index, old_index, new_index);
             inspector_input_set_clip(state, drag->track_index, new_index);
+        }
+        if (drag->mode == TIMELINE_DRAG_MODE_RIPPLE && drag->ripple_target_count > 0) {
+            int64_t delta_frames = (int64_t)new_start_frames - (int64_t)drag->initial_start_frames;
+            int64_t delta_step = delta_frames - drag->ripple_last_delta_frames;
+            if (delta_step != 0) {
+                timeline_apply_ripple_delta(state,
+                                            drag->track_index,
+                                            drag->ripple_targets,
+                                            drag->ripple_target_count,
+                                            delta_step);
+                drag->ripple_last_delta_frames = delta_frames;
+            }
         }
 
         if (drag->multi_move) {
@@ -476,7 +717,8 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
             new_start_sec = max_start_sec;
         }
         float snap_interval = timeline_get_snap_interval_seconds(state, geom.visible_seconds);
-        if (!alt_held) {
+        bool allow_snap = !alt_held || drag->mode == TIMELINE_DRAG_MODE_RIPPLE;
+        if (allow_snap) {
             new_start_sec = timeline_snap_seconds_to_grid(state, new_start_sec, geom.visible_seconds);
         }
         if (new_start_sec < trim_min_start_sec) {
@@ -485,7 +727,7 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
         if (new_start_sec > max_start_sec) {
             new_start_sec = max_start_sec;
         }
-        if (!alt_held) {
+        if (allow_snap) {
             snap_to_neighbor_clip(drag_track, drag->clip_index, sample_rate, snap_interval, &new_start_sec);
         }
         if (new_start_sec < trim_min_start_sec) {
@@ -545,7 +787,8 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
             new_right_sec = max_right_sec;
         }
         float snap_interval = timeline_get_snap_interval_seconds(state, geom.visible_seconds);
-        if (!alt_held) {
+        bool allow_snap = !alt_held || drag->mode == TIMELINE_DRAG_MODE_RIPPLE;
+        if (allow_snap) {
             new_right_sec = timeline_snap_seconds_to_grid(state, new_right_sec, geom.visible_seconds);
         }
         if (new_right_sec < min_right_sec) {
@@ -554,7 +797,7 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
         if (new_right_sec > max_right_sec) {
             new_right_sec = max_right_sec;
         }
-        if (!alt_held) {
+        if (allow_snap) {
             snap_to_neighbor_clip(drag_track, drag->clip_index, sample_rate, snap_interval, &new_right_sec);
         }
         if (new_right_sec < min_right_sec) {
@@ -580,6 +823,20 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
         engine_clip_set_region(state->engine, drag->track_index, drag->clip_index,
                                drag->initial_offset_frames, new_duration_frames);
         inspector_input_set_clip(state, drag->track_index, drag->clip_index);
+        if (drag->mode == TIMELINE_DRAG_MODE_RIPPLE && drag->ripple_target_count > 0) {
+            uint64_t initial_end = drag->initial_start_frames + drag->initial_duration_frames;
+            uint64_t new_end = drag->initial_start_frames + new_duration_frames;
+            int64_t delta_frames = (int64_t)new_end - (int64_t)initial_end;
+            int64_t delta_step = delta_frames - drag->ripple_last_delta_frames;
+            if (delta_step != 0) {
+                timeline_apply_ripple_delta(state,
+                                            drag->track_index,
+                                            drag->ripple_targets,
+                                            drag->ripple_target_count,
+                                            delta_step);
+                drag->ripple_last_delta_frames = delta_frames;
+            }
+        }
     }
 
     const EngineTrack* current_tracks = engine_get_tracks(state->engine);

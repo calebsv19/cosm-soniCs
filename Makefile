@@ -13,6 +13,7 @@ EFFECTS_DIRS := \
 	$(SRC_DIR)/effects/dynamics \
 	$(SRC_DIR)/effects/eqs \
 	$(SRC_DIR)/effects/filter&tone \
+	$(SRC_DIR)/effects/metering \
 	$(SRC_DIR)/effects/modulation \
 	$(SRC_DIR)/effects/reverb
 
@@ -30,6 +31,8 @@ SRCS := \
 	$(SRC_DIR)/audio/media_clip.c \
 	$(SRC_DIR)/audio/wav_writer.c \
 	$(SRC_DIR)/audio/media_cache.c \
+	$(SRC_DIR)/audio/media_registry.c \
+	$(SRC_DIR)/engine/audio_source.c \
 	$(SRC_DIR)/engine/engine_core.c \
 	$(SRC_DIR)/engine/engine_io.c \
 	$(SRC_DIR)/engine/engine_fx.c \
@@ -37,6 +40,7 @@ SRCS := \
 	$(SRC_DIR)/engine/engine_tracks.c \
 	$(SRC_DIR)/engine/engine_clips.c \
 	$(SRC_DIR)/engine/engine_audio.c \
+	$(SRC_DIR)/engine/engine_meter.c \
 	$(SRC_DIR)/engine/engine_eq.c \
 	$(SRC_DIR)/engine/engine_spectrum.c \
 	$(SRC_DIR)/engine/graph.c \
@@ -53,11 +57,13 @@ SRCS := \
 	$(SRC_DIR)/session/session_io_read_parse.c \
 	$(SRC_DIR)/session/session_apply.c \
 	$(SRC_DIR)/session/project_manager.c \
+	$(SRC_DIR)/undo/undo_manager.c \
 	$(SRC_DIR)/ui/panes.c \
 	$(SRC_DIR)/ui/layout.c \
 	$(SRC_DIR)/ui/layout_config.c \
 	$(SRC_DIR)/ui/library_browser.c \
 	$(SRC_DIR)/ui/timeline_waveform.c \
+	$(SRC_DIR)/ui/waveform_render.c \
 	$(SRC_DIR)/ui/timeline_view.c \
 	$(SRC_DIR)/ui/font.c \
 	$(SRC_DIR)/ui/transport.c \
@@ -66,6 +72,10 @@ SRCS := \
 	$(SRC_DIR)/ui/effects_panel/slot_view.c \
 	$(SRC_DIR)/ui/effects_panel/list_view.c \
 	$(SRC_DIR)/ui/effects_panel/eq_detail_view.c \
+	$(SRC_DIR)/ui/effects_panel/meter_detail_view.c \
+	$(SRC_DIR)/ui/effects_panel/meter_detail_correlation.c \
+	$(SRC_DIR)/ui/effects_panel/meter_detail_mid_side.c \
+	$(SRC_DIR)/ui/effects_panel/meter_detail_vectorscope.c \
 	$(SRC_DIR)/ui/effects_panel/track_snapshot_view.c \
 	$(SRC_DIR)/input/input_manager.c \
 	$(SRC_DIR)/input/library_input.c \
@@ -207,6 +217,7 @@ SMOKE_TEST_BIN := $(BUILD_DIR)/tests/engine_smoke_test
 # with the auto-discovered EFFECTS_SRCS so it always stays in sync.
 ENGINE_TEST_SUPPORT_OBJS := \
 	$(BUILD_DIR)/src/engine/engine_core.o \
+	$(BUILD_DIR)/src/engine/audio_source.o \
 	$(BUILD_DIR)/src/engine/graph.o \
 	$(BUILD_DIR)/src/engine/buffer_pool.o \
 	$(BUILD_DIR)/src/engine/source_tone.o \

@@ -13,10 +13,12 @@
 #include "ui/transport.h"
 #include "ui/timeline_view.h"
 #include "ui/library_browser.h"
+#include "audio/media_registry.h"
 #include "ui/effects_panel_slot.h"
 #include "ui/timeline_waveform.h"
 #include "session/project_manager.h"
 #include "time/tempo.h"
+#include "undo/undo_manager.h"
 
 #define TIMELINE_MAX_SELECTION 256
 
@@ -36,12 +38,25 @@ typedef struct {
     UIResizeDrag drag;
 } UILayoutRuntime;
 
+// Describes the active manipulation mode for a timeline drag gesture.
+typedef enum {
+    TIMELINE_DRAG_MODE_SLIDE = 0,
+    TIMELINE_DRAG_MODE_SLIP,
+    TIMELINE_DRAG_MODE_RIPPLE,
+    TIMELINE_DRAG_MODE_TRIM_LEFT,
+    TIMELINE_DRAG_MODE_TRIM_RIGHT,
+    TIMELINE_DRAG_MODE_FADE_IN,
+    TIMELINE_DRAG_MODE_FADE_OUT,
+} TimelineDragMode;
+
+// Tracks the in-progress mouse drag for timeline clips and their edit targets.
 typedef struct {
     bool active;
     bool trimming_left;
     bool trimming_right;
     bool adjusting_fade_in;
     bool adjusting_fade_out;
+    TimelineDragMode mode;
     int track_index;
     int clip_index;
     int destination_track_index;
@@ -62,14 +77,52 @@ typedef struct {
     EngineSamplerSource* multi_samplers[TIMELINE_MAX_SELECTION];
     int multi_initial_track[TIMELINE_MAX_SELECTION];
     uint64_t multi_initial_start[TIMELINE_MAX_SELECTION];
+    uint64_t multi_initial_offset[TIMELINE_MAX_SELECTION];
+    EngineSamplerSource** ripple_targets;
+    int ripple_target_count;
+    int64_t ripple_last_delta_frames;
+    bool pending_shift_select;
+    bool pending_shift_remove;
+    int pending_shift_track;
+    int pending_shift_clip;
 } TimelineDragState;
 
+// Keeps editing state for numeric inspector fields that map to clip timing.
+typedef struct {
+    bool editing_timeline_start;
+    bool editing_timeline_end;
+    bool editing_timeline_length;
+    bool editing_source_start;
+    bool editing_source_end;
+    bool editing_playback_rate;
+    char timeline_start[32];
+    char timeline_end[32];
+    char timeline_length[32];
+    char source_start[32];
+    char source_end[32];
+    char playback_rate[16];
+    int cursor;
+} ClipInspectorEditState;
+
+// Tracks the right panel view/gesture state for clip waveform inspection.
+typedef struct {
+    float zoom;
+    float scroll;
+    bool dragging_window;
+    bool trimming_left;
+    bool trimming_right;
+    bool view_source;
+} ClipInspectorWaveformState;
+
+// Stores the current clip inspector selections, edits, and interaction flags.
 typedef struct {
     bool visible;
     int track_index;
     int clip_index;
     char name[ENGINE_CLIP_NAME_MAX];
+    int name_scroll;
     float gain;
+    float playback_rate;
     bool editing_name;
     int name_cursor;
     bool adjusting_gain;
@@ -77,6 +130,13 @@ typedef struct {
     bool adjusting_fade_out;
     uint64_t fade_in_frames;
     uint64_t fade_out_frames;
+    bool has_focus;
+    bool phase_invert_l;
+    bool phase_invert_r;
+    bool normalize;
+    bool reverse;
+    ClipInspectorEditState edit;
+    ClipInspectorWaveformState waveform;
 } ClipInspectorState;
 
 typedef enum {
@@ -133,13 +193,42 @@ typedef enum {
 
 typedef enum {
     FX_LIST_DETAIL_EFFECT = 0,
-    FX_LIST_DETAIL_EQ
+    FX_LIST_DETAIL_EQ,
+    FX_LIST_DETAIL_METER
 } EffectsPanelListDetailMode;
 
 typedef enum {
     EQ_DETAIL_VIEW_MASTER = 0,
     EQ_DETAIL_VIEW_TRACK
 } EffectsPanelEqDetailView;
+
+#define FX_METER_CORR_HISTORY_POINTS 64
+#define FX_METER_MID_SIDE_HISTORY_POINTS 64
+#define FX_METER_VECTOR_HISTORY_POINTS 64
+
+// Selects how the vectorscope plots its phase view.
+typedef enum {
+    FX_METER_SCOPE_MID_SIDE = 0,
+    FX_METER_SCOPE_LEFT_RIGHT
+} EffectsMeterScopeMode;
+
+// Holds recent meter samples for history visualizations.
+typedef struct EffectsMeterHistory {
+    FxInstId active_id;
+    FxTypeId active_type;
+    Uint32 last_sample_ticks;
+    float corr_values[FX_METER_CORR_HISTORY_POINTS];
+    int corr_head;
+    int corr_count;
+    float mid_values[FX_METER_MID_SIDE_HISTORY_POINTS];
+    float side_values[FX_METER_MID_SIDE_HISTORY_POINTS];
+    int mid_head;
+    int mid_count;
+    float vec_x[FX_METER_VECTOR_HISTORY_POINTS];
+    float vec_y[FX_METER_VECTOR_HISTORY_POINTS];
+    int vec_head;
+    int vec_count;
+} EffectsMeterHistory;
 
 typedef struct {
     bool eq_open;
@@ -150,6 +239,10 @@ typedef struct {
     bool muted;
     bool solo;
     Uint32 last_click_ticks;
+    float list_scroll;
+    float list_scroll_max;
+    bool list_scroll_dragging;
+    float list_scroll_drag_offset;
 } EffectsPanelTrackSnapshotState;
 
 typedef struct {
@@ -239,6 +332,8 @@ typedef struct EffectsPanelState {
     bool title_debug_last_click; // transient debug flag
     EffectsPanelTrackSnapshotState track_snapshot;
     EffectsPanelEqDetailState eq_detail;
+    EffectsMeterHistory meter_history;
+    EffectsMeterScopeMode meter_scope_mode;
     EqCurveState eq_curve;
     EqCurveState eq_curve_master;
     EqCurveState* eq_curve_tracks;
@@ -264,6 +359,7 @@ typedef struct {
     bool editing;
     int track_index;
     char buffer[ENGINE_CLIP_NAME_MAX];
+    char original[ENGINE_CLIP_NAME_MAX];
     int cursor;
 } TrackNameEditor;
 
@@ -331,6 +427,7 @@ struct AppState {
     Engine* engine;
     TransportUI transport_ui;
     UILayoutRuntime layout_runtime;
+    MediaRegistry media_registry;
     LibraryBrowser library;
     int drag_library_index;
     bool dragging_library;
@@ -389,4 +486,5 @@ struct AppState {
     ProjectSavePrompt project_prompt;
     ProjectLoadModal project_load;
     WaveformCache waveform_cache;
+    UndoManager undo;
 };

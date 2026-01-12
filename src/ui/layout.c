@@ -310,10 +310,11 @@ void ui_render_panes(SDL_Renderer* renderer, const AppState* state) {
     render_layout_grid(renderer, state);
 }
 
-void ui_render_overlays(SDL_Renderer* renderer, const AppState* state) {
+void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
     if (!renderer || !state) {
         return;
     }
+    ui_set_clip_rect(renderer, NULL);
     ClipInspectorLayout inspector_layout;
     clip_inspector_compute_layout(state, &inspector_layout);
     if (state->inspector.visible) {
@@ -321,7 +322,17 @@ void ui_render_overlays(SDL_Renderer* renderer, const AppState* state) {
     } else {
         EffectsPanelLayout effects_layout;
         effects_panel_compute_layout(state, &effects_layout);
+        const Pane* mixer = ui_layout_get_pane(state, 2);
+        SDL_Rect prev_clip;
+        SDL_bool had_clip = ui_clip_is_enabled(renderer);
+        if (mixer) {
+            ui_get_clip_rect(renderer, &prev_clip);
+            ui_set_clip_rect(renderer, &mixer->rect);
+        }
         effects_panel_render(renderer, state, &effects_layout);
+        if (mixer) {
+            ui_set_clip_rect(renderer, had_clip ? &prev_clip : NULL);
+        }
     }
 
     // Status log display removed per request.

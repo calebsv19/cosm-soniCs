@@ -47,7 +47,9 @@ int timeline_move_clip_to_track(AppState* state, int src_track, int clip_index, 
         return -1;
     }
     const EngineClip* clip = &source_track->clips[clip_index];
-    if (!clip || clip->media_path[0] == '\0') {
+    const char* media_path = engine_clip_get_media_path(clip);
+    const char* media_id = engine_clip_get_media_id(clip);
+    if (!clip || !media_path || media_path[0] == '\0') {
         return -1;
     }
 
@@ -61,7 +63,12 @@ int timeline_move_clip_to_track(AppState* state, int src_track, int clip_index, 
     }
 
     int new_clip_index = -1;
-    if (!engine_add_clip_to_track(state->engine, dst_track, clip->media_path, start_frame, &new_clip_index)) {
+    if (!engine_add_clip_to_track_with_id(state->engine,
+                                          dst_track,
+                                          media_path,
+                                          media_id,
+                                          start_frame,
+                                          &new_clip_index)) {
         SDL_Log("timeline_move_clip_to_track: failed to add clip to track %d", dst_track);
         return -1;
     }

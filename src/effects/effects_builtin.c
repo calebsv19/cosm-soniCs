@@ -117,6 +117,14 @@ int plate_lite_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t
 int gated_reverb_get_desc(FxDesc *out);
 int gated_reverb_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
 
+// Metering
+int correlation_meter_get_desc(FxDesc *out);
+int correlation_meter_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
+int mid_side_meter_get_desc(FxDesc *out);
+int mid_side_meter_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
+int vectorscope_meter_get_desc(FxDesc *out);
+int vectorscope_meter_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
+
 static FxRegistryEntry kBuiltinFxTable[] = {
     // Basics / Utility (01–19)
     {  1u, "Gain",             gain_get_desc,            gain_create            },
@@ -179,6 +187,11 @@ static FxRegistryEntry kBuiltinFxTable[] = {
     { 91u, "EarlyReflections", early_reflections_get_desc, early_reflections_create },
     { 92u, "PlateLite",        plate_lite_get_desc,      plate_lite_create      },
     { 93u, "GatedReverb",      gated_reverb_get_desc,    gated_reverb_create    },
+
+    // Metering (100–109)
+    { 100u, "CorrelationMeter", correlation_meter_get_desc, correlation_meter_create },
+    { 101u, "MidSideMeter",     mid_side_meter_get_desc,     mid_side_meter_create   },
+    { 102u, "VectorScope",      vectorscope_meter_get_desc,  vectorscope_meter_create },
 };
 
 static const int kBuiltinFxCount = (int)(sizeof(kBuiltinFxTable) / sizeof(kBuiltinFxTable[0]));

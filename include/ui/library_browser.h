@@ -3,12 +3,15 @@
 #include <SDL2/SDL.h>
 #include <stdbool.h>
 
+#include "audio/media_registry.h"
+
 #define LIBRARY_MAX_ITEMS 256
 #define LIBRARY_NAME_MAX 128
 
 typedef struct {
     char name[LIBRARY_NAME_MAX];
     float duration_seconds;
+    char media_id[MEDIA_ID_MAX];
 } LibraryItem;
 
 typedef struct {
@@ -24,6 +27,6 @@ typedef struct {
 } LibraryBrowser;
 
 void library_browser_init(LibraryBrowser* browser, const char* directory);
-void library_browser_scan(LibraryBrowser* browser);
+void library_browser_scan(LibraryBrowser* browser, MediaRegistry* registry);
 void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* renderer, const SDL_Rect* rect, int line_height);
 int  library_browser_hit_test(const LibraryBrowser* browser, const SDL_Rect* rect, int x, int y, int line_height);

@@ -3,6 +3,8 @@
 #include "app_state.h"
 #include "ui/library_browser.h"
 #include "ui/layout.h"
+#include "ui/font.h"
+#include "undo/undo_manager.h"
 
 #include <SDL2/SDL.h>
 #include <stdbool.h>
@@ -10,7 +12,25 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#define LIB_TEXT_CHAR_W (6 * 2)
+static int library_cursor_from_x(const char* text, float scale, int start_x, int mouse_x) {
+    if (!text) return 0;
+    int len = (int)strlen(text);
+    int rel = mouse_x - start_x;
+    if (rel <= 0) return 0;
+    int cursor = len;
+    char temp[LIBRARY_NAME_MAX];
+    for (int i = 0; i <= len; ++i) {
+        snprintf(temp, sizeof(temp), "%.*s", i, text);
+        int w = ui_measure_text_width(temp, scale);
+        if (w >= rel) {
+            cursor = i;
+            break;
+        }
+    }
+    if (cursor < 0) cursor = 0;
+    if (cursor > len) cursor = len;
+    return cursor;
+}
 
 static void library_edit_stop(LibraryBrowser* lib) {
     if (!lib) return;
@@ -30,6 +50,12 @@ static void library_edit_commit(AppState* state) {
     }
     const char* old_name = lib->items[lib->edit_index].name;
     const char* new_name = lib->edit_buffer;
+    char old_name_copy[LIBRARY_NAME_MAX];
+    char new_name_copy[LIBRARY_NAME_MAX];
+    strncpy(old_name_copy, old_name, sizeof(old_name_copy) - 1);
+    old_name_copy[sizeof(old_name_copy) - 1] = '\0';
+    strncpy(new_name_copy, new_name, sizeof(new_name_copy) - 1);
+    new_name_copy[sizeof(new_name_copy) - 1] = '\0';
     if (!new_name || new_name[0] == '\0' || strcmp(old_name, new_name) == 0) {
         library_edit_stop(lib);
         return;
@@ -49,13 +75,37 @@ static void library_edit_commit(AppState* state) {
         library_edit_stop(lib);
         return;
     }
-    SDL_Log("Renamed %s -> %s", old_name, new_name);
+    SDL_Log("Renamed %s -> %s", old_name_copy, new_name_copy);
+    UndoCommand cmd = {0};
+    cmd.type = UNDO_CMD_LIBRARY_RENAME;
+    strncpy(cmd.data.library_rename.directory, lib->directory,
+            sizeof(cmd.data.library_rename.directory) - 1);
+    cmd.data.library_rename.directory[sizeof(cmd.data.library_rename.directory) - 1] = '\0';
+    strncpy(cmd.data.library_rename.before_name, old_name_copy,
+            sizeof(cmd.data.library_rename.before_name) - 1);
+    cmd.data.library_rename.before_name[sizeof(cmd.data.library_rename.before_name) - 1] = '\0';
+    strncpy(cmd.data.library_rename.after_name, new_name_copy,
+            sizeof(cmd.data.library_rename.after_name) - 1);
+    cmd.data.library_rename.after_name[sizeof(cmd.data.library_rename.after_name) - 1] = '\0';
+    undo_manager_push(&state->undo, &cmd);
+    if (lib->edit_index >= 0 && lib->edit_index < lib->count) {
+        const char* id = lib->items[lib->edit_index].media_id;
+        if (id && id[0] != '\0') {
+            media_registry_update_path(&state->media_registry, id, new_path, new_name_copy);
+            media_registry_save(&state->media_registry);
+        }
+    }
     library_edit_stop(lib);
-    library_browser_scan(lib);
+    library_browser_scan(lib, &state->media_registry);
 }
 
 bool library_input_is_editing(const AppState* state) {
     return state && state->library.editing;
+}
+
+void library_input_stop_edit(AppState* state) {
+    if (!state) return;
+    library_edit_stop(&state->library);
 }
 
 void library_input_start_edit(AppState* state, const Pane* library_pane, int mouse_x) {
@@ -68,15 +118,8 @@ void library_input_start_edit(AppState* state, const Pane* library_pane, int mou
     lib->edit_index = lib->hovered_index;
     strncpy(lib->edit_buffer, lib->items[lib->edit_index].name, sizeof(lib->edit_buffer) - 1);
     lib->edit_buffer[sizeof(lib->edit_buffer) - 1] = '\0';
-    int len = (int)strlen(lib->edit_buffer);
-    int char_w = LIB_TEXT_CHAR_W;
     int start_x = library_pane->rect.x + 16;
-    int rel = mouse_x - start_x;
-    if (rel < 0) rel = 0;
-    int cursor = rel / char_w;
-    if (cursor < 0) cursor = 0;
-    if (cursor > len) cursor = len;
-    lib->edit_cursor = cursor;
+    lib->edit_cursor = library_cursor_from_x(lib->edit_buffer, 1.5f, start_x, mouse_x);
     SDL_StartTextInput();
 }
 
@@ -148,15 +191,8 @@ bool library_input_handle_event(InputManager* manager, AppState* state, const SD
         int line_height = 20;
         int hit = library_browser_hit_test(lib, &library_pane->rect, event->button.x, event->button.y, line_height);
         if (hit == lib->edit_index && event->button.button == SDL_BUTTON_LEFT) {
-            int char_w = LIB_TEXT_CHAR_W;
             int start_x = library_pane->rect.x + 16;
-            int rel = event->button.x - start_x;
-            if (rel < 0) rel = 0;
-            int cursor = rel / char_w;
-            int len2 = (int)strlen(lib->edit_buffer);
-            if (cursor < 0) cursor = 0;
-            if (cursor > len2) cursor = len2;
-            lib->edit_cursor = cursor;
+            lib->edit_cursor = library_cursor_from_x(lib->edit_buffer, 1.5f, start_x, event->button.x);
             return true;
         } else if (event->button.button == SDL_BUTTON_LEFT) {
             library_edit_stop(lib);

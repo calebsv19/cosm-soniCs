@@ -7,12 +7,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SESSION_DOCUMENT_VERSION 10
+#define SESSION_DOCUMENT_VERSION 12
 #define SESSION_PATH_MAX 512
 #define SESSION_NAME_MAX 128
 #define SESSION_FX_NAME_MAX 64
+#define SESSION_MEDIA_ID_MAX 33
 
 typedef struct {
+    char media_id[SESSION_MEDIA_ID_MAX];
     char media_path[SESSION_PATH_MAX];
     char name[SESSION_NAME_MAX];
     uint64_t start_frame;
@@ -63,6 +65,15 @@ typedef struct {
         float q_width;
     } bands[4];
 } SessionEffectsPanelState;
+
+typedef struct {
+    bool visible;
+    int track_index;
+    int clip_index;
+    bool view_source;
+    float zoom;
+    float scroll;
+} SessionClipInspectorState;
 
 typedef struct {
     float transport_ratio;
@@ -130,6 +141,7 @@ typedef struct {
     SessionLoopState loop;
     SessionTimelineView timeline;
     SessionEffectsPanelState effects_panel;
+    SessionClipInspectorState clip_inspector;
     SessionLayoutState layout;
     SessionLibraryState library;
     bool transport_playing;

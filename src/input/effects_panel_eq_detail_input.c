@@ -3,6 +3,7 @@
 #include "app_state.h"
 #include "ui/effects_panel.h"
 #include "ui/effects_panel_eq_detail.h"
+#include "undo/undo_manager.h"
 
 #include <math.h>
 
@@ -20,6 +21,133 @@ static void eq_curve_to_engine(const EqCurveState* src, EngineEqCurve* dst) {
         dst->bands[i].gain_db = src->bands[i].gain_db;
         dst->bands[i].q_width = src->bands[i].q_width;
     }
+}
+
+static void eq_curve_to_session(const EqCurveState* src, SessionEqCurve* dst) {
+    if (!src || !dst) {
+        return;
+    }
+    dst->low_cut.enabled = src->low_cut.enabled;
+    dst->low_cut.freq_hz = src->low_cut.freq_hz;
+    dst->low_cut.slope = src->low_cut.slope;
+    dst->high_cut.enabled = src->high_cut.enabled;
+    dst->high_cut.freq_hz = src->high_cut.freq_hz;
+    dst->high_cut.slope = src->high_cut.slope;
+    for (int i = 0; i < 4; ++i) {
+        dst->bands[i].enabled = src->bands[i].enabled;
+        dst->bands[i].freq_hz = src->bands[i].freq_hz;
+        dst->bands[i].gain_db = src->bands[i].gain_db;
+        dst->bands[i].q_width = src->bands[i].q_width;
+    }
+}
+
+static bool session_eq_equal(const SessionEqCurve* a, const SessionEqCurve* b) {
+    if (!a || !b) {
+        return true;
+    }
+    if (a->low_cut.enabled != b->low_cut.enabled ||
+        a->high_cut.enabled != b->high_cut.enabled) {
+        return false;
+    }
+    if (fabsf(a->low_cut.freq_hz - b->low_cut.freq_hz) > 0.001f ||
+        fabsf(a->high_cut.freq_hz - b->high_cut.freq_hz) > 0.001f) {
+        return false;
+    }
+    for (int i = 0; i < 4; ++i) {
+        if (a->bands[i].enabled != b->bands[i].enabled) {
+            return false;
+        }
+        if (fabsf(a->bands[i].freq_hz - b->bands[i].freq_hz) > 0.001f ||
+            fabsf(a->bands[i].gain_db - b->bands[i].gain_db) > 0.001f ||
+            fabsf(a->bands[i].q_width - b->bands[i].q_width) > 0.001f) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void eq_detail_apply_curve(AppState* state);
+
+static void eq_curve_set_defaults(EqCurveState* curve) {
+    if (!curve) {
+        return;
+    }
+    SDL_zero(*curve);
+    curve->low_cut.enabled = false;
+    curve->low_cut.freq_hz = 80.0f;
+    curve->low_cut.slope = 12.0f;
+    curve->high_cut.enabled = false;
+    curve->high_cut.freq_hz = 12000.0f;
+    curve->high_cut.slope = 12.0f;
+    curve->selected_band = -1;
+    curve->selected_handle = EQ_CURVE_HANDLE_NONE;
+    curve->hover_band = -1;
+    curve->hover_handle = EQ_CURVE_HANDLE_NONE;
+    curve->hover_toggle_band = -1;
+    curve->hover_toggle_low = false;
+    curve->hover_toggle_high = false;
+    for (int i = 0; i < 4; ++i) {
+        curve->bands[i].enabled = true;
+        curve->bands[i].gain_db = 0.0f;
+        curve->bands[i].q_width = 1.0f;
+    }
+    curve->bands[0].freq_hz = 120.0f;
+    curve->bands[1].freq_hz = 500.0f;
+    curve->bands[2].freq_hz = 2000.0f;
+    curve->bands[3].freq_hz = 8000.0f;
+}
+
+static void eq_detail_reset_curve(AppState* state) {
+    if (!state) {
+        return;
+    }
+    EffectsPanelState* panel = &state->effects_panel;
+    UndoCommand cmd = {0};
+    cmd.type = UNDO_CMD_EQ_CURVE;
+    if (panel->eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK &&
+        panel->target == FX_PANEL_TARGET_TRACK &&
+        panel->target_track_index >= 0) {
+        cmd.data.eq_curve_edit.is_master = false;
+        cmd.data.eq_curve_edit.track_index = panel->target_track_index;
+    } else {
+        cmd.data.eq_curve_edit.is_master = true;
+        cmd.data.eq_curve_edit.track_index = -1;
+    }
+    eq_curve_to_session(&panel->eq_curve, &cmd.data.eq_curve_edit.before);
+    eq_curve_set_defaults(&panel->eq_curve);
+    if (cmd.data.eq_curve_edit.is_master) {
+        panel->eq_curve_master = panel->eq_curve;
+    } else if (panel->eq_curve_tracks &&
+               cmd.data.eq_curve_edit.track_index >= 0 &&
+               cmd.data.eq_curve_edit.track_index < panel->eq_curve_tracks_count) {
+        panel->eq_curve_tracks[cmd.data.eq_curve_edit.track_index] = panel->eq_curve;
+    }
+    eq_detail_apply_curve(state);
+    eq_curve_to_session(&panel->eq_curve, &cmd.data.eq_curve_edit.after);
+    if (!session_eq_equal(&cmd.data.eq_curve_edit.before, &cmd.data.eq_curve_edit.after)) {
+        undo_manager_push(&state->undo, &cmd);
+    }
+}
+
+static void eq_detail_begin_undo_drag(AppState* state) {
+    if (!state) {
+        return;
+    }
+    EffectsPanelState* panel = &state->effects_panel;
+    UndoCommand cmd = {0};
+    cmd.type = UNDO_CMD_EQ_CURVE;
+    if (panel->eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK &&
+        panel->target == FX_PANEL_TARGET_TRACK &&
+        panel->target_track_index >= 0) {
+        cmd.data.eq_curve_edit.is_master = false;
+        cmd.data.eq_curve_edit.track_index = panel->target_track_index;
+    } else {
+        cmd.data.eq_curve_edit.is_master = true;
+        cmd.data.eq_curve_edit.track_index = -1;
+    }
+    eq_curve_to_session(&panel->eq_curve, &cmd.data.eq_curve_edit.before);
+    cmd.data.eq_curve_edit.after = cmd.data.eq_curve_edit.before;
+    undo_manager_begin_drag(&state->undo, &cmd);
 }
 
 static void eq_detail_apply_curve(AppState* state) {
@@ -240,25 +368,62 @@ bool effects_panel_eq_detail_handle_mouse_down(AppState* state,
         }
         return true;
     }
+    if (event->button.clicks >= 2 && SDL_PointInRect(&pt, &graph)) {
+        eq_detail_reset_curve(state);
+        return true;
+    }
     EqCurveState* curve = &state->effects_panel.eq_curve;
     if (SDL_PointInRect(&pt, &low_rect)) {
+        UndoCommand cmd = {0};
+        cmd.type = UNDO_CMD_EQ_CURVE;
+        cmd.data.eq_curve_edit.is_master = !(state->effects_panel.eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK &&
+                                             state->effects_panel.target == FX_PANEL_TARGET_TRACK &&
+                                             state->effects_panel.target_track_index >= 0);
+        cmd.data.eq_curve_edit.track_index = cmd.data.eq_curve_edit.is_master ? -1 : state->effects_panel.target_track_index;
+        eq_curve_to_session(curve, &cmd.data.eq_curve_edit.before);
         curve->low_cut.enabled = !curve->low_cut.enabled;
-        state->effects_panel.eq_detail.pending_apply = true;
+        eq_detail_apply_curve(state);
+        eq_curve_to_session(curve, &cmd.data.eq_curve_edit.after);
+        if (!session_eq_equal(&cmd.data.eq_curve_edit.before, &cmd.data.eq_curve_edit.after)) {
+            undo_manager_push(&state->undo, &cmd);
+        }
         return true;
     }
     if (SDL_PointInRect(&pt, &high_rect)) {
+        UndoCommand cmd = {0};
+        cmd.type = UNDO_CMD_EQ_CURVE;
+        cmd.data.eq_curve_edit.is_master = !(state->effects_panel.eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK &&
+                                             state->effects_panel.target == FX_PANEL_TARGET_TRACK &&
+                                             state->effects_panel.target_track_index >= 0);
+        cmd.data.eq_curve_edit.track_index = cmd.data.eq_curve_edit.is_master ? -1 : state->effects_panel.target_track_index;
+        eq_curve_to_session(curve, &cmd.data.eq_curve_edit.before);
         curve->high_cut.enabled = !curve->high_cut.enabled;
-        state->effects_panel.eq_detail.pending_apply = true;
+        eq_detail_apply_curve(state);
+        eq_curve_to_session(curve, &cmd.data.eq_curve_edit.after);
+        if (!session_eq_equal(&cmd.data.eq_curve_edit.before, &cmd.data.eq_curve_edit.after)) {
+            undo_manager_push(&state->undo, &cmd);
+        }
         return true;
     }
     for (int i = 0; i < 4; ++i) {
         if (SDL_PointInRect(&pt, &mid_rects[i])) {
+            UndoCommand cmd = {0};
+            cmd.type = UNDO_CMD_EQ_CURVE;
+            cmd.data.eq_curve_edit.is_master = !(state->effects_panel.eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK &&
+                                                 state->effects_panel.target == FX_PANEL_TARGET_TRACK &&
+                                                 state->effects_panel.target_track_index >= 0);
+            cmd.data.eq_curve_edit.track_index = cmd.data.eq_curve_edit.is_master ? -1 : state->effects_panel.target_track_index;
+            eq_curve_to_session(curve, &cmd.data.eq_curve_edit.before);
             curve->bands[i].enabled = !curve->bands[i].enabled;
             if (!curve->bands[i].enabled && curve->selected_band == i) {
                 curve->selected_band = -1;
                 curve->selected_handle = EQ_CURVE_HANDLE_NONE;
             }
-            state->effects_panel.eq_detail.pending_apply = true;
+            eq_detail_apply_curve(state);
+            eq_curve_to_session(curve, &cmd.data.eq_curve_edit.after);
+            if (!session_eq_equal(&cmd.data.eq_curve_edit.before, &cmd.data.eq_curve_edit.after)) {
+                undo_manager_push(&state->undo, &cmd);
+            }
             return true;
         }
     }
@@ -266,6 +431,7 @@ bool effects_panel_eq_detail_handle_mouse_down(AppState* state,
         if (curve->low_cut.enabled) {
             float x_cut = effects_eq_freq_to_x(&graph, curve->low_cut.freq_hz);
             if (fabsf((float)pt.x - x_cut) <= 6.0f) {
+                eq_detail_begin_undo_drag(state);
                 curve->selected_band = -1;
                 curve->selected_handle = EQ_CURVE_HANDLE_CUT_LOW;
                 state->effects_panel.eq_detail.dragging = true;
@@ -277,6 +443,7 @@ bool effects_panel_eq_detail_handle_mouse_down(AppState* state,
         if (curve->high_cut.enabled) {
             float x_cut = effects_eq_freq_to_x(&graph, curve->high_cut.freq_hz);
             if (fabsf((float)pt.x - x_cut) <= 6.0f) {
+                eq_detail_begin_undo_drag(state);
                 curve->selected_band = -1;
                 curve->selected_handle = EQ_CURVE_HANDLE_CUT_HIGH;
                 state->effects_panel.eq_detail.dragging = true;
@@ -298,6 +465,7 @@ bool effects_panel_eq_detail_handle_mouse_down(AppState* state,
                 10
             };
             if (SDL_PointInRect(&pt, &point_rect)) {
+                eq_detail_begin_undo_drag(state);
                 curve->selected_band = b;
                 curve->selected_handle = EQ_CURVE_HANDLE_POINT;
                 state->effects_panel.eq_detail.dragging = true;
@@ -326,6 +494,7 @@ bool effects_panel_eq_detail_handle_mouse_down(AppState* state,
                 12
             };
             if (SDL_PointInRect(&pt, &left_rect) || SDL_PointInRect(&pt, &right_rect)) {
+                eq_detail_begin_undo_drag(state);
                 curve->selected_band = b;
                 curve->selected_handle = EQ_CURVE_HANDLE_WIDTH;
                 state->effects_panel.eq_detail.dragging = true;
@@ -354,6 +523,19 @@ bool effects_panel_eq_detail_handle_mouse_up(AppState* state, const SDL_Event* e
     state->effects_panel.eq_detail.dragging = false;
     state->effects_panel.eq_curve.selected_band = -1;
     state->effects_panel.eq_curve.selected_handle = EQ_CURVE_HANDLE_NONE;
+    if (state->undo.active_drag_valid) {
+        UndoCommand* cmd = &state->undo.active_drag;
+        if (cmd->type == UNDO_CMD_EQ_CURVE) {
+            eq_curve_to_session(&state->effects_panel.eq_curve, &cmd->data.eq_curve_edit.after);
+            if (!session_eq_equal(&cmd->data.eq_curve_edit.before, &cmd->data.eq_curve_edit.after)) {
+                undo_manager_commit_drag(&state->undo, cmd);
+            } else {
+                undo_manager_cancel_drag(&state->undo);
+            }
+        } else {
+            undo_manager_cancel_drag(&state->undo);
+        }
+    }
     if (state->effects_panel.eq_detail.pending_apply) {
         eq_detail_apply_curve(state);
         state->effects_panel.eq_detail.last_apply_ticks = event->button.timestamp;

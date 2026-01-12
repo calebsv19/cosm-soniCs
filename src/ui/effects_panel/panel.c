@@ -32,6 +32,7 @@ static const FxCategorySpec kCategorySpecs[] = {
     {"Distortion",    60u, 69u},
     {"Modulation",    70u, 79u},
     {"Reverb",        90u, 99u},
+    {"Metering",      100u, 109u},
 };
 
 static void zero_layout(EffectsPanelLayout* layout) {
@@ -41,7 +42,7 @@ static void zero_layout(EffectsPanelLayout* layout) {
     SDL_zero(*layout);
 }
 
-static void compute_list_layout(const EffectsPanelState* panel,
+static void compute_list_layout(EffectsPanelState* panel,
                                 int content_x,
                                 int content_y,
                                 int content_w,
@@ -100,6 +101,22 @@ static void compute_list_layout(const EffectsPanelState* panel,
     if (list_inner_w < 0) list_inner_w = 0;
     int row_y = layout->list_rect.y + FX_PANEL_LIST_PAD;
 
+    int meter_column_w = FX_PANEL_SNAPSHOT_METER_WIDTH;
+    int meter_gap = FX_PANEL_SNAPSHOT_METER_GAP;
+    int min_left_w = 80;
+    int left_inner_w = list_inner_w - meter_column_w - meter_gap;
+    if (left_inner_w < min_left_w) {
+        meter_column_w = list_inner_w / 4;
+        if (meter_column_w < 0) meter_column_w = 0;
+        left_inner_w = list_inner_w - meter_column_w - meter_gap;
+        if (left_inner_w < min_left_w) {
+            meter_column_w = 0;
+            left_inner_w = list_inner_w;
+        }
+    }
+    int left_inner_x = list_inner_x;
+    int meter_column_x = left_inner_x + left_inner_w + meter_gap;
+
     int eq_h = FX_PANEL_SNAPSHOT_EQ_HEIGHT;
     int label_h = FX_PANEL_SNAPSHOT_LABEL_HEIGHT;
     int slider_h = FX_PANEL_SNAPSHOT_SLIDER_HEIGHT;
@@ -110,56 +127,165 @@ static void compute_list_layout(const EffectsPanelState* panel,
     layout->track_snapshot.container_rect = layout->list_rect;
     layout->track_snapshot.eq_rect = (SDL_Rect){list_inner_x, snapshot_y, list_inner_w, eq_h};
     snapshot_y += eq_h + (FX_PANEL_SNAPSHOT_GAP / 2);
-    layout->track_snapshot.gain_label_rect = (SDL_Rect){list_inner_x, snapshot_y, list_inner_w, label_h};
+    layout->track_snapshot.gain_label_rect = (SDL_Rect){left_inner_x, snapshot_y, left_inner_w, label_h};
     snapshot_y += label_h;
-    layout->track_snapshot.gain_rect = (SDL_Rect){list_inner_x, snapshot_y, list_inner_w, slider_h};
+    layout->track_snapshot.gain_rect = (SDL_Rect){left_inner_x, snapshot_y, left_inner_w, slider_h};
     layout->track_snapshot.gain_hit_rect = (SDL_Rect){
-        list_inner_x,
+        left_inner_x,
         snapshot_y - (slider_hit_h - slider_h) / 2,
-        list_inner_w,
+        left_inner_w,
         slider_hit_h
     };
     snapshot_y += slider_h + FX_PANEL_SNAPSHOT_GAP;
-    layout->track_snapshot.pan_label_rect = (SDL_Rect){list_inner_x, snapshot_y, list_inner_w, label_h};
+    layout->track_snapshot.pan_label_rect = (SDL_Rect){left_inner_x, snapshot_y, left_inner_w, label_h};
     snapshot_y += label_h;
-    layout->track_snapshot.pan_rect = (SDL_Rect){list_inner_x, snapshot_y, list_inner_w, slider_h};
+    layout->track_snapshot.pan_rect = (SDL_Rect){left_inner_x, snapshot_y, left_inner_w, slider_h};
     layout->track_snapshot.pan_hit_rect = (SDL_Rect){
-        list_inner_x,
+        left_inner_x,
         snapshot_y - (slider_hit_h - slider_h) / 2,
-        list_inner_w,
+        left_inner_w,
         slider_hit_h
     };
 
     int button_gap = FX_PANEL_SNAPSHOT_BUTTON_GAP;
-    int button_w = (list_inner_w - button_gap) / 2;
+    int button_w = (left_inner_w - button_gap) / 2;
     if (button_w < 0) button_w = 0;
-    layout->track_snapshot.mute_rect = (SDL_Rect){list_inner_x, footer_y, button_w, footer_h};
-    layout->track_snapshot.solo_rect = (SDL_Rect){list_inner_x + button_w + button_gap, footer_y, button_w, footer_h};
+    layout->track_snapshot.mute_rect = (SDL_Rect){left_inner_x, footer_y, button_w, footer_h};
+    layout->track_snapshot.solo_rect = (SDL_Rect){left_inner_x + button_w + button_gap, footer_y, button_w, footer_h};
 
     int list_top = snapshot_y + slider_h + FX_PANEL_SNAPSHOT_LIST_GAP;
     int list_bottom = footer_y - FX_PANEL_LIST_PAD;
     if (list_bottom < list_top) {
         list_bottom = list_top;
     }
-    row_y = list_top;
-    for (int i = 0; i < panel->chain_count && i < FX_MASTER_MAX; ++i) {
-        SDL_Rect row = {list_inner_x,
+    layout->track_snapshot.list_rect = (SDL_Rect){
+        left_inner_x,
+        list_top,
+        left_inner_w,
+        list_bottom - list_top
+    };
+    layout->track_snapshot.list_clip_rect = layout->track_snapshot.list_rect;
+
+    int total_rows = panel->chain_count;
+    if (total_rows > FX_MASTER_MAX) {
+        total_rows = FX_MASTER_MAX;
+    }
+    int row_full_h = FX_PANEL_LIST_ROW_HEIGHT + FX_PANEL_LIST_ROW_GAP;
+    int list_content_h = total_rows > 0 ? (total_rows * row_full_h - FX_PANEL_LIST_ROW_GAP) : 0;
+    int visible_h = layout->track_snapshot.list_rect.h;
+    if (visible_h < 0) visible_h = 0;
+    float max_scroll = (list_content_h > visible_h) ? (float)(list_content_h - visible_h) : 0.0f;
+    if (panel->track_snapshot.list_scroll > max_scroll) {
+        panel->track_snapshot.list_scroll = max_scroll;
+    }
+    if (panel->track_snapshot.list_scroll < 0.0f) {
+        panel->track_snapshot.list_scroll = 0.0f;
+    }
+    panel->track_snapshot.list_scroll_max = max_scroll;
+
+    int row_w = left_inner_w - (FX_PANEL_LIST_SCROLLBAR_HIT_WIDTH + 6);
+    if (row_w < 0) row_w = 0;
+    row_y = list_top - (int)lroundf(panel->track_snapshot.list_scroll);
+    for (int i = 0; i < total_rows; ++i) {
+        SDL_Rect row = {left_inner_x,
                         row_y,
-                        list_inner_w,
+                        row_w,
                         FX_PANEL_LIST_ROW_HEIGHT};
-        if (row.y + row.h > list_bottom) {
-            break;
-        }
         int toggle_size = FX_PANEL_LIST_ROW_HEIGHT - 6;
-        if (toggle_size < 10) toggle_size = 10;
-        SDL_Rect toggle_rect = {row.x + row.w - FX_PANEL_LIST_PAD - toggle_size,
+        if (toggle_size < 8) toggle_size = 8;
+        int toggle_w = toggle_size - 3;
+        if (toggle_w < 6) toggle_w = 6;
+        SDL_Rect toggle_rect = {row.x + row.w - FX_PANEL_LIST_PAD - toggle_w,
                                 row.y + (row.h - toggle_size) / 2,
-                                toggle_size,
+                                toggle_w,
                                 toggle_size};
         layout->list_row_rects[i] = row;
         layout->list_toggle_rects[i] = toggle_rect;
         layout->list_row_count++;
         row_y += FX_PANEL_LIST_ROW_HEIGHT + FX_PANEL_LIST_ROW_GAP;
+    }
+
+    if (panel->track_snapshot.list_scroll_max > 0.0f && layout->track_snapshot.list_rect.h > 0) {
+        SDL_Rect track = layout->track_snapshot.list_rect;
+        track.x = layout->track_snapshot.list_rect.x + layout->track_snapshot.list_rect.w - FX_PANEL_LIST_SCROLLBAR_WIDTH;
+        track.w = FX_PANEL_LIST_SCROLLBAR_WIDTH;
+        layout->track_snapshot.list_scroll_track = track;
+        float ratio = (float)visible_h / (float)list_content_h;
+        int thumb_h = (int)lroundf(ratio * (float)track.h);
+        if (thumb_h < FX_PANEL_LIST_SCROLLBAR_MIN_THUMB) {
+            thumb_h = FX_PANEL_LIST_SCROLLBAR_MIN_THUMB;
+        }
+        if (thumb_h > track.h) {
+            thumb_h = track.h;
+        }
+        float t = panel->track_snapshot.list_scroll_max > 0.0f
+                      ? panel->track_snapshot.list_scroll / panel->track_snapshot.list_scroll_max
+                      : 0.0f;
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+        int thumb_y = track.y + (int)lroundf(t * (float)(track.h - thumb_h));
+        layout->track_snapshot.list_scroll_thumb = (SDL_Rect){track.x, thumb_y, track.w, thumb_h};
+        int hit_w = FX_PANEL_LIST_SCROLLBAR_HIT_WIDTH;
+        int hit_x = track.x + (track.w - hit_w) / 2;
+        layout->track_snapshot.list_scroll_thumb_hit = (SDL_Rect){hit_x, thumb_y, hit_w, thumb_h};
+    } else {
+        layout->track_snapshot.list_scroll_track = (SDL_Rect){0, 0, 0, 0};
+        layout->track_snapshot.list_scroll_thumb = (SDL_Rect){0, 0, 0, 0};
+        layout->track_snapshot.list_scroll_thumb_hit = (SDL_Rect){0, 0, 0, 0};
+    }
+
+    int meter_top = snapshot_y;
+    int meter_bottom = footer_y + footer_h;
+    int meter_h = meter_bottom - meter_top;
+    if (meter_column_w > 0 && meter_h > 0) {
+        int label_w = 22;
+        int bar_w = meter_column_w - label_w - FX_PANEL_SNAPSHOT_METER_LABEL_GAP;
+        if (bar_w < 6) {
+            bar_w = meter_column_w;
+            label_w = 0;
+        }
+        layout->track_snapshot.meter_rect = (SDL_Rect){meter_column_x, meter_top, bar_w, meter_h};
+        layout->track_snapshot.meter_clip_rect = (SDL_Rect){
+            meter_column_x,
+            meter_top,
+            bar_w,
+            FX_PANEL_SNAPSHOT_METER_CLIP_HEIGHT
+        };
+        for (int i = 0; i < FX_PANEL_METER_TICK_COUNT; ++i) {
+            layout->track_snapshot.meter_tick_rects[i] = (SDL_Rect){0, 0, 0, 0};
+            layout->track_snapshot.meter_label_rects[i] = (SDL_Rect){0, 0, 0, 0};
+        }
+        if (label_w > 0) {
+            int label_x = meter_column_x + bar_w + FX_PANEL_SNAPSHOT_METER_LABEL_GAP;
+            int label_h = 12;
+            static const float kMeterTicks[FX_PANEL_METER_TICK_COUNT] = {0.0f, -6.0f, -12.0f, -24.0f, -36.0f, -48.0f};
+            for (int i = 0; i < FX_PANEL_METER_TICK_COUNT; ++i) {
+                float db = kMeterTicks[i];
+                float t = (db - FX_PANEL_METER_DB_MIN) / (FX_PANEL_METER_DB_MAX - FX_PANEL_METER_DB_MIN);
+                if (t < 0.0f) t = 0.0f;
+                if (t > 1.0f) t = 1.0f;
+                int y = meter_top + (int)lroundf((1.0f - t) * (float)meter_h);
+                layout->track_snapshot.meter_tick_rects[i] = (SDL_Rect){
+                    meter_column_x + bar_w - 4,
+                    y - 1,
+                    4,
+                    2
+                };
+                layout->track_snapshot.meter_label_rects[i] = (SDL_Rect){
+                    label_x,
+                    y - label_h / 2,
+                    label_w,
+                    label_h
+                };
+            }
+        }
+    } else {
+        layout->track_snapshot.meter_rect = (SDL_Rect){0, 0, 0, 0};
+        layout->track_snapshot.meter_clip_rect = (SDL_Rect){0, 0, 0, 0};
+        for (int i = 0; i < FX_PANEL_METER_TICK_COUNT; ++i) {
+            layout->track_snapshot.meter_tick_rects[i] = (SDL_Rect){0, 0, 0, 0};
+            layout->track_snapshot.meter_label_rects[i] = (SDL_Rect){0, 0, 0, 0};
+        }
     }
 }
 
@@ -559,6 +685,10 @@ void effects_panel_init(AppState* state) {
     state->effects_panel.param_scroll_drag_slot = -1;
     state->effects_panel.track_snapshot.gain = 1.0f;
     state->effects_panel.track_snapshot.pan = 0.0f;
+    state->effects_panel.track_snapshot.list_scroll = 0.0f;
+    state->effects_panel.track_snapshot.list_scroll_max = 0.0f;
+    state->effects_panel.track_snapshot.list_scroll_dragging = false;
+    state->effects_panel.track_snapshot.list_scroll_drag_offset = 0.0f;
     state->effects_panel.eq_detail.view_mode = EQ_DETAIL_VIEW_MASTER;
     state->effects_panel.eq_detail.spectrum_ready = false;
     state->effects_panel.eq_detail.last_track_index = -1;
@@ -568,6 +698,8 @@ void effects_panel_init(AppState* state) {
     state->effects_panel.eq_detail.spectrum_hold_frames = 0;
     state->effects_panel.eq_detail.pending_apply = false;
     state->effects_panel.eq_detail.last_apply_ticks = 0;
+    SDL_zero(state->effects_panel.meter_history);
+    state->effects_panel.meter_scope_mode = FX_METER_SCOPE_MID_SIDE;
     eq_curve_set_defaults(&state->effects_panel.eq_curve_master);
     eq_curve_set_defaults(&state->effects_panel.eq_curve);
     state->effects_panel.eq_curve_tracks = NULL;
@@ -798,7 +930,7 @@ void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* lay
     }
 
     if (panel->view_mode == FX_PANEL_VIEW_LIST) {
-        compute_list_layout(panel, content_x, content_y, content_w, content_h, layout);
+        compute_list_layout(panel_mut, content_x, content_y, content_w, content_h, layout);
     } else {
         int column_count = panel->chain_count;
         layout->column_count = column_count;
@@ -1105,6 +1237,9 @@ void effects_panel_render(SDL_Renderer* renderer, const AppState* state, const E
     const EffectsPanelState* panel = &state->effects_panel;
     SDL_Color label_color = {210, 210, 220, 255};
     SDL_Color text_dim = {160, 170, 190, 255};
+
+    SDL_SetRenderDrawColor(renderer, 28, 30, 38, 255);
+    SDL_RenderFillRect(renderer, &layout->panel_rect);
 
     if (panel->title_debug_last_click) {
         SDL_Log("FX title clicked (target=%s, track=%d)", panel->target == FX_PANEL_TARGET_TRACK ? "track" : "master", panel->target_track_index);

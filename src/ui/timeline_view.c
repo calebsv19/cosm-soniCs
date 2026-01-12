@@ -3,9 +3,11 @@
 #include "app_state.h"
 #include "engine/engine.h"
 #include "engine/sampler.h"
+#include "audio/media_registry.h"
 #include "ui/font.h"
 #include "ui/render_utils.h"
 #include "ui/timeline_waveform.h"
+#include "ui/waveform_render.h"
 #include "time/tempo.h"
 #include "input/timeline/timeline_geometry.h"
 
@@ -30,6 +32,59 @@ static bool timeline_clip_is_selected(const AppState* state, int track_index, in
     return state->selected_track_index == track_index && state->selected_clip_index == clip_index;
 }
 
+static const char* timeline_basename(const char* path, char* scratch, size_t scratch_len) {
+    if (!scratch || scratch_len == 0) {
+        return "";
+    }
+    scratch[0] = '\0';
+    if (!path || path[0] == '\0') {
+        return scratch;
+    }
+    const char* base = strrchr(path, '/');
+#if defined(_WIN32)
+    const char* alt = strrchr(path, '\\');
+    if (!base || (alt && alt > base)) {
+        base = alt;
+    }
+#endif
+    base = base ? base + 1 : path;
+    SDL_strlcpy(scratch, base, scratch_len);
+    char* dot = strrchr(scratch, '.');
+    if (dot) {
+        *dot = '\0';
+    }
+    return scratch;
+}
+
+static const char* timeline_clip_display_name(const AppState* state,
+                                              const EngineClip* clip,
+                                              char* scratch,
+                                              size_t scratch_len) {
+    if (!clip) {
+        return "Clip";
+    }
+    if (clip->name[0] != '\0') {
+        return clip->name;
+    }
+    const char* media_id = engine_clip_get_media_id(clip);
+    if (state && media_id && media_id[0] != '\0') {
+        const MediaRegistryEntry* entry = media_registry_find_by_id(&state->media_registry, media_id);
+        if (entry) {
+            if (entry->name[0] != '\0') {
+                return entry->name;
+            }
+            if (entry->path[0] != '\0') {
+                return timeline_basename(entry->path, scratch, scratch_len);
+            }
+        }
+    }
+    const char* media_path = engine_clip_get_media_path(clip);
+    if (media_path && media_path[0] != '\0') {
+        return timeline_basename(media_path, scratch, scratch_len);
+    }
+    return "Clip";
+}
+
 #define CLIP_COLOR_R 36
 #define CLIP_COLOR_G 40
 #define CLIP_COLOR_B 52
@@ -46,27 +101,6 @@ static inline float clamp_float(float value, float min, float max) {
     if (value < min) return min;
     if (value > max) return max;
     return value;
-}
-
-static inline Uint8 clamp_u8(int value) {
-    if (value < 0) return 0;
-    if (value > 255) return 255;
-    return (Uint8)value;
-}
-
-static int quantize_samples_per_pixel(int spp) {
-    if (spp < 1) {
-        return 1;
-    }
-    int upper = 1;
-    while (upper < spp && upper < (1 << 30)) {
-        upper <<= 1;
-    }
-    int lower = upper >> 1;
-    if (lower < 1) {
-        return upper;
-    }
-    return (spp - lower) < (upper - spp) ? lower : upper;
 }
 
 static void draw_timeline_button(SDL_Renderer* renderer,
@@ -401,7 +435,7 @@ static void format_timeline_label(float seconds, bool view_in_beats, const Tempo
     out[out_len - 1] = '\0';
 }
 
-void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const AppState* state) {
+void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState* state) {
     if (!renderer || !rect || !state || !state->engine) {
         return;
     }
@@ -692,7 +726,9 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                 }
                 SDL_RenderDrawRect(renderer, &clip_rect);
 
-                if (clip->media && clip->media->samples && clip->media->frame_count > 0) {
+                const char* media_path = engine_clip_get_media_path(clip);
+                if (clip->media && clip->media->samples && clip->media->frame_count > 0 &&
+                    media_path && media_path[0] != '\0') {
                     int wave_label_pad = 4;
                     float label_scale = 1.3f;
                     int label_h = ui_font_line_height(label_scale);
@@ -705,76 +741,32 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                     if (waveform_rect.w > 0 && waveform_rect.h > 0) {
                         double visible_duration = visible_end_sec - visible_start_sec;
                         if (visible_duration > 0.0) {
-                            double pixels_per_second_wave = (double)waveform_rect.w / visible_duration;
-                            double exact_spp = (double)sample_rate / pixels_per_second_wave;
-                            int samples_per_pixel = (int)llround(exact_spp);
-                            if (samples_per_pixel < 1) samples_per_pixel = 1;
-                            int bucket_spp = quantize_samples_per_pixel(samples_per_pixel);
-                            const WaveformCacheEntry* entry = waveform_cache_get(&state->waveform_cache,
-                                                                                 clip->media,
-                                                                                 clip->media_path,
-                                                                                 bucket_spp);
-                            if (entry && entry->bucket_count > 0) {
-                                uint64_t local_visible_start = clip->offset_frames;
-                                double local_offset_sec = visible_start_sec - start_sec;
-                                if (local_offset_sec > 0.0) {
-                                    local_visible_start += (uint64_t)llround(local_offset_sec * (double)sample_rate);
-                                }
-                                uint64_t max_frame = clip->offset_frames + frame_count;
-                                if (local_visible_start > max_frame) {
-                                    local_visible_start = max_frame;
-                                }
-                                double bucket_scale = exact_spp / (double)bucket_spp;
-                                double bucket_start = (double)local_visible_start / (double)bucket_spp;
-                                int mid_y = waveform_rect.y + waveform_rect.h / 2;
-                                int amp = waveform_rect.h / 2 - 1;
-                                if (amp < 1) {
-                                    amp = 1;
-                                }
-                                SDL_SetRenderDrawColor(renderer, WAVEFORM_COLOR_R, WAVEFORM_COLOR_G, WAVEFORM_COLOR_B, 200);
-                                bool line_mode = exact_spp <= 2.0;
-                                int prev_x = 0;
-                                int prev_y = 0;
-                                for (int px = 0; px < waveform_rect.w; ++px) {
-                                    double pos = bucket_start + (double)px * bucket_scale;
-                                    int bucket = (int)floor(pos);
-                                    if (bucket < 0 || bucket >= entry->bucket_count) {
-                                        continue;
-                                    }
-                                    if (bucket + 1 >= entry->bucket_count) {
-                                        break;
-                                    }
-                                    double t = pos - (double)bucket;
-                                    float min_a = entry->mins[bucket];
-                                    float max_a = entry->maxs[bucket];
-                                    float min_b = entry->mins[bucket + 1];
-                                    float max_b = entry->maxs[bucket + 1];
-                                    float min_v = (float)((1.0 - t) * min_a + t * min_b);
-                                    float max_v = (float)((1.0 - t) * max_a + t * max_b);
-                                    if (line_mode) {
-                                        float v = 0.5f * (min_v + max_v);
-                                        int y = mid_y - (int)llround((double)v * (double)amp);
-                                        int x = waveform_rect.x + px;
-                                        if (px > 0) {
-                                            SDL_RenderDrawLine(renderer, prev_x, prev_y, x, y);
-                                        }
-                                        prev_x = x;
-                                        prev_y = y;
-                                    } else {
-                                        int y_top = mid_y - (int)llround((double)max_v * (double)amp);
-                                        int y_bot = mid_y - (int)llround((double)min_v * (double)amp);
-                                        if (y_top > y_bot) {
-                                            int tmp = y_top;
-                                            y_top = y_bot;
-                                            y_bot = tmp;
-                                        }
-                                        SDL_RenderDrawLine(renderer,
-                                                           waveform_rect.x + px,
-                                                           y_top,
-                                                           waveform_rect.x + px,
-                                                           y_bot);
-                                    }
-                                }
+                            uint64_t local_visible_start = clip->offset_frames;
+                            double local_offset_sec = visible_start_sec - start_sec;
+                            if (local_offset_sec > 0.0) {
+                                local_visible_start += (uint64_t)llround(local_offset_sec * (double)sample_rate);
+                            }
+                            uint64_t max_frame = clip->offset_frames + frame_count;
+                            if (local_visible_start > max_frame) {
+                                local_visible_start = max_frame;
+                            }
+                            uint64_t visible_frames = (uint64_t)llround(visible_duration * (double)sample_rate);
+                            if (visible_frames == 0) {
+                                visible_frames = 1;
+                            }
+                            if (local_visible_start + visible_frames > max_frame) {
+                                visible_frames = max_frame > local_visible_start ? max_frame - local_visible_start : 0;
+                            }
+                            if (visible_frames > 0) {
+                                SDL_Color wave_color = {WAVEFORM_COLOR_R, WAVEFORM_COLOR_G, WAVEFORM_COLOR_B, 200};
+                                waveform_render_view(renderer,
+                                                     &state->waveform_cache,
+                                                     clip->media,
+                                                     media_path,
+                                                     &waveform_rect,
+                                                     local_visible_start,
+                                                     visible_frames,
+                                                     wave_color);
                             }
                         }
                     }
@@ -784,7 +776,6 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                     int fade_in_px = (int)round((double)clip->fade_in_frames / (double)sample_rate * pixels_per_second);
                     int fade_out_px = (int)round((double)clip->fade_out_frames / (double)sample_rate * pixels_per_second);
                     int clip_clip_left_px = (int)round((visible_start_sec - start_sec) * pixels_per_second);
-                    int clip_clip_right_px = (int)round((clip_end_sec - visible_end_sec) * pixels_per_second);
                     int clip_offset_px = clip_clip_left_px;
                     if (clip_offset_px < 0) clip_offset_px = 0;
                     double clip_total_px = (clip_end_sec - start_sec) * pixels_per_second;
@@ -843,7 +834,8 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, const Ap
                 }
 
                 SDL_Color text_color = {200, 200, 210, 255};
-                const char* name = clip->name[0] ? clip->name : "Clip";
+                char name_buf[ENGINE_CLIP_NAME_MAX];
+                const char* name = timeline_clip_display_name(state, clip, name_buf, sizeof(name_buf));
                 int label_padding = 6;
                 int label_width = clip_rect.w - label_padding * 2;
                 float scale_f = 1.3f;

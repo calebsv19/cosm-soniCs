@@ -14,6 +14,7 @@
 #include "ui/panes.h"
 #include "ui/transport.h"
 #include "session/project_manager.h"
+#include "undo/undo_manager.h"
 
 #include <SDL2/SDL.h>
 
@@ -267,13 +268,26 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
     if (!manager || !state || !state->engine) {
         return;
     }
+    bool inspector_text_focus = inspector_input_has_text_focus(state);
     if (state->tempo_ui.editing || library_input_is_editing(state) || state->track_name_editor.editing) {
         return;
     }
 
     const Uint8* keys = SDL_GetKeyboardState(NULL);
+    SDL_Keymod mods = SDL_GetModState();
+    bool ctrl_or_cmd = (mods & (KMOD_CTRL | KMOD_GUI)) != 0;
+    bool shift_held = (mods & KMOD_SHIFT) != 0;
+    if (ctrl_or_cmd && keys[SDL_SCANCODE_Z]) {
+        if (shift_held) {
+            undo_manager_redo(&state->undo, state);
+        } else {
+            undo_manager_undo(&state->undo, state);
+        }
+        return;
+    }
+
     bool space_now = keys[SDL_SCANCODE_SPACE] != 0;
-    if (space_now && !manager->previous_space) {
+    if (!inspector_text_focus && space_now && !manager->previous_space) {
         bool shift_down = (SDL_GetModState() & KMOD_SHIFT) != 0;
         if (shift_down) {
             bool was_playing = engine_transport_is_playing(state->engine);
@@ -295,7 +309,6 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
         }
     }
     manager->previous_space = space_now;
-
     bool l_now = keys[SDL_SCANCODE_L] != 0;
     if (l_now && !manager->previous_l) {
         bool new_state = !state->loop_enabled;
@@ -315,7 +328,7 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
     manager->previous_l = l_now;
 
     bool delete_now = keys[SDL_SCANCODE_DELETE] != 0 || keys[SDL_SCANCODE_BACKSPACE] != 0;
-    if (!state->inspector.editing_name && delete_now && !manager->previous_delete) {
+    if (!inspector_text_focus && delete_now && !manager->previous_delete) {
         timeline_selection_delete(state);
     }
     manager->previous_delete = delete_now;
@@ -441,6 +454,13 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
     if (library_input_is_editing(state)) {
         timeline_input_handle_event(manager, state, event);
         return;
+    }
+
+    if (event->type == SDL_KEYDOWN || event->type == SDL_KEYUP || event->type == SDL_TEXTINPUT) {
+        if (inspector_input_has_text_focus(state)) {
+            inspector_input_handle_event(manager, state, event);
+            return;
+        }
     }
 
     transport_input_handle_event(manager, state, event);

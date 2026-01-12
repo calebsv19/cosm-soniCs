@@ -1,6 +1,7 @@
 #include "ui/library_browser.h"
 
 #include "audio/media_clip.h"
+#include "audio/media_registry.h"
 #include "ui/font.h"
 
 #include <dirent.h>
@@ -80,7 +81,7 @@ static float library_resolve_duration_seconds(const char* directory, const char*
     return seconds;
 }
 
-void library_browser_scan(LibraryBrowser* browser) {
+void library_browser_scan(LibraryBrowser* browser, MediaRegistry* registry) {
     if (!browser || browser->directory[0] == '\0') {
         return;
     }
@@ -109,12 +110,31 @@ void library_browser_scan(LibraryBrowser* browser) {
         if (browser->count >= LIBRARY_MAX_ITEMS) {
             break;
         }
-        strncpy(browser->items[browser->count].name, entry->d_name, LIBRARY_NAME_MAX - 1);
-        browser->items[browser->count].name[LIBRARY_NAME_MAX - 1] = '\0';
-        browser->items[browser->count].duration_seconds = library_resolve_duration_seconds(browser->directory, entry->d_name);
+        LibraryItem* item = &browser->items[browser->count];
+        strncpy(item->name, entry->d_name, LIBRARY_NAME_MAX - 1);
+        item->name[LIBRARY_NAME_MAX - 1] = '\0';
+        item->duration_seconds = library_resolve_duration_seconds(browser->directory, entry->d_name);
+        item->media_id[0] = '\0';
+        if (registry) {
+            char full_path[512];
+            snprintf(full_path, sizeof(full_path), "%s/%s", browser->directory, entry->d_name);
+            MediaRegistryEntry reg_entry = {0};
+            if (media_registry_ensure_for_path(registry, full_path, entry->d_name, &reg_entry)) {
+                strncpy(item->media_id, reg_entry.id, sizeof(item->media_id) - 1);
+                item->media_id[sizeof(item->media_id) - 1] = '\0';
+                if (reg_entry.duration_seconds <= 0.0f) {
+                    reg_entry.duration_seconds = item->duration_seconds;
+                    media_registry_update_path(registry, reg_entry.id, reg_entry.path, reg_entry.name);
+                }
+            }
+        }
         browser->count++;
     }
     closedir(dir);
+
+    if (registry && registry->dirty) {
+        media_registry_save(registry);
+    }
 
     browser->hovered_index = -1;
     if (browser->selected_index >= browser->count) {
@@ -136,6 +156,7 @@ void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* rendere
     SDL_Color highlight_color = {70, 95, 160, 160};
     SDL_Color selected_color = {110, 140, 190, 200};
     int y = rect->y + 32;
+    float text_scale = 1.5f;
     for (int i = 0; i < browser->count; ++i) {
         if (y + line_height > rect->y + rect->h) {
             break;
@@ -155,19 +176,25 @@ void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* rendere
         if (is_editing) {
             display_name = browser->edit_buffer;
         }
-        if (browser->items[i].duration_seconds > 0.0f) {
+        if (!is_editing && browser->items[i].duration_seconds > 0.0f) {
             snprintf(label, sizeof(label), "%s (%.1fs)", display_name, browser->items[i].duration_seconds);
         } else {
             snprintf(label, sizeof(label), "%s", display_name);
         }
-        ui_draw_text(renderer, rect->x + 16, y, label, text_color, 1.5f);
+        ui_draw_text(renderer, rect->x + 16, y, label, text_color, text_scale);
 
         if (is_editing) {
-            int char_w = 6 * 2;
-            int cursor_x = rect->x + 16 + browser->edit_cursor * char_w;
+            char temp[LIBRARY_NAME_MAX];
+            int len = (int)strlen(browser->edit_buffer);
+            int cursor = browser->edit_cursor;
+            if (cursor < 0) cursor = 0;
+            if (cursor > len) cursor = len;
+            snprintf(temp, sizeof(temp), "%.*s", cursor, browser->edit_buffer);
+            int cursor_x = rect->x + 16 + ui_measure_text_width(temp, text_scale);
             int cursor_y = y;
+            int cursor_h = ui_font_line_height(text_scale);
             SDL_SetRenderDrawColor(renderer, 240, 240, 250, 255);
-            SDL_RenderDrawLine(renderer, cursor_x, cursor_y, cursor_x, cursor_y + 14);
+            SDL_RenderDrawLine(renderer, cursor_x, cursor_y, cursor_x, cursor_y + cursor_h);
         }
         y += line_height;
     }

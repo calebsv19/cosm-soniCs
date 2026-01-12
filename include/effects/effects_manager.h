@@ -39,6 +39,16 @@ typedef struct {
     FxMasterInstanceInfo items[FX_MASTER_MAX];
 } FxMasterSnapshot;
 
+// Receives metering taps for FX instances at render time.
+typedef void (*FxMeterTapCallback)(void* user,
+                                   bool is_master,
+                                   int track_index,
+                                   FxInstId id,
+                                   FxTypeId type,
+                                   const float* interleaved,
+                                   int frames,
+                                   int channels);
+
 typedef struct {
     int sample_rate;
     int max_block;
@@ -50,6 +60,8 @@ typedef struct {
 EffectsManager* fxm_create(const FxConfig* cfg);
 void            fxm_destroy(EffectsManager* fm);
 bool            fxm_set_track_count(EffectsManager* fm, int track_count);
+// Registers a callback for per-FX metering taps during render.
+void            fxm_set_meter_tap_callback(EffectsManager* fm, FxMeterTapCallback cb, void* user);
 
 // ---------- Master chain (v1 minimal integration) ----------
 

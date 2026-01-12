@@ -5,8 +5,10 @@
 #include "engine/sampler.h"
 #include "input/timeline_drag.h"
 #include "input/timeline_selection.h"
+#include "undo/undo_manager.h"
 
 #include <stdint.h>
+#include <string.h>
 
 typedef struct {
     EngineSamplerSource* sampler;
@@ -19,6 +21,32 @@ static struct {
     int count;
     uint64_t anchor_start_frame;
 } g_timeline_clipboard = {0};
+
+static bool clip_snapshot_from_engine(const EngineClip* clip, SessionClip* out_clip) {
+    if (!clip || !out_clip) {
+        return false;
+    }
+    memset(out_clip, 0, sizeof(*out_clip));
+    const char* media_id = engine_clip_get_media_id(clip);
+    const char* media_path = engine_clip_get_media_path(clip);
+    strncpy(out_clip->media_id, media_id ? media_id : "", sizeof(out_clip->media_id) - 1);
+    out_clip->media_id[sizeof(out_clip->media_id) - 1] = '\0';
+    strncpy(out_clip->media_path, media_path ? media_path : "", sizeof(out_clip->media_path) - 1);
+    out_clip->media_path[sizeof(out_clip->media_path) - 1] = '\0';
+    strncpy(out_clip->name, clip->name, sizeof(out_clip->name) - 1);
+    out_clip->name[sizeof(out_clip->name) - 1] = '\0';
+    out_clip->start_frame = clip->timeline_start_frames;
+    out_clip->duration_frames = clip->duration_frames;
+    out_clip->offset_frames = clip->offset_frames;
+    out_clip->fade_in_frames = clip->fade_in_frames;
+    out_clip->fade_out_frames = clip->fade_out_frames;
+    out_clip->gain = clip->gain;
+    out_clip->selected = false;
+    if (out_clip->duration_frames == 0 && clip->sampler) {
+        out_clip->duration_frames = engine_sampler_get_frame_count(clip->sampler);
+    }
+    return true;
+}
 
 static void timeline_clipboard_clear(void) {
     g_timeline_clipboard.count = 0;
@@ -153,6 +181,22 @@ void timeline_clipboard_paste(AppState* state) {
         new_sel[new_count].track_index = clip_track;
         new_sel[new_count].clip_index = dup_index;
         new_count++;
+
+        const EngineTrack* tracks = engine_get_tracks(state->engine);
+        if (tracks && clip_track >= 0 && clip_track < engine_get_track_count(state->engine)) {
+            const EngineTrack* track = &tracks[clip_track];
+            if (track && dup_index >= 0 && dup_index < track->clip_count) {
+                const EngineClip* clip = &track->clips[dup_index];
+                UndoCommand cmd = {0};
+                cmd.type = UNDO_CMD_CLIP_ADD_REMOVE;
+                cmd.data.clip_add_remove.added = true;
+                cmd.data.clip_add_remove.track_index = clip_track;
+                cmd.data.clip_add_remove.sampler = clip->sampler;
+                if (clip_snapshot_from_engine(clip, &cmd.data.clip_add_remove.clip)) {
+                    undo_manager_push(&state->undo, &cmd);
+                }
+            }
+        }
     }
 
     if (new_count > 0) {

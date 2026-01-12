@@ -7,7 +7,9 @@
 #include "input/effects_panel_track_snapshot.h"
 #include "input/timeline_input.h"
 #include "ui/effects_panel.h"
+#include "ui/effects_panel_meter_detail.h"
 #include "ui/font.h"
+#include "undo/undo_manager.h"
 
 #include <stdbool.h>
 #include <string.h>
@@ -16,6 +18,57 @@ static float clampf(float v, float lo, float hi) {
     if (v < lo) return lo;
     if (v > hi) return hi;
     return v;
+}
+
+static bool panel_targets_track(const EffectsPanelState* panel);
+
+static void fx_instance_from_slot(const FxSlotUIState* slot, SessionFxInstance* out_instance) {
+    if (!slot || !out_instance) {
+        return;
+    }
+    memset(out_instance, 0, sizeof(*out_instance));
+    out_instance->type = slot->type_id;
+    out_instance->enabled = slot->enabled;
+    out_instance->param_count = slot->param_count;
+    for (uint32_t i = 0; i < slot->param_count && i < FX_MAX_PARAMS; ++i) {
+        out_instance->params[i] = slot->param_values[i];
+        out_instance->param_mode[i] = slot->param_mode[i];
+        out_instance->param_beats[i] = slot->param_beats[i];
+    }
+    out_instance->name[0] = '\0';
+}
+
+static int find_slot_index_by_id(const EffectsPanelState* panel, FxInstId id) {
+    if (!panel) {
+        return -1;
+    }
+    for (int i = 0; i < panel->chain_count; ++i) {
+        if (panel->chain[i].id == id) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static void begin_fx_param_drag(AppState* state, int slot_index, int param_index) {
+    if (!state) {
+        return;
+    }
+    EffectsPanelState* panel = &state->effects_panel;
+    if (slot_index < 0 || slot_index >= panel->chain_count) {
+        return;
+    }
+    FxSlotUIState* slot = &panel->chain[slot_index];
+    UndoCommand cmd = {0};
+    cmd.type = UNDO_CMD_FX_EDIT;
+    cmd.data.fx_edit.kind = UNDO_FX_EDIT_PARAM;
+    cmd.data.fx_edit.target = panel_targets_track(panel) ? UNDO_FX_TARGET_TRACK : UNDO_FX_TARGET_MASTER;
+    cmd.data.fx_edit.track_index = panel_targets_track(panel) ? panel->target_track_index : -1;
+    cmd.data.fx_edit.id = slot->id;
+    cmd.data.fx_edit.param_index = (uint32_t)param_index;
+    fx_instance_from_slot(slot, &cmd.data.fx_edit.before_state);
+    cmd.data.fx_edit.after_state = cmd.data.fx_edit.before_state;
+    undo_manager_begin_drag(&state->undo, &cmd);
 }
 
 static const FxTypeUIInfo* find_type_info(const EffectsPanelState* panel, FxTypeId type_id) {
@@ -70,6 +123,8 @@ static bool toggle_slot_enabled(AppState* state, EffectsPanelState* panel, int s
         return false;
     }
     FxInstId id = panel->chain[slot_index].id;
+    SessionFxInstance before_state;
+    fx_instance_from_slot(&panel->chain[slot_index], &before_state);
     bool enabled = !panel->chain[slot_index].enabled;
     bool updated = false;
     if (panel_targets_track(panel)) {
@@ -79,6 +134,18 @@ static bool toggle_slot_enabled(AppState* state, EffectsPanelState* panel, int s
     }
     if (id != 0 && updated) {
         effects_panel_sync_from_engine(state);
+        int new_index = find_slot_index_by_id(panel, id);
+        if (new_index >= 0) {
+            UndoCommand cmd = {0};
+            cmd.type = UNDO_CMD_FX_EDIT;
+            cmd.data.fx_edit.kind = UNDO_FX_EDIT_ENABLE;
+            cmd.data.fx_edit.target = panel_targets_track(panel) ? UNDO_FX_TARGET_TRACK : UNDO_FX_TARGET_MASTER;
+            cmd.data.fx_edit.track_index = panel_targets_track(panel) ? panel->target_track_index : -1;
+            cmd.data.fx_edit.id = id;
+            cmd.data.fx_edit.before_state = before_state;
+            fx_instance_from_slot(&panel->chain[new_index], &cmd.data.fx_edit.after_state);
+            undo_manager_push(&state->undo, &cmd);
+        }
     }
     return updated;
 }
@@ -216,6 +283,14 @@ static void toggle_param_mode(AppState* state, int slot_index, int param_index) 
     if (param_index < 0 || param_index >= (int)slot->param_count) {
         return;
     }
+    UndoCommand cmd = {0};
+    cmd.type = UNDO_CMD_FX_EDIT;
+    cmd.data.fx_edit.kind = UNDO_FX_EDIT_PARAM;
+    cmd.data.fx_edit.target = panel_targets_track(panel) ? UNDO_FX_TARGET_TRACK : UNDO_FX_TARGET_MASTER;
+    cmd.data.fx_edit.track_index = panel_targets_track(panel) ? panel->target_track_index : -1;
+    cmd.data.fx_edit.id = slot->id;
+    cmd.data.fx_edit.param_index = (uint32_t)param_index;
+    fx_instance_from_slot(slot, &cmd.data.fx_edit.before_state);
     const FxTypeUIInfo* info = find_type_info(panel, slot->type_id);
     FxParamKind kind = info ? info->param_kind[param_index] : FX_PARAM_KIND_GENERIC;
     if (!fx_param_kind_is_syncable(kind)) {
@@ -244,6 +319,8 @@ static void toggle_param_mode(AppState* state, int slot_index, int param_index) 
     slot->param_mode[param_index] = next;
     slot->param_beats[param_index] = beat_value;
     apply_slider_value(state, slot_index, param_index, next == FX_PARAM_MODE_NATIVE ? native_value : beat_value);
+    fx_instance_from_slot(slot, &cmd.data.fx_edit.after_state);
+    undo_manager_push(&state->undo, &cmd);
 }
 
 static void close_overlay(EffectsPanelState* panel) {
@@ -342,6 +419,15 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                     reordered = engine_fx_master_reorder(state->engine, id, new_index);
                 }
                 if (reordered) {
+                    UndoCommand cmd = {0};
+                    cmd.type = UNDO_CMD_FX_EDIT;
+                    cmd.data.fx_edit.kind = UNDO_FX_EDIT_REORDER;
+                    cmd.data.fx_edit.target = panel_targets_track(panel) ? UNDO_FX_TARGET_TRACK : UNDO_FX_TARGET_MASTER;
+                    cmd.data.fx_edit.track_index = panel_targets_track(panel) ? panel->target_track_index : -1;
+                    cmd.data.fx_edit.id = id;
+                    cmd.data.fx_edit.before_index = selected;
+                    cmd.data.fx_edit.after_index = new_index;
+                    undo_manager_push(&state->undo, &cmd);
                     effects_panel_sync_from_engine(state);
                     panel->selected_slot_index = new_index;
                     if (panel->list_open_slot_index == selected) {
@@ -392,7 +478,12 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                             panel->list_last_click_index = i;
                             if (is_double) {
                                 panel->list_open_slot_index = i;
-                                panel->list_detail_mode = FX_LIST_DETAIL_EFFECT;
+                                FxTypeId type_id = panel->chain[i].type_id;
+                                if (type_id >= 100u && type_id <= 109u) {
+                                    panel->list_detail_mode = FX_LIST_DETAIL_METER;
+                                } else {
+                                    panel->list_detail_mode = FX_LIST_DETAIL_EFFECT;
+                                }
                                 panel->track_snapshot.eq_open = false;
                             }
                             return;
@@ -402,6 +493,23 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                 if (panel->list_detail_mode == FX_LIST_DETAIL_EQ) {
                     if (effects_panel_eq_detail_handle_mouse_down(state, &layout, event)) {
                         return;
+                    }
+                } else if (panel->list_detail_mode == FX_LIST_DETAIL_METER) {
+                    if (panel->list_open_slot_index >= 0 && panel->list_open_slot_index < panel->chain_count) {
+                        FxTypeId type_id = panel->chain[panel->list_open_slot_index].type_id;
+                        if (type_id == 102u) {
+                            SDL_Rect toggle_ms;
+                            SDL_Rect toggle_lr;
+                            effects_panel_meter_detail_compute_toggle_rects(&layout.detail_rect, &toggle_ms, &toggle_lr);
+                            if (SDL_PointInRect(&pt, &toggle_ms)) {
+                                panel->meter_scope_mode = FX_METER_SCOPE_MID_SIDE;
+                                return;
+                            }
+                            if (SDL_PointInRect(&pt, &toggle_lr)) {
+                                panel->meter_scope_mode = FX_METER_SCOPE_LEFT_RIGHT;
+                                return;
+                            }
+                        }
                     }
                 }
             }
@@ -548,6 +656,19 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                                     }
                                     if (id != 0) {
                                         effects_panel_sync_from_engine(state);
+                                        int new_index = find_slot_index_by_id(panel, id);
+                                        if (new_index >= 0) {
+                                            UndoCommand cmd = {0};
+                                            cmd.type = UNDO_CMD_FX_EDIT;
+                                            cmd.data.fx_edit.kind = UNDO_FX_EDIT_ADD;
+                                            cmd.data.fx_edit.target = panel_targets_track(panel) ? UNDO_FX_TARGET_TRACK : UNDO_FX_TARGET_MASTER;
+                                            cmd.data.fx_edit.track_index = panel_targets_track(panel) ? panel->target_track_index : -1;
+                                            cmd.data.fx_edit.id = id;
+                                            cmd.data.fx_edit.before_index = -1;
+                                            cmd.data.fx_edit.after_index = new_index;
+                                            fx_instance_from_slot(&panel->chain[new_index], &cmd.data.fx_edit.after_state);
+                                            undo_manager_push(&state->undo, &cmd);
+                                        }
                                         panel->highlighted_slot_index = panel->chain_count > 0 ? panel->chain_count - 1 : -1;
                                     }
                                     close_overlay(panel);
@@ -581,6 +702,14 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                         if (SDL_PointInRect(&pt, &detail_layout.remove_rect)) {
                             if (state->engine) {
                                 FxInstId id = panel->chain[open_index].id;
+                                UndoCommand cmd = {0};
+                                cmd.type = UNDO_CMD_FX_EDIT;
+                                cmd.data.fx_edit.kind = UNDO_FX_EDIT_REMOVE;
+                                cmd.data.fx_edit.target = panel_targets_track(panel) ? UNDO_FX_TARGET_TRACK : UNDO_FX_TARGET_MASTER;
+                                cmd.data.fx_edit.track_index = panel_targets_track(panel) ? panel->target_track_index : -1;
+                                cmd.data.fx_edit.id = id;
+                                cmd.data.fx_edit.before_index = open_index;
+                                fx_instance_from_slot(&panel->chain[open_index], &cmd.data.fx_edit.before_state);
                                 bool removed = false;
                                 if (panel_targets_track(panel)) {
                                     removed = engine_fx_track_remove(state->engine, panel->target_track_index, id);
@@ -589,6 +718,7 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                                 }
                                 if (id != 0 && removed) {
                                     effects_panel_sync_from_engine(state);
+                                    undo_manager_push(&state->undo, &cmd);
                                 }
                             }
                             panel->highlighted_slot_index = -1;
@@ -606,6 +736,14 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                     if (SDL_PointInRect(&pt, &layout.slots[i].remove_rect)) {
                         if (state->engine) {
                             FxInstId id = panel->chain[i].id;
+                            UndoCommand cmd = {0};
+                            cmd.type = UNDO_CMD_FX_EDIT;
+                            cmd.data.fx_edit.kind = UNDO_FX_EDIT_REMOVE;
+                            cmd.data.fx_edit.target = panel_targets_track(panel) ? UNDO_FX_TARGET_TRACK : UNDO_FX_TARGET_MASTER;
+                            cmd.data.fx_edit.track_index = panel_targets_track(panel) ? panel->target_track_index : -1;
+                            cmd.data.fx_edit.id = id;
+                            cmd.data.fx_edit.before_index = i;
+                            fx_instance_from_slot(&panel->chain[i], &cmd.data.fx_edit.before_state);
                             bool removed = false;
                             if (panel_targets_track(panel)) {
                                 removed = engine_fx_track_remove(state->engine, panel->target_track_index, id);
@@ -614,6 +752,7 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                             }
                             if (id != 0 && removed) {
                                 effects_panel_sync_from_engine(state);
+                                undo_manager_push(&state->undo, &cmd);
                             }
                         }
                         panel->highlighted_slot_index = -1;
@@ -640,6 +779,7 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                                 panel->dragging_slider = true;
                                 panel->active_slot_index = open_index;
                                 panel->active_param_index = (int)p;
+                                begin_fx_param_drag(state, open_index, (int)p);
                                 EffectsPanelLayout temp_layout;
                                 SDL_zero(temp_layout);
                                 temp_layout.slots[open_index] = detail_layout;
@@ -663,6 +803,7 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                             panel->dragging_slider = true;
                             panel->active_slot_index = i;
                             panel->active_param_index = (int)p;
+                            begin_fx_param_drag(state, i, (int)p);
                             float value = slider_value_from_mouse(state, &layout, i, (int)p, event->button.x);
                             apply_slider_value(state, i, (int)p, value);
                             return;
@@ -680,6 +821,26 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                 panel->dragging_slider = false;
                 panel->active_slot_index = -1;
                 panel->active_param_index = -1;
+                if (state->undo.active_drag_valid) {
+                    UndoCommand* cmd = &state->undo.active_drag;
+                    if (cmd->type == UNDO_CMD_FX_EDIT && cmd->data.fx_edit.kind == UNDO_FX_EDIT_PARAM) {
+                        int slot_index = find_slot_index_by_id(panel, cmd->data.fx_edit.id);
+                        if (slot_index >= 0) {
+                            fx_instance_from_slot(&panel->chain[slot_index], &cmd->data.fx_edit.after_state);
+                            if (cmd->data.fx_edit.before_state.param_count != cmd->data.fx_edit.after_state.param_count ||
+                                memcmp(&cmd->data.fx_edit.before_state, &cmd->data.fx_edit.after_state,
+                                       sizeof(SessionFxInstance)) != 0) {
+                                undo_manager_commit_drag(&state->undo, cmd);
+                            } else {
+                                undo_manager_cancel_drag(&state->undo);
+                            }
+                        } else {
+                            undo_manager_cancel_drag(&state->undo);
+                        }
+                    } else {
+                        undo_manager_cancel_drag(&state->undo);
+                    }
+                }
                 if (state->engine) {
                     effects_panel_sync_from_engine(state);
                 }
@@ -835,6 +996,25 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
             } else {
                 SDL_Point pt = {state->mouse_x, state->mouse_y};
                 if (panel->view_mode == FX_PANEL_VIEW_LIST) {
+                    if (panel->track_snapshot.list_scroll_max > 0.0f &&
+                        SDL_PointInRect(&pt, &layout.track_snapshot.list_clip_rect)) {
+                        int dy = event->wheel.y;
+                        if (event->wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {
+                            dy = -dy;
+                        }
+                        if (dy != 0) {
+                            float step = (float)(FX_PANEL_LIST_ROW_HEIGHT + FX_PANEL_LIST_ROW_GAP);
+                            panel->track_snapshot.list_scroll -= (float)dy * step;
+                            if (panel->track_snapshot.list_scroll < 0.0f) {
+                                panel->track_snapshot.list_scroll = 0.0f;
+                            }
+                            if (panel->track_snapshot.list_scroll > panel->track_snapshot.list_scroll_max) {
+                                panel->track_snapshot.list_scroll = panel->track_snapshot.list_scroll_max;
+                            }
+                            effects_panel_compute_layout(state, &layout);
+                        }
+                        break;
+                    }
                     int open_index = panel->list_open_slot_index;
                     if (open_index >= 0 && open_index < panel->chain_count &&
                         SDL_PointInRect(&pt, &layout.detail_rect) &&
