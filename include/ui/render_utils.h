@@ -2,6 +2,26 @@
 #define UI_RENDER_UTILS_H
 
 #include <SDL2/SDL.h>
+#include <math.h>
+
+#include "engine/fade_curve.h"
+
+// Returns a normalized fade gain for the requested curve at t in [0,1].
+static inline float ui_fade_curve_eval(EngineFadeCurve curve, float t) {
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    switch (curve) {
+    case ENGINE_FADE_CURVE_S_CURVE:
+        return t * t * (3.0f - 2.0f * t);
+    case ENGINE_FADE_CURVE_LOGARITHMIC:
+        return powf(t, 0.35f);
+    case ENGINE_FADE_CURVE_EXPONENTIAL:
+        return powf(t, 2.2f);
+    case ENGINE_FADE_CURVE_LINEAR:
+    default:
+        return t;
+    }
+}
 
 static inline void ui_set_blend_mode(SDL_Renderer* renderer, SDL_BlendMode mode) {
 #ifdef VK_RENDERER_ENABLE_SDL_COMPAT

@@ -83,7 +83,7 @@ bool timeline_compute_geometry(const AppState* state, const Pane* timeline, Time
     if (geom.track_height < 32) {
         geom.track_height = 32;
     }
-    geom.track_top = timeline->rect.y + TIMELINE_CONTROLS_HEIGHT + 8;
+    geom.track_top = timeline->rect.y + TIMELINE_CONTROLS_HEIGHT + TIMELINE_RULER_HEIGHT;
     geom.content_left = timeline->rect.x + TIMELINE_TRACK_HEADER_WIDTH + TIMELINE_BORDER_MARGIN;
     int content_right = timeline->rect.x + timeline->rect.w - TIMELINE_BORDER_MARGIN;
     geom.content_width = content_right - geom.content_left;
@@ -113,6 +113,14 @@ float timeline_x_to_seconds(const TimelineGeometry* geom, int x) {
     return geom->window_start_seconds + local;
 }
 
+int timeline_seconds_to_x(const TimelineGeometry* geom, float seconds) {
+    if (!geom || geom->pixels_per_second <= 0.0f) {
+        return 0;
+    }
+    float local = (seconds - geom->window_start_seconds) * geom->pixels_per_second;
+    return geom->content_left + (int)lroundf(local);
+}
+
 int timeline_track_at_position(const AppState* state, int y, int track_height, int track_spacing) {
     if (!state) {
         return -1;
@@ -121,7 +129,7 @@ int timeline_track_at_position(const AppState* state, int y, int track_height, i
     if (!timeline) {
         return -1;
     }
-    int track_top = timeline->rect.y + TIMELINE_CONTROLS_HEIGHT + 8;
+    int track_top = timeline->rect.y + TIMELINE_CONTROLS_HEIGHT + TIMELINE_RULER_HEIGHT;
     int relative = y - track_top;
     if (relative < 0) {
         return 0;

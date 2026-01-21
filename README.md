@@ -5,6 +5,8 @@ This repository hosts an in-progress, minimal C-based DAW prototype built on SDL
 ## Project Snapshot *(Phase 9 in progress)*
 - **Goal**: Multi-track DAW prototype with SDL2 front end and a lock-free, real-time-safe audio engine. Makefile builds `build/daw_app`.
 - **Architecture**: C sources under `src/` (app, engine, audio, input, UI) with matching headers in `include/`; runtime assets in `assets/`; configuration defaults in `config/`.
+- **Performance HUD**: Uses the shared TimerHUD library with a DAW adapter in `src/render/timer_hud_adapter.c` and settings in `config/timer_hud_settings.json`.
+- **Vulkan Backend**: Builds against the shared Vulkan renderer in `shared/vk_renderer`, with app setup in `SDLApp/sdl_app_framework.c`.
 - **Runtime Threads**: Real-time audio callback executes the graph; engine thread handles graph edits, transport, and command queues; background workers manage media decode.
 - **UI State**: `AppState` mediates timeline layout, transport bar, loop state, track mute/solo, clip inspector overlay, and library interactions.
 - **Current Feature Set**:

@@ -13,6 +13,8 @@
 #include "ui/font.h"
 #include "session/project_manager.h"
 #include "time/tempo.h"
+#include "render/timer_hud_adapter.h"
+#include "timer_hud/time_scope.h"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
@@ -60,6 +62,7 @@ static void handle_render(AppContext* ctx) {
     ui_render_panes(renderer, state);
     ui_render_controls(renderer, state);
     ui_render_overlays(renderer, state);
+    ts_render();
 }
 
 static bool path_exists(const char* path) {
@@ -203,6 +206,12 @@ int main(void) {
     const char* last_session_path = "config/last_session.json";
 
     AppState state = {0};
+    state.timeline_snap_enabled = true;
+    state.automation_ui.target = ENGINE_AUTOMATION_TARGET_VOLUME;
+    state.automation_ui.track_index = -1;
+    state.automation_ui.clip_index = -1;
+    state.automation_ui.point_index = -1;
+    state.reset_meter_history_on_seek = true;
     waveform_cache_init(&state.waveform_cache);
     undo_manager_init(&state.undo);
     media_registry_init(&state.media_registry, "config/library_index.json");
@@ -249,6 +258,7 @@ int main(void) {
         state.timeline_vertical_scale = 1.0f;
         state.timeline_view_in_beats = false;
         state.timeline_show_all_grid_lines = false;
+        state.timeline_snap_enabled = true;
         state.timeline_follow_mode = TIMELINE_FOLLOW_JUMP;
         state.loop_enabled = false;
         state.loop_start_frame = 0;
@@ -285,6 +295,9 @@ int main(void) {
         return 1;
     }
     ui_font_set("include/fonts/Montserrat/Montserrat-Regular.ttf", 9);
+    timer_hud_register_backend();
+    timer_hud_bind_context(&ctx);
+    ts_init();
 
     ui_layout_panes(&state, window_width, window_height);
     pane_manager_init(&state.pane_manager, state.panes, state.pane_count);
@@ -340,6 +353,7 @@ int main(void) {
     }
 
     ui_font_shutdown();
+    ts_shutdown();
     waveform_cache_shutdown(&state.waveform_cache);
     undo_manager_free(&state.undo);
     media_registry_shutdown(&state.media_registry);

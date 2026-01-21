@@ -4,7 +4,10 @@
 #include "engine/engine.h"
 #include "engine/audio_source.h"
 #include "engine/sampler.h"
+#include "input/automation_input.h"
 #include "input/input_manager.h"
+#include "input/inspector_fade_input.h"
+#include "input/timeline_snap.h"
 #include "ui/clip_inspector.h"
 #include "ui/font.h"
 #include "undo/undo_manager.h"
@@ -75,6 +78,8 @@ static bool clip_state_from_clip(const EngineClip* clip, int track_index, UndoCl
     out_state->duration_frames = clip->duration_frames;
     out_state->fade_in_frames = clip->fade_in_frames;
     out_state->fade_out_frames = clip->fade_out_frames;
+    out_state->fade_in_curve = clip->fade_in_curve;
+    out_state->fade_out_curve = clip->fade_out_curve;
     out_state->gain = clip->gain;
     if (out_state->duration_frames == 0 && clip->sampler) {
         out_state->duration_frames = engine_sampler_get_frame_count(clip->sampler);
@@ -92,6 +97,8 @@ static bool clip_state_equal(const UndoClipState* a, const UndoClipState* b) {
            a->duration_frames == b->duration_frames &&
            a->fade_in_frames == b->fade_in_frames &&
            a->fade_out_frames == b->fade_out_frames &&
+           a->fade_in_curve == b->fade_in_curve &&
+           a->fade_out_curve == b->fade_out_curve &&
            fabsf(a->gain - b->gain) < 0.0001f;
 }
 
@@ -316,6 +323,58 @@ static uint64_t inspector_clip_duration_frames(const AppState* state, const Engi
     return frames;
 }
 
+// Converts a mouse y position into an automation value in -1..1.
+static float inspector_automation_value_from_y(const SDL_Rect* rect, int y) {
+    if (!rect || rect->h <= 0) {
+        return 0.0f;
+    }
+    int baseline = rect->y + rect->h / 2;
+    int range = rect->h / 2 - 4;
+    if (range < 4) {
+        range = 4;
+    }
+    float value = (float)(baseline - y) / (float)range;
+    if (value < -1.0f) value = -1.0f;
+    if (value > 1.0f) value = 1.0f;
+    return value;
+}
+
+// Finds an automation point under the cursor in inspector coordinates.
+static int inspector_automation_hit_point(const EngineAutomationLane* lane,
+                                          const SDL_Rect* rect,
+                                          uint64_t view_start,
+                                          uint64_t view_frames,
+                                          uint64_t clip_start,
+                                          uint64_t clip_frames,
+                                          int x,
+                                          int y) {
+    if (!lane || !rect || rect->w <= 0 || rect->h <= 0 || view_frames == 0 || clip_frames == 0) {
+        return -1;
+    }
+    int baseline = rect->y + rect->h / 2;
+    int range = rect->h / 2 - 4;
+    if (range < 4) {
+        range = 4;
+    }
+    const int radius = 6;
+    for (int i = 0; i < lane->point_count; ++i) {
+        uint64_t abs_frame = clip_start + lane->points[i].frame;
+        if (abs_frame > clip_start + clip_frames) {
+            abs_frame = clip_start + clip_frames;
+        }
+        if (abs_frame < view_start || abs_frame > view_start + view_frames) {
+            continue;
+        }
+        double t = (double)(abs_frame - view_start) / (double)view_frames;
+        int px = rect->x + (int)llround(t * (double)rect->w);
+        int py = baseline - (int)llround((double)lane->points[i].value * (double)range);
+        if (abs(px - x) <= radius && abs(py - y) <= radius) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 static void inspector_format_numeric_field(const AppState* state,
                                            const EngineClip* clip,
                                            ClipInspectorEditState* edit) {
@@ -482,80 +541,6 @@ static void inspector_update_gain_from_mouse(AppState* state, int mouse_x) {
     inspector_update_gain(state, gain);
 }
 
-static uint64_t inspector_clip_length_frames(const EngineClip* clip) {
-    if (!clip) {
-        return 0;
-    }
-    uint64_t frames = clip->duration_frames;
-    if (frames == 0 && clip->sampler) {
-        frames = engine_sampler_get_frame_count(clip->sampler);
-    }
-    return frames;
-}
-
-static void inspector_update_fade_from_mouse(AppState* state, bool is_fade_in, int mouse_x) {
-    if (!state || !state->engine) {
-        return;
-    }
-    EngineClip* clip = inspector_get_clip_mutable(state);
-    if (!clip) {
-        return;
-    }
-    ClipInspectorLayout layout;
-    clip_inspector_compute_layout(state, &layout);
-    SDL_Rect track = is_fade_in ? layout.fade_in_track_rect : layout.fade_out_track_rect;
-    if (track.w <= 0) {
-        return;
-    }
-    float t = (float)(mouse_x - track.x) / (float)track.w;
-    if (t < 0.0f) t = 0.0f;
-    if (t > 1.0f) t = 1.0f;
-
-    uint64_t max_frames = inspector_clip_length_frames(clip);
-    if (max_frames == 0) {
-        max_frames = 1;
-    }
-    uint64_t new_frames = (uint64_t)llround((double)max_frames * (double)t);
-
-    uint64_t fade_in_frames = is_fade_in ? new_frames : clip->fade_in_frames;
-    uint64_t fade_out_frames = is_fade_in ? clip->fade_out_frames : new_frames;
-    engine_clip_set_fades(state->engine, state->inspector.track_index, state->inspector.clip_index,
-                          fade_in_frames, fade_out_frames);
-
-    clip = inspector_get_clip_mutable(state);
-    if (clip) {
-        state->inspector.fade_in_frames = clip->fade_in_frames;
-        state->inspector.fade_out_frames = clip->fade_out_frames;
-    }
-}
-
-static uint64_t inspector_ms_to_frames(const AppState* state, float ms) {
-    const EngineRuntimeConfig* cfg = inspector_get_runtime_cfg(state);
-    int sample_rate = (cfg && cfg->sample_rate > 0) ? cfg->sample_rate : 0;
-    if (sample_rate <= 0 && state) {
-        sample_rate = state->runtime_cfg.sample_rate;
-    }
-    if (sample_rate <= 0) {
-        sample_rate = 48000;
-    }
-    double frames = (double)ms * (double)sample_rate / 1000.0;
-    if (frames < 0.0) frames = 0.0;
-    return (uint64_t)llround(frames);
-}
-
-static void inspector_apply_fade_preset(AppState* state, bool set_fade_in, bool set_fade_out, float ms) {
-    EngineClip* clip = inspector_get_clip_mutable(state);
-    if (!clip || !state->engine) {
-        return;
-    }
-    uint64_t frames = inspector_ms_to_frames(state, ms);
-    uint64_t fade_in = set_fade_in ? frames : clip->fade_in_frames;
-    uint64_t fade_out = set_fade_out ? frames : clip->fade_out_frames;
-    if (engine_clip_set_fades(state->engine, state->inspector.track_index, state->inspector.clip_index, fade_in, fade_out)) {
-        inspector_input_set_clip(state, state->inspector.track_index, state->inspector.clip_index);
-    }
-}
-
 void inspector_input_init(AppState* state) {
     if (!state) {
         return;
@@ -570,10 +555,7 @@ void inspector_input_init(AppState* state) {
     state->inspector.editing_name = false;
     state->inspector.name_cursor = 0;
     state->inspector.adjusting_gain = false;
-    state->inspector.adjusting_fade_in = false;
-    state->inspector.adjusting_fade_out = false;
-    state->inspector.fade_in_frames = 0;
-    state->inspector.fade_out_frames = 0;
+    inspector_fade_input_init(state);
     state->inspector.has_focus = false;
     state->inspector.phase_invert_l = false;
     state->inspector.phase_invert_r = false;
@@ -603,10 +585,7 @@ void inspector_input_show(AppState* state, int track_index, int clip_index, cons
     state->inspector.editing_name = false;
     state->inspector.name_cursor = (int)strlen(state->inspector.name);
     state->inspector.adjusting_gain = false;
-    state->inspector.adjusting_fade_in = false;
-    state->inspector.adjusting_fade_out = false;
-    state->inspector.fade_in_frames = clip->fade_in_frames;
-    state->inspector.fade_out_frames = clip->fade_out_frames;
+    inspector_fade_input_show(state, clip);
     state->inspector.has_focus = true;
     state->inspector.phase_invert_l = false;
     state->inspector.phase_invert_r = false;
@@ -630,12 +609,7 @@ void inspector_input_set_clip(AppState* state, int track_index, int clip_index) 
     state->inspector.clip_index = clip_index;
     const EngineClip* clip = inspector_get_clip_const(state);
     if (clip) {
-        if (!state->inspector.adjusting_fade_in) {
-            state->inspector.fade_in_frames = clip->fade_in_frames;
-        }
-        if (!state->inspector.adjusting_fade_out) {
-            state->inspector.fade_out_frames = clip->fade_out_frames;
-        }
+        inspector_fade_input_set_clip(state, clip);
     }
 }
 
@@ -698,6 +672,9 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
             ClipInspectorLayout layout;
             clip_inspector_compute_layout(state, &layout);
             SDL_Point p = {event->button.x, event->button.y};
+            SDL_Keymod mods = SDL_GetModState();
+            bool shift_held = (mods & KMOD_SHIFT) != 0;
+            bool alt_held = (mods & KMOD_ALT) != 0;
             state->inspector.has_focus = SDL_PointInRect(&p, &layout.panel_rect);
             if (state->inspector.has_focus) {
                 if (SDL_PointInRect(&p, &layout.right_mode_source_rect)) {
@@ -708,6 +685,78 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                 if (SDL_PointInRect(&p, &layout.right_mode_clip_rect)) {
                     state->inspector.waveform.view_source = false;
                     inspector_input_commit_if_editing(state);
+                    return;
+                }
+
+                if (state->timeline_automation_mode && SDL_PointInRect(&p, &layout.right_waveform_rect)) {
+                    const EngineClip* clip = inspector_get_clip_const(state);
+                    if (clip) {
+                        uint64_t clip_frames = inspector_clip_duration_frames(state, clip);
+                        if (clip_frames == 0) {
+                            clip_frames = 1;
+                        }
+                        uint64_t view_start = 0;
+                        uint64_t view_frames = 0;
+                        if (clip_inspector_get_waveform_view(state, clip, clip_frames, &view_start, &view_frames) && view_frames > 0) {
+                            SDL_Rect rect = layout.right_waveform_rect;
+                            int clamped_x = p.x;
+                            if (clamped_x < rect.x) clamped_x = rect.x;
+                            if (clamped_x > rect.x + rect.w) clamped_x = rect.x + rect.w;
+                            double t = (double)(clamped_x - rect.x) / (double)rect.w;
+                            if (t < 0.0) t = 0.0;
+                            if (t > 1.0) t = 1.0;
+                            uint64_t frame_at = view_start + (uint64_t)llround(t * (double)view_frames);
+                            double sr = inspector_clip_sample_rate(state, clip);
+                            float seconds = (float)((double)frame_at / sr);
+                            seconds = timeline_snap_seconds_to_grid(state, seconds, state->timeline_visible_seconds);
+                            frame_at = (uint64_t)llround((double)seconds * sr);
+                            uint64_t clip_start = clip->offset_frames;
+                            uint64_t rel_frame = frame_at > clip_start ? frame_at - clip_start : 0;
+                            if (rel_frame > clip_frames) {
+                                rel_frame = clip_frames;
+                            }
+                            const EngineAutomationLane* lane = NULL;
+                            automation_begin_edit(state, state->inspector.track_index, state->inspector.clip_index);
+                            engine_clip_get_automation_lane(state->engine,
+                                                            state->inspector.track_index,
+                                                            state->inspector.clip_index,
+                                                            state->automation_ui.target,
+                                                            &lane);
+                            int hit_point = inspector_automation_hit_point(lane,
+                                                                           &rect,
+                                                                           view_start,
+                                                                           view_frames,
+                                                                           clip_start,
+                                                                           clip_frames,
+                                                                           p.x,
+                                                                           p.y);
+                            float value = inspector_automation_value_from_y(&rect, p.y);
+                            if (hit_point >= 0) {
+                                state->automation_ui.track_index = state->inspector.track_index;
+                                state->automation_ui.clip_index = state->inspector.clip_index;
+                                state->automation_ui.point_index = hit_point;
+                            } else {
+                                int new_index = -1;
+                                engine_clip_add_automation_point(state->engine,
+                                                                 state->inspector.track_index,
+                                                                 state->inspector.clip_index,
+                                                                 state->automation_ui.target,
+                                                                 rel_frame,
+                                                                 value,
+                                                                 &new_index);
+                                state->automation_ui.track_index = state->inspector.track_index;
+                                state->automation_ui.clip_index = state->inspector.clip_index;
+                                state->automation_ui.point_index = new_index;
+                            }
+                            state->automation_ui.dragging = true;
+                            state->automation_ui.dragging_from_inspector = true;
+                            inspector_input_commit_if_editing(state);
+                            return;
+                        }
+                    }
+                }
+
+                if (inspector_fade_input_handle_waveform_mouse_down(state, &layout, &p, shift_held, alt_held)) {
                     return;
                 }
 
@@ -812,38 +861,11 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                     return;
                 }
 
-                if (SDL_PointInRect(&p, &layout.fade_in_track_rect)) {
-                    inspector_input_commit_if_editing(state);
-                    state->inspector.adjusting_fade_in = true;
-                    state->inspector.adjusting_fade_out = false;
-                    inspector_begin_clip_drag(state);
-                    inspector_update_fade_from_mouse(state, true, p.x);
+                if (inspector_fade_input_handle_track_mouse_down(state, &layout, &p, shift_held, true)) {
                     return;
                 }
-                if (SDL_PointInRect(&p, &layout.fade_out_track_rect)) {
-                    inspector_input_commit_if_editing(state);
-                    state->inspector.adjusting_fade_out = true;
-                    state->inspector.adjusting_fade_in = false;
-                    inspector_begin_clip_drag(state);
-                    inspector_update_fade_from_mouse(state, false, p.x);
+                if (inspector_fade_input_handle_track_mouse_down(state, &layout, &p, shift_held, false)) {
                     return;
-                }
-
-                for (int i = 0; i < layout.fade_preset_count; ++i) {
-                    if (layout.fade_in_buttons[i].w > 0 && SDL_PointInRect(&p, &layout.fade_in_buttons[i])) {
-                        inspector_input_commit_if_editing(state);
-                        inspector_apply_fade_preset(state, true, false, layout.fade_presets_ms[i]);
-                        state->inspector.adjusting_fade_in = false;
-                        state->inspector.adjusting_fade_out = false;
-                        return;
-                    }
-                    if (layout.fade_out_buttons[i].w > 0 && SDL_PointInRect(&p, &layout.fade_out_buttons[i])) {
-                        inspector_input_commit_if_editing(state);
-                        inspector_apply_fade_preset(state, false, true, layout.fade_presets_ms[i]);
-                        state->inspector.adjusting_fade_in = false;
-                        state->inspector.adjusting_fade_out = false;
-                        return;
-                    }
                 }
             }
             if (!state->inspector.has_focus) {
@@ -854,8 +876,12 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
     case SDL_MOUSEBUTTONUP:
         if (event->button.button == SDL_BUTTON_LEFT) {
             state->inspector.adjusting_gain = false;
-            state->inspector.adjusting_fade_in = false;
-            state->inspector.adjusting_fade_out = false;
+            inspector_fade_input_handle_mouse_up(state);
+            if (state->automation_ui.dragging_from_inspector) {
+                state->automation_ui.dragging = false;
+                state->automation_ui.dragging_from_inspector = false;
+                automation_commit_edit(state);
+            }
             if (state->undo.active_drag_valid) {
                 UndoCommand* cmd = &state->undo.active_drag;
                 if (cmd->type == UNDO_CMD_CLIP_TRANSFORM) {
@@ -877,12 +903,54 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
         }
         break;
     case SDL_MOUSEMOTION:
-        if (state->inspector.adjusting_gain) {
+        if (state->automation_ui.dragging && state->automation_ui.dragging_from_inspector) {
+            const EngineClip* clip = inspector_get_clip_const(state);
+            if (clip) {
+                uint64_t clip_frames = inspector_clip_duration_frames(state, clip);
+                if (clip_frames == 0) {
+                    clip_frames = 1;
+                }
+                uint64_t view_start = 0;
+                uint64_t view_frames = 0;
+                if (clip_inspector_get_waveform_view(state, clip, clip_frames, &view_start, &view_frames) && view_frames > 0) {
+                    ClipInspectorLayout layout;
+                    clip_inspector_compute_layout(state, &layout);
+                    SDL_Rect rect = layout.right_waveform_rect;
+                    int clamped_x = event->motion.x;
+                    if (clamped_x < rect.x) clamped_x = rect.x;
+                    if (clamped_x > rect.x + rect.w) clamped_x = rect.x + rect.w;
+                    double t = (double)(clamped_x - rect.x) / (double)rect.w;
+                    if (t < 0.0) t = 0.0;
+                    if (t > 1.0) t = 1.0;
+                    uint64_t frame_at = view_start + (uint64_t)llround(t * (double)view_frames);
+                    double sr = inspector_clip_sample_rate(state, clip);
+                    float seconds = (float)((double)frame_at / sr);
+                    seconds = timeline_snap_seconds_to_grid(state, seconds, state->timeline_visible_seconds);
+                    frame_at = (uint64_t)llround((double)seconds * sr);
+                    uint64_t clip_start = clip->offset_frames;
+                    uint64_t rel_frame = frame_at > clip_start ? frame_at - clip_start : 0;
+                    if (rel_frame > clip_frames) {
+                        rel_frame = clip_frames;
+                    }
+                    float value = inspector_automation_value_from_y(&rect, event->motion.y);
+                    int new_index = state->automation_ui.point_index;
+                    engine_clip_update_automation_point(state->engine,
+                                                        state->inspector.track_index,
+                                                        state->inspector.clip_index,
+                                                        state->automation_ui.target,
+                                                        state->automation_ui.point_index,
+                                                        rel_frame,
+                                                        value,
+                                                        &new_index);
+                    state->automation_ui.point_index = new_index;
+                }
+            }
+        } else if (inspector_fade_input_handle_pending_drag(state, event->motion.x)) {
+            break;
+        } else if (state->inspector.adjusting_gain) {
             inspector_update_gain_from_mouse(state, event->motion.x);
-        } else if (state->inspector.adjusting_fade_in) {
-            inspector_update_fade_from_mouse(state, true, event->motion.x);
-        } else if (state->inspector.adjusting_fade_out) {
-            inspector_update_fade_from_mouse(state, false, event->motion.x);
+        } else if (inspector_fade_input_handle_active_drag(state, event->motion.x)) {
+            break;
         }
         break;
     case SDL_TEXTINPUT:
@@ -1002,7 +1070,9 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
             }
         } else if (state->inspector.visible) {
             SDL_Keycode key = event->key.keysym.sym;
-            if (key == SDLK_UP) {
+            if (inspector_fade_input_handle_keydown(state, key)) {
+                break;
+            } else if (key == SDLK_UP) {
                 inspector_update_gain(state, state->inspector.gain + 0.05f);
             } else if (key == SDLK_DOWN) {
                 inspector_update_gain(state, state->inspector.gain - 0.05f);
@@ -1053,12 +1123,7 @@ void inspector_input_sync(AppState* state) {
     if (!state->inspector.adjusting_gain) {
         state->inspector.gain = clip->gain;
     }
-    if (!state->inspector.adjusting_fade_in) {
-        state->inspector.fade_in_frames = clip->fade_in_frames;
-    }
-    if (!state->inspector.adjusting_fade_out) {
-        state->inspector.fade_out_frames = clip->fade_out_frames;
-    }
+    inspector_fade_input_sync(state, clip);
 }
 
 bool inspector_input_has_text_focus(const AppState* state) {

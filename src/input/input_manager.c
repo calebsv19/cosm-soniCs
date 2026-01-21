@@ -11,6 +11,7 @@
 #include "session.h"
 #include "ui/layout.h"
 #include "ui/library_browser.h"
+#include "ui/effects_panel.h"
 #include "ui/panes.h"
 #include "ui/transport.h"
 #include "session/project_manager.h"
@@ -110,6 +111,15 @@ static void project_load_clamp_scroll(ProjectLoadModal* modal, int item_height, 
     if (max_scroll < 0.0f) max_scroll = 0.0f;
     if (modal->scroll_offset < 0.0f) modal->scroll_offset = 0.0f;
     if (modal->scroll_offset > max_scroll) modal->scroll_offset = max_scroll;
+}
+
+// Clears meter histories after a forced seek when the debug toggle is enabled.
+void input_manager_reset_meter_history_on_seek(AppState* state) {
+    if (!state || !state->reset_meter_history_on_seek) {
+        return;
+    }
+    effects_panel_reset_meter_history(state);
+    engine_spectrogram_clear_history(state->engine);
 }
 
 static bool project_load_handle_event(AppState* state, const SDL_Event* event) {
@@ -258,6 +268,7 @@ static void seek_to_seconds(AppState* state, float seconds, bool resume_playback
     }
     uint64_t frame = (uint64_t)llroundf(seconds * (float)sample_rate);
     bool was_playing = engine_transport_is_playing(state->engine);
+    input_manager_reset_meter_history_on_seek(state);
     engine_transport_seek(state->engine, frame);
     if (resume_playback && was_playing) {
         engine_transport_play(state->engine);
@@ -295,6 +306,7 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
             if (state->loop_enabled && state->loop_end_frame > state->loop_start_frame) {
                 target_frame = state->loop_start_frame;
             }
+            input_manager_reset_meter_history_on_seek(state);
             engine_transport_seek(state->engine, target_frame);
             if (was_playing) {
                 engine_transport_play(state->engine);

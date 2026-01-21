@@ -169,6 +169,25 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     }
     state->effects_panel.eq_detail.view_mode =
         doc->effects_panel.eq_view_mode == EQ_DETAIL_VIEW_TRACK ? EQ_DETAIL_VIEW_TRACK : EQ_DETAIL_VIEW_MASTER;
+    if (doc->effects_panel.meter_scope_mode == FX_METER_SCOPE_LEFT_RIGHT) {
+        state->effects_panel.meter_scope_mode = FX_METER_SCOPE_LEFT_RIGHT;
+    } else {
+        state->effects_panel.meter_scope_mode = FX_METER_SCOPE_MID_SIDE;
+    }
+    if (doc->effects_panel.meter_lufs_mode == FX_METER_LUFS_MOMENTARY) {
+        state->effects_panel.meter_lufs_mode = FX_METER_LUFS_MOMENTARY;
+    } else if (doc->effects_panel.meter_lufs_mode == FX_METER_LUFS_INTEGRATED) {
+        state->effects_panel.meter_lufs_mode = FX_METER_LUFS_INTEGRATED;
+    } else {
+        state->effects_panel.meter_lufs_mode = FX_METER_LUFS_SHORT_TERM;
+    }
+    if (doc->effects_panel.meter_spectrogram_mode == FX_METER_SPECTROGRAM_BLACK_WHITE) {
+        state->effects_panel.meter_spectrogram_mode = FX_METER_SPECTROGRAM_BLACK_WHITE;
+    } else if (doc->effects_panel.meter_spectrogram_mode == FX_METER_SPECTROGRAM_HEAT) {
+        state->effects_panel.meter_spectrogram_mode = FX_METER_SPECTROGRAM_HEAT;
+    } else {
+        state->effects_panel.meter_spectrogram_mode = FX_METER_SPECTROGRAM_WHITE_BLACK;
+    }
     state->effects_panel.selected_slot_index = -1;
     state->effects_panel.list_open_slot_index = -1;
     state->effects_panel.restore_selected_index = doc->effects_panel.selected_index;
@@ -241,6 +260,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     state->active_track_index = -1;
     state->selected_track_index = -1;
     state->selected_clip_index = -1;
+    bool selected_from_clip = false;
 
     // Tempo: apply document values with clamping and align sample rate to current engine config.
     state->tempo = tempo_state_default(state->runtime_cfg.sample_rate);
@@ -340,10 +360,27 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
             engine_clip_set_gain(state->engine, track_index, clip_index, clip_doc->gain == 0.0f ? 1.0f : clip_doc->gain);
             engine_clip_set_name(state->engine, track_index, clip_index, clip_doc->name);
             engine_clip_set_fades(state->engine, track_index, clip_index, clip_doc->fade_in_frames, clip_doc->fade_out_frames);
+            engine_clip_set_fade_curves(state->engine,
+                                        track_index,
+                                        clip_index,
+                                        clip_doc->fade_in_curve,
+                                        clip_doc->fade_out_curve);
+            if (clip_doc->automation_lanes && clip_doc->automation_lane_count > 0) {
+                for (int l = 0; l < clip_doc->automation_lane_count; ++l) {
+                    SessionAutomationLane* lane = &clip_doc->automation_lanes[l];
+                    engine_clip_set_automation_lane_points(state->engine,
+                                                           track_index,
+                                                           clip_index,
+                                                           lane->target,
+                                                           (const EngineAutomationPoint*)lane->points,
+                                                           lane->point_count);
+                }
+            }
             if (clip_doc->selected && state->selected_track_index == -1) {
                 state->selected_track_index = track_index;
                 state->selected_clip_index = clip_index;
                 state->active_track_index = track_index;
+                selected_from_clip = true;
             }
         }
 
@@ -361,6 +398,16 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
         SDL_Log("session_apply_document: migrated %d clips to media_id", migrated_media_id_count);
     }
 
+    if (!selected_from_clip && doc->selected_track_index >= 0 && doc->selected_track_index < doc->track_count) {
+        state->selected_track_index = doc->selected_track_index;
+        state->active_track_index = doc->selected_track_index;
+        int clip_count = doc->tracks[doc->selected_track_index].clip_count;
+        if (doc->selected_clip_index >= 0 && doc->selected_clip_index < clip_count) {
+            state->selected_clip_index = doc->selected_clip_index;
+        } else {
+            state->selected_clip_index = -1;
+        }
+    }
     if (state->selected_track_index == -1 && doc->track_count > 0) {
         state->active_track_index = 0;
         state->selected_track_index = 0;

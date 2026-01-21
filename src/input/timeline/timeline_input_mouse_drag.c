@@ -10,6 +10,7 @@
 #include "input/timeline_selection.h"
 #include "ui/layout.h"
 #include "ui/panes.h"
+#include "ui/effects_panel.h"
 #include "ui/timeline_view.h"
 #include "undo/undo_manager.h"
 #include <SDL2/SDL.h>
@@ -57,6 +58,8 @@ static bool clip_state_from_clip(const EngineClip* clip, int track_index, UndoCl
     out_state->duration_frames = clip->duration_frames;
     out_state->fade_in_frames = clip->fade_in_frames;
     out_state->fade_out_frames = clip->fade_out_frames;
+    out_state->fade_in_curve = clip->fade_in_curve;
+    out_state->fade_out_curve = clip->fade_out_curve;
     out_state->gain = clip->gain;
     if (out_state->duration_frames == 0 && clip->sampler) {
         out_state->duration_frames = engine_sampler_get_frame_count(clip->sampler);
@@ -74,6 +77,8 @@ static bool clip_state_equal(const UndoClipState* a, const UndoClipState* b) {
            a->duration_frames == b->duration_frames &&
            a->fade_in_frames == b->fade_in_frames &&
            a->fade_out_frames == b->fade_out_frames &&
+           a->fade_in_curve == b->fade_in_curve &&
+           a->fade_out_curve == b->fade_out_curve &&
            fabsf(a->gain - b->gain) < 0.0001f;
 }
 
@@ -209,6 +214,10 @@ void timeline_input_mouse_drag_end(AppState* state) {
 void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bool was_down, bool is_down) {
     (void)manager;
     if (!state || !state->engine) {
+        return;
+    }
+    if (state->timeline_automation_mode) {
+        timeline_input_mouse_drag_end(state);
         return;
     }
 
@@ -380,6 +389,7 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
                 } else {
                     inspector_input_init(state);
                 }
+                effects_panel_sync_from_engine(state);
             } else if (dst_track != drag->track_index && dst_track >= 0) {
                 int new_index = timeline_move_clip_to_track(state, drag->track_index, drag->clip_index, dst_track, start_frame);
                 if (new_index >= 0) {
@@ -393,6 +403,7 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
                             inspector_input_show(state, dst_track, new_index, &dst->clips[new_index]);
                         }
                     }
+                    effects_panel_sync_from_engine(state);
                 }
             }
 
@@ -641,7 +652,8 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
         }
         float new_start_sec = initial_start_sec + delta_sec;
         float snap_interval = timeline_get_snap_interval_seconds(state, geom.visible_seconds);
-        bool allow_snap = !alt_held || drag->mode == TIMELINE_DRAG_MODE_RIPPLE;
+        bool allow_snap = state->timeline_snap_enabled &&
+                          (!alt_held || drag->mode == TIMELINE_DRAG_MODE_RIPPLE);
         if (drag->started_moving && allow_snap) {
             new_start_sec = timeline_snap_seconds_to_grid(state, new_start_sec, geom.visible_seconds);
             snap_to_neighbor_clip(drag_track, drag->clip_index, sample_rate, snap_interval, &new_start_sec);
@@ -717,7 +729,8 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
             new_start_sec = max_start_sec;
         }
         float snap_interval = timeline_get_snap_interval_seconds(state, geom.visible_seconds);
-        bool allow_snap = !alt_held || drag->mode == TIMELINE_DRAG_MODE_RIPPLE;
+        bool allow_snap = state->timeline_snap_enabled &&
+                          (!alt_held || drag->mode == TIMELINE_DRAG_MODE_RIPPLE);
         if (allow_snap) {
             new_start_sec = timeline_snap_seconds_to_grid(state, new_start_sec, geom.visible_seconds);
         }
@@ -787,7 +800,8 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
             new_right_sec = max_right_sec;
         }
         float snap_interval = timeline_get_snap_interval_seconds(state, geom.visible_seconds);
-        bool allow_snap = !alt_held || drag->mode == TIMELINE_DRAG_MODE_RIPPLE;
+        bool allow_snap = state->timeline_snap_enabled &&
+                          (!alt_held || drag->mode == TIMELINE_DRAG_MODE_RIPPLE);
         if (allow_snap) {
             new_right_sec = timeline_snap_seconds_to_grid(state, new_right_sec, geom.visible_seconds);
         }

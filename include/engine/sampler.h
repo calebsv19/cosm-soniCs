@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "audio/media_clip.h"
+#include "engine/automation.h"
 #include "engine/graph.h"
 
 typedef struct EngineSamplerSource EngineSamplerSource;
@@ -15,6 +16,10 @@ void engine_sampler_source_set_clip(EngineSamplerSource* sampler, const AudioMed
                                     uint64_t clip_length_frames,
                                     uint64_t fade_in_frames,
                                     uint64_t fade_out_frames);
+// Updates the automation lanes for sampler evaluation.
+void engine_sampler_source_set_automation(EngineSamplerSource* sampler,
+                                          const EngineAutomationLane* lanes,
+                                          int lane_count);
 void engine_sampler_source_reset(void* userdata, int sample_rate, int channels);
 void engine_sampler_source_render(void* userdata, float* interleaved, int frames, uint64_t transport_frame);
 void engine_sampler_source_ops(EngineGraphSourceOps* ops);

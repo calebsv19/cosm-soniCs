@@ -150,6 +150,34 @@ bool engine_clip_set_fades(Engine* engine, int track_index, int clip_index, uint
     return true;
 }
 
+bool engine_clip_set_automation_lane_points(Engine* engine,
+                                            int track_index,
+                                            int clip_index,
+                                            EngineAutomationTarget target,
+                                            const EngineAutomationPoint* points,
+                                            int count) {
+    (void)engine;
+    (void)track_index;
+    (void)clip_index;
+    (void)target;
+    (void)points;
+    (void)count;
+    return true;
+}
+
+bool engine_clip_set_automation_lanes(Engine* engine,
+                                      int track_index,
+                                      int clip_index,
+                                      const EngineAutomationLane* lanes,
+                                      int lane_count) {
+    (void)engine;
+    (void)track_index;
+    (void)clip_index;
+    (void)lanes;
+    (void)lane_count;
+    return true;
+}
+
 bool engine_remove_track(Engine* engine, int track_index) {
     (void)engine;
     (void)track_index;
@@ -271,6 +299,23 @@ int main(void) {
     clip->offset_frames = 0;
     clip->fade_in_frames = 1200;
     clip->fade_out_frames = 2400;
+    clip->automation_lane_count = 1;
+    clip->automation_lanes = (SessionAutomationLane*)calloc(1, sizeof(SessionAutomationLane));
+    if (!clip->automation_lanes) {
+        SDL_Log("session_serialization_test: failed to allocate automation lanes");
+        session_document_free(&doc);
+        return 2;
+    }
+    clip->automation_lanes[0].target = ENGINE_AUTOMATION_TARGET_VOLUME;
+    clip->automation_lanes[0].point_count = 1;
+    clip->automation_lanes[0].points = (SessionAutomationPoint*)calloc(1, sizeof(SessionAutomationPoint));
+    if (!clip->automation_lanes[0].points) {
+        SDL_Log("session_serialization_test: failed to allocate automation points");
+        session_document_free(&doc);
+        return 2;
+    }
+    clip->automation_lanes[0].points[0].frame = 24000;
+    clip->automation_lanes[0].points[0].value = 0.5f;
     clip->gain = 1.0f;
     clip->selected = false;
 
@@ -329,6 +374,15 @@ int main(void) {
         session_document_free(&doc);
         session_document_free(&loaded);
         SDL_Log("session_serialization_test: deserialised content mismatch");
+        return 9;
+    }
+    if (lc->automation_lane_count != 1 ||
+        lc->automation_lanes[0].target != ENGINE_AUTOMATION_TARGET_VOLUME ||
+        lc->automation_lanes[0].point_count != 1 ||
+        lc->automation_lanes[0].points[0].frame != 24000) {
+        session_document_free(&doc);
+        session_document_free(&loaded);
+        SDL_Log("session_serialization_test: automation lanes mismatch");
         return 9;
     }
 

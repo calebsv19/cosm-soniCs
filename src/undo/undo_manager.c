@@ -19,6 +19,22 @@ static void session_track_clear(SessionTrack* track) {
     if (!track) {
         return;
     }
+    if (track->clips) {
+        for (int i = 0; i < track->clip_count; ++i) {
+            SessionClip* clip = &track->clips[i];
+            if (clip->automation_lanes) {
+                for (int l = 0; l < clip->automation_lane_count; ++l) {
+                    SessionAutomationLane* lane = &clip->automation_lanes[l];
+                    free(lane->points);
+                    lane->points = NULL;
+                    lane->point_count = 0;
+                }
+                free(clip->automation_lanes);
+                clip->automation_lanes = NULL;
+                clip->automation_lane_count = 0;
+            }
+        }
+    }
     free(track->clips);
     free(track->fx);
     track->clips = NULL;
@@ -74,6 +90,95 @@ static void eq_curve_to_engine(const EqCurveState* src, EngineEqCurve* dst) {
     }
 }
 
+static bool session_clip_clone(SessionClip* dst, const SessionClip* src) {
+    if (!dst || !src) {
+        return false;
+    }
+    *dst = *src;
+    dst->automation_lanes = NULL;
+    dst->automation_lane_count = 0;
+    if (!src->automation_lanes || src->automation_lane_count <= 0) {
+        return true;
+    }
+    dst->automation_lanes = (SessionAutomationLane*)calloc((size_t)src->automation_lane_count,
+                                                           sizeof(SessionAutomationLane));
+    if (!dst->automation_lanes) {
+        return false;
+    }
+    dst->automation_lane_count = src->automation_lane_count;
+    for (int l = 0; l < src->automation_lane_count; ++l) {
+        const SessionAutomationLane* src_lane = &src->automation_lanes[l];
+        SessionAutomationLane* dst_lane = &dst->automation_lanes[l];
+        dst_lane->target = src_lane->target;
+        dst_lane->point_count = src_lane->point_count;
+        if (src_lane->point_count > 0) {
+            dst_lane->points = (SessionAutomationPoint*)calloc((size_t)src_lane->point_count,
+                                                               sizeof(SessionAutomationPoint));
+            if (!dst_lane->points) {
+                return false;
+            }
+            memcpy(dst_lane->points,
+                   src_lane->points,
+                   sizeof(SessionAutomationPoint) * (size_t)src_lane->point_count);
+        }
+    }
+    return true;
+}
+
+static bool automation_lanes_clone(SessionAutomationLane** dst,
+                                   int* dst_count,
+                                   const SessionAutomationLane* src,
+                                   int src_count) {
+    if (!dst || !dst_count) {
+        return false;
+    }
+    *dst = NULL;
+    *dst_count = 0;
+    if (!src || src_count <= 0) {
+        return true;
+    }
+    SessionAutomationLane* lanes = (SessionAutomationLane*)calloc((size_t)src_count, sizeof(SessionAutomationLane));
+    if (!lanes) {
+        return false;
+    }
+    for (int l = 0; l < src_count; ++l) {
+        lanes[l].target = src[l].target;
+        lanes[l].point_count = src[l].point_count;
+        if (src[l].point_count > 0) {
+            lanes[l].points = (SessionAutomationPoint*)calloc((size_t)src[l].point_count,
+                                                              sizeof(SessionAutomationPoint));
+            if (!lanes[l].points) {
+                for (int j = 0; j <= l; ++j) {
+                    free(lanes[j].points);
+                    lanes[j].points = NULL;
+                }
+                free(lanes);
+                return false;
+            }
+            memcpy(lanes[l].points,
+                   src[l].points,
+                   sizeof(SessionAutomationPoint) * (size_t)src[l].point_count);
+        }
+    }
+    *dst = lanes;
+    *dst_count = src_count;
+    return true;
+}
+
+static void automation_lanes_clear(SessionAutomationLane** lanes, int* lane_count) {
+    if (!lanes || !*lanes || !lane_count) {
+        return;
+    }
+    for (int l = 0; l < *lane_count; ++l) {
+        free((*lanes)[l].points);
+        (*lanes)[l].points = NULL;
+        (*lanes)[l].point_count = 0;
+    }
+    free(*lanes);
+    *lanes = NULL;
+    *lane_count = 0;
+}
+
 static bool session_track_clone(SessionTrack* dst, const SessionTrack* src) {
     if (!dst || !src) {
         return false;
@@ -83,11 +188,16 @@ static bool session_track_clone(SessionTrack* dst, const SessionTrack* src) {
     dst->clips = NULL;
     dst->fx = NULL;
     if (src->clip_count > 0) {
-        dst->clips = (SessionClip*)malloc(sizeof(SessionClip) * (size_t)src->clip_count);
+        dst->clips = (SessionClip*)calloc((size_t)src->clip_count, sizeof(SessionClip));
         if (!dst->clips) {
             return false;
         }
-        memcpy(dst->clips, src->clips, sizeof(SessionClip) * (size_t)src->clip_count);
+        for (int i = 0; i < src->clip_count; ++i) {
+            if (!session_clip_clone(&dst->clips[i], &src->clips[i])) {
+                session_track_clear(dst);
+                return false;
+            }
+        }
     }
     if (src->fx_count > 0) {
         dst->fx = (SessionFxInstance*)malloc(sizeof(SessionFxInstance) * (size_t)src->fx_count);
@@ -113,6 +223,11 @@ static bool undo_command_clone(UndoCommand* dst, const UndoCommand* src) {
             return true;
         case UNDO_CMD_CLIP_ADD_REMOVE:
             dst->data.clip_add_remove = src->data.clip_add_remove;
+            dst->data.clip_add_remove.clip.automation_lanes = NULL;
+            dst->data.clip_add_remove.clip.automation_lane_count = 0;
+            if (!session_clip_clone(&dst->data.clip_add_remove.clip, &src->data.clip_add_remove.clip)) {
+                return false;
+            }
             return true;
         case UNDO_CMD_CLIP_RENAME:
             dst->data.clip_rename = src->data.clip_rename;
@@ -138,6 +253,23 @@ static bool undo_command_clone(UndoCommand* dst, const UndoCommand* src) {
             }
             memcpy(mdst->before, msrc->before, sizeof(UndoClipState) * (size_t)msrc->count);
             memcpy(mdst->after, msrc->after, sizeof(UndoClipState) * (size_t)msrc->count);
+            return true;
+        }
+        case UNDO_CMD_AUTOMATION_EDIT: {
+            const UndoAutomationEdit* asrc = &src->data.automation_edit;
+            UndoAutomationEdit* adst = &dst->data.automation_edit;
+            *adst = *asrc;
+            adst->before_lanes = NULL;
+            adst->after_lanes = NULL;
+            if (!automation_lanes_clone(&adst->before_lanes, &adst->before_lane_count,
+                                        asrc->before_lanes, asrc->before_lane_count)) {
+                return false;
+            }
+            if (!automation_lanes_clone(&adst->after_lanes, &adst->after_lane_count,
+                                        asrc->after_lanes, asrc->after_lane_count)) {
+                automation_lanes_clear(&adst->before_lanes, &adst->before_lane_count);
+                return false;
+            }
             return true;
         }
         case UNDO_CMD_TRACK_EDIT: {
@@ -232,6 +364,22 @@ static bool apply_clip_add_remove(AppState* state, UndoClipAddRemove* edit, bool
                                edit->clip.offset_frames, edit->clip.duration_frames);
         engine_clip_set_fades(state->engine, edit->track_index, new_index,
                               edit->clip.fade_in_frames, edit->clip.fade_out_frames);
+        engine_clip_set_fade_curves(state->engine,
+                                    edit->track_index,
+                                    new_index,
+                                    edit->clip.fade_in_curve,
+                                    edit->clip.fade_out_curve);
+        if (edit->clip.automation_lanes && edit->clip.automation_lane_count > 0) {
+            for (int l = 0; l < edit->clip.automation_lane_count; ++l) {
+                SessionAutomationLane* lane = &edit->clip.automation_lanes[l];
+                engine_clip_set_automation_lane_points(state->engine,
+                                                       edit->track_index,
+                                                       new_index,
+                                                       lane->target,
+                                                       (const EngineAutomationPoint*)lane->points,
+                                                       lane->point_count);
+            }
+        }
         return true;
     }
     int clip_track = edit->track_index;
@@ -249,6 +397,38 @@ static bool apply_clip_add_remove(AppState* state, UndoClipAddRemove* edit, bool
         return false;
     }
     return engine_remove_clip(state->engine, clip_track, clip_index);
+}
+
+static bool apply_automation_edit(AppState* state, UndoAutomationEdit* edit, bool apply_after) {
+    if (!state || !edit || !state->engine) {
+        return false;
+    }
+    const SessionAutomationLane* src_lanes = apply_after ? edit->after_lanes : edit->before_lanes;
+    int lane_count = apply_after ? edit->after_lane_count : edit->before_lane_count;
+    if (lane_count <= 0 || !src_lanes) {
+        return engine_clip_set_automation_lanes(state->engine,
+                                                edit->track_index,
+                                                edit->clip_index,
+                                                NULL,
+                                                0);
+    }
+    EngineAutomationLane* lanes = (EngineAutomationLane*)calloc((size_t)lane_count, sizeof(EngineAutomationLane));
+    if (!lanes) {
+        return false;
+    }
+    for (int i = 0; i < lane_count; ++i) {
+        lanes[i].target = src_lanes[i].target;
+        lanes[i].points = (EngineAutomationPoint*)src_lanes[i].points;
+        lanes[i].point_count = src_lanes[i].point_count;
+        lanes[i].point_capacity = src_lanes[i].point_count;
+    }
+    bool ok = engine_clip_set_automation_lanes(state->engine,
+                                               edit->track_index,
+                                               edit->clip_index,
+                                               lanes,
+                                               lane_count);
+    free(lanes);
+    return ok;
 }
 
 static bool apply_clip_state(AppState* state, const UndoClipState* target) {
@@ -279,6 +459,11 @@ static bool apply_clip_state(AppState* state, const UndoClipState* target) {
                                    target->start_frame, NULL);
     engine_clip_set_fades(state->engine, final_track, final_clip,
                           target->fade_in_frames, target->fade_out_frames);
+    engine_clip_set_fade_curves(state->engine,
+                                final_track,
+                                final_clip,
+                                target->fade_in_curve,
+                                target->fade_out_curve);
     engine_clip_set_gain(state->engine, final_track, final_clip, target->gain);
     return true;
 }
@@ -617,6 +802,8 @@ static bool undo_apply(AppState* state, UndoCommand* command, bool apply_after) 
             }
             return ok;
         }
+        case UNDO_CMD_AUTOMATION_EDIT:
+            return apply_automation_edit(state, &command->data.automation_edit, apply_after);
         case UNDO_CMD_EQ_CURVE:
             return apply_eq_curve(state, &command->data.eq_curve_edit, apply_after);
         case UNDO_CMD_TRACK_SNAPSHOT:
@@ -653,6 +840,25 @@ static void undo_command_destroy(UndoCommand* cmd) {
             }
             if (cmd->data.track_edit.has_after) {
                 session_track_clear(&cmd->data.track_edit.after);
+            }
+            break;
+        case UNDO_CMD_AUTOMATION_EDIT:
+            automation_lanes_clear(&cmd->data.automation_edit.before_lanes,
+                                   &cmd->data.automation_edit.before_lane_count);
+            automation_lanes_clear(&cmd->data.automation_edit.after_lanes,
+                                   &cmd->data.automation_edit.after_lane_count);
+            break;
+        case UNDO_CMD_CLIP_ADD_REMOVE:
+            if (cmd->data.clip_add_remove.clip.automation_lanes) {
+                for (int l = 0; l < cmd->data.clip_add_remove.clip.automation_lane_count; ++l) {
+                    SessionAutomationLane* lane = &cmd->data.clip_add_remove.clip.automation_lanes[l];
+                    free(lane->points);
+                    lane->points = NULL;
+                    lane->point_count = 0;
+                }
+                free(cmd->data.clip_add_remove.clip.automation_lanes);
+                cmd->data.clip_add_remove.clip.automation_lanes = NULL;
+                cmd->data.clip_add_remove.clip.automation_lane_count = 0;
             }
             break;
         default:

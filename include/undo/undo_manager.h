@@ -18,6 +18,7 @@ typedef enum {
     UNDO_CMD_CLIP_ADD_REMOVE,
     UNDO_CMD_CLIP_RENAME,
     UNDO_CMD_MULTI_CLIP_TRANSFORM,
+    UNDO_CMD_AUTOMATION_EDIT,
     UNDO_CMD_TRACK_EDIT,
     UNDO_CMD_TRACK_RENAME,
     UNDO_CMD_FX_EDIT,
@@ -26,6 +27,7 @@ typedef enum {
     UNDO_CMD_LIBRARY_RENAME
 } UndoCommandType;
 
+// Stores clip parameters for undo/redo transforms.
 typedef struct {
     struct EngineSamplerSource* sampler;
     int track_index;
@@ -34,6 +36,8 @@ typedef struct {
     uint64_t duration_frames;
     uint64_t fade_in_frames;
     uint64_t fade_out_frames;
+    EngineFadeCurve fade_in_curve;
+    EngineFadeCurve fade_out_curve;
     float gain;
 } UndoClipState;
 
@@ -69,6 +73,16 @@ typedef struct {
     SessionTrack before;
     SessionTrack after;
 } UndoTrackEdit;
+
+// Stores automation lane snapshots for undoing automation edits.
+typedef struct {
+    int track_index;
+    int clip_index;
+    int before_lane_count;
+    SessionAutomationLane* before_lanes;
+    int after_lane_count;
+    SessionAutomationLane* after_lanes;
+} UndoAutomationEdit;
 
 typedef struct {
     int track_index;
@@ -134,6 +148,7 @@ typedef struct {
         UndoClipAddRemove clip_add_remove;
         UndoClipRename clip_rename;
         UndoMultiClipTransform multi_clip_transform;
+        UndoAutomationEdit automation_edit;
         UndoTrackEdit track_edit;
         UndoTrackRename track_rename;
         UndoFxEdit fx_edit;

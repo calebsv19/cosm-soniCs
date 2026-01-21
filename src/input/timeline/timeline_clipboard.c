@@ -5,6 +5,7 @@
 #include "engine/sampler.h"
 #include "input/timeline_drag.h"
 #include "input/timeline_selection.h"
+#include "ui/effects_panel.h"
 #include "undo/undo_manager.h"
 
 #include <stdint.h>
@@ -40,6 +41,8 @@ static bool clip_snapshot_from_engine(const EngineClip* clip, SessionClip* out_c
     out_clip->offset_frames = clip->offset_frames;
     out_clip->fade_in_frames = clip->fade_in_frames;
     out_clip->fade_out_frames = clip->fade_out_frames;
+    out_clip->fade_in_curve = clip->fade_in_curve;
+    out_clip->fade_out_curve = clip->fade_out_curve;
     out_clip->gain = clip->gain;
     out_clip->selected = false;
     if (out_clip->duration_frames == 0 && clip->sampler) {
@@ -207,5 +210,6 @@ void timeline_clipboard_paste(AppState* state) {
         state->active_track_index = new_sel[0].track_index;
         state->selected_track_index = new_sel[0].track_index;
         state->selected_clip_index = new_sel[0].clip_index;
+        effects_panel_sync_from_engine(state);
     }
 }

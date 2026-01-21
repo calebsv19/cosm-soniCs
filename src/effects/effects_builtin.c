@@ -124,6 +124,12 @@ int mid_side_meter_get_desc(FxDesc *out);
 int mid_side_meter_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
 int vectorscope_meter_get_desc(FxDesc *out);
 int vectorscope_meter_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
+int peak_rms_meter_get_desc(FxDesc *out);
+int peak_rms_meter_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
+int lufs_meter_get_desc(FxDesc *out);
+int lufs_meter_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
+int spectrogram_meter_get_desc(FxDesc *out);
+int spectrogram_meter_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
 
 static FxRegistryEntry kBuiltinFxTable[] = {
     // Basics / Utility (01–19)
@@ -192,6 +198,9 @@ static FxRegistryEntry kBuiltinFxTable[] = {
     { 100u, "CorrelationMeter", correlation_meter_get_desc, correlation_meter_create },
     { 101u, "MidSideMeter",     mid_side_meter_get_desc,     mid_side_meter_create   },
     { 102u, "VectorScope",      vectorscope_meter_get_desc,  vectorscope_meter_create },
+    { 103u, "PeakRmsMeter",     peak_rms_meter_get_desc,     peak_rms_meter_create   },
+    { 104u, "LufsMeter",        lufs_meter_get_desc,         lufs_meter_create       },
+    { 105u, "SpectrogramMeter", spectrogram_meter_get_desc,  spectrogram_meter_create },
 };
 
 static const int kBuiltinFxCount = (int)(sizeof(kBuiltinFxTable) / sizeof(kBuiltinFxTable[0]));

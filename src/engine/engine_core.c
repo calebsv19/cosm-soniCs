@@ -196,21 +196,24 @@ static int engine_worker_main(void* userdata) {
                 loop_enabled = false;
             }
             int chunk = frames_remaining;
-            if (loop_enabled) {
-                uint64_t current = engine->transport_frame;
-                uint64_t loop_len = loop_end - loop_start;
-                if (loop_len == 0) {
-                    loop_enabled = false;
-                } else {
-                    uint64_t frames_until_end = (current < loop_end) ? (loop_end - current) : 0;
-                    if (frames_until_end == 0) {
-                        engine->transport_frame = loop_start;
-                        engine_graph_reset(engine->graph);
-                        current = loop_start;
-                        frames_until_end = loop_len;
-                    }
-                    if (frames_until_end > 0 && (uint64_t)chunk > frames_until_end) {
+            uint64_t current = engine->transport_frame;
+            bool loop_active = loop_enabled && loop_end > loop_start;
+            bool loop_this_block = false;
+            if (loop_active) {
+                if (current >= loop_start && current < loop_end) {
+                    uint64_t loop_len = loop_end - loop_start;
+                    uint64_t frames_until_end = loop_end - current;
+                    loop_this_block = true;
+                    if (loop_len == 0) {
+                        loop_active = false;
+                        loop_this_block = false;
+                    } else if ((uint64_t)chunk > frames_until_end) {
                         chunk = (int)frames_until_end;
+                    }
+                } else if (current < loop_start) {
+                    uint64_t frames_until_start = loop_start - current;
+                    if ((uint64_t)chunk > frames_until_start) {
+                        chunk = (int)frames_until_start;
                     }
                 }
             }
@@ -222,6 +225,7 @@ static int engine_worker_main(void* userdata) {
             Uint64 start_counter = engine->config.enable_timing_logs ? SDL_GetPerformanceCounter() : 0;
 
             engine_spectrum_begin_block(engine);
+            engine_spectrogram_begin_block(engine);
 
             // mix tracks with per-track FX
             float* out_ptr = block_buffer + produced * channels;
@@ -246,7 +250,7 @@ static int engine_worker_main(void* userdata) {
                 }
             }
 
-            if (loop_enabled) {
+            if (loop_this_block) {
                 uint64_t loop_start_cur = atomic_load_explicit(&engine->loop_start_frame, memory_order_acquire);
                 uint64_t loop_end_cur = atomic_load_explicit(&engine->loop_end_frame, memory_order_acquire);
                 if (atomic_load_explicit(&engine->loop_enabled, memory_order_acquire) && loop_end_cur > loop_start_cur &&
@@ -295,6 +299,9 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
     atomic_init(&engine->spectrum_enabled, false);
     atomic_init(&engine->spectrum_view, ENGINE_SPECTRUM_VIEW_MASTER);
     atomic_init(&engine->spectrum_target_track, -1);
+    atomic_init(&engine->spectrogram_enabled, false);
+    atomic_init(&engine->spectrogram_target_track, -1);
+    atomic_init(&engine->spectrogram_target_id, 0);
     if (!ringbuf_init(&engine->command_queue, sizeof(EngineCommand) * 64)) {
         free(engine);
         return NULL;
@@ -304,8 +311,15 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         free(engine);
         return NULL;
     }
+    if (!ringbuf_init(&engine->spectrogram_queue, ENGINE_SPECTROGRAM_QUEUE_BYTES)) {
+        ringbuf_free(&engine->spectrum_queue);
+        ringbuf_free(&engine->command_queue);
+        free(engine);
+        return NULL;
+    }
     engine->fxm_mutex = SDL_CreateMutex();
     if (!engine->fxm_mutex) {
+        ringbuf_free(&engine->spectrogram_queue);
         ringbuf_free(&engine->spectrum_queue);
         ringbuf_free(&engine->command_queue);
         free(engine);
@@ -314,6 +328,7 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
     engine->eq_mutex = SDL_CreateMutex();
     if (!engine->eq_mutex) {
         SDL_DestroyMutex(engine->fxm_mutex);
+        ringbuf_free(&engine->spectrogram_queue);
         ringbuf_free(&engine->spectrum_queue);
         ringbuf_free(&engine->command_queue);
         free(engine);
@@ -323,6 +338,18 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
     if (!engine->spectrum_mutex) {
         SDL_DestroyMutex(engine->fxm_mutex);
         SDL_DestroyMutex(engine->eq_mutex);
+        ringbuf_free(&engine->spectrogram_queue);
+        ringbuf_free(&engine->spectrum_queue);
+        ringbuf_free(&engine->command_queue);
+        free(engine);
+        return NULL;
+    }
+    engine->spectrogram_mutex = SDL_CreateMutex();
+    if (!engine->spectrogram_mutex) {
+        SDL_DestroyMutex(engine->fxm_mutex);
+        SDL_DestroyMutex(engine->eq_mutex);
+        SDL_DestroyMutex(engine->spectrum_mutex);
+        ringbuf_free(&engine->spectrogram_queue);
         ringbuf_free(&engine->spectrum_queue);
         ringbuf_free(&engine->command_queue);
         free(engine);
@@ -333,6 +360,8 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         SDL_DestroyMutex(engine->fxm_mutex);
         SDL_DestroyMutex(engine->eq_mutex);
         SDL_DestroyMutex(engine->spectrum_mutex);
+        SDL_DestroyMutex(engine->spectrogram_mutex);
+        ringbuf_free(&engine->spectrogram_queue);
         ringbuf_free(&engine->spectrum_queue);
         ringbuf_free(&engine->command_queue);
         free(engine);
@@ -343,7 +372,9 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         SDL_DestroyMutex(engine->fxm_mutex);
         SDL_DestroyMutex(engine->eq_mutex);
         SDL_DestroyMutex(engine->spectrum_mutex);
+        SDL_DestroyMutex(engine->spectrogram_mutex);
         SDL_DestroyMutex(engine->meter_mutex);
+        ringbuf_free(&engine->spectrogram_queue);
         ringbuf_free(&engine->spectrum_queue);
         ringbuf_free(&engine->command_queue);
         free(engine);
@@ -358,7 +389,9 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         SDL_DestroyMutex(engine->fxm_mutex);
         SDL_DestroyMutex(engine->eq_mutex);
         SDL_DestroyMutex(engine->spectrum_mutex);
+        SDL_DestroyMutex(engine->spectrogram_mutex);
         SDL_DestroyMutex(engine->meter_mutex);
+        ringbuf_free(&engine->spectrogram_queue);
         ringbuf_free(&engine->spectrum_queue);
         ringbuf_free(&engine->command_queue);
         free(engine);
@@ -373,7 +406,9 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         SDL_DestroyMutex(engine->fxm_mutex);
         SDL_DestroyMutex(engine->eq_mutex);
         SDL_DestroyMutex(engine->spectrum_mutex);
+        SDL_DestroyMutex(engine->spectrogram_mutex);
         SDL_DestroyMutex(engine->meter_mutex);
+        ringbuf_free(&engine->spectrogram_queue);
         ringbuf_free(&engine->spectrum_queue);
         ringbuf_free(&engine->command_queue);
         free(engine);
@@ -392,7 +427,9 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         SDL_DestroyMutex(engine->fxm_mutex);
         SDL_DestroyMutex(engine->eq_mutex);
         SDL_DestroyMutex(engine->spectrum_mutex);
+        SDL_DestroyMutex(engine->spectrogram_mutex);
         SDL_DestroyMutex(engine->meter_mutex);
+        ringbuf_free(&engine->spectrogram_queue);
         ringbuf_free(&engine->spectrum_queue);
         ringbuf_free(&engine->command_queue);
         free(engine);
@@ -410,7 +447,9 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         SDL_DestroyMutex(engine->fxm_mutex);
         SDL_DestroyMutex(engine->eq_mutex);
         SDL_DestroyMutex(engine->spectrum_mutex);
+        SDL_DestroyMutex(engine->spectrogram_mutex);
         SDL_DestroyMutex(engine->meter_mutex);
+        ringbuf_free(&engine->spectrogram_queue);
         ringbuf_free(&engine->spectrum_queue);
         ringbuf_free(&engine->command_queue);
         free(engine);
@@ -430,7 +469,9 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         SDL_DestroyMutex(engine->fxm_mutex);
         SDL_DestroyMutex(engine->eq_mutex);
         SDL_DestroyMutex(engine->spectrum_mutex);
+        SDL_DestroyMutex(engine->spectrogram_mutex);
         SDL_DestroyMutex(engine->meter_mutex);
+        ringbuf_free(&engine->spectrogram_queue);
         ringbuf_free(&engine->spectrum_queue);
         ringbuf_free(&engine->command_queue);
         free(engine);
@@ -460,9 +501,25 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
     engine->spectrum_avg_count = 0;
     engine->spectrum_last_view = -1;
     engine->spectrum_last_track = -1;
+    engine->spectrogram_thread = NULL;
+    atomic_init(&engine->spectrogram_running, false);
+    ringbuf_reset(&engine->spectrogram_queue);
+    engine->spectrogram_block_counter = 0;
+    engine->spectrogram_block_skip = 4;
+    engine->spectrogram_update_active = false;
+    engine->spectrogram_state.head = 0;
+    engine->spectrogram_state.count = 0;
+    engine->spectrogram_state.bins = ENGINE_SPECTROGRAM_BINS;
+    engine->spectrogram_state.last_track = -1;
+    engine->spectrogram_state.last_id = 0;
     for (int i = 0; i < ENGINE_SPECTRUM_HISTORY; ++i) {
         for (int b = 0; b < ENGINE_SPECTRUM_BINS; ++b) {
             engine->spectrum_history[i][b] = ENGINE_SPECTRUM_DB_FLOOR;
+        }
+    }
+    for (int i = 0; i < ENGINE_SPECTROGRAM_HISTORY; ++i) {
+        for (int b = 0; b < ENGINE_SPECTROGRAM_BINS; ++b) {
+            engine->spectrogram_state.history[i][b] = ENGINE_SPECTROGRAM_DB_FLOOR;
         }
     }
     for (int t = 0; t < engine->track_capacity; ++t) {
@@ -543,11 +600,16 @@ void engine_destroy(Engine* engine) {
         SDL_DestroyMutex(engine->spectrum_mutex);
         engine->spectrum_mutex = NULL;
     }
+    if (engine->spectrogram_mutex) {
+        SDL_DestroyMutex(engine->spectrogram_mutex);
+        engine->spectrogram_mutex = NULL;
+    }
     if (engine->meter_mutex) {
         SDL_DestroyMutex(engine->meter_mutex);
         engine->meter_mutex = NULL;
     }
     ringbuf_free(&engine->spectrum_queue);
+    ringbuf_free(&engine->spectrogram_queue);
     free(engine);
 }
 
@@ -588,6 +650,7 @@ bool engine_start(Engine* engine) {
 
     ringbuf_reset(&engine->command_queue);
     ringbuf_reset(&engine->spectrum_queue);
+    ringbuf_reset(&engine->spectrogram_queue);
     if (engine_graph_configure(engine->graph, have->sample_rate, have->channels, engine->config.block_size) != 0) {
         SDL_Log("engine_start: failed to configure graph");
         return false;
@@ -648,8 +711,25 @@ bool engine_start(Engine* engine) {
         return false;
     }
 
+    atomic_store_explicit(&engine->spectrogram_running, true, memory_order_release);
+    engine->spectrogram_thread = SDL_CreateThread(engine_spectrogram_thread_main, "engine_spectrogram", engine);
+    if (!engine->spectrogram_thread) {
+        SDL_Log("engine_start: failed to create spectrogram thread: %s", SDL_GetError());
+        atomic_store_explicit(&engine->spectrogram_running, false, memory_order_release);
+        atomic_store_explicit(&engine->spectrum_running, false, memory_order_release);
+        SDL_WaitThread(engine->spectrum_thread, NULL);
+        engine->spectrum_thread = NULL;
+        atomic_store_explicit(&engine->worker_running, false, memory_order_release);
+        SDL_WaitThread(engine->worker_thread, NULL);
+        engine->worker_thread = NULL;
+        return false;
+    }
+
     if (!audio_device_start(&engine->device)) {
         SDL_Log("engine_start: failed to start audio device");
+        atomic_store_explicit(&engine->spectrogram_running, false, memory_order_release);
+        SDL_WaitThread(engine->spectrogram_thread, NULL);
+        engine->spectrogram_thread = NULL;
         atomic_store_explicit(&engine->spectrum_running, false, memory_order_release);
         SDL_WaitThread(engine->spectrum_thread, NULL);
         engine->spectrum_thread = NULL;
@@ -678,6 +758,11 @@ void engine_stop(Engine* engine) {
         atomic_store_explicit(&engine->spectrum_running, false, memory_order_release);
         SDL_WaitThread(engine->spectrum_thread, NULL);
         engine->spectrum_thread = NULL;
+    }
+    if (engine->spectrogram_thread) {
+        atomic_store_explicit(&engine->spectrogram_running, false, memory_order_release);
+        SDL_WaitThread(engine->spectrogram_thread, NULL);
+        engine->spectrogram_thread = NULL;
     }
     if (engine->worker_thread) {
         atomic_store_explicit(&engine->worker_running, false, memory_order_release);

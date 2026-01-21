@@ -104,6 +104,8 @@ void effects_panel_refresh_catalog(struct AppState* state);
 void effects_panel_sync_from_engine(struct AppState* state);
 void effects_panel_ensure_eq_curve_tracks(struct AppState* state, int track_count);
 void effects_panel_set_eq_detail_view(struct AppState* state, int view_mode);
+// Clears the meter history so meter detail views start from a fresh timeline.
+void effects_panel_reset_meter_history(struct AppState* state);
 void effects_panel_compute_layout(const struct AppState* state, EffectsPanelLayout* layout);
 void effects_panel_render(SDL_Renderer* renderer, const struct AppState* state, const EffectsPanelLayout* layout);
 void effects_panel_render_list(SDL_Renderer* renderer, const struct AppState* state, const EffectsPanelLayout* layout);

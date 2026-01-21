@@ -2,17 +2,33 @@
 
 #include "config.h"
 #include "effects/effects_manager.h"
+#include "engine/automation.h"
+#include "engine/fade_curve.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#define SESSION_DOCUMENT_VERSION 12
+#define SESSION_DOCUMENT_VERSION 15
 #define SESSION_PATH_MAX 512
 #define SESSION_NAME_MAX 128
 #define SESSION_FX_NAME_MAX 64
 #define SESSION_MEDIA_ID_MAX 33
 
+// Captures serialized automation point data for session persistence.
+typedef struct {
+    uint64_t frame;
+    float value;
+} SessionAutomationPoint;
+
+// Captures serialized automation lane data for session persistence.
+typedef struct {
+    EngineAutomationTarget target;
+    int point_count;
+    SessionAutomationPoint* points;
+} SessionAutomationLane;
+
+// Captures serialized clip data for session persistence.
 typedef struct {
     char media_id[SESSION_MEDIA_ID_MAX];
     char media_path[SESSION_PATH_MAX];
@@ -22,6 +38,10 @@ typedef struct {
     uint64_t offset_frames;
     uint64_t fade_in_frames;
     uint64_t fade_out_frames;
+    EngineFadeCurve fade_in_curve;
+    EngineFadeCurve fade_out_curve;
+    SessionAutomationLane* automation_lanes;
+    int automation_lane_count;
     float gain;
     bool selected;
 } SessionClip;
@@ -48,6 +68,9 @@ typedef struct {
     int open_index;
     int list_detail_mode;
     int eq_view_mode;
+    int meter_scope_mode;
+    int meter_lufs_mode;
+    int meter_spectrogram_mode;
     struct {
         bool enabled;
         float freq_hz;
@@ -140,6 +163,8 @@ typedef struct {
     SessionTempo tempo;
     SessionLoopState loop;
     SessionTimelineView timeline;
+    int selected_track_index;
+    int selected_clip_index;
     SessionEffectsPanelState effects_panel;
     SessionClipInspectorState clip_inspector;
     SessionLayoutState layout;

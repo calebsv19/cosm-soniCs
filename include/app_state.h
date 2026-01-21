@@ -128,6 +128,13 @@ typedef struct {
     bool adjusting_gain;
     bool adjusting_fade_in;
     bool adjusting_fade_out;
+    bool fade_drag_from_waveform;
+    bool pending_fade_drag;
+    bool pending_fade_in;
+    bool pending_fade_from_waveform;
+    int pending_fade_start_x;
+    bool fade_in_selected;
+    bool fade_out_selected;
     uint64_t fade_in_frames;
     uint64_t fade_out_frames;
     bool has_focus;
@@ -205,12 +212,28 @@ typedef enum {
 #define FX_METER_CORR_HISTORY_POINTS 64
 #define FX_METER_MID_SIDE_HISTORY_POINTS 64
 #define FX_METER_VECTOR_HISTORY_POINTS 64
+#define FX_METER_LEVEL_HISTORY_POINTS 64
+#define FX_METER_LUFS_HISTORY_POINTS 64
 
 // Selects how the vectorscope plots its phase view.
 typedef enum {
     FX_METER_SCOPE_MID_SIDE = 0,
     FX_METER_SCOPE_LEFT_RIGHT
 } EffectsMeterScopeMode;
+
+// Selects which LUFS window to visualize in the meter detail view.
+typedef enum {
+    FX_METER_LUFS_MOMENTARY = 0,
+    FX_METER_LUFS_SHORT_TERM,
+    FX_METER_LUFS_INTEGRATED
+} EffectsMeterLufsMode;
+
+// Selects the color palette for the spectrogram meter.
+typedef enum {
+    FX_METER_SPECTROGRAM_WHITE_BLACK = 0,
+    FX_METER_SPECTROGRAM_BLACK_WHITE,
+    FX_METER_SPECTROGRAM_HEAT
+} EffectsMeterSpectrogramMode;
 
 // Holds recent meter samples for history visualizations.
 typedef struct EffectsMeterHistory {
@@ -228,6 +251,15 @@ typedef struct EffectsMeterHistory {
     float vec_y[FX_METER_VECTOR_HISTORY_POINTS];
     int vec_head;
     int vec_count;
+    float peak_values[FX_METER_LEVEL_HISTORY_POINTS];
+    float rms_values[FX_METER_LEVEL_HISTORY_POINTS];
+    int level_head;
+    int level_count;
+    float lufs_m_values[FX_METER_LUFS_HISTORY_POINTS];
+    float lufs_s_values[FX_METER_LUFS_HISTORY_POINTS];
+    float lufs_i_values[FX_METER_LUFS_HISTORY_POINTS];
+    int lufs_head;
+    int lufs_count;
 } EffectsMeterHistory;
 
 typedef struct {
@@ -334,26 +366,49 @@ typedef struct EffectsPanelState {
     EffectsPanelEqDetailState eq_detail;
     EffectsMeterHistory meter_history;
     EffectsMeterScopeMode meter_scope_mode;
+    EffectsMeterLufsMode meter_lufs_mode;
+    EffectsMeterSpectrogramMode meter_spectrogram_mode;
+    FxInstId last_open_master_fx_id; // Tracks the last open master FX for quick switching.
+    FxInstId* last_open_track_fx_ids; // Tracks last open FX per track.
+    int last_open_track_fx_count;
+    FxInstId pending_open_fx_id; // Tracks a queued open FX to apply after target switches.
     EqCurveState eq_curve;
     EqCurveState eq_curve_master;
     EqCurveState* eq_curve_tracks;
     int eq_curve_tracks_count;
 } EffectsPanelState;
 
+// Stores timeline header control hitboxes and hover/drag state.
 typedef struct {
     SDL_Rect add_rect;
     SDL_Rect remove_rect;
     bool add_hovered;
     bool remove_hovered;
     SDL_Rect loop_toggle_rect;
+    SDL_Rect snap_toggle_rect;
+    SDL_Rect automation_toggle_rect;
+    SDL_Rect automation_target_rect;
     SDL_Rect loop_start_rect;
     SDL_Rect loop_end_rect;
     bool loop_toggle_hovered;
+    bool snap_toggle_hovered;
+    bool automation_toggle_hovered;
+    bool automation_target_hovered;
     bool loop_start_hovered;
     bool loop_end_hovered;
     bool adjusting_loop_start;
     bool adjusting_loop_end;
 } TimelineControlsUI;
+
+// Tracks the active automation target and selected point for editing.
+typedef struct {
+    EngineAutomationTarget target;
+    int track_index;
+    int clip_index;
+    int point_index;
+    bool dragging;
+    bool dragging_from_inspector;
+} AutomationUIState;
 
 typedef struct {
     bool editing;
@@ -455,6 +510,9 @@ struct AppState {
     char timeline_drop_label[LIBRARY_NAME_MAX];
     bool timeline_show_all_grid_lines;
     bool timeline_view_in_beats;
+    bool timeline_snap_enabled;
+    bool timeline_automation_mode;
+    AutomationUIState automation_ui;
     bool timeline_marquee_active;
     SDL_Rect timeline_marquee_rect;
     bool timeline_marquee_extend;
@@ -465,6 +523,7 @@ struct AppState {
     uint64_t loop_start_frame;
     uint64_t loop_end_frame;
     bool loop_restart_pending;
+    bool reset_meter_history_on_seek; // Debug toggle to clear meter histories on transport jumps.
     bool bounce_requested;
     bool bounce_active;
     uint64_t bounce_progress_frames;

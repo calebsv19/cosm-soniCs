@@ -176,6 +176,11 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     fprintf(file, "},\n");
 
     json_write_indent(file, 1);
+    fprintf(file, "\"selected_track_index\": %d,\n", doc->selected_track_index);
+    json_write_indent(file, 1);
+    fprintf(file, "\"selected_clip_index\": %d,\n", doc->selected_clip_index);
+
+    json_write_indent(file, 1);
     fprintf(file, "\"clip_inspector\": {\n");
     json_write_indent(file, 2);
     fprintf(file, "\"visible\": %s,\n", doc->clip_inspector.visible ? "true" : "false");
@@ -208,6 +213,12 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     fprintf(file, "\"list_detail_mode\": %d,\n", doc->effects_panel.list_detail_mode);
     json_write_indent(file, 2);
     fprintf(file, "\"eq_view_mode\": %d,\n", doc->effects_panel.eq_view_mode);
+    json_write_indent(file, 2);
+    fprintf(file, "\"meter_scope_mode\": %d,\n", doc->effects_panel.meter_scope_mode);
+    json_write_indent(file, 2);
+    fprintf(file, "\"meter_lufs_mode\": %d,\n", doc->effects_panel.meter_lufs_mode);
+    json_write_indent(file, 2);
+    fprintf(file, "\"meter_spectrogram_mode\": %d,\n", doc->effects_panel.meter_spectrogram_mode);
     json_write_indent(file, 2);
     fprintf(file, "\"low_cut_enabled\": %s,\n", doc->effects_panel.low_cut.enabled ? "true" : "false");
     json_write_indent(file, 2);
@@ -416,6 +427,42 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
             fprintf(file, "\"fade_in_frames\": %" PRIu64 ",\n", clip->fade_in_frames);
             json_write_indent(file, 5);
             fprintf(file, "\"fade_out_frames\": %" PRIu64 ",\n", clip->fade_out_frames);
+            json_write_indent(file, 5);
+            fprintf(file, "\"fade_in_curve\": %d,\n", (int)clip->fade_in_curve);
+            json_write_indent(file, 5);
+            fprintf(file, "\"fade_out_curve\": %d,\n", (int)clip->fade_out_curve);
+            json_write_indent(file, 5);
+            fprintf(file, "\"automation\": [\n");
+            for (int l = 0; l < clip->automation_lane_count; ++l) {
+                const SessionAutomationLane* lane = &clip->automation_lanes[l];
+                json_write_indent(file, 6);
+                fprintf(file, "{\n");
+                json_write_indent(file, 7);
+                fprintf(file, "\"target\": %d,\n", (int)lane->target);
+                json_write_indent(file, 7);
+                fprintf(file, "\"points\": [\n");
+                for (int p = 0; p < lane->point_count; ++p) {
+                    const SessionAutomationPoint* point = &lane->points[p];
+                    json_write_indent(file, 8);
+                    fprintf(file, "{ \"frame\": %" PRIu64 ", \"value\": ", point->frame);
+                    json_write_float(file, point->value);
+                    fprintf(file, " }");
+                    if (p + 1 < lane->point_count) {
+                        fprintf(file, ",");
+                    }
+                    fprintf(file, "\n");
+                }
+                json_write_indent(file, 7);
+                fprintf(file, "]\n");
+                json_write_indent(file, 6);
+                fprintf(file, "}");
+                if (l + 1 < clip->automation_lane_count) {
+                    fprintf(file, ",");
+                }
+                fprintf(file, "\n");
+            }
+            json_write_indent(file, 5);
+            fprintf(file, "],\n");
             json_write_indent(file, 5);
             fprintf(file, "\"gain\": ");
             json_write_float(file, clip->gain);

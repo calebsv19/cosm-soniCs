@@ -20,6 +20,16 @@
 #define ENGINE_SPECTRUM_FFT_SIZE 2048
 #define ENGINE_SPECTRUM_AVG_FRAMES 2
 #define ENGINE_SPECTRUM_QUEUE_BYTES (1u << 20)
+#define ENGINE_SPECTROGRAM_FFT_SIZE 1024
+#define ENGINE_SPECTROGRAM_QUEUE_BYTES (1u << 20)
+#define ENGINE_FX_LUFS_MAX_CHANNELS 2
+#define ENGINE_FX_LUFS_BLOCK_HZ 10
+#define ENGINE_FX_LUFS_MOMENTARY_BLOCKS 4
+#define ENGINE_FX_LUFS_SHORT_BLOCKS 30
+#define ENGINE_FX_LUFS_HIST_MIN_DB -100.0f
+#define ENGINE_FX_LUFS_HIST_MAX_DB 10.0f
+#define ENGINE_FX_LUFS_HIST_STEP_DB 0.1f
+#define ENGINE_FX_LUFS_HIST_BINS 1101
 
 typedef enum {
     ENGINE_CMD_PLAY = 1,
@@ -58,6 +68,36 @@ typedef struct EngineFxSnapshot {
     int track_count;
 } EngineFxSnapshot;
 
+// Holds biquad filter coefficients and state for LUFS K-weighting.
+typedef struct {
+    float b0;
+    float b1;
+    float b2;
+    float a1;
+    float a2;
+    float z1;
+    float z2;
+} EngineFxLufsBiquad;
+
+// Tracks rolling LUFS state for a single metering instance.
+typedef struct {
+    int sample_rate;
+    int channels;
+    int block_target;
+    int block_samples;
+    double block_sum;
+    double block_history[ENGINE_FX_LUFS_SHORT_BLOCKS];
+    int block_head;
+    int block_count;
+    double hist_sum[ENGINE_FX_LUFS_HIST_BINS];
+    int hist_count[ENGINE_FX_LUFS_HIST_BINS];
+    float lufs_integrated;
+    float lufs_short_term;
+    float lufs_momentary;
+    EngineFxLufsBiquad hp[ENGINE_FX_LUFS_MAX_CHANNELS];
+    EngineFxLufsBiquad hs[ENGINE_FX_LUFS_MAX_CHANNELS];
+} EngineFxLufsState;
+
 // Stores the running linear peak/RMS values and clip hold for a meter.
 typedef struct {
     float peak;
@@ -69,6 +109,7 @@ typedef struct {
 typedef struct {
     FxInstId id;
     EngineFxMeterSnapshot snapshot;
+    EngineFxLufsState lufs_state;
 } EngineFxMeterTap;
 
 // Stores FX meter taps for a single chain (master or track).
@@ -76,6 +117,16 @@ typedef struct {
     EngineFxMeterTap taps[FX_MASTER_MAX];
     int count;
 } EngineFxMeterBank;
+
+// Stores the rolling spectrogram history and capture controls for a single active meter.
+typedef struct {
+    float history[ENGINE_SPECTROGRAM_HISTORY][ENGINE_SPECTROGRAM_BINS];
+    int head;
+    int count;
+    int bins;
+    int last_track;
+    FxInstId last_id;
+} EngineFxSpectrogramState;
 
 struct Engine {
     EngineRuntimeConfig config;
@@ -107,10 +158,14 @@ struct Engine {
     atomic_uint_fast64_t loop_start_frame;
     atomic_uint_fast64_t loop_end_frame;
     SDL_mutex* spectrum_mutex;
+    SDL_mutex* spectrogram_mutex;
     SDL_mutex* meter_mutex;
     RingBuffer spectrum_queue;
+    RingBuffer spectrogram_queue;
     SDL_Thread* spectrum_thread;
+    SDL_Thread* spectrogram_thread;
     atomic_bool spectrum_running;
+    atomic_bool spectrogram_running;
     float spectrum_history[ENGINE_SPECTRUM_HISTORY][ENGINE_SPECTRUM_BINS];
     float* track_spectra;
     int track_spectrum_capacity;
@@ -133,6 +188,13 @@ struct Engine {
     atomic_bool spectrum_enabled;
     atomic_int spectrum_view;
     atomic_int spectrum_target_track;
+    atomic_bool spectrogram_enabled;
+    atomic_int spectrogram_target_track;
+    atomic_uint spectrogram_target_id;
+    int spectrogram_block_counter;
+    int spectrogram_block_skip;
+    bool spectrogram_update_active;
+    EngineFxSpectrogramState spectrogram_state;
     EngineMeterState master_meter;
     EngineMeterState* track_meters;
     int track_meter_capacity;
@@ -166,6 +228,18 @@ int engine_spectrum_thread_main(void* userdata);
 bool engine_spectrum_begin_block(Engine* engine);
 void engine_spectrum_update(Engine* engine, const float* interleaved, int frames, int channels);
 void engine_spectrum_update_track(Engine* engine, int track_index, const float* interleaved, int frames, int channels);
+// Runs the background thread that builds spectrogram history frames.
+int engine_spectrogram_thread_main(void* userdata);
+// Prepares spectrogram capture for the current audio block.
+bool engine_spectrogram_begin_block(Engine* engine);
+// Writes spectrogram input samples from the active FX meter tap.
+void engine_spectrogram_update_fx(Engine* engine,
+                                  bool is_master,
+                                  int track_index,
+                                  FxInstId id,
+                                  const float* interleaved,
+                                  int frames,
+                                  int channels);
 void engine_clip_destroy(Engine* engine, EngineClip* clip);
 void engine_track_init(EngineTrack* track);
 void engine_track_clear(Engine* engine, EngineTrack* track);

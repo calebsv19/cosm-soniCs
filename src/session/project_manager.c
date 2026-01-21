@@ -4,6 +4,7 @@
 #include "session.h"
 #include "ui/timeline_view.h"
 #include "ui/effects_panel.h"
+#include "input/input_manager.h"
 
 #include <SDL2/SDL.h>
 #include <ctype.h>
@@ -135,6 +136,7 @@ bool project_manager_post_load(AppState* state) {
     effects_panel_sync_from_engine(state);
     engine_transport_stop(state->engine);
     engine_transport_seek(state->engine, 0);
+    input_manager_reset_meter_history_on_seek(state);
     return true;
 }
 

@@ -285,6 +285,7 @@ static void transport_seek_to(AppState* state, float t) {
     if (t < 0.0f) t = 0.0f;
     if (t > 1.0f) t = 1.0f;
     uint64_t frame = (uint64_t)llroundf(t * (float)total_frames);
+    input_manager_reset_meter_history_on_seek(state);
     engine_transport_seek(state->engine, frame);
 }
 

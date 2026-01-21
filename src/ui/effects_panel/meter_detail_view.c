@@ -42,7 +42,7 @@ static void draw_info_row(SDL_Renderer* renderer,
                           SDL_Color value_color) {
     ui_draw_text(renderer, x, y, label, label_color, 1.0f);
     if (value) {
-        ui_draw_text(renderer, x + 110, y, value, value_color, 1.0f);
+        ui_draw_text(renderer, x + 50, y, value, value_color, 1.0f);
     }
 }
 
@@ -63,8 +63,8 @@ void effects_panel_meter_detail_compute_toggle_rects(const SDL_Rect* detail_rect
         return;
     }
     const int pad = 12;
-    int left_w = (int)lroundf(detail_rect->w * 0.28f);
-    if (left_w < 170) left_w = 170;
+    int left_w = (int)lroundf(detail_rect->w * 0.20f);
+    if (left_w < 140) left_w = 140;
     if (left_w > detail_rect->w - 120) left_w = detail_rect->w - 120;
     int gap = 12;
 
@@ -84,6 +84,99 @@ void effects_panel_meter_detail_compute_toggle_rects(const SDL_Rect* detail_rect
     }
     if (out_mid_side) {
         *out_mid_side = (SDL_Rect){right_edge - btn_w * 2 - btn_gap, btn_y, btn_w, btn_h};
+    }
+}
+
+// Computes toggle rectangles for LUFS mode buttons.
+void effects_panel_meter_detail_compute_lufs_toggle_rects(const SDL_Rect* detail_rect,
+                                                          SDL_Rect* out_integrated,
+                                                          SDL_Rect* out_short_term,
+                                                          SDL_Rect* out_momentary) {
+    if (out_integrated) {
+        *out_integrated = (SDL_Rect){0, 0, 0, 0};
+    }
+    if (out_short_term) {
+        *out_short_term = (SDL_Rect){0, 0, 0, 0};
+    }
+    if (out_momentary) {
+        *out_momentary = (SDL_Rect){0, 0, 0, 0};
+    }
+    if (!detail_rect || detail_rect->w <= 0 || detail_rect->h <= 0) {
+        return;
+    }
+    const int pad = 12;
+    int left_w = (int)lroundf(detail_rect->w * 0.20f);
+    if (left_w < 140) left_w = 140;
+    if (left_w > detail_rect->w - 120) left_w = detail_rect->w - 120;
+    int gap = 12;
+
+    SDL_Rect left_rect = {detail_rect->x + pad, detail_rect->y + pad, left_w - pad, detail_rect->h - pad * 2};
+    SDL_Rect right_rect = {left_rect.x + left_rect.w + gap,
+                            detail_rect->y + pad,
+                            detail_rect->w - (left_rect.w + gap + pad * 2),
+                            detail_rect->h - pad * 2};
+
+    int btn_w = 46;
+    int btn_h = 14;
+    int btn_gap = 6;
+    int btn_y = right_rect.y + right_rect.h - btn_h - 8;
+    int right_edge = right_rect.x + right_rect.w;
+    if (out_momentary) {
+        *out_momentary = (SDL_Rect){right_edge - btn_w, btn_y, btn_w, btn_h};
+    }
+    if (out_short_term) {
+        *out_short_term = (SDL_Rect){right_edge - btn_w * 2 - btn_gap, btn_y, btn_w, btn_h};
+    }
+    if (out_integrated) {
+        *out_integrated = (SDL_Rect){right_edge - btn_w * 3 - btn_gap * 2, btn_y, btn_w, btn_h};
+    }
+}
+
+// Computes toggle rectangles for spectrogram palette buttons.
+void effects_panel_meter_detail_compute_spectrogram_toggle_rects(const SDL_Rect* detail_rect,
+                                                                 SDL_Rect* out_white_black,
+                                                                 SDL_Rect* out_black_white,
+                                                                 SDL_Rect* out_heat) {
+    if (out_white_black) {
+        *out_white_black = (SDL_Rect){0, 0, 0, 0};
+    }
+    if (out_black_white) {
+        *out_black_white = (SDL_Rect){0, 0, 0, 0};
+    }
+    if (out_heat) {
+        *out_heat = (SDL_Rect){0, 0, 0, 0};
+    }
+    if (!detail_rect || detail_rect->w <= 0 || detail_rect->h <= 0) {
+        return;
+    }
+    const int pad = 12;
+    int left_w = (int)lroundf(detail_rect->w * 0.20f);
+    if (left_w < 140) left_w = 140;
+    if (left_w > detail_rect->w - 120) left_w = detail_rect->w - 120;
+    int gap = 12;
+
+    SDL_Rect left_rect = {detail_rect->x + pad, detail_rect->y + pad, left_w - pad, detail_rect->h - pad * 2};
+    SDL_Rect right_rect = {left_rect.x + left_rect.w + gap,
+                            detail_rect->y + pad,
+                            detail_rect->w - (left_rect.w + gap + pad * 2),
+                            detail_rect->h - pad * 2};
+
+    int btn_w = 44;
+    int btn_h = 14;
+    int btn_gap = 6;
+    int btn_y = right_rect.y + 6;
+    int total_w = btn_w * 3 + btn_gap * 2;
+    int btn_x = right_rect.x + right_rect.w - total_w - 6;
+    if (out_white_black) {
+        *out_white_black = (SDL_Rect){btn_x, btn_y, btn_w, btn_h};
+    }
+    btn_x += btn_w + btn_gap;
+    if (out_black_white) {
+        *out_black_white = (SDL_Rect){btn_x, btn_y, btn_w, btn_h};
+    }
+    btn_x += btn_w + btn_gap;
+    if (out_heat) {
+        *out_heat = (SDL_Rect){btn_x, btn_y, btn_w, btn_h};
     }
 }
 
@@ -125,6 +218,28 @@ static void meter_history_push_pair(float* a_values,
     }
 }
 
+// Pushes a triple of history values into a rolling buffer.
+static void meter_history_push_triple(float* a_values,
+                                      float* b_values,
+                                      float* c_values,
+                                      int capacity,
+                                      int* head,
+                                      int* count,
+                                      float a_value,
+                                      float b_value,
+                                      float c_value) {
+    if (!a_values || !b_values || !c_values || !head || !count) {
+        return;
+    }
+    a_values[*head] = a_value;
+    b_values[*head] = b_value;
+    c_values[*head] = c_value;
+    *head = (*head + 1) % capacity;
+    if (*count < capacity) {
+        *count += 1;
+    }
+}
+
 static void meter_history_update(EffectsMeterHistory* history,
                                  FxInstId id,
                                  FxTypeId type,
@@ -141,6 +256,8 @@ static void meter_history_update(EffectsMeterHistory* history,
         sample_interval_ms = 8;
     } else if (type == 102u) {
         sample_interval_ms = 4;
+    } else if (type == 104u) {
+        sample_interval_ms = 100;
     }
     if (history->last_sample_ticks != 0 && now - history->last_sample_ticks < sample_interval_ms) {
         return;
@@ -159,6 +276,26 @@ static void meter_history_update(EffectsMeterHistory* history,
                                 &history->mid_count,
                                 snapshot->mid_rms,
                                 snapshot->side_rms);
+    }
+    if (type == 103u) {
+        meter_history_push_pair(history->peak_values,
+                                history->rms_values,
+                                FX_METER_LEVEL_HISTORY_POINTS,
+                                &history->level_head,
+                                &history->level_count,
+                                snapshot->peak,
+                                snapshot->rms);
+    }
+    if (type == 104u) {
+        meter_history_push_triple(history->lufs_i_values,
+                                  history->lufs_s_values,
+                                  history->lufs_m_values,
+                                  FX_METER_LUFS_HISTORY_POINTS,
+                                  &history->lufs_head,
+                                  &history->lufs_count,
+                                  snapshot->lufs_integrated,
+                                  snapshot->lufs_short_term,
+                                  snapshot->lufs_momentary);
     }
     if (type == 102u) {
         if (snapshot->vec_point_count > 0) {
@@ -213,8 +350,8 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
     SDL_RenderDrawRect(renderer, &rect);
 
     const int pad = 12;
-    int left_w = (int)lroundf(rect.w * 0.28f);
-    if (left_w < 170) left_w = 170;
+    int left_w = (int)lroundf(rect.w * 0.20f);
+    if (left_w < 140) left_w = 140;
     if (left_w > rect.w - 120) left_w = rect.w - 120;
     int gap = 12;
 
@@ -244,30 +381,30 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
     FxTypeId type_id = slot ? slot->type_id : 0;
     const FxTypeUIInfo* type_info = find_type_info(panel, type_id);
 
-    SDL_Rect toggle_ms;
-    SDL_Rect toggle_lr;
+    bool show_ms_toggle = false;
+    SDL_Rect toggle_ms = {0, 0, 0, 0};
+    SDL_Rect toggle_lr = {0, 0, 0, 0};
     if (type_id == 102u) {
         effects_panel_meter_detail_compute_toggle_rects(&rect, &toggle_ms, &toggle_lr);
-        if (toggle_ms.w > 0 && toggle_lr.w > 0) {
-            SDL_Color btn_on = {90, 120, 170, 220};
-            SDL_Color btn_off = {40, 44, 54, 220};
-            bool ms_active = panel->meter_scope_mode == FX_METER_SCOPE_MID_SIDE;
-            SDL_Color ms_fill = ms_active ? btn_on : btn_off;
-            SDL_Color lr_fill = ms_active ? btn_off : btn_on;
+        show_ms_toggle = (toggle_ms.w > 0 && toggle_lr.w > 0);
+    }
 
-            SDL_SetRenderDrawColor(renderer, ms_fill.r, ms_fill.g, ms_fill.b, ms_fill.a);
-            SDL_RenderFillRect(renderer, &toggle_ms);
-            SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-            SDL_RenderDrawRect(renderer, &toggle_ms);
+    bool show_lufs_toggle = false;
+    SDL_Rect toggle_int = {0, 0, 0, 0};
+    SDL_Rect toggle_short = {0, 0, 0, 0};
+    SDL_Rect toggle_momentary = {0, 0, 0, 0};
+    if (type_id == 104u) {
+        effects_panel_meter_detail_compute_lufs_toggle_rects(&rect, &toggle_int, &toggle_short, &toggle_momentary);
+        show_lufs_toggle = (toggle_int.w > 0 && toggle_short.w > 0 && toggle_momentary.w > 0);
+    }
 
-            SDL_SetRenderDrawColor(renderer, lr_fill.r, lr_fill.g, lr_fill.b, lr_fill.a);
-            SDL_RenderFillRect(renderer, &toggle_lr);
-            SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-            SDL_RenderDrawRect(renderer, &toggle_lr);
-
-            ui_draw_text(renderer, toggle_ms.x + 8, toggle_ms.y + 1, "MS", label_color, 1.0f);
-            ui_draw_text(renderer, toggle_lr.x + 8, toggle_lr.y + 1, "LR", label_color, 1.0f);
-        }
+    bool show_spectrogram_toggle = false;
+    SDL_Rect toggle_wb = {0, 0, 0, 0};
+    SDL_Rect toggle_bw = {0, 0, 0, 0};
+    SDL_Rect toggle_heat = {0, 0, 0, 0};
+    if (type_id == 105u) {
+        effects_panel_meter_detail_compute_spectrogram_toggle_rects(&rect, &toggle_wb, &toggle_bw, &toggle_heat);
+        show_spectrogram_toggle = (toggle_wb.w > 0 && toggle_bw.w > 0 && toggle_heat.w > 0);
     }
 
     EngineFxMeterSnapshot snapshot = {0};
@@ -296,8 +433,15 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
                 track_index = state->selected_track_index;
             }
             engine_set_active_fx_meter(state->engine, is_master, track_index, slot->id);
+            if (type_id == 105u) {
+                int target = is_master ? -1 : track_index;
+                engine_set_fx_spectrogram_target(state->engine, target, slot->id, true);
+            } else {
+                engine_set_fx_spectrogram_target(state->engine, -1, 0, false);
+            }
         } else {
             engine_set_active_fx_meter(state->engine, true, -1, 0);
+            engine_set_fx_spectrogram_target(state->engine, -1, 0, false);
         }
     }
     meter_history_update(&((AppState*)state)->effects_panel.meter_history,
@@ -329,6 +473,17 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
         snprintf(value_buf, sizeof(value_buf), "%.1f dB", linear_to_db(clampf(snapshot.rms, 0.0f, 1.5f)));
         draw_info_row(renderer, text_x, text_y, "RMS", value_buf, label_color, dim_color);
         text_y += 16;
+        if (type_id == 104u) {
+            snprintf(value_buf, sizeof(value_buf), "%.1f LUFS", snapshot.lufs_integrated);
+            draw_info_row(renderer, text_x, text_y, "LUFS I", value_buf, label_color, dim_color);
+            text_y += 16;
+            snprintf(value_buf, sizeof(value_buf), "%.1f LUFS", snapshot.lufs_short_term);
+            draw_info_row(renderer, text_x, text_y, "LUFS S", value_buf, label_color, dim_color);
+            text_y += 16;
+            snprintf(value_buf, sizeof(value_buf), "%.1f LUFS", snapshot.lufs_momentary);
+            draw_info_row(renderer, text_x, text_y, "LUFS M", value_buf, label_color, dim_color);
+            text_y += 16;
+        }
         snprintf(value_buf, sizeof(value_buf), "%.2f", snapshot.corr);
         draw_info_row(renderer, text_x, text_y, "Corr", value_buf, label_color, dim_color);
         text_y += 16;
@@ -349,29 +504,143 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
         return;
     }
 
+    SDL_Rect meter_rect = right_rect;
+
     if (type_id == 100u) {
         effects_meter_render_correlation(renderer,
-                                         &right_rect,
+                                         &meter_rect,
                                          have_snapshot ? &snapshot : NULL,
                                          &panel->meter_history,
                                          label_color,
                                          dim_color);
+    } else if (type_id == 103u) {
+        effects_meter_render_levels(renderer,
+                                    &meter_rect,
+                                    have_snapshot ? &snapshot : NULL,
+                                    &panel->meter_history,
+                                    label_color,
+                                    dim_color);
+    } else if (type_id == 104u) {
+        effects_meter_render_lufs(renderer,
+                                  &meter_rect,
+                                  have_snapshot ? &snapshot : NULL,
+                                  &panel->meter_history,
+                                  panel->meter_lufs_mode,
+                                  label_color,
+                                  dim_color);
     } else if (type_id == 101u) {
         effects_meter_render_mid_side(renderer,
-                                      &right_rect,
+                                      &meter_rect,
                                       have_snapshot ? &snapshot : NULL,
                                       &panel->meter_history,
                                       label_color,
                                       dim_color);
     } else if (type_id == 102u) {
         effects_meter_render_vectorscope(renderer,
-                                         &right_rect,
+                                         &meter_rect,
                                          have_snapshot ? &snapshot : NULL,
                                          &panel->meter_history,
                                          panel->meter_scope_mode,
                                          label_color,
                                          dim_color);
+    } else if (type_id == 105u) {
+        EngineSpectrogramSnapshot spectrogram = {0};
+        float frames[ENGINE_SPECTROGRAM_HISTORY * ENGINE_SPECTROGRAM_BINS];
+        bool have_spectrogram = false;
+        if (state->engine) {
+            have_spectrogram = engine_get_fx_spectrogram_snapshot(state->engine,
+                                                                  &spectrogram,
+                                                                  frames,
+                                                                  ENGINE_SPECTROGRAM_HISTORY,
+                                                                  ENGINE_SPECTROGRAM_BINS);
+        }
+        effects_meter_render_spectrogram(renderer,
+                                         &meter_rect,
+                                         have_spectrogram ? &spectrogram : NULL,
+                                         have_spectrogram ? frames : NULL,
+                                         panel->meter_spectrogram_mode,
+                                         label_color,
+                                         dim_color);
     } else {
         ui_draw_text(renderer, right_rect.x + 12, right_rect.y + 12, "Unsupported meter view.", dim_color, 1.1f);
+    }
+
+    if (show_ms_toggle) {
+        SDL_Color btn_on = {90, 120, 170, 220};
+        SDL_Color btn_off = {40, 44, 54, 220};
+        bool ms_active = panel->meter_scope_mode == FX_METER_SCOPE_MID_SIDE;
+        SDL_Color ms_fill = ms_active ? btn_on : btn_off;
+        SDL_Color lr_fill = ms_active ? btn_off : btn_on;
+
+        SDL_SetRenderDrawColor(renderer, ms_fill.r, ms_fill.g, ms_fill.b, ms_fill.a);
+        SDL_RenderFillRect(renderer, &toggle_ms);
+        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+        SDL_RenderDrawRect(renderer, &toggle_ms);
+
+        SDL_SetRenderDrawColor(renderer, lr_fill.r, lr_fill.g, lr_fill.b, lr_fill.a);
+        SDL_RenderFillRect(renderer, &toggle_lr);
+        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+        SDL_RenderDrawRect(renderer, &toggle_lr);
+
+        ui_draw_text(renderer, toggle_ms.x + 8, toggle_ms.y + 1, "MS", label_color, 1.0f);
+        ui_draw_text(renderer, toggle_lr.x + 8, toggle_lr.y + 1, "LR", label_color, 1.0f);
+    }
+
+    if (show_lufs_toggle) {
+        SDL_Color btn_on = {90, 120, 170, 220};
+        SDL_Color btn_off = {40, 44, 54, 220};
+        bool int_active = panel->meter_lufs_mode == FX_METER_LUFS_INTEGRATED;
+        bool short_active = panel->meter_lufs_mode == FX_METER_LUFS_SHORT_TERM;
+        SDL_Color int_fill = int_active ? btn_on : btn_off;
+        SDL_Color short_fill = short_active ? btn_on : btn_off;
+        SDL_Color momentary_fill = (!int_active && !short_active) ? btn_on : btn_off;
+
+        SDL_SetRenderDrawColor(renderer, int_fill.r, int_fill.g, int_fill.b, int_fill.a);
+        SDL_RenderFillRect(renderer, &toggle_int);
+        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+        SDL_RenderDrawRect(renderer, &toggle_int);
+
+        SDL_SetRenderDrawColor(renderer, short_fill.r, short_fill.g, short_fill.b, short_fill.a);
+        SDL_RenderFillRect(renderer, &toggle_short);
+        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+        SDL_RenderDrawRect(renderer, &toggle_short);
+
+        SDL_SetRenderDrawColor(renderer, momentary_fill.r, momentary_fill.g, momentary_fill.b, momentary_fill.a);
+        SDL_RenderFillRect(renderer, &toggle_momentary);
+        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+        SDL_RenderDrawRect(renderer, &toggle_momentary);
+
+        ui_draw_text(renderer, toggle_int.x + 6, toggle_int.y + 1, "INT", label_color, 1.0f);
+        ui_draw_text(renderer, toggle_short.x + 6, toggle_short.y + 1, "ST", label_color, 1.0f);
+        ui_draw_text(renderer, toggle_momentary.x + 6, toggle_momentary.y + 1, "M", label_color, 1.0f);
+    }
+
+    if (show_spectrogram_toggle) {
+        SDL_Color btn_on = {90, 120, 170, 220};
+        SDL_Color btn_off = {40, 44, 54, 220};
+        bool wb_active = panel->meter_spectrogram_mode == FX_METER_SPECTROGRAM_WHITE_BLACK;
+        bool bw_active = panel->meter_spectrogram_mode == FX_METER_SPECTROGRAM_BLACK_WHITE;
+        SDL_Color wb_fill = wb_active ? btn_on : btn_off;
+        SDL_Color bw_fill = bw_active ? btn_on : btn_off;
+        SDL_Color heat_fill = (!wb_active && !bw_active) ? btn_on : btn_off;
+
+        SDL_SetRenderDrawColor(renderer, wb_fill.r, wb_fill.g, wb_fill.b, wb_fill.a);
+        SDL_RenderFillRect(renderer, &toggle_wb);
+        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+        SDL_RenderDrawRect(renderer, &toggle_wb);
+
+        SDL_SetRenderDrawColor(renderer, bw_fill.r, bw_fill.g, bw_fill.b, bw_fill.a);
+        SDL_RenderFillRect(renderer, &toggle_bw);
+        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+        SDL_RenderDrawRect(renderer, &toggle_bw);
+
+        SDL_SetRenderDrawColor(renderer, heat_fill.r, heat_fill.g, heat_fill.b, heat_fill.a);
+        SDL_RenderFillRect(renderer, &toggle_heat);
+        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+        SDL_RenderDrawRect(renderer, &toggle_heat);
+
+        ui_draw_text(renderer, toggle_wb.x + 8, toggle_wb.y + 1, "W/B", label_color, 1.0f);
+        ui_draw_text(renderer, toggle_bw.x + 8, toggle_bw.y + 1, "B/W", label_color, 1.0f);
+        ui_draw_text(renderer, toggle_heat.x + 6, toggle_heat.y + 1, "Heat", label_color, 1.0f);
     }
 }

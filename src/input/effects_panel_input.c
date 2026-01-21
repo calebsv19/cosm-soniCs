@@ -338,6 +338,12 @@ void effects_panel_input_init(AppState* state) {
     EffectsPanelViewMode preserved_view = state->effects_panel.view_mode;
     EffectsPanelListDetailMode preserved_detail = state->effects_panel.list_detail_mode;
     EffectsPanelEqDetailView preserved_eq_view = state->effects_panel.eq_detail.view_mode;
+    EffectsMeterScopeMode preserved_scope = state->effects_panel.meter_scope_mode;
+    EffectsMeterLufsMode preserved_lufs = state->effects_panel.meter_lufs_mode;
+    EffectsMeterSpectrogramMode preserved_spectrogram = state->effects_panel.meter_spectrogram_mode;
+    FxInstId preserved_last_open_master = state->effects_panel.last_open_master_fx_id;
+    FxInstId* preserved_last_open_tracks = state->effects_panel.last_open_track_fx_ids;
+    int preserved_last_open_track_count = state->effects_panel.last_open_track_fx_count;
     bool preserved_restore = state->effects_panel.restore_pending;
     int preserved_selected = preserved_restore ? state->effects_panel.restore_selected_index
                                                : state->effects_panel.selected_slot_index;
@@ -351,6 +357,12 @@ void effects_panel_input_init(AppState* state) {
     state->effects_panel.view_mode = preserved_view;
     state->effects_panel.list_detail_mode = preserved_detail;
     state->effects_panel.eq_detail.view_mode = preserved_eq_view;
+    state->effects_panel.meter_scope_mode = preserved_scope;
+    state->effects_panel.meter_lufs_mode = preserved_lufs;
+    state->effects_panel.meter_spectrogram_mode = preserved_spectrogram;
+    state->effects_panel.last_open_master_fx_id = preserved_last_open_master;
+    state->effects_panel.last_open_track_fx_ids = preserved_last_open_tracks;
+    state->effects_panel.last_open_track_fx_count = preserved_last_open_track_count;
     state->effects_panel.eq_curve = preserved_curve;
     state->effects_panel.eq_curve_master = preserved_master;
     state->effects_panel.eq_curve_tracks = preserved_tracks;
@@ -507,6 +519,46 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                             }
                             if (SDL_PointInRect(&pt, &toggle_lr)) {
                                 panel->meter_scope_mode = FX_METER_SCOPE_LEFT_RIGHT;
+                                return;
+                            }
+                        } else if (type_id == 104u) {
+                            SDL_Rect toggle_int;
+                            SDL_Rect toggle_short;
+                            SDL_Rect toggle_momentary;
+                            effects_panel_meter_detail_compute_lufs_toggle_rects(&layout.detail_rect,
+                                                                                 &toggle_int,
+                                                                                 &toggle_short,
+                                                                                 &toggle_momentary);
+                            if (SDL_PointInRect(&pt, &toggle_int)) {
+                                panel->meter_lufs_mode = FX_METER_LUFS_INTEGRATED;
+                                return;
+                            }
+                            if (SDL_PointInRect(&pt, &toggle_short)) {
+                                panel->meter_lufs_mode = FX_METER_LUFS_SHORT_TERM;
+                                return;
+                            }
+                            if (SDL_PointInRect(&pt, &toggle_momentary)) {
+                                panel->meter_lufs_mode = FX_METER_LUFS_MOMENTARY;
+                                return;
+                            }
+                        } else if (type_id == 105u) {
+                            SDL_Rect toggle_wb;
+                            SDL_Rect toggle_bw;
+                            SDL_Rect toggle_heat;
+                            effects_panel_meter_detail_compute_spectrogram_toggle_rects(&layout.detail_rect,
+                                                                                         &toggle_wb,
+                                                                                         &toggle_bw,
+                                                                                         &toggle_heat);
+                            if (SDL_PointInRect(&pt, &toggle_wb)) {
+                                panel->meter_spectrogram_mode = FX_METER_SPECTROGRAM_WHITE_BLACK;
+                                return;
+                            }
+                            if (SDL_PointInRect(&pt, &toggle_bw)) {
+                                panel->meter_spectrogram_mode = FX_METER_SPECTROGRAM_BLACK_WHITE;
+                                return;
+                            }
+                            if (SDL_PointInRect(&pt, &toggle_heat)) {
+                                panel->meter_spectrogram_mode = FX_METER_SPECTROGRAM_HEAT;
                                 return;
                             }
                         }

@@ -59,6 +59,9 @@ float timeline_snap_seconds_to_grid(const AppState* state, float seconds, float 
     if (!state) {
         return seconds;
     }
+    if (!state->timeline_snap_enabled) {
+        return seconds;
+    }
     if (state->timeline_view_in_beats && state->tempo.bpm > 0.0f && state->engine) {
         const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
         int sr = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;

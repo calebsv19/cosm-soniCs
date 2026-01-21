@@ -125,17 +125,18 @@ void timeline_drop_update_hint(AppState* state) {
 
     SDL_Keymod mods = SDL_GetModState();
     bool alt_held = (mods & KMOD_ALT) != 0;
+    bool allow_snap = state->timeline_snap_enabled && !alt_held;
     float visible_seconds = geom.visible_seconds;
     float pixels_per_second = geom.pixels_per_second;
     float window_start = geom.window_start_seconds;
     float window_end = window_start + visible_seconds;
     float seconds = pixels_per_second > 0.0f ? window_start + (float)rel_x / pixels_per_second : window_start;
-    float snap_interval = timeline_get_snap_interval_seconds(state, visible_seconds);
 
     float best_sec = clamp_scalar(seconds, window_start, window_end);
     float best_diff = FLT_MAX;
 
-    if (!alt_held) {
+    if (allow_snap) {
+        float snap_interval = timeline_get_snap_interval_seconds(state, visible_seconds);
         int base_tick = (int)roundf(seconds / snap_interval);
         for (int offset = -2; offset <= 2; ++offset) {
             float candidate = (float)(base_tick + offset) * snap_interval;
@@ -158,7 +159,7 @@ void timeline_drop_update_hint(AppState* state) {
     if (tracks && sample_rate > 0) {
         int track_height = geom.track_height;
         int track_spacing = geom.track_spacing;
-        int track_top = timeline->rect.y + TIMELINE_CONTROLS_HEIGHT + 8;
+        int track_top = timeline->rect.y + TIMELINE_CONTROLS_HEIGHT + TIMELINE_RULER_HEIGHT;
         int lane_height = track_height + track_spacing;
         int last_lane_bottom = track_top + track_count * lane_height;
         if (track_count == 0) {
@@ -187,15 +188,17 @@ void timeline_drop_update_hint(AppState* state) {
                     duration_frames = clip->media->frame_count;
                 }
                 float end_sec = (float)(clip->timeline_start_frames + duration_frames) / (float)sample_rate;
-                float diff_start = fabsf(start_sec - seconds);
-                if (diff_start < best_diff) {
-                    best_diff = diff_start;
-                    best_sec = start_sec;
-                }
-                float diff_end = fabsf(end_sec - seconds);
-                if (diff_end < best_diff) {
-                    best_diff = diff_end;
-                    best_sec = end_sec;
+                if (allow_snap) {
+                    float diff_start = fabsf(start_sec - seconds);
+                    if (diff_start < best_diff) {
+                        best_diff = diff_start;
+                        best_sec = start_sec;
+                    }
+                    float diff_end = fabsf(end_sec - seconds);
+                    if (diff_end < best_diff) {
+                        best_diff = diff_end;
+                        best_sec = end_sec;
+                    }
                 }
             }
         }
@@ -213,7 +216,7 @@ void timeline_drop_update_hint(AppState* state) {
 
     best_sec = clamp_scalar(best_sec, window_start, window_end);
     state->timeline_drop_seconds = clamp_scalar(seconds, window_start, window_end);
-    state->timeline_drop_seconds_snapped = best_sec;
+    state->timeline_drop_seconds_snapped = allow_snap ? best_sec : -1.0f;
     state->timeline_drop_track_index = drop_track;
     float preview_seconds = state->timeline_drop_preview_duration;
     if (state->dragging_library &&
@@ -377,6 +380,8 @@ void timeline_drop_handle_library_drag(InputManager* manager, AppState* state, b
                                 cmd.data.clip_add_remove.clip.offset_frames = clip->offset_frames;
                                 cmd.data.clip_add_remove.clip.fade_in_frames = clip->fade_in_frames;
                                 cmd.data.clip_add_remove.clip.fade_out_frames = clip->fade_out_frames;
+                                cmd.data.clip_add_remove.clip.fade_in_curve = clip->fade_in_curve;
+                                cmd.data.clip_add_remove.clip.fade_out_curve = clip->fade_out_curve;
                                 cmd.data.clip_add_remove.clip.gain = clip->gain;
                                 cmd.data.clip_add_remove.clip.selected = false;
                                 if (cmd.data.clip_add_remove.clip.duration_frames == 0 && clip->sampler) {

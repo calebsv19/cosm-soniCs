@@ -8,6 +8,7 @@
 #include "input/timeline_drag.h"
 #include "input/timeline/timeline_clipboard.h"
 #include "input/timeline_selection.h"
+#include "ui/effects_panel.h"
 #include "undo/undo_manager.h"
 #include <SDL2/SDL.h>
 #include <string.h>
@@ -72,6 +73,29 @@ bool timeline_input_keyboard_handle_event(InputManager* manager, AppState* state
             }
         }
         return true;
+    }
+
+    if ((key == SDLK_DELETE || key == SDLK_BACKSPACE) && state->timeline_automation_mode) {
+        if (state->automation_ui.point_index >= 0) {
+            engine_clip_remove_automation_point(state->engine,
+                                                state->automation_ui.track_index,
+                                                state->automation_ui.clip_index,
+                                                state->automation_ui.target,
+                                                state->automation_ui.point_index);
+            state->automation_ui.point_index = -1;
+            return true;
+        }
+    }
+
+    if ((mods & (KMOD_CTRL | KMOD_GUI | KMOD_ALT)) == 0) {
+        if (key == SDLK_a) {
+            state->timeline_automation_mode = !state->timeline_automation_mode;
+            return true;
+        }
+        if (key == SDLK_g) {
+            state->timeline_snap_enabled = !state->timeline_snap_enabled;
+            return true;
+        }
     }
 
     bool copy_trigger = (key == SDLK_c) && (mods & (KMOD_CTRL | KMOD_GUI));
@@ -193,6 +217,8 @@ bool timeline_input_keyboard_handle_event(InputManager* manager, AppState* state
                             cmd.data.clip_add_remove.clip.offset_frames = clip->offset_frames;
                             cmd.data.clip_add_remove.clip.fade_in_frames = clip->fade_in_frames;
                             cmd.data.clip_add_remove.clip.fade_out_frames = clip->fade_out_frames;
+                            cmd.data.clip_add_remove.clip.fade_in_curve = clip->fade_in_curve;
+                            cmd.data.clip_add_remove.clip.fade_out_curve = clip->fade_out_curve;
                             cmd.data.clip_add_remove.clip.gain = clip->gain;
                             cmd.data.clip_add_remove.clip.selected = false;
                             if (cmd.data.clip_add_remove.clip.duration_frames == 0 && clip->sampler) {
@@ -245,6 +271,7 @@ bool timeline_input_keyboard_handle_event(InputManager* manager, AppState* state
             } else {
                 inspector_input_init(state);
             }
+            effects_panel_sync_from_engine(state);
         }
     }
 

@@ -44,6 +44,174 @@ static SessionClip* session_track_append_clip(SessionTrack* track) {
     return clip;
 }
 
+// Appends an automation point into a session lane.
+static bool session_lane_append_point(SessionAutomationLane* lane, uint64_t frame, float value) {
+    if (!lane) {
+        return false;
+    }
+    int new_count = lane->point_count + 1;
+    SessionAutomationPoint* resized = (SessionAutomationPoint*)realloc(lane->points,
+                                                                       (size_t)new_count * sizeof(SessionAutomationPoint));
+    if (!resized) {
+        return false;
+    }
+    lane->points = resized;
+    lane->points[new_count - 1].frame = frame;
+    lane->points[new_count - 1].value = value;
+    lane->point_count = new_count;
+    return true;
+}
+
+// Parses a points array for an automation lane.
+static bool parse_session_automation_points(JsonReader* r, SessionAutomationLane* lane) {
+    if (!r || !lane) {
+        return false;
+    }
+    if (!json_expect(r, '[')) {
+        return false;
+    }
+    while (true) {
+        json_skip_whitespace(r);
+        if (r->pos < r->length && r->data[r->pos] == ']') {
+            ++r->pos;
+            break;
+        }
+        if (!json_expect(r, '{')) {
+            return false;
+        }
+        uint64_t frame = 0;
+        float value = 0.0f;
+        while (true) {
+            json_skip_whitespace(r);
+            if (r->pos < r->length && r->data[r->pos] == '}') {
+                ++r->pos;
+                break;
+            }
+            char point_key[32];
+            if (!json_parse_string(r, point_key, sizeof(point_key))) {
+                return false;
+            }
+            if (!json_expect(r, ':')) {
+                return false;
+            }
+            if (strcmp(point_key, "frame") == 0) {
+                double val;
+                if (!json_parse_number(r, &val)) {
+                    return false;
+                }
+                frame = (uint64_t)(val < 0 ? 0 : val);
+            } else if (strcmp(point_key, "value") == 0) {
+                double val;
+                if (!json_parse_number(r, &val)) {
+                    return false;
+                }
+                value = (float)val;
+            } else {
+                if (!json_skip_value(r)) {
+                    return false;
+                }
+            }
+            json_skip_whitespace(r);
+            if (r->pos < r->length && r->data[r->pos] == ',') {
+                ++r->pos;
+                continue;
+            }
+            if (r->pos < r->length && r->data[r->pos] == '}') {
+                continue;
+            }
+        }
+        if (!session_lane_append_point(lane, frame, value)) {
+            return false;
+        }
+        json_skip_whitespace(r);
+        if (r->pos < r->length && r->data[r->pos] == ',') {
+            ++r->pos;
+            continue;
+        }
+        if (r->pos < r->length && r->data[r->pos] == ']') {
+            continue;
+        }
+    }
+    return true;
+}
+
+// Parses automation lanes into a clip.
+static bool parse_session_automation(JsonReader* r, SessionClip* clip) {
+    if (!r || !clip) {
+        return false;
+    }
+    if (!json_expect(r, '[')) {
+        return false;
+    }
+    while (true) {
+        json_skip_whitespace(r);
+        if (r->pos < r->length && r->data[r->pos] == ']') {
+            ++r->pos;
+            break;
+        }
+        if (!json_expect(r, '{')) {
+            return false;
+        }
+        int new_count = clip->automation_lane_count + 1;
+        SessionAutomationLane* resized = (SessionAutomationLane*)realloc(clip->automation_lanes,
+                                                                         (size_t)new_count * sizeof(SessionAutomationLane));
+        if (!resized) {
+            return false;
+        }
+        clip->automation_lanes = resized;
+        SessionAutomationLane* lane = &clip->automation_lanes[new_count - 1];
+        memset(lane, 0, sizeof(*lane));
+        lane->target = ENGINE_AUTOMATION_TARGET_VOLUME;
+        clip->automation_lane_count = new_count;
+        while (true) {
+            json_skip_whitespace(r);
+            if (r->pos < r->length && r->data[r->pos] == '}') {
+                ++r->pos;
+                break;
+            }
+            char lane_key[32];
+            if (!json_parse_string(r, lane_key, sizeof(lane_key))) {
+                return false;
+            }
+            if (!json_expect(r, ':')) {
+                return false;
+            }
+            if (strcmp(lane_key, "target") == 0) {
+                double val;
+                if (!json_parse_number(r, &val)) {
+                    return false;
+                }
+                lane->target = (EngineAutomationTarget)val;
+            } else if (strcmp(lane_key, "points") == 0) {
+                if (!parse_session_automation_points(r, lane)) {
+                    return false;
+                }
+            } else {
+                if (!json_skip_value(r)) {
+                    return false;
+                }
+            }
+            json_skip_whitespace(r);
+            if (r->pos < r->length && r->data[r->pos] == ',') {
+                ++r->pos;
+                continue;
+            }
+            if (r->pos < r->length && r->data[r->pos] == '}') {
+                continue;
+            }
+        }
+        json_skip_whitespace(r);
+        if (r->pos < r->length && r->data[r->pos] == ',') {
+            ++r->pos;
+            continue;
+        }
+        if (r->pos < r->length && r->data[r->pos] == ']') {
+            continue;
+        }
+    }
+    return true;
+}
+
 bool parse_session_tracks(JsonReader* r, SessionDocument* doc);
 static SessionFxInstance* session_document_append_master_fx(SessionDocument* doc) {
     int new_count = doc->master_fx_count + 1;
@@ -293,6 +461,30 @@ static bool parse_session_track(JsonReader* r, SessionTrack* track) {
                                 return false;
                             }
                             clip->fade_out_frames = (uint64_t)(val < 0 ? 0 : val);
+                        } else if (strcmp(clip_key, "fade_in_curve") == 0) {
+                            double val;
+                            if (!json_parse_number(r, &val)) {
+                                return false;
+                            }
+                            int curve = (int)val;
+                            if (curve < 0 || curve >= ENGINE_FADE_CURVE_COUNT) {
+                                curve = ENGINE_FADE_CURVE_LINEAR;
+                            }
+                            clip->fade_in_curve = (EngineFadeCurve)curve;
+                        } else if (strcmp(clip_key, "fade_out_curve") == 0) {
+                            double val;
+                            if (!json_parse_number(r, &val)) {
+                                return false;
+                            }
+                            int curve = (int)val;
+                            if (curve < 0 || curve >= ENGINE_FADE_CURVE_COUNT) {
+                                curve = ENGINE_FADE_CURVE_LINEAR;
+                            }
+                            clip->fade_out_curve = (EngineFadeCurve)curve;
+                        } else if (strcmp(clip_key, "automation") == 0) {
+                            if (!parse_session_automation(r, clip)) {
+                                return false;
+                            }
                         } else if (strcmp(clip_key, "gain") == 0) {
                             double val;
                             if (!json_parse_number(r, &val)) {
@@ -1033,6 +1225,18 @@ bool parse_session_document(JsonReader* r, SessionDocument* doc) {
                 }
                 return false;
             }
+        } else if (strcmp(key, "selected_track_index") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            doc->selected_track_index = (int)val;
+        } else if (strcmp(key, "selected_clip_index") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            doc->selected_clip_index = (int)val;
         } else if (strcmp(key, "clip_inspector") == 0) {
             if (!json_expect(r, '{')) {
                 return false;
@@ -1145,6 +1349,24 @@ bool parse_session_document(JsonReader* r, SessionDocument* doc) {
                         return false;
                     }
                     doc->effects_panel.eq_view_mode = (int)val;
+                } else if (strcmp(panel_key, "meter_scope_mode") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.meter_scope_mode = (int)val;
+                } else if (strcmp(panel_key, "meter_lufs_mode") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.meter_lufs_mode = (int)val;
+                } else if (strcmp(panel_key, "meter_spectrogram_mode") == 0) {
+                    double val;
+                    if (!json_parse_number(r, &val)) {
+                        return false;
+                    }
+                    doc->effects_panel.meter_spectrogram_mode = (int)val;
                 } else if (strcmp(panel_key, "low_cut_enabled") == 0) {
                     if (!json_parse_bool(r, &doc->effects_panel.low_cut.enabled)) {
                         return false;

@@ -8,33 +8,270 @@ static float clampf(float v, float lo, float hi) {
     return v;
 }
 
+// Converts LUFS energy to loudness units using BS.1770 scaling.
+static float lufs_energy_to_db(double energy) {
+    if (energy <= 1e-12) {
+        return -90.0f;
+    }
+    return (float)(-0.691 + 10.0 * log10(energy));
+}
+
+// Designs a K-weighting high-pass biquad at the specified frequency.
+static void lufs_biquad_design_highpass(EngineFxLufsBiquad* biquad, float sample_rate, float freq_hz, float q) {
+    if (!biquad || sample_rate <= 0.0f || freq_hz <= 0.0f) {
+        return;
+    }
+    float w0 = 2.0f * (float)M_PI * freq_hz / sample_rate;
+    float cos_w0 = cosf(w0);
+    float sin_w0 = sinf(w0);
+    float alpha = sin_w0 / (2.0f * q);
+    float b0 = (1.0f + cos_w0) * 0.5f;
+    float b1 = -(1.0f + cos_w0);
+    float b2 = (1.0f + cos_w0) * 0.5f;
+    float a0 = 1.0f + alpha;
+    float a1 = -2.0f * cos_w0;
+    float a2 = 1.0f - alpha;
+    biquad->b0 = b0 / a0;
+    biquad->b1 = b1 / a0;
+    biquad->b2 = b2 / a0;
+    biquad->a1 = a1 / a0;
+    biquad->a2 = a2 / a0;
+    biquad->z1 = 0.0f;
+    biquad->z2 = 0.0f;
+}
+
+// Designs a K-weighting high-shelf biquad at the specified frequency and gain.
+static void lufs_biquad_design_highshelf(EngineFxLufsBiquad* biquad,
+                                         float sample_rate,
+                                         float freq_hz,
+                                         float gain_db,
+                                         float slope) {
+    if (!biquad || sample_rate <= 0.0f || freq_hz <= 0.0f) {
+        return;
+    }
+    float a = powf(10.0f, gain_db / 40.0f);
+    float w0 = 2.0f * (float)M_PI * freq_hz / sample_rate;
+    float cos_w0 = cosf(w0);
+    float sin_w0 = sinf(w0);
+    float sqrt_a = sqrtf(a);
+    float alpha = sin_w0 / 2.0f * sqrtf((a + 1.0f / a) * (1.0f / slope - 1.0f) + 2.0f);
+    float b0 = a * ((a + 1.0f) + (a - 1.0f) * cos_w0 + 2.0f * sqrt_a * alpha);
+    float b1 = -2.0f * a * ((a - 1.0f) + (a + 1.0f) * cos_w0);
+    float b2 = a * ((a + 1.0f) + (a - 1.0f) * cos_w0 - 2.0f * sqrt_a * alpha);
+    float a0 = (a + 1.0f) - (a - 1.0f) * cos_w0 + 2.0f * sqrt_a * alpha;
+    float a1 = 2.0f * ((a - 1.0f) - (a + 1.0f) * cos_w0);
+    float a2 = (a + 1.0f) - (a - 1.0f) * cos_w0 - 2.0f * sqrt_a * alpha;
+    biquad->b0 = b0 / a0;
+    biquad->b1 = b1 / a0;
+    biquad->b2 = b2 / a0;
+    biquad->a1 = a1 / a0;
+    biquad->a2 = a2 / a0;
+    biquad->z1 = 0.0f;
+    biquad->z2 = 0.0f;
+}
+
+// Processes a single sample through a biquad filter.
+static float lufs_biquad_process(EngineFxLufsBiquad* biquad, float in) {
+    if (!biquad) {
+        return in;
+    }
+    float out = biquad->b0 * in + biquad->z1;
+    biquad->z1 = biquad->b1 * in - biquad->a1 * out + biquad->z2;
+    biquad->z2 = biquad->b2 * in - biquad->a2 * out;
+    return out;
+}
+
+// Resets LUFS tracking state and reinitializes K-weighting filters.
+static void engine_fx_lufs_state_reset(EngineFxLufsState* state, int sample_rate, int channels) {
+    if (!state) {
+        return;
+    }
+    SDL_zero(*state);
+    state->sample_rate = sample_rate;
+    state->channels = channels;
+    state->block_target = sample_rate / ENGINE_FX_LUFS_BLOCK_HZ;
+    if (state->block_target < 1) {
+        state->block_target = 1;
+    }
+    int used_channels = channels;
+    if (used_channels > ENGINE_FX_LUFS_MAX_CHANNELS) {
+        used_channels = ENGINE_FX_LUFS_MAX_CHANNELS;
+    }
+    for (int ch = 0; ch < used_channels; ++ch) {
+        lufs_biquad_design_highpass(&state->hp[ch], (float)sample_rate, 60.0f, 0.707f);
+        lufs_biquad_design_highshelf(&state->hs[ch], (float)sample_rate, 4000.0f, 4.0f, 1.0f);
+    }
+    state->lufs_integrated = -90.0f;
+    state->lufs_short_term = -90.0f;
+    state->lufs_momentary = -90.0f;
+}
+
+// Updates LUFS tracking state using K-weighted audio samples.
+static void engine_fx_lufs_state_update(EngineFxLufsState* state,
+                                        const float* buffer,
+                                        int frames,
+                                        int channels) {
+    if (!state || !buffer || frames <= 0 || channels <= 0) {
+        return;
+    }
+    int used_channels = channels;
+    if (used_channels > ENGINE_FX_LUFS_MAX_CHANNELS) {
+        used_channels = ENGINE_FX_LUFS_MAX_CHANNELS;
+    }
+    for (int i = 0; i < frames; ++i) {
+        double frame_sum = 0.0;
+        int base = i * channels;
+        for (int ch = 0; ch < used_channels; ++ch) {
+            float v = buffer[base + ch];
+            v = lufs_biquad_process(&state->hp[ch], v);
+            v = lufs_biquad_process(&state->hs[ch], v);
+            frame_sum += (double)v * (double)v;
+        }
+        state->block_sum += frame_sum;
+        state->block_samples += 1;
+        if (state->block_samples >= state->block_target) {
+            double mean_square = state->block_sum / (double)state->block_samples;
+            state->block_sum = 0.0;
+            state->block_samples = 0;
+
+            state->block_history[state->block_head] = mean_square;
+            state->block_head = (state->block_head + 1) % ENGINE_FX_LUFS_SHORT_BLOCKS;
+            if (state->block_count < ENGINE_FX_LUFS_SHORT_BLOCKS) {
+                state->block_count += 1;
+            }
+
+            int momentary_blocks = ENGINE_FX_LUFS_MOMENTARY_BLOCKS;
+            int short_blocks = ENGINE_FX_LUFS_SHORT_BLOCKS;
+            if (state->block_count < momentary_blocks) {
+                momentary_blocks = state->block_count;
+            }
+            if (state->block_count < short_blocks) {
+                short_blocks = state->block_count;
+            }
+            double momentary_energy = mean_square;
+            if (momentary_blocks > 0) {
+                double sum = 0.0;
+                for (int m = 0; m < momentary_blocks; ++m) {
+                    int idx = state->block_head - 1 - m;
+                    while (idx < 0) idx += ENGINE_FX_LUFS_SHORT_BLOCKS;
+                    idx %= ENGINE_FX_LUFS_SHORT_BLOCKS;
+                    sum += state->block_history[idx];
+                }
+                momentary_energy = sum / (double)momentary_blocks;
+                state->lufs_momentary = lufs_energy_to_db(momentary_energy);
+            }
+            if (short_blocks > 0) {
+                double sum = 0.0;
+                for (int s = 0; s < short_blocks; ++s) {
+                    int idx = state->block_head - 1 - s;
+                    while (idx < 0) idx += ENGINE_FX_LUFS_SHORT_BLOCKS;
+                    idx %= ENGINE_FX_LUFS_SHORT_BLOCKS;
+                    sum += state->block_history[idx];
+                }
+                state->lufs_short_term = lufs_energy_to_db(sum / (double)short_blocks);
+            }
+
+            float lufs_block = lufs_energy_to_db(momentary_energy);
+            int bin = (int)lroundf((lufs_block - ENGINE_FX_LUFS_HIST_MIN_DB) / ENGINE_FX_LUFS_HIST_STEP_DB);
+            if (bin < 0) bin = 0;
+            if (bin >= ENGINE_FX_LUFS_HIST_BINS) bin = ENGINE_FX_LUFS_HIST_BINS - 1;
+            state->hist_sum[bin] += momentary_energy;
+            state->hist_count[bin] += 1;
+
+            double abs_sum = 0.0;
+            int abs_count = 0;
+            int abs_start = (int)ceilf((-70.0f - ENGINE_FX_LUFS_HIST_MIN_DB) / ENGINE_FX_LUFS_HIST_STEP_DB);
+            if (abs_start < 0) abs_start = 0;
+            for (int b = abs_start; b < ENGINE_FX_LUFS_HIST_BINS; ++b) {
+                abs_sum += state->hist_sum[b];
+                abs_count += state->hist_count[b];
+            }
+            if (abs_count > 0) {
+                double mean_abs = abs_sum / (double)abs_count;
+                float rel_gate_db = lufs_energy_to_db(mean_abs) - 10.0f;
+                int rel_start = (int)ceilf((rel_gate_db - ENGINE_FX_LUFS_HIST_MIN_DB) / ENGINE_FX_LUFS_HIST_STEP_DB);
+                if (rel_start < abs_start) rel_start = abs_start;
+                if (rel_start < 0) rel_start = 0;
+                double rel_sum = 0.0;
+                int rel_count = 0;
+                for (int b = rel_start; b < ENGINE_FX_LUFS_HIST_BINS; ++b) {
+                    rel_sum += state->hist_sum[b];
+                    rel_count += state->hist_count[b];
+                }
+                if (rel_count > 0) {
+                    state->lufs_integrated = lufs_energy_to_db(rel_sum / (double)rel_count);
+                }
+            }
+        }
+    }
+}
+
+// Clears LUFS tracking state for a meter tap.
+static void engine_fx_lufs_state_clear(EngineFxLufsState* state) {
+    if (!state) {
+        return;
+    }
+    SDL_zero(*state);
+}
+
+// Clears the FX meter bank and resets per-meter state.
 static void engine_fx_meter_clear_bank(EngineFxMeterBank* bank) {
     if (!bank) {
         return;
     }
+    for (int i = 0; i < bank->count; ++i) {
+        engine_fx_lufs_state_clear(&bank->taps[i].lufs_state);
+    }
     SDL_zero(*bank);
 }
 
-static void engine_fx_meter_update_bank(EngineFxMeterBank* bank,
-                                        FxInstId id,
-                                        const EngineFxMeterSnapshot* snapshot) {
-    if (!bank || !snapshot || id == 0) {
-        return;
+// Finds an FX meter tap entry by id in the given bank.
+static EngineFxMeterTap* engine_fx_meter_find_tap(EngineFxMeterBank* bank, FxInstId id) {
+    if (!bank || id == 0) {
+        return NULL;
     }
     for (int i = 0; i < bank->count; ++i) {
         if (bank->taps[i].id == id) {
-            bank->taps[i].snapshot = *snapshot;
-            return;
+            return &bank->taps[i];
         }
     }
-    if (bank->count < FX_MASTER_MAX) {
-        bank->taps[bank->count].id = id;
-        bank->taps[bank->count].snapshot = *snapshot;
-        bank->count += 1;
-        return;
+    return NULL;
+}
+
+// Returns an FX meter tap entry, creating or overwriting one if needed.
+static EngineFxMeterTap* engine_fx_meter_get_or_add_tap(EngineFxMeterBank* bank, FxInstId id) {
+    if (!bank || id == 0) {
+        return NULL;
     }
-    bank->taps[FX_MASTER_MAX - 1].id = id;
-    bank->taps[FX_MASTER_MAX - 1].snapshot = *snapshot;
+    EngineFxMeterTap* tap = engine_fx_meter_find_tap(bank, id);
+    if (tap) {
+        return tap;
+    }
+    if (bank->count < FX_MASTER_MAX) {
+        tap = &bank->taps[bank->count++];
+    } else {
+        tap = &bank->taps[FX_MASTER_MAX - 1];
+        engine_fx_lufs_state_clear(&tap->lufs_state);
+    }
+    SDL_zero(*tap);
+    tap->id = id;
+    return tap;
+}
+
+// Copies LUFS state from a meter tap into the provided output.
+static bool engine_fx_meter_copy_lufs_state(const EngineFxMeterBank* bank,
+                                            FxInstId id,
+                                            EngineFxLufsState* out_state) {
+    if (!bank || !out_state || id == 0) {
+        return false;
+    }
+    for (int i = 0; i < bank->count; ++i) {
+        if (bank->taps[i].id == id) {
+            *out_state = bank->taps[i].lufs_state;
+            return true;
+        }
+    }
+    return false;
 }
 
 static bool engine_fx_meter_find_in_bank(const EngineFxMeterBank* bank,
@@ -52,9 +289,13 @@ static bool engine_fx_meter_find_in_bank(const EngineFxMeterBank* bank,
     return false;
 }
 
+// Computes peak/RMS/correlation data and updates LUFS state if requested.
 static void engine_fx_meter_compute(const float* buffer,
                                     int frames,
                                     int channels,
+                                    FxTypeId type,
+                                    int sample_rate,
+                                    EngineFxLufsState* lufs_state,
                                     EngineFxMeterSnapshot* snapshot) {
     if (!buffer || frames <= 0 || channels <= 0 || !snapshot) {
         return;
@@ -134,6 +375,15 @@ static void engine_fx_meter_compute(const float* buffer,
     }
     snapshot->peak = peak;
     snapshot->clipped = peak > 1.0f;
+    if (lufs_state && type == 104u) {
+        if (lufs_state->sample_rate != sample_rate || lufs_state->channels != channels) {
+            engine_fx_lufs_state_reset(lufs_state, sample_rate, channels);
+        }
+        engine_fx_lufs_state_update(lufs_state, buffer, frames, channels);
+        snapshot->lufs_integrated = lufs_state->lufs_integrated;
+        snapshot->lufs_short_term = lufs_state->lufs_short_term;
+        snapshot->lufs_momentary = lufs_state->lufs_momentary;
+    }
 }
 
 static void engine_fx_meter_tap_callback(void* user,
@@ -148,39 +398,51 @@ static void engine_fx_meter_tap_callback(void* user,
     if (!engine || !interleaved || frames <= 0 || channels <= 0 || id == 0) {
         return;
     }
+    EngineFxLufsState lufs_state;
+    SDL_zero(lufs_state);
+    EngineFxMeterBank* bank = NULL;
+    if (!is_master && (!engine->track_fx_meters ||
+                       track_index < 0 ||
+                       track_index >= engine->track_fx_meter_capacity)) {
+        return;
+    }
     if (engine->meter_mutex) {
         SDL_LockMutex(engine->meter_mutex);
     }
-    FxInstId active_id = engine->active_fx_meter_id;
-    bool active_master = engine->active_fx_meter_is_master;
-    int active_track = engine->active_fx_meter_track;
+    bank = is_master ? &engine->master_fx_meters : &engine->track_fx_meters[track_index];
+    if (bank) {
+        engine_fx_meter_copy_lufs_state(bank, id, &lufs_state);
+    }
     if (engine->meter_mutex) {
         SDL_UnlockMutex(engine->meter_mutex);
-    }
-    if (active_id == 0) {
-        return;
-    }
-    if (active_id != id) {
-        return;
-    }
-    if (active_master != is_master) {
-        return;
-    }
-    if (!active_master && track_index != active_track) {
-        return;
     }
     EngineFxMeterSnapshot snapshot = {0};
     snapshot.type = type;
     snapshot.valid = true;
-    engine_fx_meter_compute(interleaved, frames, channels, &snapshot);
+    snapshot.lufs_integrated = -90.0f;
+    snapshot.lufs_short_term = -90.0f;
+    snapshot.lufs_momentary = -90.0f;
+    engine_fx_meter_compute(interleaved,
+                            frames,
+                            channels,
+                            type,
+                            engine->config.sample_rate,
+                            &lufs_state,
+                            &snapshot);
+    if (type == 105u) {
+        engine_spectrogram_update_fx(engine, is_master, track_index, id, interleaved, frames, channels);
+    }
 
     if (engine->meter_mutex) {
         SDL_LockMutex(engine->meter_mutex);
     }
-    if (is_master) {
-        engine_fx_meter_update_bank(&engine->master_fx_meters, id, &snapshot);
-    } else if (engine->track_fx_meters && track_index >= 0 && track_index < engine->track_fx_meter_capacity) {
-        engine_fx_meter_update_bank(&engine->track_fx_meters[track_index], id, &snapshot);
+    bank = is_master ? &engine->master_fx_meters : &engine->track_fx_meters[track_index];
+    if (bank) {
+        EngineFxMeterTap* tap = engine_fx_meter_get_or_add_tap(bank, id);
+        if (tap) {
+            tap->snapshot = snapshot;
+            tap->lufs_state = lufs_state;
+        }
     }
     if (engine->meter_mutex) {
         SDL_UnlockMutex(engine->meter_mutex);

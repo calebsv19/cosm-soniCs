@@ -2,7 +2,9 @@
 
 #include "config.h"
 #include "effects/effects_manager.h"
+#include "engine/automation.h"
 #include "engine/engine_eq.h"
+#include "engine/fade_curve.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -25,12 +27,26 @@ struct EngineSamplerSource;
 #define ENGINE_SPECTRUM_MAX_HZ 20000.0f
 #define ENGINE_SPECTRUM_DB_FLOOR -60.0f
 #define ENGINE_SPECTRUM_DB_CEIL 6.0f
+#define ENGINE_SPECTROGRAM_BINS 128
+#define ENGINE_SPECTROGRAM_HISTORY 160
+#define ENGINE_SPECTROGRAM_MIN_HZ 20.0f
+#define ENGINE_SPECTROGRAM_MAX_HZ 20000.0f
+#define ENGINE_SPECTROGRAM_DB_FLOOR -60.0f
+#define ENGINE_SPECTROGRAM_DB_CEIL 0.0f
 #define ENGINE_FX_METER_VEC_POINTS 64
 
 typedef enum {
     ENGINE_SPECTRUM_VIEW_MASTER = 0,
     ENGINE_SPECTRUM_VIEW_TRACK
 } EngineSpectrumView;
+
+// EngineSpectrogramSnapshot carries a rolling spectrogram history for UI display.
+typedef struct {
+    int bins;
+    int frames;
+    float db_floor;
+    float db_ceil;
+} EngineSpectrogramSnapshot;
 
 // Snapshot of linear peak/RMS values plus clip hold for meters.
 typedef struct {
@@ -44,6 +60,9 @@ typedef struct {
     FxTypeId type;
     float peak;
     float rms;
+    float lufs_integrated;
+    float lufs_short_term;
+    float lufs_momentary;
     float corr;
     float mid_rms;
     float side_rms;
@@ -56,6 +75,7 @@ typedef struct {
     bool valid;
 } EngineFxMeterSnapshot;
 
+// Holds runtime clip state including timing, fades, and automation.
 struct EngineClip {
     struct EngineSamplerSource* sampler;
     struct AudioMediaClip* media;
@@ -68,6 +88,11 @@ struct EngineClip {
     uint64_t offset_frames;
     uint64_t fade_in_frames;
     uint64_t fade_out_frames;
+    EngineFadeCurve fade_in_curve;
+    EngineFadeCurve fade_out_curve;
+    EngineAutomationLane* automation_lanes;
+    int automation_lane_count;
+    int automation_lane_capacity;
     uint64_t creation_index;
     bool selected;
 };
@@ -142,12 +167,69 @@ const EngineTrack* engine_get_tracks(const Engine* engine);
 int     engine_get_track_count(const Engine* engine);
 uint64_t engine_get_transport_frame(const Engine* engine);
 bool    engine_clip_set_timeline_start(Engine* engine, int track_index, int clip_index, uint64_t start_frame, int* out_clip_index);
+
+// Clears the spectrogram queue and history for a fresh capture window.
+void    engine_spectrogram_clear_history(Engine* engine);
 bool    engine_clip_set_region(Engine* engine, int track_index, int clip_index, uint64_t offset_frames, uint64_t duration_frames);
 uint64_t engine_clip_get_total_frames(const Engine* engine, int track_index, int clip_index);
 bool    engine_remove_clip(Engine* engine, int track_index, int clip_index);
 bool    engine_clip_set_name(Engine* engine, int track_index, int clip_index, const char* name);
 bool    engine_clip_set_gain(Engine* engine, int track_index, int clip_index, float gain);
 bool    engine_clip_set_fades(Engine* engine, int track_index, int clip_index, uint64_t fade_in_frames, uint64_t fade_out_frames);
+// Sets the fade curve shapes for the specified clip sides.
+bool    engine_clip_set_fade_curves(Engine* engine,
+                                    int track_index,
+                                    int clip_index,
+                                    EngineFadeCurve fade_in_curve,
+                                    EngineFadeCurve fade_out_curve);
+// Retrieves the automation lane for a clip target if it exists.
+bool    engine_clip_get_automation_lane(const Engine* engine,
+                                        int track_index,
+                                        int clip_index,
+                                        EngineAutomationTarget target,
+                                        const EngineAutomationLane** out_lane);
+// Ensures the automation lane exists for a clip target and returns it for editing.
+bool    engine_clip_ensure_automation_lane(Engine* engine,
+                                           int track_index,
+                                           int clip_index,
+                                           EngineAutomationTarget target,
+                                           EngineAutomationLane** out_lane);
+// Inserts or replaces an automation point for the clip target.
+bool    engine_clip_add_automation_point(Engine* engine,
+                                         int track_index,
+                                         int clip_index,
+                                         EngineAutomationTarget target,
+                                         uint64_t frame,
+                                         float value,
+                                         int* out_index);
+// Updates an automation point and returns its new index.
+bool    engine_clip_update_automation_point(Engine* engine,
+                                            int track_index,
+                                            int clip_index,
+                                            EngineAutomationTarget target,
+                                            int point_index,
+                                            uint64_t frame,
+                                            float value,
+                                            int* out_index);
+// Removes an automation point from a clip target.
+bool    engine_clip_remove_automation_point(Engine* engine,
+                                            int track_index,
+                                            int clip_index,
+                                            EngineAutomationTarget target,
+                                            int point_index);
+// Replaces the full set of automation points for a clip target.
+bool    engine_clip_set_automation_lane_points(Engine* engine,
+                                               int track_index,
+                                               int clip_index,
+                                               EngineAutomationTarget target,
+                                               const EngineAutomationPoint* points,
+                                               int count);
+// Replaces all automation lanes for a clip.
+bool    engine_clip_set_automation_lanes(Engine* engine,
+                                         int track_index,
+                                         int clip_index,
+                                         const EngineAutomationLane* lanes,
+                                         int lane_count);
 bool    engine_duplicate_clip(Engine* engine, int track_index, int clip_index, uint64_t start_frame_offset, int* out_clip_index);
 bool    engine_track_set_name(Engine* engine, int track_index, const char* name);
 bool    engine_add_clip_segment(Engine* engine, int track_index, const EngineClip* source_clip,
@@ -181,6 +263,14 @@ void    engine_set_active_fx_meter(Engine* engine, bool is_master, int track_ind
 bool    engine_get_master_fx_meter_snapshot(const Engine* engine, FxInstId id, EngineFxMeterSnapshot* out_snapshot);
 // Copies the latest track FX meter snapshot for a specific instance id.
 bool    engine_get_track_fx_meter_snapshot(const Engine* engine, int track_index, FxInstId id, EngineFxMeterSnapshot* out_snapshot);
+// Copies the latest spectrogram history into out_frames (newest-first rows).
+bool    engine_get_fx_spectrogram_snapshot(const Engine* engine,
+                                           EngineSpectrogramSnapshot* out_meta,
+                                           float* out_frames,
+                                           int max_frames,
+                                           int max_bins);
+// Enables or disables spectrogram capture for a track FX meter instance.
+void    engine_set_fx_spectrogram_target(Engine* engine, int track_index, FxInstId id, bool enabled);
 void    engine_set_logging(Engine* engine, bool engine_logs, bool cache_logs, bool timing_logs);
 bool    engine_bounce_range(Engine* engine,
                             uint64_t start_frame,

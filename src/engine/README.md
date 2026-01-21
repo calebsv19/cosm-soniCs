@@ -15,6 +15,13 @@ Purpose: Real-time audio engine, graph, and source implementations.
   - Segment utilities (`engine_add_clip_segment`) to clone portions of an existing clip when splitting around drops.
   - Graph wiring (`engine_queue_graph_swap`, `engine_rebuild_sources`) and command processing (`engine_post_command`, worker thread loop).
   - Utility helpers for sampler refresh, clip sorting, and transport frame tracking.
+- `engine_meter.c`
+  - Master/track peak-RMS metering snapshots plus FX metering taps (correlation, vectorscope, LUFS).
+  - FX meter tap callback captures per-instance snapshots for the effects panel detail views.
+- `engine_spectrum.c`
+  - Background spectrum analyzer for EQ detail views (track or master).
+- `engine_spectrogram.c`
+  - STFT-style spectrogram history capture for the spectrogram meter detail view.
 - `graph.c`
   - `engine_graph_create/destroy/configure`: Own the mixing graph and its buffer pool.
   - `engine_graph_add_source/clear_sources`: Register sampler/tone sources with optional reset callbacks.

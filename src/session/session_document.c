@@ -89,11 +89,16 @@ void session_document_init(SessionDocument* doc) {
     doc->tempo.ts_den = 4;
     doc->timeline.view_in_beats = false;
     doc->timeline.follow_mode = TIMELINE_FOLLOW_JUMP;
+    doc->selected_track_index = -1;
+    doc->selected_clip_index = -1;
     doc->effects_panel.view_mode = 0;
     doc->effects_panel.selected_index = -1;
     doc->effects_panel.open_index = -1;
     doc->effects_panel.list_detail_mode = 0;
     doc->effects_panel.eq_view_mode = 0;
+    doc->effects_panel.meter_scope_mode = 0;
+    doc->effects_panel.meter_lufs_mode = 1;
+    doc->effects_panel.meter_spectrogram_mode = 0;
     doc->effects_panel.low_cut.enabled = false;
     doc->effects_panel.low_cut.freq_hz = 80.0f;
     doc->effects_panel.low_cut.slope = 12.0f;
@@ -126,6 +131,22 @@ void session_document_free(SessionDocument* doc) {
     if (doc->tracks) {
         for (int i = 0; i < doc->track_count; ++i) {
             if (doc->tracks[i].clips) {
+                for (int c = 0; c < doc->tracks[i].clip_count; ++c) {
+                    SessionClip* clip = &doc->tracks[i].clips[c];
+                    if (clip->automation_lanes) {
+                        for (int l = 0; l < clip->automation_lane_count; ++l) {
+                            SessionAutomationLane* lane = &clip->automation_lanes[l];
+                            if (lane->points) {
+                                free(lane->points);
+                                lane->points = NULL;
+                            }
+                            lane->point_count = 0;
+                        }
+                        free(clip->automation_lanes);
+                        clip->automation_lanes = NULL;
+                        clip->automation_lane_count = 0;
+                    }
+                }
                 free(doc->tracks[i].clips);
                 doc->tracks[i].clips = NULL;
             }
@@ -172,6 +193,42 @@ static int count_active_clips(const EngineTrack* track) {
     return active;
 }
 
+// Copies automation lanes from an engine clip into a session clip.
+static bool session_clip_copy_automation(const EngineClip* src, SessionClip* dst) {
+    if (!src || !dst) {
+        return false;
+    }
+    dst->automation_lanes = NULL;
+    dst->automation_lane_count = 0;
+    if (!src->automation_lanes || src->automation_lane_count <= 0) {
+        return true;
+    }
+    dst->automation_lanes = (SessionAutomationLane*)calloc((size_t)src->automation_lane_count,
+                                                           sizeof(SessionAutomationLane));
+    if (!dst->automation_lanes) {
+        return false;
+    }
+    dst->automation_lane_count = src->automation_lane_count;
+    for (int i = 0; i < src->automation_lane_count; ++i) {
+        const EngineAutomationLane* src_lane = &src->automation_lanes[i];
+        SessionAutomationLane* dst_lane = &dst->automation_lanes[i];
+        dst_lane->target = src_lane->target;
+        dst_lane->point_count = src_lane->point_count;
+        if (src_lane->point_count > 0) {
+            dst_lane->points = (SessionAutomationPoint*)calloc((size_t)src_lane->point_count,
+                                                               sizeof(SessionAutomationPoint));
+            if (!dst_lane->points) {
+                return false;
+            }
+            for (int p = 0; p < src_lane->point_count; ++p) {
+                dst_lane->points[p].frame = src_lane->points[p].frame;
+                dst_lane->points[p].value = src_lane->points[p].value;
+            }
+        }
+    }
+    return true;
+}
+
 bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
     if (!state || !out_doc) {
         return false;
@@ -210,6 +267,8 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
     out_doc->timeline.view_in_beats = state->timeline_view_in_beats;
     out_doc->timeline.follow_mode = (int)state->timeline_follow_mode;
     out_doc->timeline.playhead_frame = out_doc->transport_frame;
+    out_doc->selected_track_index = state->selected_track_index;
+    out_doc->selected_clip_index = state->selected_clip_index;
     EffectsPanelState* panel = &((AppState*)state)->effects_panel;
     session_store_active_eq_curve(panel);
     const EqCurveState* master_curve = &panel->eq_curve_master;
@@ -218,6 +277,9 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
     out_doc->effects_panel.open_index = panel->list_open_slot_index;
     out_doc->effects_panel.list_detail_mode = (int)panel->list_detail_mode;
     out_doc->effects_panel.eq_view_mode = (int)panel->eq_detail.view_mode;
+    out_doc->effects_panel.meter_scope_mode = (int)panel->meter_scope_mode;
+    out_doc->effects_panel.meter_lufs_mode = (int)panel->meter_lufs_mode;
+    out_doc->effects_panel.meter_spectrogram_mode = (int)panel->meter_spectrogram_mode;
     out_doc->effects_panel.low_cut.enabled = master_curve->low_cut.enabled;
     out_doc->effects_panel.low_cut.freq_hz = master_curve->low_cut.freq_hz;
     out_doc->effects_panel.low_cut.slope = master_curve->low_cut.slope;
@@ -307,6 +369,13 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
             dst_clip->offset_frames = src_clip->offset_frames;
             dst_clip->fade_in_frames = src_clip->fade_in_frames;
             dst_clip->fade_out_frames = src_clip->fade_out_frames;
+            dst_clip->fade_in_curve = src_clip->fade_in_curve;
+            dst_clip->fade_out_curve = src_clip->fade_out_curve;
+            if (!session_clip_copy_automation(src_clip, dst_clip)) {
+                SDL_Log("session_document_capture: failed to copy automation for track %d clip %d", t, c);
+                session_document_reset(out_doc);
+                return false;
+            }
             dst_clip->gain = src_clip->gain;
             dst_clip->selected = src_clip->selected;
         }

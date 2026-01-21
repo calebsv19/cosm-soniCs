@@ -23,9 +23,7 @@
 #define INSPECTOR_LABEL_SCALE 1.0f
 #define INSPECTOR_VALUE_SCALE 1.0f
 #define INSPECTOR_SLIDER_HEIGHT 6
-#define INSPECTOR_PRESET_HEIGHT 18
 #define INSPECTOR_PRESET_GAP 6
-#define INSPECTOR_PRESET_LABEL_HEIGHT 14
 #define INSPECTOR_WAVE_HEADER_HEIGHT 26
 #define INSPECTOR_WAVE_HEADER_PAD 8
 #define INSPECTOR_WAVE_SECTION_GAP 10
@@ -281,19 +279,186 @@ static void clip_inspector_set_row(ClipInspectorLayout* layout,
     layout->rows[row].value_rect = (SDL_Rect){value_x, y, value_w, h};
 }
 
+// Computes the waveform view range used by the inspector panel.
+bool clip_inspector_get_waveform_view(const AppState* state,
+                                      const EngineClip* clip,
+                                      uint64_t clip_frames,
+                                      uint64_t* view_start,
+                                      uint64_t* view_frames) {
+    if (!state || !clip || !view_start || !view_frames) {
+        return false;
+    }
+    bool view_source = state->inspector.waveform.view_source;
+    uint64_t total = 0;
+    if (clip->media && clip->media->frame_count > 0) {
+        total = clip->media->frame_count;
+    }
+    if (view_source) {
+        if (total == 0) {
+            return false;
+        }
+        float zoom = state->inspector.waveform.zoom;
+        if (zoom < 1.0f) zoom = 1.0f;
+        uint64_t frames = (uint64_t)llround((double)total / (double)zoom);
+        if (frames < 1) frames = 1;
+        if (frames > total) frames = total;
+        float scroll = state->inspector.waveform.scroll;
+        if (scroll < 0.0f) scroll = 0.0f;
+        if (scroll > 1.0f) scroll = 1.0f;
+        uint64_t max_start = total > frames ? total - frames : 0;
+        *view_start = (uint64_t)llround((double)max_start * (double)scroll);
+        *view_frames = frames;
+        return true;
+    }
+
+    *view_start = clip->offset_frames;
+    *view_frames = clip_frames > 0 ? clip_frames : 1;
+    return true;
+}
+
+// Draws a fade overlay into the inspector waveform using the active curve.
+static void clip_inspector_draw_fade_overlay(SDL_Renderer* renderer,
+                                             const SDL_Rect* rect,
+                                             uint64_t view_start,
+                                             uint64_t view_frames,
+                                             uint64_t fade_start,
+                                             uint64_t fade_frames,
+                                             EngineFadeCurve curve,
+                                             bool invert,
+                                             Uint8 alpha) {
+    if (!renderer || !rect || rect->w <= 0 || rect->h <= 0 || view_frames == 0 || fade_frames == 0) {
+        return;
+    }
+    uint64_t view_end = view_start + view_frames;
+    uint64_t fade_end = fade_start + fade_frames;
+    if (fade_end <= view_start || fade_start >= view_end) {
+        return;
+    }
+    double start_t = (double)(fade_start > view_start ? fade_start - view_start : 0) / (double)view_frames;
+    double end_t = (double)(fade_end > view_start ? fade_end - view_start : 0) / (double)view_frames;
+    if (start_t < 0.0) start_t = 0.0;
+    if (end_t > 1.0) end_t = 1.0;
+    if (end_t <= start_t) {
+        return;
+    }
+    int x0 = rect->x + (int)floor(start_t * (double)rect->w);
+    int x1 = rect->x + (int)ceil(end_t * (double)rect->w);
+    if (x1 <= x0) x1 = x0 + 1;
+    if (x0 < rect->x) x0 = rect->x;
+    if (x1 > rect->x + rect->w) x1 = rect->x + rect->w;
+
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, alpha);
+    for (int px = x0; px < x1; ++px) {
+        double frame = (double)view_start +
+                       ((double)(px - rect->x) + 0.5) / (double)rect->w * (double)view_frames;
+        float t = (float)((frame - (double)fade_start) / (double)fade_frames);
+        float gain = ui_fade_curve_eval(curve, t);
+        float overlay = invert ? (1.0f - gain) : gain;
+        if (overlay <= 0.0f) {
+            continue;
+        }
+        int h = (int)lroundf(overlay * (float)rect->h);
+        if (h <= 0) {
+            continue;
+        }
+        SDL_RenderDrawLine(renderer, px, rect->y, px, rect->y + h);
+    }
+}
+
+// Draws automation lines and points in the inspector waveform view.
+static void clip_inspector_draw_automation(SDL_Renderer* renderer,
+                                           const SDL_Rect* rect,
+                                           uint64_t view_start,
+                                           uint64_t view_frames,
+                                           const EngineClip* clip,
+                                           uint64_t clip_frames,
+                                           const AutomationUIState* automation_ui,
+                                           EngineAutomationTarget target,
+                                           int track_index,
+                                           int clip_index) {
+    if (!renderer || !rect || !clip || rect->w <= 0 || rect->h <= 0 || view_frames == 0 || clip_frames == 0) {
+        return;
+    }
+    const EngineAutomationLane* lane = NULL;
+    for (int i = 0; i < clip->automation_lane_count; ++i) {
+        if (clip->automation_lanes[i].target == target) {
+            lane = &clip->automation_lanes[i];
+            break;
+        }
+    }
+    int baseline = rect->y + rect->h / 2;
+    int range = rect->h / 2 - 4;
+    if (range < 4) {
+        range = 4;
+    }
+    uint64_t clip_start = clip->offset_frames;
+    uint64_t clip_end = clip_start + clip_frames;
+    float prev_value = 0.0f;
+    uint64_t prev_frame = clip_start;
+    SDL_SetRenderDrawColor(renderer, 170, 210, 230, 220);
+    if (lane && lane->point_count > 0) {
+        for (int i = 0; i < lane->point_count; ++i) {
+            const EngineAutomationPoint* point = &lane->points[i];
+            uint64_t abs_frame = clip_start + point->frame;
+            if (abs_frame > clip_end) {
+                abs_frame = clip_end;
+            }
+            double t0 = (double)(prev_frame > view_start ? prev_frame - view_start : 0) / (double)view_frames;
+            double t1 = (double)(abs_frame > view_start ? abs_frame - view_start : 0) / (double)view_frames;
+            if (t0 < 0.0) t0 = 0.0;
+            if (t0 > 1.0) t0 = 1.0;
+            if (t1 < 0.0) t1 = 0.0;
+            if (t1 > 1.0) t1 = 1.0;
+            int x0 = rect->x + (int)llround(t0 * (double)rect->w);
+            int y0 = baseline - (int)llround((double)prev_value * (double)range);
+            int x1 = rect->x + (int)llround(t1 * (double)rect->w);
+            int y1 = baseline - (int)llround((double)point->value * (double)range);
+            SDL_RenderDrawLine(renderer, x0, y0, x1, y1);
+            prev_frame = abs_frame;
+            prev_value = point->value;
+        }
+    }
+    double t_end = (double)(clip_end > view_start ? clip_end - view_start : 0) / (double)view_frames;
+    if (t_end < 0.0) t_end = 0.0;
+    if (t_end > 1.0) t_end = 1.0;
+    int x_end = rect->x + (int)llround(t_end * (double)rect->w);
+    int x_prev = rect->x + (int)llround((double)(prev_frame > view_start ? prev_frame - view_start : 0) / (double)view_frames * (double)rect->w);
+    int y_prev = baseline - (int)llround((double)prev_value * (double)range);
+    SDL_RenderDrawLine(renderer, x_prev, y_prev, x_end, baseline);
+
+    if (lane && lane->point_count > 0) {
+        for (int i = 0; i < lane->point_count; ++i) {
+            const EngineAutomationPoint* point = &lane->points[i];
+            uint64_t abs_frame = clip_start + point->frame;
+            if (abs_frame > clip_end) {
+                abs_frame = clip_end;
+            }
+            if (abs_frame < view_start || abs_frame > view_start + view_frames) {
+                continue;
+            }
+            double t = (double)(abs_frame - view_start) / (double)view_frames;
+            int x = rect->x + (int)llround(t * (double)rect->w);
+            int y = baseline - (int)llround((double)point->value * (double)range);
+            SDL_Rect dot = {x - 3, y - 3, 6, 6};
+            bool selected = automation_ui &&
+                            automation_ui->track_index == track_index &&
+                            automation_ui->clip_index == clip_index &&
+                            automation_ui->point_index == i &&
+                            automation_ui->target == target;
+            if (selected) {
+                SDL_SetRenderDrawColor(renderer, 230, 240, 255, 255);
+            } else {
+                SDL_SetRenderDrawColor(renderer, 120, 150, 170, 255);
+            }
+            SDL_RenderFillRect(renderer, &dot);
+        }
+    }
+}
+
 void clip_inspector_compute_layout(const AppState* state, ClipInspectorLayout* layout) {
     if (!state || !layout) return;
 
     zero_layout(layout);
-
-    // ---------- Runtime presets ----------
-    EngineRuntimeConfig runtime_cfg = clip_inspector_active_config(state);
-    int preset_count = runtime_cfg.fade_preset_count;
-    if (preset_count < 0) preset_count = 0;
-    if (preset_count > INSPECTOR_FADE_PRESET_COUNT) preset_count = INSPECTOR_FADE_PRESET_COUNT;
-    layout->fade_preset_count = preset_count;
-    for (int i = 0; i < preset_count; ++i) layout->fade_presets_ms[i] = runtime_cfg.fade_preset_ms[i];
-    for (int i = preset_count; i < INSPECTOR_FADE_PRESET_COUNT; ++i) layout->fade_presets_ms[i] = 0.0f;
 
     // ---------- Host pane ----------
     const Pane* mixer = ui_layout_get_pane(state, 2);
@@ -307,11 +472,6 @@ void clip_inspector_compute_layout(const AppState* state, ClipInspectorLayout* l
     const int row_gap = INSPECTOR_ROW_GAP;
     const int section_gap = INSPECTOR_SECTION_GAP;
     const int slider_h = INSPECTOR_SLIDER_HEIGHT;
-    const int preset_h = INSPECTOR_PRESET_HEIGHT;
-    const int preset_gap = INSPECTOR_PRESET_GAP;
-    const int preset_label_h = INSPECTOR_PRESET_LABEL_HEIGHT;
-    const int min_btn_w = 28;
-
     const int content_x = mixer->rect.x + M;
     const int content_y = mixer->rect.y + M;
     const int content_w = mixer->rect.w - 2 * M;
@@ -413,37 +573,6 @@ void clip_inspector_compute_layout(const AppState* state, ClipInspectorLayout* l
     layout->fade_out_fill_rect = layout->fade_out_track_rect;
     layout->fade_out_handle_rect = layout->fade_out_track_rect;
 
-    int preset_area_y = layout->rows[CLIP_INSPECTOR_ROW_FADE_OUT].value_rect.y + row_h + row_gap;
-    int preset_area_h = preset_label_h + preset_gap + preset_h * 2 + preset_gap;
-    int preset_bottom = layout->left_rect.y + layout->left_rect.h;
-    if (preset_area_y + preset_area_h <= preset_bottom && layout->fade_preset_count > 0) {
-        layout->fade_preset_label_rect = (SDL_Rect){value_x, preset_area_y, value_w, preset_label_h};
-        int row1_y = preset_area_y + preset_label_h + preset_gap;
-        int row2_y = row1_y + preset_h + preset_gap;
-        int button_w = value_w - (layout->fade_preset_count - 1) * preset_gap;
-        if (button_w < 0) button_w = 0;
-        button_w /= layout->fade_preset_count;
-        if (button_w < min_btn_w) button_w = min_btn_w;
-        int button_row_w = button_w * layout->fade_preset_count
-                         + preset_gap * (layout->fade_preset_count - 1);
-        int start_x = value_x + (value_w - button_row_w) / 2;
-        if (start_x < value_x) start_x = value_x;
-        for (int i = 0; i < layout->fade_preset_count; ++i) {
-            int bx = start_x + i * (button_w + preset_gap);
-            layout->fade_in_buttons[i] = (SDL_Rect){bx, row1_y, button_w, preset_h};
-            layout->fade_out_buttons[i] = (SDL_Rect){bx, row2_y, button_w, preset_h};
-        }
-        for (int i = layout->fade_preset_count; i < INSPECTOR_FADE_PRESET_COUNT; ++i) {
-            layout->fade_in_buttons[i] = (SDL_Rect){0, 0, 0, 0};
-            layout->fade_out_buttons[i] = (SDL_Rect){0, 0, 0, 0};
-        }
-    } else {
-        layout->fade_preset_label_rect = (SDL_Rect){0, 0, 0, 0};
-        for (int i = 0; i < INSPECTOR_FADE_PRESET_COUNT; ++i) {
-            layout->fade_in_buttons[i] = (SDL_Rect){0, 0, 0, 0};
-            layout->fade_out_buttons[i] = (SDL_Rect){0, 0, 0, 0};
-        }
-    }
 }
 
 // Draws a label/value row with clipped text.
@@ -770,28 +899,6 @@ void clip_inspector_render(SDL_Renderer* renderer, AppState* state, const ClipIn
     draw_slider(renderer, &layout->fade_in_track_rect, fade_in_ratio);
     draw_slider(renderer, &layout->fade_out_track_rect, fade_out_ratio);
 
-    if (layout->fade_preset_count > 0 && layout->fade_in_buttons[0].w > 0) {
-        ui_draw_text(renderer,
-                     layout->fade_preset_label_rect.x,
-                     layout->fade_preset_label_rect.y,
-                     "Fade Presets (ms)",
-                     label,
-                     INSPECTOR_LABEL_SCALE);
-        for (int i = 0; i < layout->fade_preset_count; ++i) {
-            float preset_ms = layout->fade_presets_ms[i];
-            char preset_label[8];
-            if (preset_ms < 0.05f) {
-                strcpy(preset_label, "0");
-            } else {
-                snprintf(preset_label, sizeof(preset_label), "%.0f", preset_ms);
-            }
-            bool active_in = fabsf(fade_in_ms - preset_ms) < 0.6f;
-            bool active_out = fabsf(fade_out_ms - preset_ms) < 0.6f;
-            draw_button(renderer, &layout->fade_in_buttons[i], preset_label, active_in);
-            draw_button(renderer, &layout->fade_out_buttons[i], preset_label, active_out);
-        }
-    }
-
     if (layout->rows[CLIP_INSPECTOR_ROW_PHASE].value_rect.w > 0) {
         SDL_Rect phase_rect = layout->rows[CLIP_INSPECTOR_ROW_PHASE].value_rect;
         int button_w = (phase_rect.w - INSPECTOR_PRESET_GAP) / 2;
@@ -850,75 +957,104 @@ void clip_inspector_render(SDL_Renderer* renderer, AppState* state, const ClipIn
                 bool view_source = state->inspector.waveform.view_source;
                 uint64_t total = clip->media->frame_count;
                 uint64_t view_start = 0;
-                uint64_t view_frames = total;
-                if (view_source) {
-                    float zoom = state->inspector.waveform.zoom;
-                    if (zoom < 1.0f) zoom = 1.0f;
-                    view_frames = (uint64_t)llround((double)total / (double)zoom);
-                    if (view_frames < 1) view_frames = 1;
-                    if (view_frames > total) view_frames = total;
+                uint64_t view_frames = 0;
+                if (clip_inspector_get_waveform_view(state, clip, clip_frames, &view_start, &view_frames)) {
+                    if (source_path && source_path[0] != '\0') {
+                        waveform_render_view(renderer,
+                                             &state->waveform_cache,
+                                             clip->media,
+                                             source_path,
+                                             &layout->right_waveform_rect,
+                                             view_start,
+                                             view_frames,
+                                             wave_color);
+                    }
 
-                    float scroll = state->inspector.waveform.scroll;
-                    if (scroll < 0.0f) scroll = 0.0f;
-                    if (scroll > 1.0f) scroll = 1.0f;
-                    uint64_t max_start = total > view_frames ? total - view_frames : 0;
-                    view_start = (uint64_t)llround((double)max_start * (double)scroll);
-                } else {
-                    view_start = clip->offset_frames;
-                    view_frames = clip_frames;
-                    if (view_frames == 0) view_frames = 1;
-                }
-
-                if (source_path && source_path[0] != '\0') {
-                    waveform_render_view(renderer,
-                                         &state->waveform_cache,
-                                         clip->media,
-                                         source_path,
-                                         &layout->right_waveform_rect,
-                                         view_start,
-                                         view_frames,
-                                         wave_color);
-                }
-
-                if (view_source) {
-                    uint64_t window_start = clip->offset_frames;
-                    uint64_t window_end = clip->offset_frames + clip_frames;
-                    if (window_end > total) window_end = total;
-                    if (window_start < window_end) {
-                        double start_t = (double)(window_start > view_start ? window_start - view_start : 0) / (double)view_frames;
-                        double end_t = (double)(window_end > view_start ? window_end - view_start : 0) / (double)view_frames;
-                        if (start_t < 0.0) start_t = 0.0;
-                        if (end_t > 1.0) end_t = 1.0;
-                        if (end_t > start_t) {
-                            int hx = layout->right_waveform_rect.x + (int)llround(start_t * (double)layout->right_waveform_rect.w);
-                            int hw = (int)llround((end_t - start_t) * (double)layout->right_waveform_rect.w);
-                            if (hw < 1) hw = 1;
-                            SDL_Rect highlight = {hx, layout->right_waveform_rect.y, hw, layout->right_waveform_rect.h};
-                            ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
-                            SDL_SetRenderDrawColor(renderer, 120, 160, 220, 40);
-                            SDL_RenderFillRect(renderer, &highlight);
-                            SDL_SetRenderDrawColor(renderer, 140, 180, 240, 120);
-                            SDL_RenderDrawRect(renderer, &highlight);
-                            ui_set_blend_mode(renderer, SDL_BLENDMODE_NONE);
+                    if (view_source) {
+                        uint64_t window_start = clip->offset_frames;
+                        uint64_t window_end = clip->offset_frames + clip_frames;
+                        if (window_end > total) window_end = total;
+                        if (window_start < window_end) {
+                            double start_t = (double)(window_start > view_start ? window_start - view_start : 0) / (double)view_frames;
+                            double end_t = (double)(window_end > view_start ? window_end - view_start : 0) / (double)view_frames;
+                            if (start_t < 0.0) start_t = 0.0;
+                            if (end_t > 1.0) end_t = 1.0;
+                            if (end_t > start_t) {
+                                int hx = layout->right_waveform_rect.x + (int)llround(start_t * (double)layout->right_waveform_rect.w);
+                                int hw = (int)llround((end_t - start_t) * (double)layout->right_waveform_rect.w);
+                                if (hw < 1) hw = 1;
+                                SDL_Rect highlight = {hx, layout->right_waveform_rect.y, hw, layout->right_waveform_rect.h};
+                                ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
+                                SDL_SetRenderDrawColor(renderer, 120, 160, 220, 40);
+                                SDL_RenderFillRect(renderer, &highlight);
+                                SDL_SetRenderDrawColor(renderer, 140, 180, 240, 120);
+                                SDL_RenderDrawRect(renderer, &highlight);
+                                ui_set_blend_mode(renderer, SDL_BLENDMODE_NONE);
+                            }
                         }
                     }
-                }
 
-                if (state->engine) {
-                    uint64_t transport_frame = engine_get_transport_frame(state->engine);
-                    uint64_t clip_start = clip->timeline_start_frames;
+                    ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
+                    uint64_t clip_start = clip->offset_frames;
                     uint64_t clip_end = clip_start + clip_frames;
-                    if (transport_frame >= clip_start && transport_frame <= clip_end) {
-                        uint64_t local_frame = clip->offset_frames + (transport_frame - clip_start);
-                        if (local_frame >= view_start && local_frame <= view_start + view_frames) {
-                            double t = (double)(local_frame - view_start) / (double)view_frames;
-                            int px = layout->right_waveform_rect.x + (int)llround(t * (double)layout->right_waveform_rect.w);
-                            SDL_SetRenderDrawColor(renderer, 255, 210, 110, 220);
-                            SDL_RenderDrawLine(renderer,
-                                               px,
-                                               layout->right_waveform_rect.y,
-                                               px,
-                                               layout->right_waveform_rect.y + layout->right_waveform_rect.h);
+                    bool fade_in_selected = state->inspector.adjusting_fade_in || state->inspector.fade_in_selected;
+                    bool fade_out_selected = state->inspector.adjusting_fade_out || state->inspector.fade_out_selected;
+                    Uint8 fade_in_alpha = fade_in_selected ? 44 : 28;
+                    Uint8 fade_out_alpha = fade_out_selected ? 44 : 28;
+                    if (fade_in_frames > 0) {
+                        clip_inspector_draw_fade_overlay(renderer,
+                                                         &layout->right_waveform_rect,
+                                                         view_start,
+                                                         view_frames,
+                                                         clip_start,
+                                                         fade_in_frames,
+                                                         clip->fade_in_curve,
+                                                         true,
+                                                         fade_in_alpha);
+                    }
+                    if (fade_out_frames > 0 && clip_end > 0) {
+                        uint64_t fade_start = clip_end > fade_out_frames ? clip_end - fade_out_frames : clip_start;
+                        clip_inspector_draw_fade_overlay(renderer,
+                                                         &layout->right_waveform_rect,
+                                                         view_start,
+                                                         view_frames,
+                                                         fade_start,
+                                                         fade_out_frames,
+                                                         clip->fade_out_curve,
+                                                         false,
+                                                         fade_out_alpha);
+                    }
+                    ui_set_blend_mode(renderer, SDL_BLENDMODE_NONE);
+
+                    if (state->timeline_automation_mode) {
+                        clip_inspector_draw_automation(renderer,
+                                                       &layout->right_waveform_rect,
+                                                       view_start,
+                                                       view_frames,
+                                                       clip,
+                                                       clip_frames,
+                                                       &state->automation_ui,
+                                                       state->automation_ui.target,
+                                                       state->inspector.track_index,
+                                                       state->inspector.clip_index);
+                    }
+
+                    if (state->engine) {
+                        uint64_t transport_frame = engine_get_transport_frame(state->engine);
+                        uint64_t clip_start_frame = clip->timeline_start_frames;
+                        uint64_t clip_end_frame = clip_start_frame + clip_frames;
+                        if (transport_frame >= clip_start_frame && transport_frame <= clip_end_frame) {
+                            uint64_t local_frame = clip->offset_frames + (transport_frame - clip_start_frame);
+                            if (local_frame >= view_start && local_frame <= view_start + view_frames) {
+                                double t = (double)(local_frame - view_start) / (double)view_frames;
+                                int px = layout->right_waveform_rect.x + (int)llround(t * (double)layout->right_waveform_rect.w);
+                                SDL_SetRenderDrawColor(renderer, 255, 210, 110, 220);
+                                SDL_RenderDrawLine(renderer,
+                                                   px,
+                                                   layout->right_waveform_rect.y,
+                                                   px,
+                                                   layout->right_waveform_rect.y + layout->right_waveform_rect.h);
+                            }
                         }
                     }
                 }

@@ -12,7 +12,8 @@ Purpose: Session persistence helpers that translate between the live `AppState`/
 - `library`: Root directory for the asset browser and currently selected index.
 - `tracks[]`: Ordered list of tracks with name, gain, mute/solo flags.
   - `clips[]`: Per-track clips with asset path, clip name, gain, start/duration/offset frames, and selection flag.
-    - Each clip also persists `fade_in_frames` / `fade_out_frames` (in samples) for upcoming Phase 8 ramps.
+    - Each clip also persists `fade_in_frames` / `fade_out_frames` (in samples) plus `fade_in_curve` / `fade_out_curve`.
+    - Each clip can include `automation` lanes, each with a `target` and a list of `{frame, value}` points.
 
 ## Implementation
 - `session_serialization.c`: Captures and restores `AppState`/engine state. Saving is handled by `session_save_to_file` (`session_document_capture` → `session_document_write_file`), while loading goes through `session_load_from_file` (`session_document_read_file` → validation → `session_apply_document`). Individual helpers can be reused for tooling/tests.
@@ -50,6 +51,16 @@ Purpose: Session persistence helpers that translate between the live `AppState`/
           "offset_frames": 0,
           "fade_in_frames": 0,
           "fade_out_frames": 0,
+          "fade_in_curve": 0,
+          "fade_out_curve": 0,
+          "automation": [
+            {
+              "target": 0,
+              "points": [
+                {"frame": 24000, "value": 0.5}
+              ]
+            }
+          ],
           "selected": true
         }
       ]

@@ -435,6 +435,177 @@ static void format_timeline_label(float seconds, bool view_in_beats, const Tempo
     out[out_len - 1] = '\0';
 }
 
+// Draws the automation mode overlay across the visible timeline lanes.
+static void draw_timeline_automation_overlay(SDL_Renderer* renderer,
+                                             const SDL_Rect* rect,
+                                             int track_y,
+                                             int track_height,
+                                             int track_spacing,
+                                             int track_count,
+                                             int content_left,
+                                             int content_width) {
+    if (!renderer || !rect || track_height <= 0 || content_width <= 0) {
+        return;
+    }
+    int lanes = track_count > 0 ? track_count : 1;
+    int timeline_bottom = track_y + (lanes * (track_height + track_spacing)) - track_spacing;
+    if (timeline_bottom <= track_y) {
+        return;
+    }
+    SDL_Rect overlay_rect = {rect->x, track_y, rect->w, timeline_bottom - track_y};
+    SDL_SetRenderDrawColor(renderer, 10, 12, 16, 140);
+    SDL_RenderFillRect(renderer, &overlay_rect);
+    SDL_SetRenderDrawColor(renderer, 120, 150, 175, 220);
+    for (int lane = 0; lane < lanes; ++lane) {
+        int lane_top = track_y + lane * (track_height + track_spacing);
+        int baseline_y = lane_top + track_height / 2;
+        SDL_RenderDrawLine(renderer, content_left, baseline_y, content_left + content_width, baseline_y);
+    }
+}
+
+static void draw_timeline_automation_segment(SDL_Renderer* renderer,
+                                             int baseline_y,
+                                             int range,
+                                             float window_start_seconds,
+                                             float window_end_seconds,
+                                             int content_left,
+                                             float pixels_per_second,
+                                             double seg_start_seconds,
+                                             double seg_end_seconds,
+                                             float start_value,
+                                             float end_value) {
+    if (!renderer || range <= 0 || pixels_per_second <= 0.0f) {
+        return;
+    }
+    if (seg_end_seconds <= seg_start_seconds) {
+        return;
+    }
+    double visible_start = seg_start_seconds;
+    double visible_end = seg_end_seconds;
+    if (visible_start < window_start_seconds) {
+        visible_start = window_start_seconds;
+    }
+    if (visible_end > window_end_seconds) {
+        visible_end = window_end_seconds;
+    }
+    if (visible_end <= visible_start) {
+        return;
+    }
+    double span = seg_end_seconds - seg_start_seconds;
+    float t0 = span > 0.0 ? (float)((visible_start - seg_start_seconds) / span) : 0.0f;
+    float t1 = span > 0.0 ? (float)((visible_end - seg_start_seconds) / span) : 0.0f;
+    float v0 = start_value + (end_value - start_value) * t0;
+    float v1 = start_value + (end_value - start_value) * t1;
+    int x0 = content_left + (int)llroundf((float)(visible_start - window_start_seconds) * pixels_per_second);
+    int x1 = content_left + (int)llroundf((float)(visible_end - window_start_seconds) * pixels_per_second);
+    int y0 = baseline_y - (int)llroundf(v0 * (float)range);
+    int y1 = baseline_y - (int)llroundf(v1 * (float)range);
+    SDL_RenderDrawLine(renderer, x0, y0, x1, y1);
+}
+
+// Draws automation points and linear segments for a clip.
+static void draw_timeline_clip_automation(SDL_Renderer* renderer,
+                                          const SDL_Rect* clip_rect,
+                                          const EngineClip* clip,
+                                          uint64_t clip_frames,
+                                          EngineAutomationTarget target,
+                                          const AutomationUIState* automation_ui,
+                                          int track_index,
+                                          int clip_index,
+                                          int sample_rate,
+                                          float window_start_seconds,
+                                          float window_end_seconds,
+                                          int content_left,
+                                          int content_right,
+                                          float pixels_per_second) {
+    if (!renderer || !clip_rect || !clip || clip_rect->h <= 0 || clip_frames == 0 || sample_rate <= 0) {
+        return;
+    }
+    const EngineAutomationLane* lane = NULL;
+    for (int i = 0; i < clip->automation_lane_count; ++i) {
+        if (clip->automation_lanes[i].target == target) {
+            lane = &clip->automation_lanes[i];
+            break;
+        }
+    }
+    int baseline_y = clip_rect->y + clip_rect->h / 2;
+    int range = clip_rect->h / 2 - 4;
+    if (range < 4) {
+        range = 4;
+    }
+    SDL_Color line_color = {170, 210, 230, 220};
+    SDL_SetRenderDrawColor(renderer, line_color.r, line_color.g, line_color.b, line_color.a);
+
+    double clip_start_seconds = (double)clip->timeline_start_frames / (double)sample_rate;
+    double clip_end_seconds = clip_start_seconds + (double)clip_frames / (double)sample_rate;
+    if (clip_end_seconds <= window_start_seconds || clip_start_seconds >= window_end_seconds) {
+        return;
+    }
+    float prev_value = 0.0f;
+    double prev_seconds = clip_start_seconds;
+    if (lane && lane->point_count > 0) {
+        for (int i = 0; i < lane->point_count; ++i) {
+            const EngineAutomationPoint* point = &lane->points[i];
+            uint64_t frame = point->frame > clip_frames ? clip_frames : point->frame;
+            float value = point->value;
+            double point_seconds = clip_start_seconds + (double)frame / (double)sample_rate;
+            draw_timeline_automation_segment(renderer,
+                                             baseline_y,
+                                             range,
+                                             window_start_seconds,
+                                             window_end_seconds,
+                                             content_left,
+                                             pixels_per_second,
+                                             prev_seconds,
+                                             point_seconds,
+                                             prev_value,
+                                             value);
+            prev_seconds = point_seconds;
+            prev_value = value;
+        }
+    }
+    draw_timeline_automation_segment(renderer,
+                                     baseline_y,
+                                     range,
+                                     window_start_seconds,
+                                     window_end_seconds,
+                                     content_left,
+                                     pixels_per_second,
+                                     prev_seconds,
+                                     clip_end_seconds,
+                                     prev_value,
+                                     0.0f);
+
+    if (lane && lane->point_count > 0) {
+        for (int i = 0; i < lane->point_count; ++i) {
+            const EngineAutomationPoint* point = &lane->points[i];
+            uint64_t frame = point->frame > clip_frames ? clip_frames : point->frame;
+            double point_seconds = clip_start_seconds + (double)frame / (double)sample_rate;
+            if (point_seconds < window_start_seconds || point_seconds > window_end_seconds) {
+                continue;
+            }
+            int x = content_left + (int)llround((float)(point_seconds - window_start_seconds) * pixels_per_second);
+            if (x < content_left - 6 || x > content_right + 6) {
+                continue;
+            }
+            int y = baseline_y - (int)llround((double)point->value * (double)range);
+            int r = 3;
+            SDL_Rect dot = {x - r, y - r, r * 2, r * 2};
+            bool selected = automation_ui &&
+                            automation_ui->track_index == track_index &&
+                            automation_ui->clip_index == clip_index &&
+                            automation_ui->point_index == i &&
+                            automation_ui->target == target;
+            if (selected) {
+                SDL_SetRenderDrawColor(renderer, 230, 240, 255, 255);
+            } else {
+                SDL_SetRenderDrawColor(renderer, 120, 150, 170, 255);
+            }
+            SDL_RenderFillRect(renderer, &dot);
+        }
+    }
+}
+
 void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState* state) {
     if (!renderer || !rect || !state || !state->engine) {
         return;
@@ -452,7 +623,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
     float window_end = window_start + visible_seconds;
 
     const int controls_height = TIMELINE_CONTROLS_HEIGHT;
-    const int track_top_offset = controls_height + 8;
+    const int track_top_offset = controls_height + TIMELINE_RULER_HEIGHT;
     const int track_y = rect->y + track_top_offset;
     int track_height = (int)(TIMELINE_BASE_TRACK_HEIGHT * vertical_scale);
     if (track_height < 32) {
@@ -472,19 +643,50 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
     const int track_count = engine_get_track_count(engine);
     const int sample_rate = engine_get_config(engine)->sample_rate;
 
+    SDL_Rect header_rect = {rect->x, rect->y, rect->w, controls_height};
+    SDL_SetRenderDrawColor(renderer, 28, 32, 40, 255);
+    SDL_RenderFillRect(renderer, &header_rect);
+    SDL_SetRenderDrawColor(renderer, 50, 55, 70, 255);
+    SDL_RenderDrawLine(renderer, rect->x, rect->y + controls_height - 1, rect->x + rect->w, rect->y + controls_height - 1);
+
     TimelineControlsUI* controls = (TimelineControlsUI*)&state->timeline_controls;
-    int controls_left = rect->x + 12;
-    controls->add_rect = (SDL_Rect){controls_left, rect->y + 8, 28, 24};
-    controls->remove_rect = (SDL_Rect){controls_left + 36, rect->y + 8, 28, 24};
-    controls->loop_toggle_rect = (SDL_Rect){controls_left + 72, rect->y + 8, 42, 24};
+    int controls_left = rect->x + 10;
+    int button_h = controls_height - 6;
+    if (button_h < 14) {
+        button_h = 14;
+    }
+    int button_y = rect->y + (controls_height - button_h) / 2;
+    int button_w_small = 22;
+    int button_spacing = 6;
+    controls->add_rect = (SDL_Rect){controls_left, button_y, button_w_small, button_h};
+    controls->remove_rect = (SDL_Rect){controls_left + button_w_small + button_spacing, button_y, button_w_small, button_h};
+    controls->loop_toggle_rect = (SDL_Rect){controls->remove_rect.x + button_w_small + button_spacing, button_y, 36, button_h};
+    controls->snap_toggle_rect = (SDL_Rect){controls->loop_toggle_rect.x + controls->loop_toggle_rect.w + button_spacing,
+                                            button_y, 40, button_h};
+    controls->automation_toggle_rect = (SDL_Rect){controls->snap_toggle_rect.x + controls->snap_toggle_rect.w + button_spacing,
+                                                  button_y, 44, button_h};
+    controls->automation_target_rect = (SDL_Rect){controls->automation_toggle_rect.x + controls->automation_toggle_rect.w + button_spacing,
+                                                  button_y, 40, button_h};
 
     bool remove_enabled = track_count > 0;
     draw_timeline_button(renderer, &controls->add_rect, "+", controls->add_hovered, true);
     draw_timeline_button(renderer, &controls->remove_rect, "-", controls->remove_hovered, remove_enabled);
     draw_timeline_button(renderer, &controls->loop_toggle_rect, "LOOP", controls->loop_toggle_hovered, true);
+    draw_timeline_button(renderer, &controls->snap_toggle_rect, "SNAP", controls->snap_toggle_hovered, true);
+    draw_timeline_button(renderer, &controls->automation_toggle_rect, "AUTO", controls->automation_toggle_hovered, true);
+    const char* target_label = state->automation_ui.target == ENGINE_AUTOMATION_TARGET_PAN ? "PAN" : "VOL";
+    draw_timeline_button(renderer, &controls->automation_target_rect, target_label, controls->automation_target_hovered, true);
     if (state->loop_enabled) {
         SDL_SetRenderDrawColor(renderer, 130, 200, 180, 255);
         SDL_RenderDrawRect(renderer, &controls->loop_toggle_rect);
+    }
+    if (state->timeline_snap_enabled) {
+        SDL_SetRenderDrawColor(renderer, 130, 160, 210, 255);
+        SDL_RenderDrawRect(renderer, &controls->snap_toggle_rect);
+    }
+    if (state->timeline_automation_mode) {
+        SDL_SetRenderDrawColor(renderer, 110, 150, 200, 255);
+        SDL_RenderDrawRect(renderer, &controls->automation_toggle_rect);
     }
 
     controls->loop_start_rect = (SDL_Rect){0,0,0,0};
@@ -516,22 +718,27 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
             loop_end_x = loop_start_x;
             loop_start_x = tmp;
         }
-        int top_zone_y = rect->y + 8;
-        int top_zone_h = track_y - rect->y - 12;
-        if (top_zone_h < 12) top_zone_h = 12;
+        int top_zone_y = rect->y + controls_height + 2;
+        int top_zone_h = TIMELINE_RULER_HEIGHT - 4;
+        if (top_zone_h < 10) top_zone_h = 10;
         int handle_width = 10;
-        int handle_height = top_zone_h - 6;
-        if (handle_height < 12) handle_height = 12;
-        controls->loop_start_rect = (SDL_Rect){loop_start_x - handle_width / 2, top_zone_y + 3, handle_width, handle_height};
-        controls->loop_end_rect = (SDL_Rect){loop_end_x - handle_width / 2, top_zone_y + 3, handle_width, handle_height};
+        int handle_height = top_zone_h - 4;
+        if (handle_height < 8) handle_height = 8;
+        int handle_y = top_zone_y + (top_zone_h - handle_height) / 2;
+        controls->loop_start_rect = (SDL_Rect){loop_start_x - handle_width / 2, handle_y, handle_width, handle_height};
+        controls->loop_end_rect = (SDL_Rect){loop_end_x - handle_width / 2, handle_y, handle_width, handle_height};
 
         if (loop_end_x > loop_start_x) {
             have_loop_region = true;
+            int loop_top = rect->y + controls_height;
+            int loop_bottom = track_y + grid_lanes * (track_height + track_spacing) - track_spacing;
+            int loop_height = loop_bottom - loop_top;
+            if (loop_height < 0) loop_height = 0;
             loop_region_rect = (SDL_Rect){
                 loop_start_x,
-                track_y,
+                loop_top,
                 loop_end_x - loop_start_x,
-                grid_lanes * (track_height + track_spacing) - track_spacing
+                loop_height
             };
         }
     }
@@ -779,6 +986,8 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
                     int clip_offset_px = clip_clip_left_px;
                     if (clip_offset_px < 0) clip_offset_px = 0;
                     double clip_total_px = (clip_end_sec - start_sec) * pixels_per_second;
+                    EngineFadeCurve fade_in_curve = clip->fade_in_curve;
+                    EngineFadeCurve fade_out_curve = clip->fade_out_curve;
 
                     ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
                     int fade_in_draw = 0;
@@ -790,9 +999,9 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
                         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 28);
                         for (int fx = 0; fx < fade_in_draw; ++fx) {
                             float tf = (float)(clip_offset_px + fx) / (float)fade_in_px;
-                            if (tf > 1.0f) tf = 1.0f;
-                            if (tf < 0.0f) tf = 0.0f;
-                            int h = (int)((1.0f - tf) * clip_rect.h);
+                            float gain = ui_fade_curve_eval(fade_in_curve, tf);
+                            float overlay = 1.0f - gain;
+                            int h = (int)(overlay * clip_rect.h);
                             SDL_RenderDrawLine(renderer,
                                                clip_rect.x + fx,
                                                clip_rect.y,
@@ -819,9 +1028,8 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
                         for (int fx = 0; fx < fade_out_draw; ++fx) {
                             int local_px = clip_offset_px + start_x + fx;
                             float tf = (float)((double)local_px - fade_out_start_px) / (float)fade_out_px;
-                            if (tf > 1.0f) tf = 1.0f;
-                            if (tf < 0.0f) tf = 0.0f;
-                            int h = (int)(tf * clip_rect.h);
+                            float gain = ui_fade_curve_eval(fade_out_curve, tf);
+                            int h = (int)(gain * clip_rect.h);
                             int px = clip_rect.x + start_x + fx;
                             SDL_RenderDrawLine(renderer,
                                                px,
@@ -871,6 +1079,73 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
         }
     }
 
+    if (state->timeline_automation_mode) {
+        draw_timeline_automation_overlay(renderer,
+                                         rect,
+                                         track_y,
+                                         track_height,
+                                         track_spacing,
+                                         track_count,
+                                         content_left,
+                                         content_width);
+        if (tracks && track_count > 0 && sample_rate > 0) {
+            for (int t = 0; t < track_count; ++t) {
+                const EngineTrack* track = &tracks[t];
+                int lane_top = track_y + t * (track_height + track_spacing);
+                int clip_y = lane_top + 8;
+                int clip_h = track_height - 16;
+                if (clip_h < 8) {
+                    clip_h = track_height;
+                }
+                if (!track || track->clip_count <= 0) {
+                    continue;
+                }
+                for (int i = 0; i < track->clip_count; ++i) {
+                    const EngineClip* clip = &track->clips[i];
+                    if (!clip) {
+                        continue;
+                    }
+                    uint64_t frame_count = clip->duration_frames;
+                    uint64_t media_frames = (clip->media && clip->media->frame_count > 0) ? clip->media->frame_count : 0;
+                    uint64_t clip_available = media_frames > clip->offset_frames ? media_frames - clip->offset_frames : 0;
+                    if (frame_count == 0 || (clip_available > 0 && frame_count > clip_available)) {
+                        frame_count = clip_available;
+                    }
+                    if (frame_count == 0) {
+                        continue;
+                    }
+                    const double clip_sec = (double)frame_count / (double)sample_rate;
+                    const double start_sec = (double)clip->timeline_start_frames / (double)sample_rate;
+                    int clip_x = content_left + (int)round((start_sec - (double)window_start) * pixels_per_second);
+                    int clip_w = (int)round(clip_sec * pixels_per_second);
+                    if (clip_w < 4) {
+                        clip_w = 4;
+                    }
+                    SDL_Rect clip_rect = {
+                        clip_x,
+                        clip_y,
+                        clip_w,
+                        clip_h,
+                    };
+                    draw_timeline_clip_automation(renderer,
+                                                  &clip_rect,
+                                                  clip,
+                                                  frame_count,
+                                                  state->automation_ui.target,
+                                                  &state->automation_ui,
+                                                  t,
+                                                  i,
+                                                  sample_rate,
+                                                  window_start,
+                                                  window_end,
+                                                  content_left,
+                                                  content_left + content_width,
+                                                  (float)pixels_per_second);
+                }
+            }
+        }
+    }
+
     if (have_loop_controls) {
         SDL_Color start_color = controls->loop_start_hovered || controls->adjusting_loop_start
                                      ? (SDL_Color){200, 240, 220, 255}
@@ -878,14 +1153,34 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
         SDL_Color end_color = controls->loop_end_hovered || controls->adjusting_loop_end
                                      ? (SDL_Color){200, 220, 250, 255}
                                      : (SDL_Color){160, 190, 230, 255};
+        SDL_Rect start_draw = controls->loop_start_rect;
+        SDL_Rect end_draw = controls->loop_end_rect;
+        int shrink_w = 4;
+        int shrink_h = 4;
+        if (start_draw.w > shrink_w) {
+            start_draw.x += shrink_w / 2;
+            start_draw.w -= shrink_w;
+        }
+        if (start_draw.h > shrink_h) {
+            start_draw.y += shrink_h / 2;
+            start_draw.h -= shrink_h;
+        }
+        if (end_draw.w > shrink_w) {
+            end_draw.x += shrink_w / 2;
+            end_draw.w -= shrink_w;
+        }
+        if (end_draw.h > shrink_h) {
+            end_draw.y += shrink_h / 2;
+            end_draw.h -= shrink_h;
+        }
         SDL_SetRenderDrawColor(renderer, start_color.r, start_color.g, start_color.b, start_color.a);
-        SDL_RenderFillRect(renderer, &controls->loop_start_rect);
+        SDL_RenderFillRect(renderer, &start_draw);
         SDL_SetRenderDrawColor(renderer, 40, 70, 80, 255);
-        SDL_RenderDrawRect(renderer, &controls->loop_start_rect);
+        SDL_RenderDrawRect(renderer, &start_draw);
         SDL_SetRenderDrawColor(renderer, end_color.r, end_color.g, end_color.b, end_color.a);
-        SDL_RenderFillRect(renderer, &controls->loop_end_rect);
+        SDL_RenderFillRect(renderer, &end_draw);
         SDL_SetRenderDrawColor(renderer, 40, 70, 90, 255);
-        SDL_RenderDrawRect(renderer, &controls->loop_end_rect);
+        SDL_RenderDrawRect(renderer, &end_draw);
 
         // Loop labels (time or beat) above handles.
         TempoState loop_tempo = state->tempo;

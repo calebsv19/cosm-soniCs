@@ -120,6 +120,39 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
                 session_set_error(error_message, error_message_len, "track %d clip %d fade-out exceeds duration", t, c);
                 return false;
             }
+            if (clip->fade_in_curve < 0 || clip->fade_in_curve >= ENGINE_FADE_CURVE_COUNT) {
+                session_set_error(error_message, error_message_len, "track %d clip %d fade-in curve invalid", t, c);
+                return false;
+            }
+            if (clip->fade_out_curve < 0 || clip->fade_out_curve >= ENGINE_FADE_CURVE_COUNT) {
+                session_set_error(error_message, error_message_len, "track %d clip %d fade-out curve invalid", t, c);
+                return false;
+            }
+            if (clip->automation_lane_count < 0) {
+                session_set_error(error_message, error_message_len, "track %d clip %d automation lane count invalid", t, c);
+                return false;
+            }
+            for (int l = 0; l < clip->automation_lane_count; ++l) {
+                const SessionAutomationLane* lane = &clip->automation_lanes[l];
+                if (lane->target < 0 || lane->target >= ENGINE_AUTOMATION_TARGET_COUNT) {
+                    session_set_error(error_message, error_message_len, "track %d clip %d automation lane invalid", t, c);
+                    return false;
+                }
+                if (lane->point_count < 0) {
+                    session_set_error(error_message, error_message_len, "track %d clip %d automation point count invalid", t, c);
+                    return false;
+                }
+                if (lane->point_count > 0 && !lane->points) {
+                    session_set_error(error_message, error_message_len, "track %d clip %d automation points missing", t, c);
+                    return false;
+                }
+                for (int p = 0; p < lane->point_count; ++p) {
+                    if (lane->points[p].frame > clip->duration_frames) {
+                        session_set_error(error_message, error_message_len, "track %d clip %d automation point out of range", t, c);
+                        return false;
+                    }
+                }
+            }
         }
     }
     if (doc->master_fx_count < 0 || doc->master_fx_count > FX_MASTER_MAX) {

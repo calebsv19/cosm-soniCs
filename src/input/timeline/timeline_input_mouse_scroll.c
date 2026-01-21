@@ -2,6 +2,7 @@
 
 #include "app_state.h"
 #include "engine/engine.h"
+#include "input/input_manager.h"
 #include "input/timeline/timeline_geometry.h"
 #include "ui/layout.h"
 #include "ui/panes.h"
@@ -123,6 +124,7 @@ bool timeline_input_mouse_handle_scroll(InputManager* manager, AppState* state, 
 
         uint64_t frame = (uint64_t)llroundf(ph_sec * (float)sample_rate);
         bool was_playing = engine_transport_is_playing(state->engine);
+        input_manager_reset_meter_history_on_seek(state);
         engine_transport_seek(state->engine, frame);
         if (was_playing) {
             engine_transport_play(state->engine);

@@ -2,6 +2,7 @@ APP_NAME := daw_app
 BUILD_DIR := build
 SRC_DIR := src
 SDLAPP_DIR := SDLApp
+VK_RENDERER_DIR := ../shared/vk_renderer
 
 # --- Auto-discover all effect sources (non-recursive per known subdir)
 # NOTE: the quotes in compile rules already protect the & in "filter&tone".
@@ -43,6 +44,8 @@ SRCS := \
 	$(SRC_DIR)/engine/engine_meter.c \
 	$(SRC_DIR)/engine/engine_eq.c \
 	$(SRC_DIR)/engine/engine_spectrum.c \
+	$(SRC_DIR)/engine/engine_spectrogram.c \
+	$(SRC_DIR)/engine/automation.c \
 	$(SRC_DIR)/engine/graph.c \
 	$(SRC_DIR)/engine/buffer_pool.c \
 	$(SRC_DIR)/time/tempo.c \
@@ -74,7 +77,10 @@ SRCS := \
 	$(SRC_DIR)/ui/effects_panel/eq_detail_view.c \
 	$(SRC_DIR)/ui/effects_panel/meter_detail_view.c \
 	$(SRC_DIR)/ui/effects_panel/meter_detail_correlation.c \
+	$(SRC_DIR)/ui/effects_panel/meter_detail_levels.c \
+	$(SRC_DIR)/ui/effects_panel/meter_detail_lufs.c \
 	$(SRC_DIR)/ui/effects_panel/meter_detail_mid_side.c \
+	$(SRC_DIR)/ui/effects_panel/meter_detail_spectrogram.c \
 	$(SRC_DIR)/ui/effects_panel/meter_detail_vectorscope.c \
 	$(SRC_DIR)/ui/effects_panel/track_snapshot_view.c \
 	$(SRC_DIR)/input/input_manager.c \
@@ -91,19 +97,21 @@ SRCS := \
 	$(SRC_DIR)/input/timeline/timeline_snap.c \
 	$(SRC_DIR)/input/timeline/timeline_selection.c \
 	$(SRC_DIR)/input/timeline/timeline_drag.c \
+	$(SRC_DIR)/input/automation_input.c \
 	$(SRC_DIR)/input/inspector_input.c \
+	$(SRC_DIR)/input/inspector_fade_input.c \
 	$(SRC_DIR)/input/transport_input.c \
 	$(SRC_DIR)/input/effects_panel_input.c \
 	$(SRC_DIR)/input/effects_panel_eq_detail_input.c \
 	$(SRC_DIR)/input/effects_panel_track_snapshot.c \
-	$(SRC_DIR)/render/vk_renderer_ref/src/vk_renderer.c \
-	$(SRC_DIR)/render/vk_renderer_ref/src/vk_renderer_config.c \
-	$(SRC_DIR)/render/vk_renderer_ref/src/vk_renderer_context.c \
-	$(SRC_DIR)/render/vk_renderer_ref/src/vk_renderer_commands.c \
-	$(SRC_DIR)/render/vk_renderer_ref/src/vk_renderer_pipeline.c \
-	$(SRC_DIR)/render/vk_renderer_ref/src/vk_renderer_memory.c \
-	$(SRC_DIR)/render/vk_renderer_ref/src/vk_renderer_textures.c \
+	$(SRC_DIR)/render/timer_hud_adapter.c \
 	$(EFFECTS_SRCS)
+
+VK_RENDERER_SRCS := $(shell find $(VK_RENDERER_DIR)/src -type f -name '*.c')
+TIMER_HUD_DIR := ../shared/timer_hud
+TIMER_HUD_SRCS := $(shell find $(TIMER_HUD_DIR)/src -type f -name '*.c')
+TIMER_HUD_EXTERNAL_SRCS := $(TIMER_HUD_DIR)/external/cJSON.c
+SRCS += $(VK_RENDERER_SRCS) $(TIMER_HUD_SRCS) $(TIMER_HUD_EXTERNAL_SRCS)
 
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS))
 OBJS_QUOTED := $(foreach obj,$(OBJS),"$(obj)")
@@ -179,7 +187,7 @@ else
 	endif
 endif
 
-CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) -I$(SRC_DIR)/render/vk_renderer_ref/include $(SDL2_CFLAGS) $(VULKAN_CFLAGS) -include $(SRC_DIR)/render/vk_renderer_ref/include/vk_renderer_sdl.h
+CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) -I$(VK_RENDERER_DIR)/include -I$(TIMER_HUD_DIR)/include -I$(TIMER_HUD_DIR)/external $(SDL2_CFLAGS) $(VULKAN_CFLAGS) -DVK_RENDERER_SHADER_ROOT=\"$(abspath $(VK_RENDERER_DIR))\" -include $(VK_RENDERER_DIR)/include/vk_renderer_sdl.h
 
 LDFLAGS := $(SDL2_LDFLAGS) $(SDL2_LIBS) $(SDL2_FRAMEWORKS) $(VULKAN_LIBS)
 ifeq ($(UNAME_S),Darwin)

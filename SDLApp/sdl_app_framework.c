@@ -5,6 +5,22 @@
 
 bool App_RenderOnce(AppContext* ctx, void (*handleRender)(AppContext* ctx));
 
+// app_try_recreate_swapchain attempts a safe swapchain rebuild when the window has a valid size.
+static bool app_try_recreate_swapchain(AppContext* ctx, int width, int height) {
+    if (!ctx || !ctx->renderer || !ctx->window) {
+        return false;
+    }
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+    VkResult result = vk_renderer_recreate_swapchain(ctx->renderer, ctx->window);
+    if (result != VK_SUCCESS) {
+        return false;
+    }
+    vk_renderer_set_logical_size(ctx->renderer, (float)width, (float)height);
+    return true;
+}
+
 bool App_Init(AppContext* ctx, const char* title, int width, int height, bool vsync) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
         SDL_Log("SDL_Init failed: %s", SDL_GetError());
@@ -46,6 +62,9 @@ bool App_Init(AppContext* ctx, const char* title, int width, int height, bool vs
     ctx->quit = false;
     ctx->userData = NULL;
     ctx->has_event = false;
+    ctx->pending_swapchain_recreate = false;
+    ctx->pending_swapchain_width = 0;
+    ctx->pending_swapchain_height = 0;
     SDL_zero(ctx->current_event);
     ctx->renderMode = RENDER_ALWAYS;
     ctx->renderThreshold = 0.033f;     // 30 FPS by default
@@ -64,11 +83,27 @@ void App_Run(AppContext* ctx, AppCallbacks* callbacks) {
             if (event.type == SDL_QUIT) {
                 ctx->quit = true;
             }
+            if (event.type == SDL_WINDOWEVENT) {
+                if (event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
+                    event.window.event == SDL_WINDOWEVENT_RESIZED) {
+                    ctx->pending_swapchain_recreate = true;
+                    ctx->pending_swapchain_width = event.window.data1;
+                    ctx->pending_swapchain_height = event.window.data2;
+                }
+            }
             if (callbacks && callbacks->handleInput) {
                 ctx->current_event = event;
                 ctx->has_event = true;
                 callbacks->handleInput(ctx);
                 ctx->has_event = false;
+            }
+        }
+
+        if (ctx->pending_swapchain_recreate) {
+            if (app_try_recreate_swapchain(ctx,
+                                           ctx->pending_swapchain_width,
+                                           ctx->pending_swapchain_height)) {
+                ctx->pending_swapchain_recreate = false;
             }
         }
 
@@ -125,9 +160,19 @@ bool App_RenderOnce(AppContext* ctx, void (*handleRender)(AppContext* ctx)) {
     if (!ctx || !ctx->renderer || !ctx->window) {
         return false;
     }
+    if (ctx->pending_swapchain_recreate) {
+        return false;
+    }
+    Uint32 window_flags = SDL_GetWindowFlags(ctx->window);
+    if (window_flags & SDL_WINDOW_MINIMIZED) {
+        return false;
+    }
     int winW = 0;
     int winH = 0;
     SDL_GetWindowSize(ctx->window, &winW, &winH);
+    if (winW <= 0 || winH <= 0) {
+        return false;
+    }
     vk_renderer_set_logical_size(ctx->renderer, (float)winW, (float)winH);
 
     VkCommandBuffer cmd = VK_NULL_HANDLE;
@@ -135,7 +180,9 @@ bool App_RenderOnce(AppContext* ctx, void (*handleRender)(AppContext* ctx)) {
     VkExtent2D extent = {0};
     VkResult frame = vk_renderer_begin_frame(ctx->renderer, &cmd, &fb, &extent);
     if (frame == VK_ERROR_OUT_OF_DATE_KHR || frame == VK_SUBOPTIMAL_KHR) {
-        vk_renderer_recreate_swapchain(ctx->renderer, ctx->window);
+        if (vk_renderer_recreate_swapchain(ctx->renderer, ctx->window) == VK_SUCCESS) {
+            vk_renderer_set_logical_size(ctx->renderer, (float)winW, (float)winH);
+        }
         return false;
     }
     if (frame != VK_SUCCESS) {
@@ -148,7 +195,9 @@ bool App_RenderOnce(AppContext* ctx, void (*handleRender)(AppContext* ctx)) {
 
     VkResult end = vk_renderer_end_frame(ctx->renderer, cmd);
     if (end == VK_ERROR_OUT_OF_DATE_KHR || end == VK_SUBOPTIMAL_KHR) {
-        vk_renderer_recreate_swapchain(ctx->renderer, ctx->window);
+        if (vk_renderer_recreate_swapchain(ctx->renderer, ctx->window) == VK_SUCCESS) {
+            vk_renderer_set_logical_size(ctx->renderer, (float)winW, (float)winH);
+        }
         return false;
     }
     return end == VK_SUCCESS;

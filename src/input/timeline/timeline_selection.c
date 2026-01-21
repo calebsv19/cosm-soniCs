@@ -146,6 +146,8 @@ void timeline_selection_delete(AppState* state) {
                     cmd.data.clip_add_remove.clip.offset_frames = clip->offset_frames;
                     cmd.data.clip_add_remove.clip.fade_in_frames = clip->fade_in_frames;
                     cmd.data.clip_add_remove.clip.fade_out_frames = clip->fade_out_frames;
+                    cmd.data.clip_add_remove.clip.fade_in_curve = clip->fade_in_curve;
+                    cmd.data.clip_add_remove.clip.fade_out_curve = clip->fade_out_curve;
                     cmd.data.clip_add_remove.clip.gain = clip->gain;
                     cmd.data.clip_add_remove.clip.selected = false;
                     if (cmd.data.clip_add_remove.clip.duration_frames == 0 && clip->sampler) {
@@ -190,6 +192,8 @@ void timeline_selection_delete(AppState* state) {
                     cmd.data.clip_add_remove.clip.offset_frames = clip->offset_frames;
                     cmd.data.clip_add_remove.clip.fade_in_frames = clip->fade_in_frames;
                     cmd.data.clip_add_remove.clip.fade_out_frames = clip->fade_out_frames;
+                    cmd.data.clip_add_remove.clip.fade_in_curve = clip->fade_in_curve;
+                    cmd.data.clip_add_remove.clip.fade_out_curve = clip->fade_out_curve;
                     cmd.data.clip_add_remove.clip.gain = clip->gain;
                     cmd.data.clip_add_remove.clip.selected = false;
                     if (cmd.data.clip_add_remove.clip.duration_frames == 0 && clip->sampler) {

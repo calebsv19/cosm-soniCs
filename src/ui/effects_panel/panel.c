@@ -23,6 +23,9 @@ typedef struct {
     FxTypeId    id_max;
 } FxCategorySpec;
 
+// Ensures storage for remembering last-open FX per track.
+static void effects_panel_ensure_last_open_tracks(EffectsPanelState* panel, int track_count);
+
 static const FxCategorySpec kCategorySpecs[] = {
     {"Basics",        1u,  19u},
     {"Dynamics",      20u, 29u},
@@ -542,6 +545,14 @@ void effects_panel_set_eq_detail_view(AppState* state, int view_mode) {
     panel->eq_detail.spectrum_ready = false;
 }
 
+// Clears the meter history so meter detail views start from a fresh timeline.
+void effects_panel_reset_meter_history(AppState* state) {
+    if (!state) {
+        return;
+    }
+    SDL_zero(state->effects_panel.meter_history);
+}
+
 void effects_panel_ensure_eq_curve_tracks(AppState* state, int track_count) {
     if (!state) {
         return;
@@ -583,8 +594,16 @@ static bool effects_panel_update_target(AppState* state) {
     strncpy(prev_label, panel->target_label, sizeof(prev_label) - 1);
     prev_label[sizeof(prev_label) - 1] = '\0';
 
+    int track_count = 0;
     if (state->engine) {
-        effects_panel_ensure_eq_curve_tracks(state, engine_get_track_count(state->engine));
+        track_count = engine_get_track_count(state->engine);
+        effects_panel_ensure_eq_curve_tracks(state, track_count);
+        effects_panel_ensure_last_open_tracks(panel, track_count);
+    }
+
+    FxInstId prev_open_id = 0;
+    if (panel->list_open_slot_index >= 0 && panel->list_open_slot_index < panel->chain_count) {
+        prev_open_id = panel->chain[panel->list_open_slot_index].id;
     }
 
     panel->target = FX_PANEL_TARGET_MASTER;
@@ -618,14 +637,59 @@ static bool effects_panel_update_target(AppState* state) {
     bool label_changed = strncmp(prev_label, panel->target_label, sizeof(prev_label)) != 0;
     bool target_changed = label_changed || prev_target != panel->target || prev_track != panel->target_track_index;
     if (target_changed) {
+        if (prev_open_id != 0) {
+            if (prev_target == FX_PANEL_TARGET_MASTER) {
+                panel->last_open_master_fx_id = prev_open_id;
+            } else if (prev_target == FX_PANEL_TARGET_TRACK &&
+                       prev_track >= 0 &&
+                       prev_track < panel->last_open_track_fx_count) {
+                panel->last_open_track_fx_ids[prev_track] = prev_open_id;
+            }
+        }
         eq_curve_store_for_view(panel, panel->eq_detail.view_mode, prev_target, prev_track);
         if (panel->eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK &&
             (panel->target != FX_PANEL_TARGET_TRACK || panel->target_track_index < 0)) {
             panel->eq_detail.view_mode = EQ_DETAIL_VIEW_MASTER;
         }
         eq_curve_load_for_view(panel, panel->eq_detail.view_mode, panel->target, panel->target_track_index);
+        panel->list_open_slot_index = -1;
+        panel->pending_open_fx_id = 0;
+        if (panel->target == FX_PANEL_TARGET_MASTER) {
+            panel->pending_open_fx_id = panel->last_open_master_fx_id;
+        } else if (panel->target == FX_PANEL_TARGET_TRACK &&
+                   panel->target_track_index >= 0 &&
+                   panel->target_track_index < panel->last_open_track_fx_count) {
+            panel->pending_open_fx_id = panel->last_open_track_fx_ids[panel->target_track_index];
+        }
     }
     return target_changed;
+}
+
+// Ensures storage for remembering last-open FX per track.
+static void effects_panel_ensure_last_open_tracks(EffectsPanelState* panel, int track_count) {
+    if (!panel) {
+        return;
+    }
+    if (track_count <= 0) {
+        free(panel->last_open_track_fx_ids);
+        panel->last_open_track_fx_ids = NULL;
+        panel->last_open_track_fx_count = 0;
+        return;
+    }
+    if (panel->last_open_track_fx_ids && panel->last_open_track_fx_count == track_count) {
+        return;
+    }
+    FxInstId* next = (FxInstId*)calloc((size_t)track_count, sizeof(FxInstId));
+    if (!next) {
+        return;
+    }
+    int copy_count = panel->last_open_track_fx_count < track_count ? panel->last_open_track_fx_count : track_count;
+    for (int i = 0; i < copy_count; ++i) {
+        next[i] = panel->last_open_track_fx_ids[i];
+    }
+    free(panel->last_open_track_fx_ids);
+    panel->last_open_track_fx_ids = next;
+    panel->last_open_track_fx_count = track_count;
 }
 
 static void draw_button(SDL_Renderer* renderer, const SDL_Rect* rect, bool highlighted, const char* label, float scale) {
@@ -700,6 +764,12 @@ void effects_panel_init(AppState* state) {
     state->effects_panel.eq_detail.last_apply_ticks = 0;
     SDL_zero(state->effects_panel.meter_history);
     state->effects_panel.meter_scope_mode = FX_METER_SCOPE_MID_SIDE;
+    state->effects_panel.meter_lufs_mode = FX_METER_LUFS_SHORT_TERM;
+    state->effects_panel.meter_spectrogram_mode = FX_METER_SPECTROGRAM_WHITE_BLACK;
+    state->effects_panel.last_open_master_fx_id = 0;
+    state->effects_panel.last_open_track_fx_ids = NULL;
+    state->effects_panel.last_open_track_fx_count = 0;
+    state->effects_panel.pending_open_fx_id = 0;
     eq_curve_set_defaults(&state->effects_panel.eq_curve_master);
     eq_curve_set_defaults(&state->effects_panel.eq_curve);
     state->effects_panel.eq_curve_tracks = NULL;
@@ -774,15 +844,22 @@ void effects_panel_sync_from_engine(AppState* state) {
     EffectsPanelState* panel = &state->effects_panel;
     int track_count = engine_get_track_count(state->engine);
     effects_panel_ensure_eq_curve_tracks(state, track_count);
+    effects_panel_ensure_last_open_tracks(panel, track_count);
+    bool target_changed = effects_panel_update_target(state);
     FxInstId selected_id = 0;
-    if (panel->selected_slot_index >= 0 && panel->selected_slot_index < panel->chain_count) {
+    if (!target_changed &&
+        panel->selected_slot_index >= 0 &&
+        panel->selected_slot_index < panel->chain_count) {
         selected_id = panel->chain[panel->selected_slot_index].id;
     }
     FxInstId open_id = 0;
-    if (panel->list_open_slot_index >= 0 && panel->list_open_slot_index < panel->chain_count) {
+    if (panel->pending_open_fx_id != 0) {
+        open_id = panel->pending_open_fx_id;
+    } else if (!target_changed &&
+               panel->list_open_slot_index >= 0 &&
+               panel->list_open_slot_index < panel->chain_count) {
         open_id = panel->chain[panel->list_open_slot_index].id;
     }
-    effects_panel_update_target(state);
     FxMasterSnapshot snap;
     bool ok = false;
     if (panel->target == FX_PANEL_TARGET_TRACK && panel->target_track_index >= 0) {
@@ -847,6 +924,7 @@ void effects_panel_sync_from_engine(AppState* state) {
             }
         }
     }
+    panel->pending_open_fx_id = 0;
     if (panel->restore_pending) {
         int sel = panel->restore_selected_index;
         int open = panel->restore_open_index;
@@ -859,6 +937,17 @@ void effects_panel_sync_from_engine(AppState* state) {
         panel->selected_slot_index = sel;
         panel->list_open_slot_index = panel->view_mode == FX_PANEL_VIEW_LIST ? open : -1;
         panel->restore_pending = false;
+    }
+
+    if (panel->list_open_slot_index >= 0 && panel->list_open_slot_index < panel->chain_count) {
+        FxInstId active_id = panel->chain[panel->list_open_slot_index].id;
+        if (panel->target == FX_PANEL_TARGET_MASTER) {
+            panel->last_open_master_fx_id = active_id;
+        } else if (panel->target == FX_PANEL_TARGET_TRACK &&
+                   panel->target_track_index >= 0 &&
+                   panel->target_track_index < panel->last_open_track_fx_count) {
+            panel->last_open_track_fx_ids[panel->target_track_index] = active_id;
+        }
     }
 }
 

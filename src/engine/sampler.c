@@ -1,5 +1,6 @@
 #include "engine/sampler.h"
 
+#include <SDL2/SDL.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
@@ -12,6 +13,10 @@ struct EngineSamplerSource {
     uint64_t fade_in_frames;
     uint64_t fade_out_frames;
     int channels;
+    SDL_mutex* automation_mutex;
+    EngineAutomationLane* automation_lanes;
+    int automation_lane_count;
+    int automation_lane_capacity;
 };
 
 static void sampler_reset_internal(EngineSamplerSource* sampler, int sample_rate, int channels) {
@@ -33,10 +38,34 @@ EngineSamplerSource* engine_sampler_source_create(void) {
     sampler->clip_length_frames = 0;
     sampler->fade_in_frames = 0;
     sampler->fade_out_frames = 0;
+    sampler->automation_mutex = SDL_CreateMutex();
+    sampler->automation_lanes = NULL;
+    sampler->automation_lane_count = 0;
+    sampler->automation_lane_capacity = 0;
     return sampler;
 }
 
 void engine_sampler_source_destroy(EngineSamplerSource* sampler) {
+    if (!sampler) {
+        return;
+    }
+    if (sampler->automation_mutex) {
+        SDL_LockMutex(sampler->automation_mutex);
+    }
+    if (sampler->automation_lanes) {
+        for (int i = 0; i < sampler->automation_lane_count; ++i) {
+            engine_automation_lane_free(&sampler->automation_lanes[i]);
+        }
+        free(sampler->automation_lanes);
+        sampler->automation_lanes = NULL;
+    }
+    sampler->automation_lane_count = 0;
+    sampler->automation_lane_capacity = 0;
+    if (sampler->automation_mutex) {
+        SDL_UnlockMutex(sampler->automation_mutex);
+        SDL_DestroyMutex(sampler->automation_mutex);
+        sampler->automation_mutex = NULL;
+    }
     free(sampler);
 }
 
@@ -85,6 +114,63 @@ void engine_sampler_source_set_clip(EngineSamplerSource* sampler, const AudioMed
     sampler->fade_out_frames = fade_out_frames;
 }
 
+void engine_sampler_source_set_automation(EngineSamplerSource* sampler,
+                                          const EngineAutomationLane* lanes,
+                                          int lane_count) {
+    if (!sampler) {
+        return;
+    }
+    if (sampler->automation_mutex) {
+        SDL_LockMutex(sampler->automation_mutex);
+    }
+    if (sampler->automation_lanes) {
+        for (int i = 0; i < sampler->automation_lane_count; ++i) {
+            engine_automation_lane_free(&sampler->automation_lanes[i]);
+        }
+        free(sampler->automation_lanes);
+        sampler->automation_lanes = NULL;
+    }
+    sampler->automation_lane_count = 0;
+    sampler->automation_lane_capacity = 0;
+    if (!lanes || lane_count <= 0) {
+        if (sampler->automation_mutex) {
+            SDL_UnlockMutex(sampler->automation_mutex);
+        }
+        return;
+    }
+    sampler->automation_lanes = (EngineAutomationLane*)calloc((size_t)lane_count, sizeof(EngineAutomationLane));
+    if (!sampler->automation_lanes) {
+        if (sampler->automation_mutex) {
+            SDL_UnlockMutex(sampler->automation_mutex);
+        }
+        return;
+    }
+    sampler->automation_lane_capacity = lane_count;
+    sampler->automation_lane_count = lane_count;
+    for (int i = 0; i < lane_count; ++i) {
+        engine_automation_lane_init(&sampler->automation_lanes[i], lanes[i].target);
+        engine_automation_lane_copy(&lanes[i], &sampler->automation_lanes[i]);
+    }
+    if (sampler->automation_mutex) {
+        SDL_UnlockMutex(sampler->automation_mutex);
+    }
+}
+
+static float sampler_eval_automation(const EngineSamplerSource* sampler,
+                                     EngineAutomationTarget target,
+                                     uint64_t rel_frame) {
+    if (!sampler || !sampler->automation_lanes) {
+        return 0.0f;
+    }
+    for (int i = 0; i < sampler->automation_lane_count; ++i) {
+        const EngineAutomationLane* lane = &sampler->automation_lanes[i];
+        if (lane->target == target) {
+            return engine_automation_lane_eval(lane, rel_frame, sampler->clip_length_frames);
+        }
+    }
+    return 0.0f;
+}
+
 void engine_sampler_source_reset(void* userdata, int sample_rate, int channels) {
     sampler_reset_internal((EngineSamplerSource*)userdata, sample_rate, channels);
 }
@@ -110,6 +196,9 @@ void engine_sampler_source_render(void* userdata, float* interleaved, int frames
     EngineSamplerSource* sampler = (EngineSamplerSource*)userdata;
     if (!sampler || !interleaved || frames <= 0) {
         return;
+    }
+    if (sampler->automation_mutex) {
+        SDL_LockMutex(sampler->automation_mutex);
     }
     const AudioMediaClip* clip = sampler->clip;
     for (int i = 0; i < frames; ++i) {
@@ -149,10 +238,37 @@ void engine_sampler_source_render(void* userdata, float* interleaved, int frames
                         gain_scale *= (float)remaining / (float)sampler->fade_out_frames;
                     }
                 }
-                value *= gain_scale;
+                float automation_gain = sampler_eval_automation(sampler,
+                                                                ENGINE_AUTOMATION_TARGET_VOLUME,
+                                                                rel);
+                float gain_multiplier = 1.0f + automation_gain;
+                if (gain_multiplier < 0.0f) {
+                    gain_multiplier = 0.0f;
+                }
+                value *= gain_scale * gain_multiplier;
             }
             interleaved[i * sampler->channels + ch] = value;
         }
+        if (in_range && sampler->channels >= 2) {
+            float pan = sampler_eval_automation(sampler, ENGINE_AUTOMATION_TARGET_PAN, rel);
+            if (pan < -1.0f) pan = -1.0f;
+            if (pan > 1.0f) pan = 1.0f;
+            if (pan != 0.0f) {
+                int base = i * sampler->channels;
+                float left = 1.0f;
+                float right = 1.0f;
+                if (pan < 0.0f) {
+                    right = 1.0f + pan;
+                } else {
+                    left = 1.0f - pan;
+                }
+                interleaved[base] *= left;
+                interleaved[base + 1] *= right;
+            }
+        }
+    }
+    if (sampler->automation_mutex) {
+        SDL_UnlockMutex(sampler->automation_mutex);
     }
 }
 
