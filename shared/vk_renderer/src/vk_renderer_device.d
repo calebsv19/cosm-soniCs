@@ -1,5 +1,5 @@
-build/../shared/timer_hud/src/logging/logger.o: \
-  ../shared/timer_hud/src/logging/logger.c \
+build/../shared/vk_renderer/src/vk_renderer_device.o: \
+  ../shared/vk_renderer/src/vk_renderer_device.c \
   ../shared/vk_renderer/include/vk_renderer_sdl.h \
   ../shared/vk_renderer/include/vk_renderer.h \
   /opt/homebrew/include/SDL2/SDL.h /opt/homebrew/include/SDL2/SDL_main.h \
@@ -75,10 +75,7 @@ build/../shared/timer_hud/src/logging/logger.o: \
   ../shared/vk_renderer/include/vk_renderer_commands.h \
   ../shared/vk_renderer/include/vk_renderer_memory.h \
   ../shared/vk_renderer/include/vk_renderer_textures.h \
-  ../shared/vk_renderer/include/vk_renderer_compat_sdl.h \
-  ../shared/timer_hud/src/logging/logger.h \
-  ../shared/timer_hud/src/logging/../core/timer_manager.h \
-  ../shared/timer_hud/src/logging/../core/timer.h
+  ../shared/vk_renderer/include/vk_renderer_compat_sdl.h
 ../shared/vk_renderer/include/vk_renderer_sdl.h:
 ../shared/vk_renderer/include/vk_renderer.h:
 /opt/homebrew/include/SDL2/SDL.h:
@@ -156,6 +153,3 @@ build/../shared/timer_hud/src/logging/logger.o: \
 ../shared/vk_renderer/include/vk_renderer_memory.h:
 ../shared/vk_renderer/include/vk_renderer_textures.h:
 ../shared/vk_renderer/include/vk_renderer_compat_sdl.h:
-../shared/timer_hud/src/logging/logger.h:
-../shared/timer_hud/src/logging/../core/timer_manager.h:
-../shared/timer_hud/src/logging/../core/timer.h:

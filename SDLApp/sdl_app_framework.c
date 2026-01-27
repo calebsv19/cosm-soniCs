@@ -1,9 +1,58 @@
 #include "sdl_app_framework.h"
+#include "ui/font.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
 #include <stdio.h>
 
 bool App_RenderOnce(AppContext* ctx, void (*handleRender)(AppContext* ctx));
+
+// app_build_renderer_config returns the default renderer configuration for the app.
+static VkRendererConfig app_build_renderer_config(void) {
+    VkRendererConfig cfg;
+    vk_renderer_config_set_defaults(&cfg);
+    cfg.enable_validation = SDL_FALSE;
+#ifdef VULKAN_RENDER_DEBUG
+    cfg.enable_validation = SDL_TRUE;
+#endif
+    cfg.clear_color[0] = 18.0f / 255.0f;
+    cfg.clear_color[1] = 18.0f / 255.0f;
+    cfg.clear_color[2] = 22.0f / 255.0f;
+    cfg.clear_color[3] = 1.0f;
+    return cfg;
+}
+
+// app_init_renderer initializes the Vulkan renderer for the provided AppContext.
+static bool app_init_renderer(AppContext* ctx) {
+    if (!ctx || !ctx->window) {
+        return false;
+    }
+    VkRendererConfig cfg = app_build_renderer_config();
+    VkResult init = vk_renderer_init(&ctx->renderer_storage, ctx->window, &cfg);
+    if (init != VK_SUCCESS) {
+        SDL_Log("Failed to initialize Vulkan renderer (code %d)", init);
+        return false;
+    }
+    ctx->renderer = &ctx->renderer_storage;
+    return true;
+}
+
+// app_recover_device_lost rebuilds the Vulkan renderer when a device loss is reported.
+static bool app_recover_device_lost(AppContext* ctx, int width, int height) {
+    if (!ctx) {
+        return false;
+    }
+    if (ctx->renderer) {
+        ui_font_invalidate_cache(ctx->renderer);
+        vk_renderer_shutdown(ctx->renderer);
+    }
+    if (!app_init_renderer(ctx)) {
+        return false;
+    }
+    if (width > 0 && height > 0) {
+        vk_renderer_set_logical_size(ctx->renderer, (float)width, (float)height);
+    }
+    return true;
+}
 
 // app_try_recreate_swapchain attempts a safe swapchain rebuild when the window has a valid size.
 static bool app_try_recreate_swapchain(AppContext* ctx, int width, int height) {
@@ -14,6 +63,10 @@ static bool app_try_recreate_swapchain(AppContext* ctx, int width, int height) {
         return false;
     }
     VkResult result = vk_renderer_recreate_swapchain(ctx->renderer, ctx->window);
+    if (result == VK_ERROR_DEVICE_LOST) {
+        SDL_Log("Vulkan device lost during swapchain recreation; rebuilding renderer.");
+        return app_recover_device_lost(ctx, width, height);
+    }
     if (result != VK_SUCCESS) {
         return false;
     }
@@ -38,25 +91,11 @@ bool App_Init(AppContext* ctx, const char* title, int width, int height, bool vs
     }
 
     (void)vsync;
-    VkRendererConfig cfg;
-    vk_renderer_config_set_defaults(&cfg);
-    cfg.enable_validation = SDL_FALSE;
-#ifdef VULKAN_RENDER_DEBUG
-    cfg.enable_validation = SDL_TRUE;
-#endif
-    cfg.clear_color[0] = 18.0f / 255.0f;
-    cfg.clear_color[1] = 18.0f / 255.0f;
-    cfg.clear_color[2] = 22.0f / 255.0f;
-    cfg.clear_color[3] = 1.0f;
-
-    VkResult init = vk_renderer_init(&ctx->renderer_storage, ctx->window, &cfg);
-    if (init != VK_SUCCESS) {
-        SDL_Log("Failed to initialize Vulkan renderer (code %d)", init);
+    if (!app_init_renderer(ctx)) {
         SDL_DestroyWindow(ctx->window);
         SDL_Quit();
         return false;
     }
-    ctx->renderer = &ctx->renderer_storage;
 
     ctx->deltaTime = 0.0f;
     ctx->quit = false;
@@ -185,6 +224,11 @@ bool App_RenderOnce(AppContext* ctx, void (*handleRender)(AppContext* ctx)) {
         }
         return false;
     }
+    if (frame == VK_ERROR_DEVICE_LOST) {
+        SDL_Log("Vulkan device lost during frame start; rebuilding renderer.");
+        app_recover_device_lost(ctx, winW, winH);
+        return false;
+    }
     if (frame != VK_SUCCESS) {
         return false;
     }
@@ -198,6 +242,11 @@ bool App_RenderOnce(AppContext* ctx, void (*handleRender)(AppContext* ctx)) {
         if (vk_renderer_recreate_swapchain(ctx->renderer, ctx->window) == VK_SUCCESS) {
             vk_renderer_set_logical_size(ctx->renderer, (float)winW, (float)winH);
         }
+        return false;
+    }
+    if (end == VK_ERROR_DEVICE_LOST) {
+        SDL_Log("Vulkan device lost during frame submit; rebuilding renderer.");
+        app_recover_device_lost(ctx, winW, winH);
         return false;
     }
     return end == VK_SUCCESS;

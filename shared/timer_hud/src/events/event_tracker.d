@@ -70,6 +70,7 @@ build/../shared/timer_hud/src/events/event_tracker.o: \
   ../shared/vk_renderer/include/vk_renderer_config.h \
   ../shared/vk_renderer/include/vk_renderer_context.h \
   /opt/homebrew/include/SDL2/SDL_vulkan.h \
+  ../shared/vk_renderer/include/vk_renderer_device.h \
   ../shared/vk_renderer/include/vk_renderer_pipeline.h \
   ../shared/vk_renderer/include/vk_renderer_commands.h \
   ../shared/vk_renderer/include/vk_renderer_memory.h \
@@ -147,6 +148,7 @@ build/../shared/timer_hud/src/events/event_tracker.o: \
 ../shared/vk_renderer/include/vk_renderer_config.h:
 ../shared/vk_renderer/include/vk_renderer_context.h:
 /opt/homebrew/include/SDL2/SDL_vulkan.h:
+../shared/vk_renderer/include/vk_renderer_device.h:
 ../shared/vk_renderer/include/vk_renderer_pipeline.h:
 ../shared/vk_renderer/include/vk_renderer_commands.h:
 ../shared/vk_renderer/include/vk_renderer_memory.h:

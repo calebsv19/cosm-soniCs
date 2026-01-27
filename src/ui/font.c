@@ -10,10 +10,24 @@ typedef struct {
     TTF_Font* font;
 } FontCacheEntry;
 
+// TextCacheEntry stores rendered text textures to avoid per-frame uploads.
+typedef struct {
+    char text[128];
+    SDL_Color color;
+    float scale;
+    int width;
+    int height;
+    VkRendererTexture texture;
+    uint32_t stamp;
+    bool in_use;
+} TextCacheEntry;
+
 static char g_font_path[256] = "include/fonts/Montserrat/Montserrat-Regular.ttf";
 static int g_base_point_size = 14;
 static FontCacheEntry g_cache[12];
 static int g_cache_count = 0;
+static TextCacheEntry g_text_cache[128];
+static uint32_t g_text_cache_stamp = 0;
 
 static void clear_cache(void) {
     for (int i = 0; i < g_cache_count; ++i) {
@@ -25,6 +39,58 @@ static void clear_cache(void) {
     g_cache_count = 0;
 }
 
+// text_cache_clear releases cached text textures and resets tracking state.
+static void text_cache_clear(SDL_Renderer* renderer) {
+    for (size_t i = 0; i < (sizeof(g_text_cache) / sizeof(g_text_cache[0])); ++i) {
+        if (g_text_cache[i].in_use) {
+            if (renderer) {
+                vk_renderer_texture_destroy(renderer, &g_text_cache[i].texture);
+            }
+            g_text_cache[i] = (TextCacheEntry){0};
+        }
+    }
+    g_text_cache_stamp = 0;
+}
+
+// text_cache_find returns the cached entry matching the render parameters.
+static TextCacheEntry* text_cache_find(const char* text, SDL_Color color, float scale) {
+    if (!text) {
+        return NULL;
+    }
+    for (size_t i = 0; i < (sizeof(g_text_cache) / sizeof(g_text_cache[0])); ++i) {
+        TextCacheEntry* entry = &g_text_cache[i];
+        if (!entry->in_use) {
+            continue;
+        }
+        if (entry->color.r != color.r || entry->color.g != color.g ||
+            entry->color.b != color.b || entry->color.a != color.a) {
+            continue;
+        }
+        if (entry->scale != scale) {
+            continue;
+        }
+        if (strncmp(entry->text, text, sizeof(entry->text)) == 0) {
+            return entry;
+        }
+    }
+    return NULL;
+}
+
+// text_cache_pick_slot chooses a cache slot, evicting the least recently used entry if needed.
+static TextCacheEntry* text_cache_pick_slot(void) {
+    TextCacheEntry* oldest = NULL;
+    for (size_t i = 0; i < (sizeof(g_text_cache) / sizeof(g_text_cache[0])); ++i) {
+        TextCacheEntry* entry = &g_text_cache[i];
+        if (!entry->in_use) {
+            return entry;
+        }
+        if (!oldest || entry->stamp < oldest->stamp) {
+            oldest = entry;
+        }
+    }
+    return oldest;
+}
+
 bool ui_font_set(const char* path, int base_point_size) {
     if (path && path[0]) {
         strncpy(g_font_path, path, sizeof(g_font_path) - 1);
@@ -34,11 +100,18 @@ bool ui_font_set(const char* path, int base_point_size) {
         g_base_point_size = base_point_size;
     }
     clear_cache();
+    text_cache_clear(NULL);
     return true;
 }
 
 void ui_font_shutdown(void) {
     clear_cache();
+    text_cache_clear(NULL);
+}
+
+// ui_font_invalidate_cache drops cached text textures tied to the current renderer.
+void ui_font_invalidate_cache(SDL_Renderer* renderer) {
+    text_cache_clear(renderer);
 }
 
 static TTF_Font* get_font_for_scale(float scale) {
@@ -97,14 +170,47 @@ void ui_draw_text(SDL_Renderer* renderer, int x, int y, const char* text, SDL_Co
     if (!font) {
         return;
     }
-    int w = 0, h = 0;
-    VkRendererTexture tex;
-    if (!render_text(renderer, font, text, color, &tex, &w, &h)) {
+    if (strlen(text) >= sizeof(g_text_cache[0].text)) {
+        int w = 0, h = 0;
+        VkRendererTexture tex;
+        if (!render_text(renderer, font, text, color, &tex, &w, &h)) {
+            return;
+        }
+        SDL_Rect dst = {x, y, w, h};
+        vk_renderer_draw_texture(renderer, &tex, NULL, &dst);
+        vk_renderer_queue_texture_destroy(renderer, &tex);
         return;
     }
-    SDL_Rect dst = {x, y, w, h};
-    vk_renderer_draw_texture(renderer, &tex, NULL, &dst);
-    vk_renderer_queue_texture_destroy(renderer, &tex);
+
+    TextCacheEntry* entry = text_cache_find(text, color, scale);
+    if (!entry) {
+        entry = text_cache_pick_slot();
+        if (!entry) {
+            return;
+        }
+        if (entry->in_use) {
+            vk_renderer_texture_destroy(renderer, &entry->texture);
+        }
+        VkRendererTexture tex;
+        int w = 0, h = 0;
+        if (!render_text(renderer, font, text, color, &tex, &w, &h)) {
+            return;
+        }
+        *entry = (TextCacheEntry){
+            .color = color,
+            .scale = scale,
+            .width = w,
+            .height = h,
+            .texture = tex,
+            .stamp = ++g_text_cache_stamp,
+            .in_use = true
+        };
+        strncpy(entry->text, text, sizeof(entry->text) - 1);
+        entry->text[sizeof(entry->text) - 1] = '\0';
+    }
+    entry->stamp = ++g_text_cache_stamp;
+    SDL_Rect dst = {x, y, entry->width, entry->height};
+    vk_renderer_draw_texture(renderer, &entry->texture, NULL, &dst);
 }
 
 int ui_measure_text_width(const char* text, float scale) {
@@ -137,16 +243,51 @@ void ui_draw_text_clipped(SDL_Renderer* renderer,
     if (!font) {
         return;
     }
-    int w = 0, h = 0;
-    VkRendererTexture tex;
-    if (!render_text(renderer, font, text, color, &tex, &w, &h)) {
+    if (strlen(text) >= sizeof(g_text_cache[0].text)) {
+        int w = 0, h = 0;
+        VkRendererTexture tex;
+        if (!render_text(renderer, font, text, color, &tex, &w, &h)) {
+            return;
+        }
+        int clip_w = w < max_width ? w : max_width;
+        SDL_Rect src = {0, 0, clip_w, h};
+        SDL_Rect dst = {x, y, clip_w, h};
+        vk_renderer_draw_texture(renderer, &tex, &src, &dst);
+        vk_renderer_queue_texture_destroy(renderer, &tex);
         return;
     }
-    int clip_w = w < max_width ? w : max_width;
-    SDL_Rect src = {0, 0, clip_w, h};
-    SDL_Rect dst = {x, y, clip_w, h};
-    vk_renderer_draw_texture(renderer, &tex, &src, &dst);
-    vk_renderer_queue_texture_destroy(renderer, &tex);
+
+    TextCacheEntry* entry = text_cache_find(text, color, scale);
+    if (!entry) {
+        entry = text_cache_pick_slot();
+        if (!entry) {
+            return;
+        }
+        if (entry->in_use) {
+            vk_renderer_texture_destroy(renderer, &entry->texture);
+        }
+        VkRendererTexture tex;
+        int w = 0, h = 0;
+        if (!render_text(renderer, font, text, color, &tex, &w, &h)) {
+            return;
+        }
+        *entry = (TextCacheEntry){
+            .color = color,
+            .scale = scale,
+            .width = w,
+            .height = h,
+            .texture = tex,
+            .stamp = ++g_text_cache_stamp,
+            .in_use = true
+        };
+        strncpy(entry->text, text, sizeof(entry->text) - 1);
+        entry->text[sizeof(entry->text) - 1] = '\0';
+    }
+    entry->stamp = ++g_text_cache_stamp;
+    int clip_w = entry->width < max_width ? entry->width : max_width;
+    SDL_Rect src = {0, 0, clip_w, entry->height};
+    SDL_Rect dst = {x, y, clip_w, entry->height};
+    vk_renderer_draw_texture(renderer, &entry->texture, &src, &dst);
 }
 
 int ui_font_line_height(float scale) {
