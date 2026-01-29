@@ -220,6 +220,10 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
         timeline_input_mouse_drag_end(state);
         return;
     }
+    if (state->timeline_tempo_overlay_enabled && state->tempo_overlay_ui.dragging) {
+        timeline_input_mouse_drag_end(state);
+        return;
+    }
 
     const Pane* timeline = ui_layout_get_pane(state, 1);
     if (!timeline) {

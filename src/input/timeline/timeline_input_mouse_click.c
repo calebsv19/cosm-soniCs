@@ -13,6 +13,7 @@
 #include "input/timeline_selection.h"
 #include "input/timeline_input.h"
 #include "input/automation_input.h"
+#include "input/tempo_overlay_input.h"
 #include "ui/layout.h"
 #include "ui/panes.h"
 #include "ui/effects_panel.h"
@@ -22,6 +23,9 @@
 #include <SDL2/SDL.h>
 #include <math.h>
 #include <string.h>
+
+#define TEMPO_OVERLAY_MIN_BPM 20.0
+#define TEMPO_OVERLAY_MAX_BPM 200.0
 
 static int track_name_cursor_from_x(const char* text, float scale, int start_x, int end_x, int mouse_x) {
     if (!text) return 0;
@@ -356,6 +360,128 @@ static int timeline_automation_hit_point(const EngineAutomationLane* lane,
     return -1;
 }
 
+// Computes the tempo overlay rectangle anchored to the top track lane.
+static bool timeline_tempo_overlay_rect(const TimelineGeometry* geom, SDL_Rect* out_rect) {
+    if (!geom || !out_rect || geom->content_width <= 0 || geom->track_height <= 0) {
+        return false;
+    }
+    int overlay_height = geom->track_height - 16;
+    if (overlay_height < 8) {
+        return false;
+    }
+    *out_rect = (SDL_Rect){
+        geom->content_left,
+        geom->track_top + 8,
+        geom->content_width,
+        overlay_height
+    };
+    return true;
+}
+
+// Determines the BPM range for the tempo overlay based on map events.
+static void timeline_tempo_overlay_bpm_range(const TempoMap* map,
+                                             double fallback_bpm,
+                                             double* out_min,
+                                             double* out_max) {
+    (void)map;
+    (void)fallback_bpm;
+    if (out_min) *out_min = TEMPO_OVERLAY_MIN_BPM;
+    if (out_max) *out_max = TEMPO_OVERLAY_MAX_BPM;
+}
+
+// Converts a BPM value into a y position within the overlay rect.
+static int timeline_tempo_overlay_bpm_to_y(const SDL_Rect* rect,
+                                           double bpm,
+                                           double min_bpm,
+                                           double max_bpm) {
+    if (!rect || rect->h <= 0) {
+        return 0;
+    }
+    double range = max_bpm - min_bpm;
+    if (range <= 0.0) {
+        range = 1.0;
+    }
+    double t = (bpm - min_bpm) / range;
+    if (t < 0.0) t = 0.0;
+    if (t > 1.0) t = 1.0;
+    return rect->y + rect->h - (int)llround(t * (double)rect->h);
+}
+
+// Converts a y position into a BPM value within the overlay rect.
+static double timeline_tempo_overlay_bpm_from_y(const SDL_Rect* rect,
+                                                int y,
+                                                double min_bpm,
+                                                double max_bpm) {
+    if (!rect || rect->h <= 0) {
+        return min_bpm;
+    }
+    double range = max_bpm - min_bpm;
+    if (range <= 0.0) {
+        range = 1.0;
+    }
+    int clamped_y = y;
+    if (clamped_y < rect->y) clamped_y = rect->y;
+    if (clamped_y > rect->y + rect->h) clamped_y = rect->y + rect->h;
+    double t = (double)(rect->y + rect->h - clamped_y) / (double)rect->h;
+    if (t < 0.0) t = 0.0;
+    if (t > 1.0) t = 1.0;
+    return min_bpm + t * range;
+}
+
+// Snaps tempo changes to 10 BPM increments unless free placement is requested.
+static double timeline_tempo_overlay_snap_bpm(double bpm, bool free_snap) {
+    if (free_snap) {
+        return bpm;
+    }
+    return round(bpm / 10.0) * 10.0;
+}
+
+// Finds the nearest tempo event index based on a beat value.
+static int timeline_tempo_overlay_find_event(const TempoMap* map, double beat) {
+    if (!map || map->event_count <= 0) {
+        return -1;
+    }
+    int best = 0;
+    double best_delta = fabs(map->events[0].beat - beat);
+    for (int i = 1; i < map->event_count; ++i) {
+        double delta = fabs(map->events[i].beat - beat);
+        if (delta < best_delta) {
+            best_delta = delta;
+            best = i;
+        }
+    }
+    return best;
+}
+
+// Locates a tempo event near a mouse position.
+static int timeline_tempo_overlay_hit_event(const TempoMap* map,
+                                            const SDL_Rect* rect,
+                                            float window_start_seconds,
+                                            float window_end_seconds,
+                                            int content_left,
+                                            float pixels_per_second,
+                                            double min_bpm,
+                                            double max_bpm,
+                                            int x,
+                                            int y) {
+    if (!map || !rect || rect->w <= 0 || rect->h <= 0 || map->event_count <= 0) {
+        return -1;
+    }
+    const int radius = 6;
+    for (int i = 0; i < map->event_count; ++i) {
+        double sec = tempo_map_beats_to_seconds(map, map->events[i].beat);
+        if (sec < window_start_seconds || sec > window_end_seconds) {
+            continue;
+        }
+        int px = content_left + (int)llround((sec - window_start_seconds) * pixels_per_second);
+        int py = timeline_tempo_overlay_bpm_to_y(rect, map->events[i].bpm, min_bpm, max_bpm);
+        if (abs(px - x) <= radius && abs(py - y) <= radius) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 static void timeline_select_clip(AppState* state, int track_index, int clip_index) {
     timeline_selection_set_single(state, track_index, clip_index);
     effects_panel_sync_from_engine(state);
@@ -373,6 +499,8 @@ static void timeline_controls_update_hover(AppState* state) {
     controls->snap_toggle_hovered = SDL_PointInRect(&p, &controls->snap_toggle_rect);
     controls->automation_toggle_hovered = SDL_PointInRect(&p, &controls->automation_toggle_rect);
     controls->automation_target_hovered = SDL_PointInRect(&p, &controls->automation_target_rect);
+    controls->tempo_toggle_hovered = SDL_PointInRect(&p, &controls->tempo_toggle_rect);
+    controls->automation_label_toggle_hovered = SDL_PointInRect(&p, &controls->automation_label_toggle_rect);
     bool loop_active = state->loop_enabled;
     controls->loop_start_hovered = loop_active && SDL_PointInRect(&p, &controls->loop_start_rect);
     controls->loop_end_hovered = loop_active && SDL_PointInRect(&p, &controls->loop_end_rect);
@@ -513,6 +641,16 @@ static bool timeline_controls_handle_click(AppState* state, const SDL_Point* poi
             next = 0;
         }
         state->automation_ui.target = (EngineAutomationTarget)next;
+        return true;
+    }
+    if (SDL_PointInRect(point, &controls->tempo_toggle_rect)) {
+        track_name_editor_stop(state, true);
+        state->timeline_tempo_overlay_enabled = !state->timeline_tempo_overlay_enabled;
+        return true;
+    }
+    if (SDL_PointInRect(point, &controls->automation_label_toggle_rect)) {
+        track_name_editor_stop(state, true);
+        state->timeline_automation_labels_enabled = !state->timeline_automation_labels_enabled;
         return true;
     }
     if (SDL_PointInRect(point, &controls->loop_start_rect)) {
@@ -714,6 +852,82 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
         return;
     }
 
+    SDL_Rect tempo_rect = {0, 0, 0, 0};
+    bool tempo_rect_valid = false;
+    if (state->timeline_tempo_overlay_enabled) {
+        tempo_rect_valid = timeline_tempo_overlay_rect(&geom, &tempo_rect);
+    }
+
+    if (state->timeline_tempo_overlay_enabled && tempo_rect_valid && state->tempo_overlay_ui.dragging) {
+        if (!is_down) {
+            state->tempo_overlay_ui.dragging = false;
+            tempo_overlay_commit_edit(state);
+            return;
+        }
+        double min_bpm = 0.0;
+        double max_bpm = 0.0;
+        timeline_tempo_overlay_bpm_range(&state->tempo_map, state->tempo.bpm, &min_bpm, &max_bpm);
+        SDL_Keymod mods = SDL_GetModState();
+        bool free_snap = (mods & KMOD_ALT) != 0;
+        float seconds = timeline_x_to_seconds(&geom, state->mouse_x);
+        float window_min = geom.window_start_seconds;
+        float window_max = geom.window_start_seconds + geom.visible_seconds;
+        if (window_min < 0.0f) window_min = 0.0f;
+        if (seconds < window_min) seconds = window_min;
+        if (seconds > window_max) seconds = window_max;
+        seconds = timeline_snap_seconds_to_grid(state, seconds, geom.visible_seconds);
+        double beat = tempo_map_seconds_to_beats(&state->tempo_map, (double)seconds);
+        double bpm = timeline_tempo_overlay_bpm_from_y(&tempo_rect, state->mouse_y, min_bpm, max_bpm);
+        bpm = timeline_tempo_overlay_snap_bpm(bpm, free_snap);
+        if (bpm < min_bpm) bpm = min_bpm;
+        if (bpm > max_bpm) bpm = max_bpm;
+        if (tempo_map_update_event(&state->tempo_map, state->tempo_overlay_ui.event_index, beat, bpm)) {
+            state->tempo_overlay_ui.event_index = timeline_tempo_overlay_find_event(&state->tempo_map, beat);
+        }
+        return;
+    }
+
+    if (!was_down && is_down && state->timeline_tempo_overlay_enabled && tempo_rect_valid) {
+        SDL_Point tempo_point = {state->mouse_x, state->mouse_y};
+        if (SDL_PointInRect(&tempo_point, &tempo_rect)) {
+            tempo_overlay_begin_edit(state);
+            double min_bpm = 0.0;
+            double max_bpm = 0.0;
+            timeline_tempo_overlay_bpm_range(&state->tempo_map, state->tempo.bpm, &min_bpm, &max_bpm);
+            SDL_Keymod mods = SDL_GetModState();
+            bool free_snap = (mods & KMOD_ALT) != 0;
+            int hit = timeline_tempo_overlay_hit_event(&state->tempo_map,
+                                                       &tempo_rect,
+                                                       geom.window_start_seconds,
+                                                       geom.window_start_seconds + geom.visible_seconds,
+                                                       geom.content_left,
+                                                       geom.pixels_per_second,
+                                                       min_bpm,
+                                                       max_bpm,
+                                                       state->mouse_x,
+                                                       state->mouse_y);
+            float seconds = timeline_x_to_seconds(&geom, state->mouse_x);
+            float window_min = geom.window_start_seconds;
+            float window_max = geom.window_start_seconds + geom.visible_seconds;
+            if (window_min < 0.0f) window_min = 0.0f;
+            if (seconds < window_min) seconds = window_min;
+            if (seconds > window_max) seconds = window_max;
+            seconds = timeline_snap_seconds_to_grid(state, seconds, geom.visible_seconds);
+            double beat = tempo_map_seconds_to_beats(&state->tempo_map, (double)seconds);
+            double bpm = timeline_tempo_overlay_bpm_from_y(&tempo_rect, state->mouse_y, min_bpm, max_bpm);
+            bpm = timeline_tempo_overlay_snap_bpm(bpm, free_snap);
+            if (bpm < min_bpm) bpm = min_bpm;
+            if (bpm > max_bpm) bpm = max_bpm;
+            if (hit >= 0) {
+                state->tempo_overlay_ui.event_index = hit;
+            } else if (tempo_map_upsert_event(&state->tempo_map, beat, bpm)) {
+                state->tempo_overlay_ui.event_index = timeline_tempo_overlay_find_event(&state->tempo_map, beat);
+            }
+            state->tempo_overlay_ui.dragging = true;
+            return;
+        }
+    }
+
     SDL_Point mouse_point = {state->mouse_x, state->mouse_y};
     bool over_timeline = SDL_PointInRect(&mouse_point, &timeline->rect);
     TimelineControlsUI* controls = &state->timeline_controls;
@@ -730,7 +944,17 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
             if (seconds > window_max) seconds = window_max;
             float snap_threshold = 0.05f;
             if (state->timeline_snap_enabled) {
-                snap_time_to_any_clip(state, sample_rate, snap_threshold, &seconds);
+                float grid_snap = timeline_snap_seconds_to_grid(state, seconds, geom.visible_seconds);
+                float best = grid_snap;
+                float best_delta = fabsf(grid_snap - seconds);
+                float clip_snap = seconds;
+                if (snap_time_to_any_clip(state, sample_rate, snap_threshold, &clip_snap)) {
+                    float clip_delta = fabsf(clip_snap - seconds);
+                    if (clip_delta < best_delta) {
+                        best = clip_snap;
+                    }
+                }
+                seconds = best;
             }
             uint64_t frame = 0;
             if (sample_rate > 0) {

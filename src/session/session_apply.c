@@ -263,15 +263,56 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     bool selected_from_clip = false;
 
     // Tempo: apply document values with clamping and align sample rate to current engine config.
+    state->tempo_map.sample_rate = state->runtime_cfg.sample_rate;
+    if (doc->tempo_event_count > 0 && doc->tempo_events) {
+        TempoEvent* events = (TempoEvent*)calloc((size_t)doc->tempo_event_count, sizeof(TempoEvent));
+        if (events) {
+            for (int i = 0; i < doc->tempo_event_count; ++i) {
+                events[i].beat = doc->tempo_events[i].beat;
+                events[i].bpm = doc->tempo_events[i].bpm;
+            }
+            tempo_map_set_events(&state->tempo_map, events, doc->tempo_event_count);
+            free(events);
+        }
+    } else {
+        TempoEvent default_event = {.beat = 0.0, .bpm = doc->tempo.bpm > 0.0f ? doc->tempo.bpm : 120.0f};
+        tempo_map_set_events(&state->tempo_map, &default_event, 1);
+    }
+    if (doc->time_signature_event_count > 0 && doc->time_signature_events) {
+        TimeSignatureEvent* events =
+            (TimeSignatureEvent*)calloc((size_t)doc->time_signature_event_count, sizeof(TimeSignatureEvent));
+        if (events) {
+            for (int i = 0; i < doc->time_signature_event_count; ++i) {
+                events[i].beat = doc->time_signature_events[i].beat;
+                events[i].ts_num = doc->time_signature_events[i].ts_num;
+                events[i].ts_den = doc->time_signature_events[i].ts_den;
+            }
+            time_signature_map_set_events(&state->time_signature_map, events, doc->time_signature_event_count);
+            free(events);
+        }
+    } else {
+        TimeSignatureEvent default_event = {.beat = 0.0, .ts_num = doc->tempo.ts_num, .ts_den = doc->tempo.ts_den};
+        time_signature_map_set_events(&state->time_signature_map, &default_event, 1);
+    }
+
     state->tempo = tempo_state_default(state->runtime_cfg.sample_rate);
-    if (doc->tempo.bpm > 0.0f) {
+    const TempoEvent* base_tempo = tempo_map_event_at_beat(&state->tempo_map, 0.0);
+    const TimeSignatureEvent* base_sig = time_signature_map_event_at_beat(&state->time_signature_map, 0.0);
+    if (base_tempo) {
+        state->tempo.bpm = base_tempo->bpm;
+    } else if (doc->tempo.bpm > 0.0f) {
         state->tempo.bpm = doc->tempo.bpm;
     }
-    if (doc->tempo.ts_num > 0) {
-        state->tempo.ts_num = doc->tempo.ts_num;
-    }
-    if (doc->tempo.ts_den > 0) {
-        state->tempo.ts_den = doc->tempo.ts_den;
+    if (base_sig) {
+        state->tempo.ts_num = base_sig->ts_num;
+        state->tempo.ts_den = base_sig->ts_den;
+    } else {
+        if (doc->tempo.ts_num > 0) {
+            state->tempo.ts_num = doc->tempo.ts_num;
+        }
+        if (doc->tempo.ts_den > 0) {
+            state->tempo.ts_den = doc->tempo.ts_den;
+        }
     }
     state->tempo.sample_rate = state->runtime_cfg.sample_rate;
     tempo_state_clamp(&state->tempo);

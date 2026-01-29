@@ -166,6 +166,16 @@ void session_document_free(SessionDocument* doc) {
         doc->master_fx = NULL;
     }
     doc->master_fx_count = 0;
+    if (doc->tempo_events) {
+        free(doc->tempo_events);
+        doc->tempo_events = NULL;
+    }
+    doc->tempo_event_count = 0;
+    if (doc->time_signature_events) {
+        free(doc->time_signature_events);
+        doc->time_signature_events = NULL;
+    }
+    doc->time_signature_event_count = 0;
 }
 
 void session_document_reset(SessionDocument* doc) {
@@ -249,9 +259,35 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
     TempoState tempo_copy = state->tempo;
     tempo_copy.sample_rate = out_doc->engine.sample_rate;
     tempo_state_clamp(&tempo_copy);
-    out_doc->tempo.bpm = (float)tempo_copy.bpm;
-    out_doc->tempo.ts_num = tempo_copy.ts_num;
-    out_doc->tempo.ts_den = tempo_copy.ts_den;
+    const TempoEvent* base_tempo = tempo_map_event_at_beat(&state->tempo_map, 0.0);
+    const TimeSignatureEvent* base_signature = time_signature_map_event_at_beat(&state->time_signature_map, 0.0);
+    out_doc->tempo.bpm = (float)(base_tempo ? base_tempo->bpm : tempo_copy.bpm);
+    out_doc->tempo.ts_num = base_signature ? base_signature->ts_num : tempo_copy.ts_num;
+    out_doc->tempo.ts_den = base_signature ? base_signature->ts_den : tempo_copy.ts_den;
+    if (state->tempo_map.event_count > 0) {
+        out_doc->tempo_events = (SessionTempoEvent*)calloc((size_t)state->tempo_map.event_count,
+                                                           sizeof(SessionTempoEvent));
+        if (out_doc->tempo_events) {
+            out_doc->tempo_event_count = state->tempo_map.event_count;
+            for (int i = 0; i < state->tempo_map.event_count; ++i) {
+                out_doc->tempo_events[i].beat = (float)state->tempo_map.events[i].beat;
+                out_doc->tempo_events[i].bpm = (float)state->tempo_map.events[i].bpm;
+            }
+        }
+    }
+    if (state->time_signature_map.event_count > 0) {
+        out_doc->time_signature_events =
+            (SessionTimeSignatureEvent*)calloc((size_t)state->time_signature_map.event_count,
+                                                sizeof(SessionTimeSignatureEvent));
+        if (out_doc->time_signature_events) {
+            out_doc->time_signature_event_count = state->time_signature_map.event_count;
+            for (int i = 0; i < state->time_signature_map.event_count; ++i) {
+                out_doc->time_signature_events[i].beat = (float)state->time_signature_map.events[i].beat;
+                out_doc->time_signature_events[i].ts_num = state->time_signature_map.events[i].ts_num;
+                out_doc->time_signature_events[i].ts_den = state->time_signature_map.events[i].ts_den;
+            }
+        }
+    }
 
     out_doc->transport_playing = state->engine ? engine_transport_is_playing(state->engine) : false;
     out_doc->transport_frame = state->engine ? engine_get_transport_frame(state->engine) : 0;

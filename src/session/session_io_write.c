@@ -135,6 +135,40 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     fprintf(file, "},\n");
 
     json_write_indent(file, 1);
+    fprintf(file, "\"tempo_map\": [\n");
+    for (int i = 0; i < doc->tempo_event_count; ++i) {
+        const SessionTempoEvent* evt = &doc->tempo_events[i];
+        json_write_indent(file, 2);
+        fprintf(file, "{ \"beat\": ");
+        json_write_float(file, evt->beat);
+        fprintf(file, ", \"bpm\": ");
+        json_write_float(file, evt->bpm);
+        fprintf(file, " }");
+        if (i + 1 < doc->tempo_event_count) {
+            fprintf(file, ",");
+        }
+        fprintf(file, "\n");
+    }
+    json_write_indent(file, 1);
+    fprintf(file, "],\n");
+
+    json_write_indent(file, 1);
+    fprintf(file, "\"time_signature_map\": [\n");
+    for (int i = 0; i < doc->time_signature_event_count; ++i) {
+        const SessionTimeSignatureEvent* evt = &doc->time_signature_events[i];
+        json_write_indent(file, 2);
+        fprintf(file, "{ \"beat\": ");
+        json_write_float(file, evt->beat);
+        fprintf(file, ", \"ts_num\": %d, \"ts_den\": %d }", evt->ts_num, evt->ts_den);
+        if (i + 1 < doc->time_signature_event_count) {
+            fprintf(file, ",");
+        }
+        fprintf(file, "\n");
+    }
+    json_write_indent(file, 1);
+    fprintf(file, "],\n");
+
+    json_write_indent(file, 1);
     fprintf(file, "\"transport_playing\": %s,\n", doc->transport_playing ? "true" : "false");
     json_write_indent(file, 1);
     fprintf(file, "\"transport_frame\": %" PRIu64 ",\n", doc->transport_frame);

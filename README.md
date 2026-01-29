@@ -12,6 +12,7 @@ This repository hosts an in-progress, minimal C-based DAW prototype built on SDL
 - **Current Feature Set**:
   - Timeline supports multi-track layout, clip drag/trim with snapping, loop band, mute/solo headers, and selection aware inspector.
   - Transport bar exposes play/stop, seek bar with MM:SS.mmm counter, loop toggles with draggable in/out handles, zoom sliders, grid toggle, and fit width/height controls.
+  - Session schema now includes tempo/time signature maps (step changes) that drive beat-mode grid and transport labels.
 - Engine honors seek/loop commands, rebuilds track sources respecting mute/solo, and emits silence when idle (no fallback tone).
 - Session persistence auto-loads from and auto-saves to `config/last_session.json` (Phase 7 complete).
 - Library/decoder pipeline accepts both WAV and MP3 assets (MP3 decoded via CoreAudio on macOS).

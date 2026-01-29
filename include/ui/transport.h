@@ -16,6 +16,8 @@ typedef struct {
     SDL_Rect time_label_rect;
     SDL_Rect bpm_rect;
     SDL_Rect ts_rect;
+    SDL_Rect ts_num_rect;
+    SDL_Rect ts_den_rect;
     SDL_Rect beat_toggle_rect;
     SDL_Rect seek_track_rect;
     SDL_Rect seek_handle_rect;

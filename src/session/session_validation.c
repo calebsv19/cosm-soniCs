@@ -47,6 +47,49 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
         session_set_error(error_message, error_message_len, "tempo denominator must be power of two: %d", doc->tempo.ts_den);
         return false;
     }
+    if (doc->tempo_event_count < 0) {
+        session_set_error(error_message, error_message_len, "negative tempo event count");
+        return false;
+    }
+    if (doc->tempo_event_count > 0 && !doc->tempo_events) {
+        session_set_error(error_message, error_message_len, "tempo events missing");
+        return false;
+    }
+    for (int i = 0; i < doc->tempo_event_count; ++i) {
+        const SessionTempoEvent* evt = &doc->tempo_events[i];
+        if (evt->beat < 0.0f) {
+            session_set_error(error_message, error_message_len, "tempo event %d negative beat", i);
+            return false;
+        }
+        if (evt->bpm <= 0.0f) {
+            session_set_error(error_message, error_message_len, "tempo event %d bpm invalid", i);
+            return false;
+        }
+    }
+    if (doc->time_signature_event_count < 0) {
+        session_set_error(error_message, error_message_len, "negative time signature event count");
+        return false;
+    }
+    if (doc->time_signature_event_count > 0 && !doc->time_signature_events) {
+        session_set_error(error_message, error_message_len, "time signature events missing");
+        return false;
+    }
+    for (int i = 0; i < doc->time_signature_event_count; ++i) {
+        const SessionTimeSignatureEvent* evt = &doc->time_signature_events[i];
+        if (evt->beat < 0.0f) {
+            session_set_error(error_message, error_message_len, "time signature event %d negative beat", i);
+            return false;
+        }
+        if (evt->ts_num <= 0 || evt->ts_den <= 0) {
+            session_set_error(error_message, error_message_len, "time signature event %d invalid", i);
+            return false;
+        }
+        if (evt->ts_num > 64 || evt->ts_den > 64) {
+            session_set_error(error_message, error_message_len,
+                              "time signature event %d values out of range", i);
+            return false;
+        }
+    }
     if (doc->engine.default_fade_in_ms < 0.0f || doc->engine.default_fade_out_ms < 0.0f) {
         session_set_error(error_message, error_message_len, "default fades must be non-negative");
         return false;

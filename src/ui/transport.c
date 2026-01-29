@@ -19,6 +19,8 @@ void transport_ui_init(TransportUI* ui) {
     ui->stop_rect = (SDL_Rect){0, 0, 0, 0};
     ui->bpm_rect = (SDL_Rect){0, 0, 0, 0};
     ui->ts_rect = (SDL_Rect){0, 0, 0, 0};
+    ui->ts_num_rect = (SDL_Rect){0, 0, 0, 0};
+    ui->ts_den_rect = (SDL_Rect){0, 0, 0, 0};
     ui->beat_toggle_rect = (SDL_Rect){0, 0, 0, 0};
     ui->play_hovered = false;
     ui->stop_hovered = false;
@@ -87,9 +89,15 @@ void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
     int bpm_y = stack_y;
     int label_y = bpm_y + bpm_height + bpm_gap;
     ui->time_label_rect = (SDL_Rect){x, label_y, label_width, button_height};
-    int bpm_col_width = label_width / 2;
-    ui->bpm_rect = (SDL_Rect){x, bpm_y, bpm_col_width, bpm_height};
-    ui->ts_rect = (SDL_Rect){x + bpm_col_width, bpm_y, label_width - bpm_col_width, bpm_height};
+    int bpm_ts_gap = 4;
+    int bpm_width = (label_width - bpm_ts_gap) / 2;
+    int ts_width = label_width - bpm_width - bpm_ts_gap;
+    ui->bpm_rect = (SDL_Rect){x, bpm_y, bpm_width, bpm_height};
+    ui->ts_rect = (SDL_Rect){x + bpm_width + bpm_ts_gap, bpm_y, ts_width, bpm_height};
+    int ts_gap = 2;
+    int ts_half = (ui->ts_rect.w - ts_gap) / 2;
+    ui->ts_num_rect = (SDL_Rect){ui->ts_rect.x, ui->ts_rect.y, ts_half, ui->ts_rect.h};
+    ui->ts_den_rect = (SDL_Rect){ui->ts_rect.x + ts_half + ts_gap, ui->ts_rect.y, ts_half, ui->ts_rect.h};
     int toggle_size = button_height;
     int toggle_y = container->y + (container->h - toggle_size) / 2;
     ui->beat_toggle_rect = (SDL_Rect){x + label_width + 6, toggle_y, 22, toggle_size};
@@ -180,7 +188,9 @@ void transport_ui_update_hover(TransportUI* ui, int mouse_x, int mouse_y) {
     ui->stop_hovered = SDL_PointInRect(&p, &ui->stop_rect);
     ui->grid_hovered = SDL_PointInRect(&p, &ui->grid_rect);
     ui->bpm_hovered = SDL_PointInRect(&p, &ui->bpm_rect);
-    ui->ts_hovered = SDL_PointInRect(&p, &ui->ts_rect);
+    ui->ts_hovered = SDL_PointInRect(&p, &ui->ts_rect)
+        || SDL_PointInRect(&p, &ui->ts_num_rect)
+        || SDL_PointInRect(&p, &ui->ts_den_rect);
     ui->beat_toggle_hovered = SDL_PointInRect(&p, &ui->beat_toggle_rect);
     ui->seek_hovered = SDL_PointInRect(&p, &ui->seek_track_rect) || SDL_PointInRect(&p, &ui->seek_handle_rect);
     ui->window_hovered = SDL_PointInRect(&p, &ui->window_track_rect) || SDL_PointInRect(&p, &ui->window_handle_rect);
@@ -424,15 +434,18 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
 
         char time_text[48];
         SDL_Color time_color = state->timeline_view_in_beats ? (SDL_Color){200, 210, 230, 255} : (SDL_Color){225, 225, 235, 255};
-        if (state->timeline_view_in_beats && state->tempo.bpm > 0.0) {
-            TempoState tempo = state->tempo;
-            tempo.sample_rate = sample_rate;
-            tempo_state_clamp(&tempo);
-            double beats = tempo_seconds_to_beats(seconds, &tempo);
-            int bar = tempo.ts_num > 0 ? (int)floor(beats / (double)tempo.ts_num) + 1 : 1;
-            double beat_in_bar_f = tempo.ts_num > 0 ? fmod(beats, (double)tempo.ts_num) : beats;
-            int beat_idx = (int)floor(beat_in_bar_f) + 1;
-            double sub = beat_in_bar_f - floor(beat_in_bar_f);
+        if (state->timeline_view_in_beats && state->tempo_map.event_count > 0) {
+            double beats = tempo_map_seconds_to_beats(&state->tempo_map, seconds);
+            int bar = 1;
+            int beat_idx = 1;
+            double sub = 0.0;
+            time_signature_map_beat_to_bar_beat(&state->time_signature_map,
+                                                beats,
+                                                &bar,
+                                                &beat_idx,
+                                                &sub,
+                                                NULL,
+                                                NULL);
             int sub_ms = (int)llround(sub * 1000.0);
             if (bar < 1) bar = 1;
             if (beat_idx < 1) beat_idx = 1;
@@ -451,14 +464,13 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
 
         // BPM field and TS stub
         SDL_Rect bpm_rect = ui->bpm_rect;
-        SDL_Rect ts_rect = ui->ts_rect;
         SDL_Color bpm_bg = {36, 36, 44, 255};
         SDL_Color bpm_border = {90, 90, 110, 255};
         SDL_Color bpm_text_color = {230, 230, 240, 255};
         if (state->tempo_ui.focus == TEMPO_FOCUS_BPM) {
             bpm_bg = (SDL_Color){50, 60, 80, 255};
         }
-        if (state->tempo_ui.editing) {
+        if (state->tempo_ui.editing && state->tempo_ui.focus == TEMPO_FOCUS_BPM) {
             bpm_bg = (SDL_Color){60, 80, 110, 255};
         }
         SDL_SetRenderDrawColor(renderer, bpm_bg.r, bpm_bg.g, bpm_bg.b, bpm_bg.a);
@@ -466,10 +478,16 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         SDL_SetRenderDrawColor(renderer, bpm_border.r, bpm_border.g, bpm_border.b, bpm_border.a);
         SDL_RenderDrawRect(renderer, &bpm_rect);
         char bpm_text[32];
+        double tempo_bpm = state->tempo.bpm;
+        const TempoEvent* active_tempo = tempo_map_event_at_beat(&state->tempo_map,
+                                                                 tempo_map_seconds_to_beats(&state->tempo_map, seconds));
+        if (active_tempo) {
+            tempo_bpm = active_tempo->bpm;
+        }
         if (state->tempo_ui.editing && state->tempo_ui.buffer[0]) {
             snprintf(bpm_text, sizeof(bpm_text), "%s", state->tempo_ui.buffer);
         } else {
-            snprintf(bpm_text, sizeof(bpm_text), "%.0f", state->tempo.bpm);
+            snprintf(bpm_text, sizeof(bpm_text), "%.0f", tempo_bpm);
         }
         int bpm_scale = 2;
         int bpm_tw = ui_measure_text_width(bpm_text, bpm_scale);
@@ -478,22 +496,61 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         int bpm_ty = bpm_rect.y + (bpm_rect.h - bpm_th) / 2;
         ui_draw_text(renderer, bpm_tx, bpm_ty, bpm_text, bpm_text_color, bpm_scale);
 
-        SDL_Color ts_bg = {36, 36, 44, 255};
-        if (state->tempo_ui.focus == TEMPO_FOCUS_TS) {
-            ts_bg = (SDL_Color){50, 60, 80, 255};
+        int ts_num = state->tempo.ts_num;
+        int ts_den = state->tempo.ts_den;
+        const TimeSignatureEvent* active_signature =
+            time_signature_map_event_at_beat(&state->time_signature_map,
+                                             tempo_map_seconds_to_beats(&state->tempo_map, seconds));
+        if (active_signature) {
+            ts_num = active_signature->ts_num;
+            ts_den = active_signature->ts_den;
         }
-        SDL_SetRenderDrawColor(renderer, ts_bg.r, ts_bg.g, ts_bg.b, ts_bg.a);
-        SDL_RenderFillRect(renderer, &ts_rect);
+
+        SDL_Color ts_bg = {36, 36, 44, 255};
+        SDL_Color ts_focus_bg = (SDL_Color){50, 60, 80, 255};
+        SDL_Color ts_edit_bg = (SDL_Color){60, 80, 110, 255};
+        bool focus_ts = state->tempo_ui.focus == TEMPO_FOCUS_TS;
+        bool editing_ts = state->tempo_ui.editing && focus_ts;
+
+        SDL_Rect ts_num_rect = ui->ts_num_rect;
+        SDL_Rect ts_den_rect = ui->ts_den_rect;
+        SDL_Color num_bg = ts_bg;
+        SDL_Color den_bg = ts_bg;
+        if (focus_ts && state->tempo_ui.ts_part == TEMPO_TS_PART_NUM) {
+            num_bg = editing_ts ? ts_edit_bg : ts_focus_bg;
+        }
+        if (focus_ts && state->tempo_ui.ts_part == TEMPO_TS_PART_DEN) {
+            den_bg = editing_ts ? ts_edit_bg : ts_focus_bg;
+        }
+        SDL_SetRenderDrawColor(renderer, num_bg.r, num_bg.g, num_bg.b, num_bg.a);
+        SDL_RenderFillRect(renderer, &ts_num_rect);
+        SDL_SetRenderDrawColor(renderer, den_bg.r, den_bg.g, den_bg.b, den_bg.a);
+        SDL_RenderFillRect(renderer, &ts_den_rect);
         SDL_SetRenderDrawColor(renderer, bpm_border.r, bpm_border.g, bpm_border.b, bpm_border.a);
-        SDL_RenderDrawRect(renderer, &ts_rect);
-        char ts_text[16];
-        snprintf(ts_text, sizeof(ts_text), "%d/%d", state->tempo.ts_num, state->tempo.ts_den);
+        SDL_RenderDrawRect(renderer, &ts_num_rect);
+        SDL_RenderDrawRect(renderer, &ts_den_rect);
+
+        char ts_num_text[8];
+        char ts_den_text[8];
+        if (editing_ts && state->tempo_ui.ts_part == TEMPO_TS_PART_NUM && state->tempo_ui.ts_buffer[0]) {
+            snprintf(ts_num_text, sizeof(ts_num_text), "%s", state->tempo_ui.ts_buffer);
+        } else {
+            snprintf(ts_num_text, sizeof(ts_num_text), "%d", ts_num);
+        }
+        if (editing_ts && state->tempo_ui.ts_part == TEMPO_TS_PART_DEN && state->tempo_ui.ts_buffer[0]) {
+            snprintf(ts_den_text, sizeof(ts_den_text), "%s", state->tempo_ui.ts_buffer);
+        } else {
+            snprintf(ts_den_text, sizeof(ts_den_text), "%d", ts_den);
+        }
         int ts_scale = 2;
-        int ts_tw = ui_measure_text_width(ts_text, ts_scale);
+        int num_tw = ui_measure_text_width(ts_num_text, ts_scale);
+        int den_tw = ui_measure_text_width(ts_den_text, ts_scale);
         int ts_th = ui_font_line_height(ts_scale);
-        int ts_tx = ts_rect.x + (ts_rect.w - ts_tw) / 2;
-        int ts_ty = ts_rect.y + (ts_rect.h - ts_th) / 2;
-        ui_draw_text(renderer, ts_tx, ts_ty, ts_text, bpm_text_color, ts_scale);
+        int num_tx = ts_num_rect.x + (ts_num_rect.w - num_tw) / 2;
+        int den_tx = ts_den_rect.x + (ts_den_rect.w - den_tw) / 2;
+        int ts_ty = ts_num_rect.y + (ts_num_rect.h - ts_th) / 2;
+        ui_draw_text(renderer, num_tx, ts_ty, ts_num_text, bpm_text_color, ts_scale);
+        ui_draw_text(renderer, den_tx, ts_ty, ts_den_text, bpm_text_color, ts_scale);
 
         SDL_Color toggle_bg = state->timeline_view_in_beats ? (SDL_Color){70, 110, 140, 255} : (SDL_Color){36, 36, 44, 255};
         if (ui->beat_toggle_hovered) {

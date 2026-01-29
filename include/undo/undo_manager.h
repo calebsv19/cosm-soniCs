@@ -7,6 +7,7 @@
 #include "effects/effects_manager.h"
 #include "engine/engine.h"
 #include "session.h"
+#include "time/tempo.h"
 #include "ui/library_browser.h"
 
 struct EngineSamplerSource;
@@ -19,6 +20,7 @@ typedef enum {
     UNDO_CMD_CLIP_RENAME,
     UNDO_CMD_MULTI_CLIP_TRANSFORM,
     UNDO_CMD_AUTOMATION_EDIT,
+    UNDO_CMD_TEMPO_MAP_EDIT,
     UNDO_CMD_TRACK_EDIT,
     UNDO_CMD_TRACK_RENAME,
     UNDO_CMD_FX_EDIT,
@@ -83,6 +85,14 @@ typedef struct {
     int after_lane_count;
     SessionAutomationLane* after_lanes;
 } UndoAutomationEdit;
+
+// Stores tempo map snapshots for undoing tempo edits.
+typedef struct {
+    int before_event_count;
+    TempoEvent* before_events;
+    int after_event_count;
+    TempoEvent* after_events;
+} UndoTempoMapEdit;
 
 typedef struct {
     int track_index;
@@ -149,6 +159,7 @@ typedef struct {
         UndoClipRename clip_rename;
         UndoMultiClipTransform multi_clip_transform;
         UndoAutomationEdit automation_edit;
+        UndoTempoMapEdit tempo_map_edit;
         UndoTrackEdit track_edit;
         UndoTrackRename track_rename;
         UndoFxEdit fx_edit;

@@ -179,6 +179,34 @@ static void automation_lanes_clear(SessionAutomationLane** lanes, int* lane_coun
     *lane_count = 0;
 }
 
+static bool tempo_events_clone(TempoEvent** dst, int* dst_count, const TempoEvent* src, int src_count) {
+    if (!dst || !dst_count) {
+        return false;
+    }
+    *dst = NULL;
+    *dst_count = 0;
+    if (!src || src_count <= 0) {
+        return true;
+    }
+    TempoEvent* events = (TempoEvent*)calloc((size_t)src_count, sizeof(TempoEvent));
+    if (!events) {
+        return false;
+    }
+    memcpy(events, src, sizeof(TempoEvent) * (size_t)src_count);
+    *dst = events;
+    *dst_count = src_count;
+    return true;
+}
+
+static void tempo_events_clear(TempoEvent** events, int* event_count) {
+    if (!events || !*events || !event_count) {
+        return;
+    }
+    free(*events);
+    *events = NULL;
+    *event_count = 0;
+}
+
 static bool session_track_clone(SessionTrack* dst, const SessionTrack* src) {
     if (!dst || !src) {
         return false;
@@ -268,6 +296,23 @@ static bool undo_command_clone(UndoCommand* dst, const UndoCommand* src) {
             if (!automation_lanes_clone(&adst->after_lanes, &adst->after_lane_count,
                                         asrc->after_lanes, asrc->after_lane_count)) {
                 automation_lanes_clear(&adst->before_lanes, &adst->before_lane_count);
+                return false;
+            }
+            return true;
+        }
+        case UNDO_CMD_TEMPO_MAP_EDIT: {
+            const UndoTempoMapEdit* tsrc = &src->data.tempo_map_edit;
+            UndoTempoMapEdit* tdst = &dst->data.tempo_map_edit;
+            *tdst = *tsrc;
+            tdst->before_events = NULL;
+            tdst->after_events = NULL;
+            if (!tempo_events_clone(&tdst->before_events, &tdst->before_event_count,
+                                    tsrc->before_events, tsrc->before_event_count)) {
+                return false;
+            }
+            if (!tempo_events_clone(&tdst->after_events, &tdst->after_event_count,
+                                    tsrc->after_events, tsrc->after_event_count)) {
+                tempo_events_clear(&tdst->before_events, &tdst->before_event_count);
                 return false;
             }
             return true;
@@ -804,6 +849,18 @@ static bool undo_apply(AppState* state, UndoCommand* command, bool apply_after) 
         }
         case UNDO_CMD_AUTOMATION_EDIT:
             return apply_automation_edit(state, &command->data.automation_edit, apply_after);
+        case UNDO_CMD_TEMPO_MAP_EDIT: {
+            const UndoTempoMapEdit* edit = &command->data.tempo_map_edit;
+            const TempoEvent* events = apply_after ? edit->after_events : edit->before_events;
+            int count = apply_after ? edit->after_event_count : edit->before_event_count;
+            if (!tempo_map_set_events(&state->tempo_map, events, count)) {
+                return false;
+            }
+            if (state->tempo_overlay_ui.event_index >= state->tempo_map.event_count) {
+                state->tempo_overlay_ui.event_index = -1;
+            }
+            return true;
+        }
         case UNDO_CMD_EQ_CURVE:
             return apply_eq_curve(state, &command->data.eq_curve_edit, apply_after);
         case UNDO_CMD_TRACK_SNAPSHOT:
@@ -847,6 +904,12 @@ static void undo_command_destroy(UndoCommand* cmd) {
                                    &cmd->data.automation_edit.before_lane_count);
             automation_lanes_clear(&cmd->data.automation_edit.after_lanes,
                                    &cmd->data.automation_edit.after_lane_count);
+            break;
+        case UNDO_CMD_TEMPO_MAP_EDIT:
+            tempo_events_clear(&cmd->data.tempo_map_edit.before_events,
+                               &cmd->data.tempo_map_edit.before_event_count);
+            tempo_events_clear(&cmd->data.tempo_map_edit.after_events,
+                               &cmd->data.tempo_map_edit.after_event_count);
             break;
         case UNDO_CMD_CLIP_ADD_REMOVE:
             if (cmd->data.clip_add_remove.clip.automation_lanes) {

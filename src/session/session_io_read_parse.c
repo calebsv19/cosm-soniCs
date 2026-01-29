@@ -44,6 +44,44 @@ static SessionClip* session_track_append_clip(SessionTrack* track) {
     return clip;
 }
 
+// Appends a tempo event into the session document.
+static bool session_document_append_tempo_event(SessionDocument* doc, float beat, float bpm) {
+    if (!doc) {
+        return false;
+    }
+    int new_count = doc->tempo_event_count + 1;
+    SessionTempoEvent* resized = (SessionTempoEvent*)realloc(doc->tempo_events,
+                                                             (size_t)new_count * sizeof(SessionTempoEvent));
+    if (!resized) {
+        return false;
+    }
+    doc->tempo_events = resized;
+    doc->tempo_events[new_count - 1].beat = beat;
+    doc->tempo_events[new_count - 1].bpm = bpm;
+    doc->tempo_event_count = new_count;
+    return true;
+}
+
+// Appends a time signature event into the session document.
+static bool session_document_append_time_signature_event(SessionDocument* doc, float beat, int ts_num, int ts_den) {
+    if (!doc) {
+        return false;
+    }
+    int new_count = doc->time_signature_event_count + 1;
+    SessionTimeSignatureEvent* resized =
+        (SessionTimeSignatureEvent*)realloc(doc->time_signature_events,
+                                            (size_t)new_count * sizeof(SessionTimeSignatureEvent));
+    if (!resized) {
+        return false;
+    }
+    doc->time_signature_events = resized;
+    doc->time_signature_events[new_count - 1].beat = beat;
+    doc->time_signature_events[new_count - 1].ts_num = ts_num;
+    doc->time_signature_events[new_count - 1].ts_den = ts_den;
+    doc->time_signature_event_count = new_count;
+    return true;
+}
+
 // Appends an automation point into a session lane.
 static bool session_lane_append_point(SessionAutomationLane* lane, uint64_t frame, float value) {
     if (!lane) {
@@ -1104,6 +1142,148 @@ bool parse_session_document(JsonReader* r, SessionDocument* doc) {
                     continue;
                 }
                 if (r->pos < r->length && r->data[r->pos] == '}') {
+                    ++r->pos;
+                    break;
+                }
+                return false;
+            }
+        } else if (strcmp(key, "tempo_map") == 0) {
+            if (!json_expect(r, '[')) {
+                return false;
+            }
+            while (true) {
+                json_skip_whitespace(r);
+                if (r->pos < r->length && r->data[r->pos] == ']') {
+                    ++r->pos;
+                    break;
+                }
+                if (!json_expect(r, '{')) {
+                    return false;
+                }
+                float beat = 0.0f;
+                float bpm = 0.0f;
+                while (true) {
+                    json_skip_whitespace(r);
+                    if (r->pos < r->length && r->data[r->pos] == '}') {
+                        ++r->pos;
+                        break;
+                    }
+                    char tempo_key[64];
+                    if (!json_parse_string(r, tempo_key, sizeof(tempo_key))) {
+                        return false;
+                    }
+                    if (!json_expect(r, ':')) {
+                        return false;
+                    }
+                    double val;
+                    if (strcmp(tempo_key, "beat") == 0) {
+                        if (!json_parse_number(r, &val)) {
+                            return false;
+                        }
+                        beat = (float)val;
+                    } else if (strcmp(tempo_key, "bpm") == 0) {
+                        if (!json_parse_number(r, &val)) {
+                            return false;
+                        }
+                        bpm = (float)val;
+                    } else {
+                        if (!json_skip_value(r)) {
+                            return false;
+                        }
+                    }
+                    json_skip_whitespace(r);
+                    if (r->pos < r->length && r->data[r->pos] == ',') {
+                        ++r->pos;
+                        continue;
+                    }
+                    if (r->pos < r->length && r->data[r->pos] == '}') {
+                        continue;
+                    }
+                    return false;
+                }
+                if (!session_document_append_tempo_event(doc, beat, bpm)) {
+                    return false;
+                }
+                json_skip_whitespace(r);
+                if (r->pos < r->length && r->data[r->pos] == ',') {
+                    ++r->pos;
+                    continue;
+                }
+                if (r->pos < r->length && r->data[r->pos] == ']') {
+                    ++r->pos;
+                    break;
+                }
+                return false;
+            }
+        } else if (strcmp(key, "time_signature_map") == 0) {
+            if (!json_expect(r, '[')) {
+                return false;
+            }
+            while (true) {
+                json_skip_whitespace(r);
+                if (r->pos < r->length && r->data[r->pos] == ']') {
+                    ++r->pos;
+                    break;
+                }
+                if (!json_expect(r, '{')) {
+                    return false;
+                }
+                float beat = 0.0f;
+                int ts_num = 0;
+                int ts_den = 0;
+                while (true) {
+                    json_skip_whitespace(r);
+                    if (r->pos < r->length && r->data[r->pos] == '}') {
+                        ++r->pos;
+                        break;
+                    }
+                    char ts_key[64];
+                    if (!json_parse_string(r, ts_key, sizeof(ts_key))) {
+                        return false;
+                    }
+                    if (!json_expect(r, ':')) {
+                        return false;
+                    }
+                    double val;
+                    if (strcmp(ts_key, "beat") == 0) {
+                        if (!json_parse_number(r, &val)) {
+                            return false;
+                        }
+                        beat = (float)val;
+                    } else if (strcmp(ts_key, "ts_num") == 0) {
+                        if (!json_parse_number(r, &val)) {
+                            return false;
+                        }
+                        ts_num = (int)val;
+                    } else if (strcmp(ts_key, "ts_den") == 0) {
+                        if (!json_parse_number(r, &val)) {
+                            return false;
+                        }
+                        ts_den = (int)val;
+                    } else {
+                        if (!json_skip_value(r)) {
+                            return false;
+                        }
+                    }
+                    json_skip_whitespace(r);
+                    if (r->pos < r->length && r->data[r->pos] == ',') {
+                        ++r->pos;
+                        continue;
+                    }
+                    if (r->pos < r->length && r->data[r->pos] == '}') {
+                        continue;
+                    }
+                    return false;
+                }
+                if (!session_document_append_time_signature_event(doc, beat, ts_num, ts_den)) {
+                    return false;
+                }
+                json_skip_whitespace(r);
+                if (r->pos < r->length && r->data[r->pos] == ',') {
+                    ++r->pos;
+                    continue;
+                }
+                if (r->pos < r->length && r->data[r->pos] == ']') {
                     ++r->pos;
                     break;
                 }

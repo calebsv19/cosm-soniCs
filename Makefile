@@ -67,6 +67,8 @@ SRCS := \
 	$(SRC_DIR)/ui/library_browser.c \
 	$(SRC_DIR)/ui/timeline_waveform.c \
 	$(SRC_DIR)/ui/waveform_render.c \
+	$(SRC_DIR)/ui/beat_grid.c \
+	$(SRC_DIR)/ui/time_grid.c \
 	$(SRC_DIR)/ui/timeline_view.c \
 	$(SRC_DIR)/ui/font.c \
 	$(SRC_DIR)/ui/transport.c \
@@ -98,6 +100,7 @@ SRCS := \
 	$(SRC_DIR)/input/timeline/timeline_selection.c \
 	$(SRC_DIR)/input/timeline/timeline_drag.c \
 	$(SRC_DIR)/input/automation_input.c \
+	$(SRC_DIR)/input/tempo_overlay_input.c \
 	$(SRC_DIR)/input/inspector_input.c \
 	$(SRC_DIR)/input/inspector_fade_input.c \
 	$(SRC_DIR)/input/transport_input.c \

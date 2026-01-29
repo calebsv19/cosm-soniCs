@@ -8,10 +8,57 @@
 #include "input/timeline_drag.h"
 #include "input/timeline/timeline_clipboard.h"
 #include "input/timeline_selection.h"
+#include "input/tempo_overlay_input.h"
+#include "time/tempo.h"
 #include "ui/effects_panel.h"
 #include "undo/undo_manager.h"
 #include <SDL2/SDL.h>
+#include <math.h>
+#include <stdlib.h>
 #include <string.h>
+
+#define TEMPO_OVERLAY_MIN_BPM 20.0
+#define TEMPO_OVERLAY_MAX_BPM 200.0
+
+static int tempo_overlay_find_event_index(const TempoMap* map, double beat) {
+    if (!map || map->event_count <= 0) {
+        return -1;
+    }
+    int best = 0;
+    double best_delta = fabs(map->events[0].beat - beat);
+    for (int i = 1; i < map->event_count; ++i) {
+        double delta = fabs(map->events[i].beat - beat);
+        if (delta < best_delta) {
+            best_delta = delta;
+            best = i;
+        }
+    }
+    return best;
+}
+
+static bool tempo_overlay_remove_event(TempoMap* map, int index) {
+    if (!map || !map->events || map->event_count <= 1) {
+        return false;
+    }
+    if (index <= 0 || index >= map->event_count) {
+        return false;
+    }
+    int new_count = map->event_count - 1;
+    TempoEvent* events = (TempoEvent*)calloc((size_t)new_count, sizeof(TempoEvent));
+    if (!events) {
+        return false;
+    }
+    int dst = 0;
+    for (int i = 0; i < map->event_count; ++i) {
+        if (i == index) {
+            continue;
+        }
+        events[dst++] = map->events[i];
+    }
+    bool ok = tempo_map_set_events(map, events, new_count);
+    free(events);
+    return ok;
+}
 
 bool timeline_input_keyboard_handle_event(InputManager* manager, AppState* state, const SDL_Event* event) {
     if (!manager || !state || !event || !state->engine) {
@@ -44,6 +91,31 @@ bool timeline_input_keyboard_handle_event(InputManager* manager, AppState* state
 
     SDL_Keycode key = event->key.keysym.sym;
     SDL_Keymod mods = SDL_GetModState();
+
+    if (state->timeline_tempo_overlay_enabled &&
+        state->tempo_overlay_ui.event_index >= 0 &&
+        (key == SDLK_UP || key == SDLK_DOWN)) {
+        int index = state->tempo_overlay_ui.event_index;
+        if (index >= 0 && index < state->tempo_map.event_count) {
+            double beat = state->tempo_map.events[index].beat;
+            double bpm = state->tempo_map.events[index].bpm;
+            double step = (mods & KMOD_SHIFT) ? 10.0 : 1.0;
+            if (key == SDLK_DOWN) {
+                step = -step;
+            }
+            bpm += step;
+            if (bpm < TEMPO_OVERLAY_MIN_BPM) bpm = TEMPO_OVERLAY_MIN_BPM;
+            if (bpm > TEMPO_OVERLAY_MAX_BPM) bpm = TEMPO_OVERLAY_MAX_BPM;
+            if (tempo_overlay_begin_edit(state)) {
+                if (tempo_map_update_event(&state->tempo_map, index, beat, bpm)) {
+                    state->tempo_overlay_ui.event_index = tempo_overlay_find_event_index(&state->tempo_map, beat);
+                }
+                tempo_overlay_commit_edit(state);
+                return true;
+            }
+        }
+    }
+
     if (editor->editing) {
         if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
             track_name_editor_stop(state, true);
@@ -73,6 +145,26 @@ bool timeline_input_keyboard_handle_event(InputManager* manager, AppState* state
             }
         }
         return true;
+    }
+
+    if ((key == SDLK_DELETE || key == SDLK_BACKSPACE) && state->timeline_tempo_overlay_enabled) {
+        int index = state->tempo_overlay_ui.event_index;
+        if (index > 0 && index < state->tempo_map.event_count) {
+            if (tempo_overlay_begin_edit(state)) {
+                if (tempo_overlay_remove_event(&state->tempo_map, index)) {
+                    int next_index = index - 1;
+                    if (next_index < 0) {
+                        next_index = 0;
+                    }
+                    if (next_index >= state->tempo_map.event_count) {
+                        next_index = state->tempo_map.event_count - 1;
+                    }
+                    state->tempo_overlay_ui.event_index = (state->tempo_map.event_count > 0) ? next_index : -1;
+                }
+                tempo_overlay_commit_edit(state);
+            }
+            return true;
+        }
     }
 
     if ((key == SDLK_DELETE || key == SDLK_BACKSPACE) && state->timeline_automation_mode) {

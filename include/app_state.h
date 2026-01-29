@@ -388,12 +388,16 @@ typedef struct {
     SDL_Rect snap_toggle_rect;
     SDL_Rect automation_toggle_rect;
     SDL_Rect automation_target_rect;
+    SDL_Rect tempo_toggle_rect;
+    SDL_Rect automation_label_toggle_rect;
     SDL_Rect loop_start_rect;
     SDL_Rect loop_end_rect;
     bool loop_toggle_hovered;
     bool snap_toggle_hovered;
     bool automation_toggle_hovered;
     bool automation_target_hovered;
+    bool tempo_toggle_hovered;
+    bool automation_label_toggle_hovered;
     bool loop_start_hovered;
     bool loop_end_hovered;
     bool adjusting_loop_start;
@@ -409,6 +413,12 @@ typedef struct {
     bool dragging;
     bool dragging_from_inspector;
 } AutomationUIState;
+
+// Tracks selected tempo map event and drag state for the tempo overlay.
+typedef struct {
+    int event_index;
+    bool dragging;
+} TempoOverlayUIState;
 
 typedef struct {
     bool editing;
@@ -460,12 +470,25 @@ typedef enum {
     TEMPO_FOCUS_TS
 } TempoFocus;
 
+// Identifies which half of the time signature is active in the UI.
+typedef enum {
+    TEMPO_TS_PART_NONE = 0,
+    TEMPO_TS_PART_NUM,
+    TEMPO_TS_PART_DEN
+} TempoTSPart;
+
+// Captures tempo and time signature editing state for the transport UI.
 typedef struct {
     TempoFocus focus;
     bool editing;
     char buffer[16];
     int cursor;
+    TempoTSPart ts_part;
+    char ts_buffer[8];
+    int ts_cursor;
     Uint32 last_click_ticks;
+    TempoFocus last_click_focus;
+    TempoTSPart last_click_ts_part;
 } TempoUIState;
 
 typedef struct AppState AppState;
@@ -512,7 +535,10 @@ struct AppState {
     bool timeline_view_in_beats;
     bool timeline_snap_enabled;
     bool timeline_automation_mode;
+    bool timeline_automation_labels_enabled;
+    bool timeline_tempo_overlay_enabled;
     AutomationUIState automation_ui;
+    TempoOverlayUIState tempo_overlay_ui;
     bool timeline_marquee_active;
     SDL_Rect timeline_marquee_rect;
     bool timeline_marquee_extend;
@@ -540,6 +566,8 @@ struct AppState {
     int pending_track_fx_count;
     bool pending_track_fx_dirty;
     TempoState tempo;
+    TempoMap tempo_map;
+    TimeSignatureMap time_signature_map;
     TempoUIState tempo_ui;
     ProjectState project;
     ProjectSavePrompt project_prompt;

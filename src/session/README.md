@@ -5,6 +5,9 @@ Purpose: Session persistence helpers that translate between the live `AppState`/
 ## Session Document (`SessionDocument`)
 - `version`: File format version (`SESSION_DOCUMENT_VERSION`).
 - `engine`: Snapshot of `EngineRuntimeConfig` (sample rate, block size).
+- `tempo`: Base tempo/time signature values for backward compatibility.
+- `tempo_map`: Ordered tempo change list in beats (`beat`, `bpm`).
+- `time_signature_map`: Ordered time signature change list in beats (`beat`, `ts_num`, `ts_den`).
 - `transport_playing` / `transport_frame`: Whether playback was active and the current frame.
 - `loop`: Loop enabled flag plus start/end frames.
 - `timeline`: Visible seconds, window start offset, vertical scale, grid visibility, and playhead frame.
@@ -23,6 +26,9 @@ Purpose: Session persistence helpers that translate between the live `AppState`/
 {
   "version": 4,
   "engine": {"sample_rate": 48000, "block_size": 128},
+  "tempo": {"bpm": 120, "ts_num": 4, "ts_den": 4},
+  "tempo_map": [{"beat": 0, "bpm": 120}, {"beat": 32, "bpm": 140}],
+  "time_signature_map": [{"beat": 0, "ts_num": 4, "ts_den": 4}, {"beat": 64, "ts_num": 3, "ts_den": 4}],
   "transport_playing": false,
   "transport_frame": 0,
   "loop": {"enabled": true, "start_frame": 96000, "end_frame": 144000},

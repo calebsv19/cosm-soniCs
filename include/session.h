@@ -9,7 +9,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SESSION_DOCUMENT_VERSION 15
+#define SESSION_DOCUMENT_VERSION 16
 #define SESSION_PATH_MAX 512
 #define SESSION_NAME_MAX 128
 #define SESSION_FX_NAME_MAX 64
@@ -157,10 +157,27 @@ typedef struct {
     int ts_den;
 } SessionTempo;
 
+// Captures serialized tempo change data for session persistence.
+typedef struct {
+    float beat;
+    float bpm;
+} SessionTempoEvent;
+
+// Captures serialized time signature change data for session persistence.
+typedef struct {
+    float beat;
+    int ts_num;
+    int ts_den;
+} SessionTimeSignatureEvent;
+
 typedef struct {
     uint32_t version;
     EngineRuntimeConfig engine;
     SessionTempo tempo;
+    SessionTempoEvent* tempo_events;
+    int tempo_event_count;
+    SessionTimeSignatureEvent* time_signature_events;
+    int time_signature_event_count;
     SessionLoopState loop;
     SessionTimelineView timeline;
     int selected_track_index;

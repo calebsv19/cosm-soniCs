@@ -207,6 +207,10 @@ int main(void) {
 
     AppState state = {0};
     state.timeline_snap_enabled = true;
+    state.timeline_automation_labels_enabled = false;
+    state.timeline_tempo_overlay_enabled = false;
+    state.tempo_overlay_ui.event_index = -1;
+    state.tempo_overlay_ui.dragging = false;
     state.automation_ui.target = ENGINE_AUTOMATION_TARGET_VOLUME;
     state.automation_ui.track_index = -1;
     state.automation_ui.clip_index = -1;
@@ -225,6 +229,10 @@ int main(void) {
                 state.runtime_cfg.sample_rate, state.runtime_cfg.block_size);
     }
     state.tempo = tempo_state_default(state.runtime_cfg.sample_rate);
+    tempo_map_init(&state.tempo_map, state.runtime_cfg.sample_rate);
+    time_signature_map_init(&state.time_signature_map);
+    tempo_map_upsert_event(&state.tempo_map, 0.0, state.tempo.bpm);
+    time_signature_map_upsert_event(&state.time_signature_map, 0.0, state.tempo.ts_num, state.tempo.ts_den);
 
     state.engine_logging_enabled = state.runtime_cfg.enable_engine_logs;
     state.cache_logging_enabled = state.runtime_cfg.enable_cache_logs;
@@ -356,6 +364,8 @@ int main(void) {
     ts_shutdown();
     waveform_cache_shutdown(&state.waveform_cache);
     undo_manager_free(&state.undo);
+    tempo_map_free(&state.tempo_map);
+    time_signature_map_free(&state.time_signature_map);
     media_registry_shutdown(&state.media_registry);
     TTF_Quit();
     App_Shutdown(&ctx);

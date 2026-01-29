@@ -12,6 +12,7 @@
 #include "time/tempo.h"
 
 #include <SDL2/SDL.h>
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -105,6 +106,41 @@ static float playhead_seconds(const AppState* state) {
     return (float)((double)frame / (double)sample_rate);
 }
 
+// Returns the transport playhead position in beats using the tempo map.
+static double playhead_beats(const AppState* state) {
+    if (!state || !state->engine) {
+        return 0.0;
+    }
+    const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
+    int sample_rate = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
+    if (sample_rate <= 0) {
+        return 0.0;
+    }
+    uint64_t frame = engine_get_transport_frame(state->engine);
+    double seconds = (double)frame / (double)sample_rate;
+    return tempo_map_seconds_to_beats(&state->tempo_map, seconds);
+}
+
+// Syncs the legacy tempo state to the active tempo/time signature at the playhead.
+static void sync_tempo_state_to_playhead(AppState* state) {
+    if (!state) {
+        return;
+    }
+    double beats = playhead_beats(state);
+    const TempoEvent* tempo_evt = tempo_map_event_at_beat(&state->tempo_map, beats);
+    const TimeSignatureEvent* sig_evt = time_signature_map_event_at_beat(&state->time_signature_map, beats);
+    if (tempo_evt) {
+        state->tempo.bpm = tempo_evt->bpm;
+    }
+    if (sig_evt) {
+        state->tempo.ts_num = sig_evt->ts_num;
+        state->tempo.ts_den = sig_evt->ts_den;
+    }
+    const EngineRuntimeConfig* cfg = state->engine ? engine_get_config(state->engine) : NULL;
+    state->tempo.sample_rate = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
+    tempo_state_clamp(&state->tempo);
+}
+
 static void zoom_keep_playhead(AppState* state, float old_visible, float new_visible) {
     if (!state) return;
     if (new_visible < TIMELINE_MIN_VISIBLE_SECONDS) new_visible = TIMELINE_MIN_VISIBLE_SECONDS;
@@ -126,17 +162,15 @@ static float snap_window_start(const AppState* state, float seconds, float max_s
         if (seconds > max_start) seconds = max_start;
         return seconds;
     }
-    const EngineRuntimeConfig* cfg = state->engine ? engine_get_config(state->engine) : NULL;
-    int sample_rate = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
-    if (sample_rate <= 0 || state->tempo.bpm <= 0.0) {
+    if (state->tempo_map.event_count <= 0) {
         if (seconds < 0.0f) seconds = 0.0f;
         if (seconds > max_start) seconds = max_start;
         return seconds;
     }
-    TempoState tempo = state->tempo;
-    tempo.sample_rate = sample_rate;
-    tempo_state_clamp(&tempo);
-    double visible_beats = tempo_seconds_to_beats(state->timeline_visible_seconds, &tempo);
+    double start_beats = tempo_map_seconds_to_beats(&state->tempo_map, (double)seconds);
+    double end_beats =
+        tempo_map_seconds_to_beats(&state->tempo_map, (double)seconds + (double)state->timeline_visible_seconds);
+    double visible_beats = end_beats - start_beats;
     double subdivision = 1.0;
     if (visible_beats <= 2.0) {
         subdivision = 1.0 / 16.0;
@@ -149,9 +183,8 @@ static float snap_window_start(const AppState* state, float seconds, float max_s
     } else {
         subdivision = 1.0;
     }
-    double beats = tempo_seconds_to_beats((double)seconds, &tempo);
-    double snapped_beats = floor(beats / subdivision + 0.5) * subdivision;
-    double snapped_sec = tempo_beats_to_seconds(snapped_beats, &tempo);
+    double snapped_beats = floor(start_beats / subdivision + 0.5) * subdivision;
+    double snapped_sec = tempo_map_beats_to_seconds(&state->tempo_map, snapped_beats);
     if (snapped_sec < 0.0) snapped_sec = 0.0;
     if (snapped_sec > (double)max_start) snapped_sec = (double)max_start;
     return (float)snapped_sec;
@@ -165,21 +198,35 @@ static void open_project_prompt(AppState* state) {
     SDL_StartTextInput();
 }
 
-static void tempo_cancel_edit(AppState* state) {
+// Clears editing state while keeping the current focus.
+static void tempo_finish_edit(AppState* state) {
     if (!state) return;
     if (state->tempo_ui.editing) {
         SDL_StopTextInput();
     }
     state->tempo_ui.editing = false;
-    state->tempo_ui.focus = TEMPO_FOCUS_NONE;
     state->tempo_ui.buffer[0] = '\0';
     state->tempo_ui.cursor = 0;
+    state->tempo_ui.ts_buffer[0] = '\0';
+    state->tempo_ui.ts_cursor = 0;
+}
+
+static void tempo_cancel_edit(AppState* state) {
+    if (!state) return;
+    tempo_finish_edit(state);
+    state->tempo_ui.focus = TEMPO_FOCUS_NONE;
+    state->tempo_ui.ts_part = TEMPO_TS_PART_NONE;
 }
 
 static void tempo_focus(AppState* state, TempoFocus focus, bool editing) {
     if (!state) return;
+    tempo_finish_edit(state);
     state->tempo_ui.focus = focus;
+    if (focus == TEMPO_FOCUS_BPM) {
+        state->tempo_ui.ts_part = TEMPO_TS_PART_NONE;
+    }
     if (editing) {
+        sync_tempo_state_to_playhead(state);
         state->tempo_ui.editing = true;
         snprintf(state->tempo_ui.buffer, sizeof(state->tempo_ui.buffer), "%.0f", state->tempo.bpm);
         state->tempo_ui.cursor = (int)strlen(state->tempo_ui.buffer);
@@ -193,21 +240,104 @@ static void tempo_focus(AppState* state, TempoFocus focus, bool editing) {
 
 static void resync_tempo_synced_fx(AppState* state);
 
+// Focuses a time signature part and optionally begins editing it.
+static void tempo_focus_time_signature_part(AppState* state, TempoTSPart part, bool editing) {
+    if (!state) {
+        return;
+    }
+    tempo_finish_edit(state);
+    state->tempo_ui.focus = TEMPO_FOCUS_TS;
+    state->tempo_ui.ts_part = part;
+    if (editing) {
+        sync_tempo_state_to_playhead(state);
+        state->tempo_ui.editing = true;
+        int value = (part == TEMPO_TS_PART_DEN) ? state->tempo.ts_den : state->tempo.ts_num;
+        snprintf(state->tempo_ui.ts_buffer, sizeof(state->tempo_ui.ts_buffer), "%d", value);
+        state->tempo_ui.ts_cursor = (int)strlen(state->tempo_ui.ts_buffer);
+        SDL_StartTextInput();
+    } else {
+        state->tempo_ui.editing = false;
+        state->tempo_ui.ts_buffer[0] = '\0';
+        state->tempo_ui.ts_cursor = 0;
+    }
+}
+
+// Returns the active edit buffer and cursor for tempo/time signature edits.
+static void tempo_edit_target(AppState* state, char** out_buffer, int** out_cursor, size_t* out_capacity) {
+    if (!state || !out_buffer || !out_cursor || !out_capacity) {
+        return;
+    }
+    if (state->tempo_ui.focus == TEMPO_FOCUS_TS) {
+        *out_buffer = state->tempo_ui.ts_buffer;
+        *out_cursor = &state->tempo_ui.ts_cursor;
+        *out_capacity = sizeof(state->tempo_ui.ts_buffer);
+    } else {
+        *out_buffer = state->tempo_ui.buffer;
+        *out_cursor = &state->tempo_ui.cursor;
+        *out_capacity = sizeof(state->tempo_ui.buffer);
+    }
+}
+
+// Applies a tempo change at the playhead position.
+static void tempo_apply_at_playhead(AppState* state, double bpm) {
+    if (!state) {
+        return;
+    }
+    double beats = playhead_beats(state);
+    if (tempo_map_upsert_event(&state->tempo_map, beats, bpm)) {
+        sync_tempo_state_to_playhead(state);
+        resync_tempo_synced_fx(state);
+    }
+}
+
+// Applies a time signature change at the playhead position.
+static void time_signature_apply_at_playhead(AppState* state, int ts_num, int ts_den) {
+    if (!state) {
+        return;
+    }
+    double beats = playhead_beats(state);
+    if (time_signature_map_upsert_event(&state->time_signature_map, beats, ts_num, ts_den)) {
+        sync_tempo_state_to_playhead(state);
+    }
+}
+
+// Applies a time signature edit from the current buffer.
+// Applies a time signature edit from the current buffer, returning true on success.
+static bool time_signature_apply_buffer(AppState* state) {
+    if (!state) {
+        return false;
+    }
+    if (state->tempo_ui.focus != TEMPO_FOCUS_TS || state->tempo_ui.ts_part == TEMPO_TS_PART_NONE) {
+        return false;
+    }
+    if (state->tempo_ui.ts_buffer[0] == '\0') {
+        return false;
+    }
+    char* end = NULL;
+    long value = strtol(state->tempo_ui.ts_buffer, &end, 10);
+    if (!end || *end != '\0' || value <= 0) {
+        return false;
+    }
+    sync_tempo_state_to_playhead(state);
+    int ts_num = state->tempo.ts_num;
+    int ts_den = state->tempo.ts_den;
+    if (state->tempo_ui.ts_part == TEMPO_TS_PART_NUM) {
+        ts_num = (int)value;
+    } else {
+        ts_den = (int)value;
+    }
+    time_signature_apply_at_playhead(state, ts_num, ts_den);
+    return true;
+}
+
 static void tempo_apply_buffer(AppState* state) {
     if (!state) return;
     if (!state->tempo_ui.editing) return;
     double val = atof(state->tempo_ui.buffer);
     if (val > 0.0) {
-        state->tempo.bpm = val;
-        const EngineRuntimeConfig* cfg = state->engine ? engine_get_config(state->engine) : NULL;
-        state->tempo.sample_rate = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
-        tempo_state_clamp(&state->tempo);
-        resync_tempo_synced_fx(state);
+        tempo_apply_at_playhead(state, val);
     }
-    SDL_StopTextInput();
-    state->tempo_ui.editing = false;
-    state->tempo_ui.buffer[0] = '\0';
-    state->tempo_ui.cursor = 0;
+    tempo_finish_edit(state);
 }
 
 static void resync_tempo_synced_fx(AppState* state) {
@@ -311,16 +441,27 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
             SDL_Point p = {event->button.x, event->button.y};
             Uint32 now = SDL_GetTicks();
             if (SDL_PointInRect(&p, &transport->bpm_rect)) {
-                bool is_double = (now - state->tempo_ui.last_click_ticks) <= 300;
+                bool is_double = (now - state->tempo_ui.last_click_ticks) <= 300
+                    && state->tempo_ui.last_click_focus == TEMPO_FOCUS_BPM;
                 state->tempo_ui.last_click_ticks = now;
+                state->tempo_ui.last_click_focus = TEMPO_FOCUS_BPM;
+                state->tempo_ui.last_click_ts_part = TEMPO_TS_PART_NONE;
                 tempo_focus(state, TEMPO_FOCUS_BPM, is_double);
                 transport_ui_sync(transport, state);
                 break;
             }
-            if (SDL_PointInRect(&p, &transport->ts_rect)) {
-                // Stub for future TS editing: keep focus but no edit.
+            if (SDL_PointInRect(&p, &transport->ts_num_rect) || SDL_PointInRect(&p, &transport->ts_den_rect)) {
+                TempoTSPart part = SDL_PointInRect(&p, &transport->ts_den_rect)
+                                       ? TEMPO_TS_PART_DEN
+                                       : TEMPO_TS_PART_NUM;
+                bool is_double = (now - state->tempo_ui.last_click_ticks) <= 300
+                    && state->tempo_ui.last_click_focus == TEMPO_FOCUS_TS
+                    && state->tempo_ui.last_click_ts_part == part;
                 state->tempo_ui.last_click_ticks = now;
-                tempo_focus(state, TEMPO_FOCUS_TS, false);
+                state->tempo_ui.last_click_focus = TEMPO_FOCUS_TS;
+                state->tempo_ui.last_click_ts_part = part;
+                tempo_focus_time_signature_part(state, part, is_double);
+                transport_ui_sync(transport, state);
                 break;
             }
             if (SDL_PointInRect(&p, &transport->beat_toggle_rect)) {
@@ -489,44 +630,76 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
         break;
     case SDL_TEXTINPUT:
         if (state->tempo_ui.editing) {
-            int len = (int)strlen(state->tempo_ui.buffer);
-            int cur = state->tempo_ui.cursor;
+            char* buffer = NULL;
+            int* cursor = NULL;
+            size_t cap = 0;
+            tempo_edit_target(state, &buffer, &cursor, &cap);
+            if (!buffer || !cursor || cap == 0) {
+                break;
+            }
+            int len = (int)strlen(buffer);
+            int cur = *cursor;
             if (cur < 0) cur = 0;
             if (cur > len) cur = len;
             for (const char* p = event->text.text; *p; ++p) {
-                if ((int)strlen(state->tempo_ui.buffer) >= (int)sizeof(state->tempo_ui.buffer) - 1) {
+                if (state->tempo_ui.focus == TEMPO_FOCUS_TS) {
+                    if (!isdigit((unsigned char)*p)) {
+                        continue;
+                    }
+                } else if (state->tempo_ui.focus == TEMPO_FOCUS_BPM) {
+                    if (!isdigit((unsigned char)*p) && *p != '.') {
+                        continue;
+                    }
+                    if (*p == '.' && strchr(buffer, '.') != NULL) {
+                        continue;
+                    }
+                }
+                if ((int)strlen(buffer) >= (int)cap - 1) {
                     break;
                 }
-                memmove(state->tempo_ui.buffer + cur + 1,
-                        state->tempo_ui.buffer + cur,
-                        strlen(state->tempo_ui.buffer + cur) + 1);
-                state->tempo_ui.buffer[cur] = *p;
+                memmove(buffer + cur + 1,
+                        buffer + cur,
+                        strlen(buffer + cur) + 1);
+                buffer[cur] = *p;
                 cur++;
             }
-            state->tempo_ui.cursor = cur;
+            *cursor = cur;
         }
         break;
     case SDL_KEYDOWN:
         if (state->tempo_ui.editing) {
             SDL_Keycode key = event->key.keysym.sym;
+            char* buffer = NULL;
+            int* cursor = NULL;
+            size_t cap = 0;
+            tempo_edit_target(state, &buffer, &cursor, &cap);
+            if (!buffer || !cursor || cap == 0) {
+                break;
+            }
             if (key == SDLK_BACKSPACE) {
-                int len = (int)strlen(state->tempo_ui.buffer);
-                int cur = state->tempo_ui.cursor;
+                int len = (int)strlen(buffer);
+                int cur = *cursor;
                 if (cur > 0 && len > 0) {
-                    memmove(state->tempo_ui.buffer + cur - 1,
-                            state->tempo_ui.buffer + cur,
+                    memmove(buffer + cur - 1,
+                            buffer + cur,
                             (size_t)(len - cur + 1));
-                    state->tempo_ui.cursor = cur - 1;
+                    *cursor = cur - 1;
                 }
             } else if (key == SDLK_LEFT) {
-                if (state->tempo_ui.cursor > 0) state->tempo_ui.cursor--;
+                if (*cursor > 0) (*cursor)--;
             } else if (key == SDLK_RIGHT) {
-                int len = (int)strlen(state->tempo_ui.buffer);
-                if (state->tempo_ui.cursor < len) state->tempo_ui.cursor++;
+                int len = (int)strlen(buffer);
+                if (*cursor < len) (*cursor)++;
             } else if (key == SDLK_ESCAPE) {
                 tempo_cancel_edit(state);
             } else if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
-                tempo_apply_buffer(state);
+                if (state->tempo_ui.focus == TEMPO_FOCUS_TS) {
+                    if (time_signature_apply_buffer(state)) {
+                        tempo_finish_edit(state);
+                    }
+                } else {
+                    tempo_apply_buffer(state);
+                }
             }
             break;
         }
@@ -534,18 +707,42 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
             SDL_Keycode key = event->key.keysym.sym;
             int step = (SDL_GetModState() & KMOD_SHIFT) ? 5 : 1;
             if (key == SDLK_UP) {
-                state->tempo.bpm += step;
-                const EngineRuntimeConfig* cfg = state->engine ? engine_get_config(state->engine) : NULL;
-                state->tempo.sample_rate = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
-                tempo_state_clamp(&state->tempo);
-                resync_tempo_synced_fx(state);
+                sync_tempo_state_to_playhead(state);
+                tempo_apply_at_playhead(state, state->tempo.bpm + step);
                 break;
             } else if (key == SDLK_DOWN) {
-                state->tempo.bpm -= step;
-                const EngineRuntimeConfig* cfg = state->engine ? engine_get_config(state->engine) : NULL;
-                state->tempo.sample_rate = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
-                tempo_state_clamp(&state->tempo);
-                resync_tempo_synced_fx(state);
+                sync_tempo_state_to_playhead(state);
+                tempo_apply_at_playhead(state, state->tempo.bpm - step);
+                break;
+            }
+        } else if (state->tempo_ui.focus == TEMPO_FOCUS_TS) {
+            SDL_Keycode key = event->key.keysym.sym;
+            bool shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
+            TempoTSPart part = state->tempo_ui.ts_part;
+            if (part == TEMPO_TS_PART_NONE) {
+                part = TEMPO_TS_PART_NUM;
+            }
+            if (shift) {
+                part = (part == TEMPO_TS_PART_DEN) ? TEMPO_TS_PART_NUM : TEMPO_TS_PART_DEN;
+            }
+            sync_tempo_state_to_playhead(state);
+            int ts_num = state->tempo.ts_num;
+            int ts_den = state->tempo.ts_den;
+            if (key == SDLK_UP) {
+                if (part == TEMPO_TS_PART_DEN) {
+                    ts_den += 1;
+                } else {
+                    ts_num += 1;
+                }
+                time_signature_apply_at_playhead(state, ts_num, ts_den);
+                break;
+            } else if (key == SDLK_DOWN) {
+                if (part == TEMPO_TS_PART_DEN) {
+                    ts_den = (ts_den > 1) ? (ts_den - 1) : ts_den;
+                } else {
+                    ts_num = (ts_num > 1) ? (ts_num - 1) : ts_num;
+                }
+                time_signature_apply_at_playhead(state, ts_num, ts_den);
                 break;
             }
         }
