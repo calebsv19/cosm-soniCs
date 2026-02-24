@@ -139,6 +139,9 @@ static void sync_tempo_state_to_playhead(AppState* state) {
     const EngineRuntimeConfig* cfg = state->engine ? engine_get_config(state->engine) : NULL;
     state->tempo.sample_rate = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
     tempo_state_clamp(&state->tempo);
+    if (state->engine) {
+        engine_set_tempo_state(state->engine, &state->tempo);
+    }
 }
 
 static void zoom_keep_playhead(AppState* state, float old_visible, float new_visible) {
@@ -348,21 +351,21 @@ static void resync_tempo_synced_fx(AppState* state) {
     if (engine_fx_master_snapshot(state->engine, &master)) {
         for (int i = 0; i < master.count && i < FX_MASTER_MAX; ++i) {
             const FxMasterInstanceInfo* inst = &master.items[i];
-            FxDesc desc = {0};
-            engine_fx_registry_get_desc(state->engine, inst->type, &desc);
+            const EffectParamSpec* specs = NULL;
+            uint32_t spec_count = 0;
+            engine_fx_registry_get_param_specs(state->engine, inst->type, &specs, &spec_count);
             uint32_t pc = inst->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : inst->param_count;
             for (uint32_t p = 0; p < pc; ++p) {
                 FxParamMode mode = inst->param_mode[p];
                 if (mode == FX_PARAM_MODE_NATIVE) {
                     continue;
                 }
-                FxParamKind kind = fx_param_kind_from_name((p < desc.num_params) ? desc.param_names[p] : NULL);
-                if (!fx_param_kind_is_syncable(kind)) {
+                const EffectParamSpec* spec = (specs && p < spec_count) ? &specs[p] : NULL;
+                if (!fx_param_spec_is_syncable(spec)) {
                     continue;
                 }
                 float beat_value = inst->param_beats[p];
-                float native_value = fx_param_beats_to_native(kind, beat_value, &state->tempo);
-                engine_fx_master_set_param_with_mode(state->engine, inst->id, p, native_value, mode, beat_value);
+                engine_fx_master_set_param_with_mode(state->engine, inst->id, p, inst->params[p], mode, beat_value);
             }
         }
     }
@@ -375,21 +378,21 @@ static void resync_tempo_synced_fx(AppState* state) {
         }
         for (int i = 0; i < snap.count && i < FX_MASTER_MAX; ++i) {
             const FxMasterInstanceInfo* inst = &snap.items[i];
-            FxDesc desc = {0};
-            engine_fx_registry_get_desc(state->engine, inst->type, &desc);
+            const EffectParamSpec* specs = NULL;
+            uint32_t spec_count = 0;
+            engine_fx_registry_get_param_specs(state->engine, inst->type, &specs, &spec_count);
             uint32_t pc = inst->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : inst->param_count;
             for (uint32_t p = 0; p < pc; ++p) {
                 FxParamMode mode = inst->param_mode[p];
                 if (mode == FX_PARAM_MODE_NATIVE) {
                     continue;
                 }
-                FxParamKind kind = fx_param_kind_from_name((p < desc.num_params) ? desc.param_names[p] : NULL);
-                if (!fx_param_kind_is_syncable(kind)) {
+                const EffectParamSpec* spec = (specs && p < spec_count) ? &specs[p] : NULL;
+                if (!fx_param_spec_is_syncable(spec)) {
                     continue;
                 }
                 float beat_value = inst->param_beats[p];
-                float native_value = fx_param_beats_to_native(kind, beat_value, &state->tempo);
-                engine_fx_track_set_param_with_mode(state->engine, t, inst->id, p, native_value, mode, beat_value);
+                engine_fx_track_set_param_with_mode(state->engine, t, inst->id, p, inst->params[p], mode, beat_value);
             }
         }
     }

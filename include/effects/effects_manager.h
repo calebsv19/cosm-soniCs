@@ -3,6 +3,8 @@
 #include <stdbool.h>
 
 #include "effects/effects_api.h"
+#include "effects/param_spec.h"
+#include "time/tempo.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -48,6 +50,13 @@ typedef void (*FxMeterTapCallback)(void* user,
                                    const float* interleaved,
                                    int frames,
                                    int channels);
+// Receives scope values for FX instances at render time.
+typedef void (*FxScopeTapCallback)(void* user,
+                                   bool is_master,
+                                   int track_index,
+                                   FxInstId id,
+                                   FxTypeId type,
+                                   float value);
 
 typedef struct {
     int sample_rate;
@@ -62,6 +71,8 @@ void            fxm_destroy(EffectsManager* fm);
 bool            fxm_set_track_count(EffectsManager* fm, int track_count);
 // Registers a callback for per-FX metering taps during render.
 void            fxm_set_meter_tap_callback(EffectsManager* fm, FxMeterTapCallback cb, void* user);
+// Registers a callback for per-FX scope taps during render.
+void            fxm_set_scope_tap_callback(EffectsManager* fm, FxScopeTapCallback cb, void* user);
 
 // ---------- Master chain (v1 minimal integration) ----------
 
@@ -72,6 +83,14 @@ bool     fxm_master_reorder(EffectsManager* fm, FxInstId id, int new_index);
 
 // Params / enable-bypass (non-RT)
 bool     fxm_master_set_param(EffectsManager* fm, FxInstId id, uint32_t pidx, float value);
+// Sets a master param target with optional beat sync using the provided tempo.
+bool     fxm_master_set_param_target(EffectsManager* fm,
+                                     FxInstId id,
+                                     uint32_t pidx,
+                                     float value,
+                                     FxParamMode mode,
+                                     float beat_value,
+                                     const TempoState* tempo);
 bool     fxm_master_set_param_with_mode(EffectsManager* fm,
                                         FxInstId id,
                                         uint32_t pidx,
@@ -93,6 +112,15 @@ FxInstId fxm_track_add(EffectsManager* fm, int track_index, FxTypeId type);
 bool     fxm_track_remove(EffectsManager* fm, int track_index, FxInstId id);
 bool     fxm_track_reorder(EffectsManager* fm, int track_index, FxInstId id, int new_index);
 bool     fxm_track_set_param(EffectsManager* fm, int track_index, FxInstId id, uint32_t pidx, float value);
+// Sets a track param target with optional beat sync using the provided tempo.
+bool     fxm_track_set_param_target(EffectsManager* fm,
+                                    int track_index,
+                                    FxInstId id,
+                                    uint32_t pidx,
+                                    float value,
+                                    FxParamMode mode,
+                                    float beat_value,
+                                    const TempoState* tempo);
 bool     fxm_track_set_param_with_mode(EffectsManager* fm,
                                        int track_index,
                                        FxInstId id,
@@ -118,12 +146,18 @@ typedef struct {
     const char*    name;
     fx_get_desc_fn get_desc;
     fx_create_fn   create;
+    const EffectParamSpec* param_specs;
+    uint32_t       param_spec_count;
 } FxRegistryEntry;
 
 bool fxm_register_builtin(EffectsManager* fm, const FxRegistryEntry* entries, int count);
 const FxRegistryEntry* fxm_get_registry(const EffectsManager* fm, int* out_count);
 const FxRegistryEntry* fxm_find_registry(const EffectsManager* fm, FxTypeId type);
 bool fxm_registry_get_desc(const EffectsManager* fm, FxTypeId type, FxDesc* out_desc);
+// Returns the parameter spec list for a given effect type.
+const EffectParamSpec* fxm_registry_get_param_specs(const EffectsManager* fm, FxTypeId type, uint32_t* out_count);
+// Returns a single parameter spec for a given effect type + param index.
+const EffectParamSpec* fxm_registry_get_param_spec(const EffectsManager* fm, FxTypeId type, uint32_t param_index);
 bool fxm_master_snapshot(const EffectsManager* fm, FxMasterSnapshot* out);
 
 #ifdef __cplusplus

@@ -5,7 +5,8 @@
 
 // FxMidSideMeter holds analysis state for a mid/side meter effect.
 typedef struct FxMidSideMeter {
-    float reserved; // placeholder for future mid/side state
+    float window_ms;
+    float smooth_ms;
 } FxMidSideMeter;
 
 // mid_side_meter_process passes audio through unchanged for analysis-only use.
@@ -23,9 +24,24 @@ static void mid_side_meter_process(FxHandle* h,
 
 // mid_side_meter_set_param ignores params until analysis controls are added.
 static void mid_side_meter_set_param(FxHandle* h, uint32_t idx, float value) {
-    (void)h;
-    (void)idx;
-    (void)value;
+    FxMidSideMeter* meter = (FxMidSideMeter*)h;
+    if (!meter) {
+        return;
+    }
+    switch (idx) {
+        case 0:
+            if (value < 10.0f) value = 10.0f;
+            if (value > 2000.0f) value = 2000.0f;
+            meter->window_ms = value;
+            break;
+        case 1:
+            if (value < 5.0f) value = 5.0f;
+            if (value > 1000.0f) value = 1000.0f;
+            meter->smooth_ms = value;
+            break;
+        default:
+            break;
+    }
 }
 
 // mid_side_meter_reset clears internal analysis state.
@@ -46,7 +62,11 @@ int mid_side_meter_get_desc(FxDesc* out) {
     out->flags = FX_FLAG_INPLACE_OK;
     out->num_inputs = 1;
     out->num_outputs = 1;
-    out->num_params = 0;
+    out->num_params = 2;
+    out->param_names[0] = "window_ms";
+    out->param_names[1] = "smooth_ms";
+    out->param_defaults[0] = 200.0f;
+    out->param_defaults[1] = 80.0f;
     out->latency_samples = 0;
     return 1;
 }
@@ -65,6 +85,8 @@ int mid_side_meter_create(const FxDesc* desc,
 
     FxMidSideMeter* meter = (FxMidSideMeter*)calloc(1, sizeof(FxMidSideMeter));
     if (!meter) return 0;
+    meter->window_ms = 200.0f;
+    meter->smooth_ms = 80.0f;
 
     out_vt->process = mid_side_meter_process;
     out_vt->set_param = mid_side_meter_set_param;

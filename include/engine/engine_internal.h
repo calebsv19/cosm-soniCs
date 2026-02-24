@@ -5,12 +5,14 @@
 #include "engine/graph.h"
 #include "engine/sources.h"
 #include "engine/ringbuf.h"
+#include "engine/scope_host.h"
 
 #include "audio/media_cache.h"
 #include "audio/audio_device.h"
 #include "audio/audio_queue.h"
 
 #include "effects/effects_manager.h"
+#include "time/tempo.h"
 
 #include <SDL2/SDL.h>
 #include <stdatomic.h>
@@ -30,6 +32,8 @@
 #define ENGINE_FX_LUFS_HIST_MAX_DB 10.0f
 #define ENGINE_FX_LUFS_HIST_STEP_DB 0.1f
 #define ENGINE_FX_LUFS_HIST_BINS 1101
+#define ENGINE_SCOPE_SAMPLE_CAPACITY 256
+#define ENGINE_SCOPE_STREAM_CAPACITY_BYTES (ENGINE_SCOPE_SAMPLE_CAPACITY * sizeof(float))
 
 typedef enum {
     ENGINE_CMD_PLAY = 1,
@@ -38,6 +42,9 @@ typedef enum {
     ENGINE_CMD_SEEK = 4,
     ENGINE_CMD_SET_LOOP = 5,
     ENGINE_CMD_SET_EQ = 6,
+    ENGINE_CMD_REBUILD_SOURCES = 7,
+    ENGINE_CMD_SET_FX_PARAM = 8,
+    ENGINE_CMD_SET_TEMPO = 9,
 } EngineCommandType;
 
 typedef struct {
@@ -59,6 +66,20 @@ typedef struct {
             int track_index;
             EngineEqCurve curve;
         } eq;
+        // Queues a single FX parameter change for worker-thread application.
+        struct {
+            bool is_master;
+            int track_index;
+            FxInstId id;
+            uint32_t param_index;
+            float value;
+            FxParamMode mode;
+            float beat_value;
+        } fx_param;
+        // Updates the worker-side tempo state used for beat-synced FX params.
+        struct {
+            TempoState tempo;
+        } tempo;
     } payload;
 } EngineCommand;
 
@@ -118,6 +139,26 @@ typedef struct {
     int count;
 } EngineFxMeterBank;
 
+// Stores samples for a single FX scope stream.
+typedef struct {
+    FxInstId id;
+    EngineScopeStreamKind kind;
+    RingBuffer buffer;
+} EngineFxScopeTap;
+
+// Stores FX scope taps for a single chain (master or track).
+typedef struct {
+    EngineFxScopeTap taps[FX_MASTER_MAX];
+    int count;
+} EngineFxScopeBank;
+
+// Owns scope stream storage for master and track FX instances.
+typedef struct {
+    EngineFxScopeBank master;
+    EngineFxScopeBank* tracks;
+    int track_capacity;
+} EngineScopeHost;
+
 // Stores the rolling spectrogram history and capture controls for a single active meter.
 typedef struct {
     float history[ENGINE_SPECTROGRAM_HISTORY][ENGINE_SPECTROGRAM_BINS];
@@ -134,9 +175,14 @@ struct Engine {
     bool device_started;
     AudioQueue output_queue;
     SDL_Thread* worker_thread;
+    TempoState tempo; // Worker-side tempo snapshot for FX beat conversions.
     atomic_bool worker_running;
     atomic_bool transport_playing;
+    atomic_bool rebuild_sources_pending;
     RingBuffer command_queue;
+    SDL_threadID worker_thread_id; // Tracks the engine worker thread id for render-thread checks.
+    bool render_warned_fxm_mutex; // Tracks if fxm_mutex render-thread warning has been emitted.
+    bool render_warned_meter_mutex; // Tracks if meter_mutex render-thread warning has been emitted.
     EffectsManager* fxm;
     SDL_mutex* fxm_mutex;
     SDL_mutex* eq_mutex;
@@ -204,6 +250,12 @@ struct Engine {
     FxInstId active_fx_meter_id;
     bool active_fx_meter_is_master;
     int active_fx_meter_track;
+    EngineScopeHost scope_host;
+    EngineMeterSnapshot master_meter_snapshots[2];
+    EngineMeterSnapshot* track_meter_snapshots;
+    atomic_int meter_snapshot_index;
+    EngineFxMeterBank master_fx_meter_snapshots[2];
+    EngineFxMeterBank* track_fx_meter_snapshots;
 };
 
 void engine_trace(const Engine* engine, const char* fmt, ...);
@@ -212,12 +264,26 @@ void engine_audio_callback(float* output, int frames, int channels, void* userda
 void engine_sanitize_block(float* buf, size_t samples);
 bool engine_post_command(Engine* engine, const EngineCommand* cmd);
 void engine_rebuild_sources(Engine* engine);
+// Queues a source rebuild on the worker thread when running, otherwise rebuilds immediately.
+bool engine_request_rebuild_sources(Engine* engine);
 // Resets a meter state to silence and clears clip hold.
 void engine_meter_reset_state(EngineMeterState* state);
 // Clears all per-FX meter banks for the current engine state.
 void engine_fx_meter_clear_all(Engine* engine);
 // Registers the FX meter tap callback on the active effects manager.
 void engine_register_fx_meter_tap(Engine* engine);
+// Registers the FX scope tap callback on the active effects manager.
+void engine_register_fx_scope_tap(Engine* engine);
+// Writes a gain reduction value into the scope host for an FX instance.
+void engine_scope_write_gr(Engine* engine, bool is_master, int track_index, FxInstId id, float gr_db);
+// Ensures the scope host has capacity for the requested track count.
+bool engine_scope_ensure_track_capacity(Engine* engine, int required_tracks);
+// Allocates and initializes the scope host for the engine.
+bool engine_scope_host_init(Engine* engine, int track_capacity);
+// Releases resources owned by the engine scope host.
+void engine_scope_host_free(Engine* engine);
+// Resets the scope bank for a track without reallocating buffers.
+void engine_scope_reset_track_bank(Engine* engine, int track_index);
 void engine_mix_tracks(Engine* engine,
                        uint64_t transport_frame,
                        int frames,

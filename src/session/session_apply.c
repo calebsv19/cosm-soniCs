@@ -8,6 +8,8 @@
 #include "time/tempo.h"
 #include "effects/param_utils.h"
 
+#include <string.h>
+
 #include <SDL2/SDL.h>
 #include <stdlib.h>
 #include <string.h>
@@ -316,6 +318,9 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     }
     state->tempo.sample_rate = state->runtime_cfg.sample_rate;
     tempo_state_clamp(&state->tempo);
+    if (state->engine) {
+        engine_set_tempo_state(state->engine, &state->tempo);
+    }
 
     clear_pending_track_fx(state);
     if (doc->track_count > 0) {
@@ -497,6 +502,14 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
                 dst->param_mode[p] = src->param_mode[p];
                 dst->param_beats[p] = src->param_beats[p];
             }
+            dst->param_id_count = src->param_id_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : src->param_id_count;
+            for (uint32_t p = 0; p < dst->param_id_count; ++p) {
+                strncpy(dst->param_ids[p], src->param_ids[p], sizeof(dst->param_ids[p]) - 1);
+                dst->param_ids[p][sizeof(dst->param_ids[p]) - 1] = '\0';
+                dst->param_values_by_id[p] = src->param_values_by_id[p];
+                dst->param_modes_by_id[p] = src->param_modes_by_id[p];
+                dst->param_beats_by_id[p] = src->param_beats_by_id[p];
+            }
         }
         state->pending_master_fx_dirty = true;
     }
@@ -518,6 +531,104 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     state->timeline_window_start_seconds = clamp_float(state->timeline_window_start_seconds, 0.0f, max_start);
 
     return true;
+}
+
+// Builds a parameter array using spec IDs when available to preserve stable mapping.
+static uint32_t session_fx_collect_params(const SessionFxInstance* fx,
+                                          const EffectParamSpec* specs,
+                                          uint32_t spec_count,
+                                          float* out_values,
+                                          FxParamMode* out_modes,
+                                          float* out_beats) {
+    if (!fx || !out_values || !out_modes || !out_beats) {
+        return 0;
+    }
+    uint32_t count = fx->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : fx->param_count;
+    if (!specs || spec_count == 0) {
+        for (uint32_t p = 0; p < count; ++p) {
+            out_values[p] = fx->params[p];
+            out_modes[p] = fx->param_mode[p];
+            out_beats[p] = fx->param_beats[p];
+        }
+        return count;
+    }
+    count = spec_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : spec_count;
+    for (uint32_t p = 0; p < count; ++p) {
+        out_values[p] = specs[p].default_value;
+        out_modes[p] = FX_PARAM_MODE_NATIVE;
+        out_beats[p] = 0.0f;
+    }
+    if (fx->param_id_count > 0) {
+        for (uint32_t i = 0; i < fx->param_id_count && i < FX_MAX_PARAMS; ++i) {
+            int idx = fx_param_spec_find_index(specs, count, fx->param_ids[i]);
+            if (idx < 0) {
+                continue;
+            }
+            out_values[idx] = fx->param_values_by_id[i];
+            out_modes[idx] = fx->param_modes_by_id[i];
+            out_beats[idx] = fx->param_beats_by_id[i];
+        }
+    } else {
+        uint32_t copy_count = fx->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : fx->param_count;
+        if (copy_count > count) {
+            copy_count = count;
+        }
+        for (uint32_t p = 0; p < copy_count; ++p) {
+            out_values[p] = fx->params[p];
+            out_modes[p] = fx->param_mode[p];
+            out_beats[p] = fx->param_beats[p];
+        }
+    }
+    return count;
+}
+
+// Builds a parameter array for pending master FX using spec IDs when available.
+static uint32_t session_pending_fx_collect_params(const PendingMasterFx* fx,
+                                                  const EffectParamSpec* specs,
+                                                  uint32_t spec_count,
+                                                  float* out_values,
+                                                  FxParamMode* out_modes,
+                                                  float* out_beats) {
+    if (!fx || !out_values || !out_modes || !out_beats) {
+        return 0;
+    }
+    uint32_t count = fx->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : fx->param_count;
+    if (!specs || spec_count == 0) {
+        for (uint32_t p = 0; p < count; ++p) {
+            out_values[p] = fx->param_values[p];
+            out_modes[p] = fx->param_mode[p];
+            out_beats[p] = fx->param_beats[p];
+        }
+        return count;
+    }
+    count = spec_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : spec_count;
+    for (uint32_t p = 0; p < count; ++p) {
+        out_values[p] = specs[p].default_value;
+        out_modes[p] = FX_PARAM_MODE_NATIVE;
+        out_beats[p] = 0.0f;
+    }
+    if (fx->param_id_count > 0) {
+        for (uint32_t i = 0; i < fx->param_id_count && i < FX_MAX_PARAMS; ++i) {
+            int idx = fx_param_spec_find_index(specs, count, fx->param_ids[i]);
+            if (idx < 0) {
+                continue;
+            }
+            out_values[idx] = fx->param_values_by_id[i];
+            out_modes[idx] = fx->param_modes_by_id[i];
+            out_beats[idx] = fx->param_beats_by_id[i];
+        }
+    } else {
+        uint32_t copy_count = fx->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : fx->param_count;
+        if (copy_count > count) {
+            copy_count = count;
+        }
+        for (uint32_t p = 0; p < copy_count; ++p) {
+            out_values[p] = fx->param_values[p];
+            out_modes[p] = fx->param_mode[p];
+            out_beats[p] = fx->param_beats[p];
+        }
+    }
+    return count;
 }
 
 void session_apply_pending_master_fx(AppState* state) {
@@ -545,17 +656,21 @@ void session_apply_pending_master_fx(AppState* state) {
         if (!id) {
             continue;
         }
-        FxDesc desc = {0};
-        engine_fx_registry_get_desc(state->engine, fx->type_id, &desc);
-        uint32_t count = fx->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : fx->param_count;
+        const EffectParamSpec* specs = NULL;
+        uint32_t spec_count = 0;
+        engine_fx_registry_get_param_specs(state->engine, fx->type_id, &specs, &spec_count);
+        float values[FX_MAX_PARAMS];
+        FxParamMode modes[FX_MAX_PARAMS];
+        float beats[FX_MAX_PARAMS];
+        uint32_t count = session_pending_fx_collect_params(fx, specs, spec_count, values, modes, beats);
         for (uint32_t p = 0; p < count; ++p) {
-            FxParamMode mode = fx->param_mode[p];
-            float beat_value = fx->param_beats[p];
-            float native_value = fx->param_values[p];
-            FxParamKind kind = fx_param_kind_from_name((p < desc.num_params) ? desc.param_names[p] : NULL);
-            bool use_sync = (mode != FX_PARAM_MODE_NATIVE) && fx_param_kind_is_syncable(kind);
+            FxParamMode mode = modes[p];
+            float beat_value = beats[p];
+            float native_value = values[p];
+            const EffectParamSpec* spec = (specs && p < spec_count) ? &specs[p] : NULL;
+            bool use_sync = (mode != FX_PARAM_MODE_NATIVE) && fx_param_spec_is_syncable(spec);
             if (use_sync) {
-                native_value = fx_param_beats_to_native(kind, beat_value, &state->tempo);
+                native_value = fx_param_spec_beats_to_native(spec, beat_value, &state->tempo);
             }
             if (use_sync) {
                 engine_fx_master_set_param_with_mode(state->engine, id, p, native_value, mode, beat_value);
@@ -595,17 +710,21 @@ void session_apply_pending_track_fx(AppState* state) {
             if (id == 0) {
                 continue;
             }
-            FxDesc desc = {0};
-            engine_fx_registry_get_desc(state->engine, fx->type, &desc);
-            uint32_t pcount = fx->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : fx->param_count;
+            const EffectParamSpec* specs = NULL;
+            uint32_t spec_count = 0;
+            engine_fx_registry_get_param_specs(state->engine, fx->type, &specs, &spec_count);
+            float values[FX_MAX_PARAMS];
+            FxParamMode modes[FX_MAX_PARAMS];
+            float beats[FX_MAX_PARAMS];
+            uint32_t pcount = session_fx_collect_params(fx, specs, spec_count, values, modes, beats);
             for (uint32_t p = 0; p < pcount; ++p) {
-                FxParamMode mode = fx->param_mode[p];
-                float beat_value = fx->param_beats[p];
-                float native_value = fx->params[p];
-                FxParamKind kind = fx_param_kind_from_name((p < desc.num_params) ? desc.param_names[p] : NULL);
-                bool use_sync = (mode != FX_PARAM_MODE_NATIVE) && fx_param_kind_is_syncable(kind);
+                FxParamMode mode = modes[p];
+                float beat_value = beats[p];
+                float native_value = values[p];
+                const EffectParamSpec* spec = (specs && p < spec_count) ? &specs[p] : NULL;
+                bool use_sync = (mode != FX_PARAM_MODE_NATIVE) && fx_param_spec_is_syncable(spec);
                 if (use_sync) {
-                    native_value = fx_param_beats_to_native(kind, beat_value, &state->tempo);
+                    native_value = fx_param_spec_beats_to_native(spec, beat_value, &state->tempo);
                 }
                 if (use_sync) {
                     engine_fx_track_set_param_with_mode(state->engine, t, id, p, native_value, mode, beat_value);

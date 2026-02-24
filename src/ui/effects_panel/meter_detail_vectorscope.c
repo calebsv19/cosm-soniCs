@@ -2,6 +2,7 @@
 
 #include "app_state.h"
 #include "ui/font.h"
+#include "ui/kit_viz_meter_adapter.h"
 #include "ui/render_utils.h"
 
 #include <math.h>
@@ -29,6 +30,53 @@ static void history_get_vec(const EffectsMeterHistory* history,
     idx %= FX_METER_VECTOR_HISTORY_POINTS;
     *out_x = history->vec_x[idx];
     *out_y = history->vec_y[idx];
+}
+
+static bool render_scope_history_with_adapter(SDL_Renderer* renderer,
+                                              const SDL_Rect* scope_rect,
+                                              const EffectsMeterHistory* history,
+                                              int scope_mode) {
+    if (!renderer || !scope_rect || !history || history->vec_count <= 1) {
+        return false;
+    }
+    const int count = history->vec_count;
+    float xs[FX_METER_VECTOR_HISTORY_POINTS];
+    float ys[FX_METER_VECTOR_HISTORY_POINTS];
+    for (int i = 0; i < count; ++i) {
+        history_get_vec(history, i, &xs[i], &ys[i]);
+    }
+
+    KitVizVecSegment segments[FX_METER_VECTOR_HISTORY_POINTS];
+    size_t segment_count = 0;
+    DawKitVizMeterScopeMode mode = scope_mode == FX_METER_SCOPE_MID_SIDE
+        ? DAW_KIT_VIZ_METER_SCOPE_MID_SIDE
+        : DAW_KIT_VIZ_METER_SCOPE_LEFT_RIGHT;
+    CoreResult r = daw_kit_viz_meter_plot_scope_segments(xs,
+                                                          ys,
+                                                          (uint32_t)count,
+                                                          scope_rect,
+                                                          mode,
+                                                          1.5f,
+                                                          segments,
+                                                          FX_METER_VECTOR_HISTORY_POINTS,
+                                                          &segment_count);
+    if (r.code != CORE_OK || segment_count == 0) {
+        return false;
+    }
+
+    for (size_t i = 0; i < segment_count; ++i) {
+        float t = segment_count > 1 ? (float)i / (float)(segment_count - 1u) : 0.0f;
+        float fade = powf(1.0f - t, 2.6f);
+        int alpha = (int)lroundf(20.0f + 235.0f * fade);
+        SDL_SetRenderDrawColor(renderer, 170, 220, 120, alpha);
+        const KitVizVecSegment* s = &segments[i];
+        SDL_RenderDrawLine(renderer,
+                           (int)lroundf(s->x0),
+                           (int)lroundf(s->y0),
+                           (int)lroundf(s->x1),
+                           (int)lroundf(s->y1));
+    }
+    return true;
 }
 
 // effects_meter_render_vectorscope draws a simple XY scope with a history trail.
@@ -70,6 +118,10 @@ void effects_meter_render_vectorscope(SDL_Renderer* renderer,
     bool valid = snapshot && snapshot->valid;
     if (valid && history && history->vec_count > 1) {
         ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
+        if (render_scope_history_with_adapter(renderer, &scope, history, scope_mode)) {
+            ui_draw_text(renderer, rect->x + pad, rect->y + 6, "Vector Scope", label_color, 1.2f);
+            return;
+        }
         int count = history->vec_count;
         int total_slots = FX_METER_VECTOR_HISTORY_POINTS;
         float prev_x = 0.0f;

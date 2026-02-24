@@ -5,6 +5,11 @@
 #include "audio/media_clip.h"
 #include "engine/engine.h"
 
+typedef enum {
+    WAVEFORM_CACHE_SOURCE_SAMPLES = 0,
+    WAVEFORM_CACHE_SOURCE_PACK = 1
+} WaveformCacheSource;
+
 typedef struct {
     char path[ENGINE_CLIP_PATH_MAX];
     int samples_per_pixel;
@@ -12,6 +17,7 @@ typedef struct {
     uint64_t frame_count;
     int channels;
     int sample_rate;
+    WaveformCacheSource source;
     float* mins;
     float* maxs;
 } WaveformCacheEntry;

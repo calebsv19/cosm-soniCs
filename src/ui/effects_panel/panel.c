@@ -4,9 +4,9 @@
 #include "engine/engine.h"
 #include "effects/param_utils.h"
 #include "ui/font.h"
+#include "ui/effects_panel_slot_layout.h"
 #include "ui/layout.h"
 
-#include <ctype.h>
 #include <math.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -25,6 +25,8 @@ typedef struct {
 
 // Ensures storage for remembering last-open FX per track.
 static void effects_panel_ensure_last_open_tracks(EffectsPanelState* panel, int track_count);
+// Resets preview history/state for a slot and sets the default open state.
+static void effects_panel_preview_reset(EffectsPanelPreviewSlotState* preview, FxInstId fx_id, bool open_default);
 
 static const FxCategorySpec kCategorySpecs[] = {
     {"Basics",        1u,  19u},
@@ -43,6 +45,73 @@ static void zero_layout(EffectsPanelLayout* layout) {
         return;
     }
     SDL_zero(*layout);
+}
+
+// Resets preview history/state for a slot and sets the default open state.
+static void effects_panel_preview_reset(EffectsPanelPreviewSlotState* preview, FxInstId fx_id, bool open_default) {
+    if (!preview) {
+        return;
+    }
+    preview->fx_id = fx_id;
+    preview->open = open_default;
+    preview->history_write = 0;
+    preview->history_filled = false;
+    for (int i = 0; i < FX_PANEL_PREVIEW_HISTORY; ++i) {
+        preview->history[i] = 0.0f;
+    }
+}
+
+// effects_panel_slot_supports_preview returns true when the slot type renders a preview panel.
+static bool effects_panel_slot_supports_preview(FxTypeId type_id) {
+    switch (type_id) {
+        case 7u:
+        case 20u:
+        case 21u:
+        case 22u:
+        case 23u:
+        case 60u:
+        case 61u:
+        case 62u:
+        case 63u:
+        case 64u:
+        case 65u:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// effects_panel_sync_meter_modes_from_slot maps meter params into meter detail UI mode state.
+static void effects_panel_sync_meter_modes_from_slot(EffectsPanelState* panel, const FxSlotUIState* slot) {
+    if (!panel || !slot) {
+        return;
+    }
+    if (slot->type_id == 102u && slot->param_count > 0) {
+        int mode = (int)lroundf(slot->param_values[0]);
+        panel->meter_scope_mode = mode == 0 ? FX_METER_SCOPE_MID_SIDE : FX_METER_SCOPE_LEFT_RIGHT;
+        return;
+    }
+    if (slot->type_id == 104u && slot->param_count > 0) {
+        int mode = (int)lroundf(slot->param_values[0]);
+        if (mode <= 0) {
+            panel->meter_lufs_mode = FX_METER_LUFS_INTEGRATED;
+        } else if (mode == 1) {
+            panel->meter_lufs_mode = FX_METER_LUFS_SHORT_TERM;
+        } else {
+            panel->meter_lufs_mode = FX_METER_LUFS_MOMENTARY;
+        }
+        return;
+    }
+    if (slot->type_id == 105u && slot->param_count > 2) {
+        int mode = (int)lroundf(slot->param_values[2]);
+        if (mode <= 0) {
+            panel->meter_spectrogram_mode = FX_METER_SPECTROGRAM_WHITE_BLACK;
+        } else if (mode == 1) {
+            panel->meter_spectrogram_mode = FX_METER_SPECTROGRAM_BLACK_WHITE;
+        } else {
+            panel->meter_spectrogram_mode = FX_METER_SPECTROGRAM_HEAT;
+        }
+    }
 }
 
 static void compute_list_layout(EffectsPanelState* panel,
@@ -292,83 +361,31 @@ static void compute_list_layout(EffectsPanelState* panel,
     }
 }
 
-static void lower_copy(char* dst, size_t dst_size, const char* src) {
-    if (!dst || dst_size == 0) {
+// Builds a fallback param spec when no explicit metadata is provided.
+static void fill_fallback_param_spec(EffectParamSpec* spec, const char* name, float def_value) {
+    if (!spec) {
         return;
     }
-    if (!src) {
-        dst[0] = '\0';
-        return;
+    SDL_zero(*spec);
+    spec->id = name;
+    spec->display_name = name;
+    spec->type = FX_PARAM_TYPE_FLOAT;
+    spec->unit = FX_PARAM_UNIT_GENERIC;
+    spec->curve = FX_PARAM_CURVE_LINEAR;
+    spec->ui_hint = FX_PARAM_UI_SLIDER;
+    spec->flags = FX_PARAM_FLAG_AUTOMATABLE;
+    spec->min_value = 0.0f;
+    spec->max_value = 1.0f;
+    spec->default_value = def_value;
+    if (def_value < spec->min_value) {
+        spec->min_value = def_value;
     }
-    size_t i = 0;
-    for (; i + 1 < dst_size && src[i]; ++i) {
-        dst[i] = (char)tolower((unsigned char)src[i]);
+    if (def_value > spec->max_value) {
+        spec->max_value = def_value;
     }
-    dst[i] = '\0';
-}
-
-static void derive_param_range(const char* name, float def_value, float* out_min, float* out_max) {
-    float min_v = 0.0f;
-    float max_v = 1.0f;
-    char lower[64];
-    lower_copy(lower, sizeof(lower), name);
-
-    if (strstr(lower, "mix") || strstr(lower, "depth") || strstr(lower, "width") || strstr(lower, "blend")) {
-        min_v = 0.0f;
-        max_v = 1.0f;
-    } else if (strstr(lower, "feedback")) {
-        min_v = 0.0f;
-        max_v = 0.95f;
-    } else if (strstr(lower, "time_ms") || strstr(lower, "_ms")) {
-        min_v = 0.0f;
-        max_v = 2000.0f;
-    } else if (strstr(lower, "time")) {
-        min_v = 0.0f;
-        max_v = 5.0f;
-    } else if (strstr(lower, "freq") || strstr(lower, "hz")) {
-        min_v = 20.0f;
-        max_v = 20000.0f;
-    } else if (strcmp(lower, "q") == 0 || strstr(lower, "reso")) {
-        min_v = 0.1f;
-        max_v = 20.0f;
-    } else if (strstr(lower, "gain")) {
-        min_v = 0.0f;
-        max_v = 4.0f;
-    } else if (strstr(lower, "threshold")) {
-        min_v = -60.0f;
-        max_v = 0.0f;
-    } else if (strstr(lower, "ratio")) {
-        min_v = 1.0f;
-        max_v = 20.0f;
-    } else if (strstr(lower, "attack")) {
-        min_v = 0.1f;
-        max_v = 500.0f;
-    } else if (strstr(lower, "release")) {
-        min_v = 10.0f;
-        max_v = 2000.0f;
-    } else if (strstr(lower, "drive") || strstr(lower, "amount")) {
-        min_v = 0.0f;
-        max_v = 2.5f;
-    } else if (strstr(lower, "pan")) {
-        min_v = -1.0f;
-        max_v = 1.0f;
-    } else if (strstr(lower, "level")) {
-        min_v = 0.0f;
-        max_v = 1.5f;
+    if (fabsf(spec->max_value - spec->min_value) < 1e-6f) {
+        spec->max_value = spec->min_value + 1.0f;
     }
-
-    if (def_value < min_v) {
-        min_v = def_value * 0.5f;
-    }
-    if (def_value > max_v) {
-        max_v = def_value * 1.5f;
-    }
-    if (fabsf(max_v - min_v) < 1e-6f) {
-        max_v = min_v + 1.0f;
-    }
-
-    if (out_min) *out_min = min_v;
-    if (out_max) *out_max = max_v;
 }
 
 static void effects_panel_build_categories(EffectsPanelState* panel) {
@@ -725,12 +742,14 @@ void effects_panel_init(AppState* state) {
     strncpy(state->effects_panel.target_label, "Master", sizeof(state->effects_panel.target_label) - 1);
     state->effects_panel.target_label[sizeof(state->effects_panel.target_label) - 1] = '\0';
     state->effects_panel.view_mode = FX_PANEL_VIEW_STACK;
+    state->effects_panel.spec_panel_enabled = true;
     state->effects_panel.hovered_category_index = -1;
     state->effects_panel.hovered_effect_index = -1;
     state->effects_panel.active_category_index = -1;
     state->effects_panel.highlighted_slot_index = -1;
     state->effects_panel.hovered_toggle_slot_index = -1;
     state->effects_panel.selected_slot_index = -1;
+    state->effects_panel.preview_toggle_hovered = false;
     state->effects_panel.focused = false;
     state->effects_panel.active_slot_index = -1;
     state->effects_panel.active_param_index = -1;
@@ -743,8 +762,10 @@ void effects_panel_init(AppState* state) {
     state->effects_panel.restore_open_index = -1;
     state->effects_panel.overlay_scroll_index = 0;
     state->effects_panel.title_last_click_ticks = 0;
+    state->effects_panel.preview_all_open = false;
     for (int i = 0; i < FX_MASTER_MAX; ++i) {
         effects_slot_reset_runtime(&state->effects_panel.slot_runtime[i]);
+        effects_panel_preview_reset(&state->effects_panel.preview_slots[i], 0, false);
     }
     state->effects_panel.param_scroll_drag_slot = -1;
     state->effects_panel.track_snapshot.gain = 1.0f;
@@ -813,6 +834,9 @@ void effects_panel_refresh_catalog(AppState* state) {
         }
         FxDesc desc = {0};
         if (engine_fx_registry_get_desc(state->engine, info->type_id, &desc)) {
+            const EffectParamSpec* specs = NULL;
+            uint32_t spec_count = 0;
+            engine_fx_registry_get_param_specs(state->engine, info->type_id, &specs, &spec_count);
             if (desc.name) {
                 strncpy(info->name, desc.name, sizeof(info->name) - 1);
                 info->name[sizeof(info->name) - 1] = '\0';
@@ -820,12 +844,16 @@ void effects_panel_refresh_catalog(AppState* state) {
             info->param_count = desc.num_params <= FX_MAX_PARAMS ? desc.num_params : FX_MAX_PARAMS;
             for (uint32_t p = 0; p < info->param_count; ++p) {
                 const char* pname = desc.param_names[p] ? desc.param_names[p] : "param";
-                strncpy(info->param_names[p], pname, sizeof(info->param_names[p]) - 1);
+                EffectParamSpec* spec = &info->param_specs[p];
+                if (specs && p < spec_count) {
+                    *spec = specs[p];
+                } else {
+                    fill_fallback_param_spec(spec, pname, desc.param_defaults[p]);
+                }
+                const char* label = spec->display_name ? spec->display_name : pname;
+                strncpy(info->param_names[p], label, sizeof(info->param_names[p]) - 1);
                 info->param_names[p][sizeof(info->param_names[p]) - 1] = '\0';
-                float def_v = desc.param_defaults[p];
-                info->param_defaults[p] = def_v;
-                derive_param_range(pname, def_v, &info->param_min[p], &info->param_max[p]);
-                info->param_kind[p] = fx_param_kind_from_name(pname);
+                info->param_defaults[p] = spec->default_value;
             }
         }
     }
@@ -888,10 +916,17 @@ void effects_panel_sync_from_engine(AppState* state) {
             slot->param_mode[p] = snap.items[i].param_mode[p];
             slot->param_beats[p] = snap.items[i].param_beats[p];
         }
+        bool open_default = slot->type_id == 20u;
+        if (panel->preview_slots[i].fx_id != slot->id) {
+            effects_panel_preview_reset(&panel->preview_slots[i], slot->id, open_default);
+        }
     }
     for (int i = snap.count; i < FX_MASTER_MAX; ++i) {
         panel->chain[i].id = 0;
         panel->chain[i].param_count = 0;
+        if (panel->preview_slots[i].fx_id != 0) {
+            effects_panel_preview_reset(&panel->preview_slots[i], 0, false);
+        }
     }
     if (panel->highlighted_slot_index >= panel->chain_count) {
         panel->highlighted_slot_index = -1;
@@ -939,6 +974,20 @@ void effects_panel_sync_from_engine(AppState* state) {
         panel->restore_pending = false;
     }
 
+    bool previews_open = true;
+    bool preview_found = false;
+    for (int i = 0; i < panel->chain_count; ++i) {
+        if (!effects_panel_slot_supports_preview(panel->chain[i].type_id)) {
+            continue;
+        }
+        preview_found = true;
+        if (!panel->preview_slots[i].open) {
+            previews_open = false;
+            break;
+        }
+    }
+    panel->preview_all_open = preview_found && previews_open;
+
     if (panel->list_open_slot_index >= 0 && panel->list_open_slot_index < panel->chain_count) {
         FxInstId active_id = panel->chain[panel->list_open_slot_index].id;
         if (panel->target == FX_PANEL_TARGET_MASTER) {
@@ -947,6 +996,9 @@ void effects_panel_sync_from_engine(AppState* state) {
                    panel->target_track_index >= 0 &&
                    panel->target_track_index < panel->last_open_track_fx_count) {
             panel->last_open_track_fx_ids[panel->target_track_index] = active_id;
+        }
+        if (panel->list_detail_mode == FX_LIST_DETAIL_METER) {
+            effects_panel_sync_meter_modes_from_slot(panel, &panel->chain[panel->list_open_slot_index]);
         }
     }
 }
@@ -1007,10 +1059,20 @@ void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* lay
     int toggle_w = (toggle_w_list > toggle_w_rack ? toggle_w_list : toggle_w_rack) + FX_PANEL_HEADER_BUTTON_PAD_X * 2;
     layout->view_toggle_rect = (SDL_Rect){content_x, button_y, toggle_w, button_h};
 
+    const char* spec_label = "Spec";
+    int spec_w = ui_measure_text_width(spec_label, button_scale) + FX_PANEL_HEADER_BUTTON_PAD_X * 2;
+    int spec_x = layout->view_toggle_rect.x + layout->view_toggle_rect.w + FX_PANEL_HEADER_BUTTON_GAP;
+    layout->spec_toggle_rect = (SDL_Rect){spec_x, button_y, spec_w, button_h};
+
     const char* add_label = "Add FX";
     int add_w = ui_measure_text_width(add_label, button_scale) + FX_PANEL_HEADER_BUTTON_PAD_X * 2;
-    int add_x = layout->view_toggle_rect.x + layout->view_toggle_rect.w + FX_PANEL_HEADER_BUTTON_GAP;
+    int add_x = layout->spec_toggle_rect.x + layout->spec_toggle_rect.w + FX_PANEL_HEADER_BUTTON_GAP;
     layout->dropdown_button_rect = (SDL_Rect){add_x, button_y, add_w, button_h};
+
+    const char* preview_label = "Preview";
+    int preview_w = ui_measure_text_width(preview_label, button_scale) + FX_PANEL_HEADER_BUTTON_PAD_X * 2;
+    int preview_x = layout->dropdown_button_rect.x + layout->dropdown_button_rect.w + FX_PANEL_HEADER_BUTTON_GAP;
+    layout->preview_toggle_rect = (SDL_Rect){preview_x, button_y, preview_w, button_h};
 
     int body_y = content_y + FX_PANEL_HEADER_HEIGHT;
     int body_h = content_h - FX_PANEL_HEADER_HEIGHT;
@@ -1033,9 +1095,6 @@ void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* lay
             int column_w = (content_w - total_gaps);
             if (column_w < 0) column_w = 0;
             column_w = column_count > 0 ? column_w / column_count : content_w;
-            if (column_w < 160) {
-                column_w = 160;
-            }
 
             int start_x = content_x;
             for (int i = 0; i < column_count; ++i) {
@@ -1230,9 +1289,11 @@ static void render_overlay(SDL_Renderer* renderer, const AppState* state, const 
     } else if (panel->overlay_layer == FX_PANEL_OVERLAY_CATEGORIES) {
         title = "Select Category";
     }
+    int header_text_y = layout->overlay_header_rect.y +
+                        (layout->overlay_header_rect.h - ui_font_line_height(2.0f)) / 2;
     ui_draw_text(renderer,
                  layout->overlay_header_rect.x + FX_PANEL_OVERLAY_PADDING + (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS ? 32 : 8),
-                 layout->overlay_header_rect.y + 10,
+                 header_text_y,
                  title,
                  label,
                  2);
@@ -1243,9 +1304,11 @@ static void render_overlay(SDL_Renderer* renderer, const AppState* state, const 
         SDL_RenderFillRect(renderer, &layout->overlay_back_rect);
         SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
         SDL_RenderDrawRect(renderer, &layout->overlay_back_rect);
+        int back_text_y = layout->overlay_back_rect.y +
+                          (layout->overlay_back_rect.h - ui_font_line_height(2.0f)) / 2;
         ui_draw_text(renderer,
                      layout->overlay_back_rect.x + 6,
-                     layout->overlay_back_rect.y + 8,
+                     back_text_y,
                      "<",
                      label,
                      2);
@@ -1302,7 +1365,8 @@ static void render_overlay(SDL_Renderer* renderer, const AppState* state, const 
                 item_label = panel->types[type_index].name;
             }
         }
-        ui_draw_text(renderer, item_rect.x + 8, item_rect.y + 4, item_label, label, 1.5f);
+        int item_text_y = item_rect.y + (item_rect.h - ui_font_line_height(1.5f)) / 2;
+        ui_draw_text(renderer, item_rect.x + 8, item_text_y, item_label, label, 1.5f);
     }
 
     if (layout->overlay_has_scrollbar) {
@@ -1381,8 +1445,10 @@ void effects_panel_render(SDL_Renderer* renderer, const AppState* state, const E
     // View mode + add button
     const char* toggle_label = panel->view_mode == FX_PANEL_VIEW_STACK ? "List" : "Rack";
     draw_button(renderer, &layout->view_toggle_rect, false, toggle_label, FX_PANEL_BUTTON_SCALE);
+    draw_button(renderer, &layout->spec_toggle_rect, panel->spec_panel_enabled, "Spec", FX_PANEL_BUTTON_SCALE);
     bool button_active = (panel->overlay_layer != FX_PANEL_OVERLAY_CLOSED);
     draw_button(renderer, &layout->dropdown_button_rect, button_active, "Add FX", FX_PANEL_BUTTON_SCALE);
+    draw_button(renderer, &layout->preview_toggle_rect, panel->preview_toggle_hovered, "Preview", FX_PANEL_BUTTON_SCALE);
 
     if (panel->view_mode == FX_PANEL_VIEW_LIST) {
         effects_panel_render_list(renderer, state, layout);

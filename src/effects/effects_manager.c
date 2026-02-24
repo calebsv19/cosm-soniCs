@@ -4,9 +4,11 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <math.h>
 
 #include "effects/effects_api.h"
 #include "effects/effects_manager.h"
+#include "effects/param_utils.h"
 
 // -------------------------------
 // Internal types
@@ -21,8 +23,12 @@ typedef struct FxInstance {
     FxTypeId  type;
     uint32_t  param_count;
     float     param_values[FX_MAX_PARAMS];
+    float     param_current[FX_MAX_PARAMS];
+    float     param_smoothing_ms[FX_MAX_PARAMS];
     FxParamMode param_mode[FX_MAX_PARAMS];
     float     param_beats[FX_MAX_PARAMS];
+    const EffectParamSpec* param_specs;
+    uint32_t  param_spec_count;
 } FxInstance;
 
 typedef struct FxChain {
@@ -60,6 +66,8 @@ struct EffectsManager {
 
     FxMeterTapCallback meter_cb;
     void* meter_cb_user;
+    FxScopeTapCallback scope_cb;
+    void* scope_cb_user;
 };
 
 // -------------------------------
@@ -113,6 +121,26 @@ static bool chain_remove(FxChain* c, int idx) {
     return true;
 }
 
+// Returns true if the effect type should emit a gain-delta scope stream.
+static bool fxm_scope_is_gr_type(FxTypeId type) {
+    return type == 7u || type == 20u || type == 21u || type == 22u || type == 23u
+        || type == 24u || type == 25u || type == 26u || type == 27u;
+}
+
+// Computes RMS for an interleaved buffer to estimate gain reduction.
+static float fxm_compute_rms(const float* buffer, int frames, int channels) {
+    if (!buffer || frames <= 0 || channels <= 0) {
+        return 0.0f;
+    }
+    double sum = 0.0;
+    int count = frames * channels;
+    for (int i = 0; i < count; ++i) {
+        float v = buffer[i];
+        sum += (double)v * (double)v;
+    }
+    return count > 0 ? (float)sqrt(sum / (double)count) : 0.0f;
+}
+
 static bool ensure_track_capacity(EffectsManager* fm, int track_count) {
     if (!fm || track_count < 0) return false;
     if (track_count <= fm->track_capacity) {
@@ -152,6 +180,33 @@ static bool chain_reorder(FxChain* c, int from, int to) {
     }
     c->items[to] = tmp;
     return true;
+}
+
+// Returns true if the param should apply changes immediately (no smoothing).
+static bool fx_param_is_discrete(const EffectParamSpec* spec) {
+    if (!spec) {
+        return false;
+    }
+    switch (spec->type) {
+        case FX_PARAM_TYPE_BOOL:
+        case FX_PARAM_TYPE_INT:
+        case FX_PARAM_TYPE_ENUM:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Computes a block-level smoothing coefficient for the requested time constant.
+static float fx_param_smoothing_coeff(float smoothing_ms, int sample_rate, int frames) {
+    if (smoothing_ms <= 0.0f || sample_rate <= 0 || frames <= 0) {
+        return 0.0f;
+    }
+    float time_samples = smoothing_ms * 0.001f * (float)sample_rate;
+    if (time_samples <= 1.0f) {
+        return 0.0f;
+    }
+    return expf(-(float)frames / time_samples);
 }
 
 // -------------------------------
@@ -241,6 +296,8 @@ EffectsManager* fxm_create(const FxConfig* cfg) {
     fm->reg_count = fm->reg_cap = 0;
     fm->meter_cb = NULL;
     fm->meter_cb_user = NULL;
+    fm->scope_cb = NULL;
+    fm->scope_cb_user = NULL;
 
     return fm;
 }
@@ -251,6 +308,14 @@ void fxm_set_meter_tap_callback(EffectsManager* fm, FxMeterTapCallback cb, void*
     }
     fm->meter_cb = cb;
     fm->meter_cb_user = user;
+}
+
+void fxm_set_scope_tap_callback(EffectsManager* fm, FxScopeTapCallback cb, void* user) {
+    if (!fm) {
+        return;
+    }
+    fm->scope_cb = cb;
+    fm->scope_cb_user = user;
 }
 
 void fxm_destroy(EffectsManager* fm) {
@@ -300,8 +365,12 @@ static bool instantiate_fx(EffectsManager* fm, const FxRegistryEntry* ent, FxIns
     out_inst->enabled = true;
     out_inst->type    = ent->id;
     out_inst->param_count = desc.num_params > FX_MAX_PARAMS ? FX_MAX_PARAMS : desc.num_params;
+    out_inst->param_specs = ent->param_specs;
+    out_inst->param_spec_count = ent->param_spec_count;
     for (uint32_t i = 0; i < FX_MAX_PARAMS; ++i) {
         out_inst->param_values[i] = 0.0f;
+        out_inst->param_current[i] = 0.0f;
+        out_inst->param_smoothing_ms[i] = 0.0f;
         out_inst->param_mode[i] = FX_PARAM_MODE_NATIVE;
         out_inst->param_beats[i] = 0.0f;
     }
@@ -313,6 +382,10 @@ static bool instantiate_fx(EffectsManager* fm, const FxRegistryEntry* ent, FxIns
         }
         if (i < FX_MAX_PARAMS) {
             out_inst->param_values[i] = desc.param_defaults[i];
+            out_inst->param_current[i] = desc.param_defaults[i];
+            if (out_inst->param_specs && i < out_inst->param_spec_count) {
+                out_inst->param_smoothing_ms[i] = out_inst->param_specs[i].smoothing_ms;
+            }
         }
     }
     if (out_inst->vt.reset) {
@@ -377,6 +450,68 @@ static FxInstance* master_get_by_id(EffectsManager* fm, FxInstId id, int* out_in
     return NULL;
 }
 
+// Applies a parameter change, optionally smoothing over time based on the spec.
+static bool fxm_apply_param_change(FxInstance* inst,
+                                   uint32_t pidx,
+                                   float value,
+                                   FxParamMode mode,
+                                   float beat_value,
+                                   const TempoState* tempo,
+                                   bool force_immediate) {
+    if (!inst || pidx >= inst->desc.num_params) {
+        return false;
+    }
+    const EffectParamSpec* spec = NULL;
+    if (inst->param_specs && pidx < inst->param_spec_count) {
+        spec = &inst->param_specs[pidx];
+    }
+    float applied_beat_value = beat_value;
+    float native_value = value;
+    if (mode != FX_PARAM_MODE_NATIVE && fx_param_spec_is_syncable(spec) && tempo) {
+        float beat_min = 0.0f;
+        float beat_max = 0.0f;
+        if (fx_param_spec_get_beat_bounds(spec, tempo, &beat_min, &beat_max)) {
+            if (applied_beat_value < beat_min) applied_beat_value = beat_min;
+            if (applied_beat_value > beat_max) applied_beat_value = beat_max;
+        }
+        native_value = fx_param_spec_beats_to_native(spec, applied_beat_value, tempo);
+    }
+    if (spec) {
+        if (native_value < spec->min_value) native_value = spec->min_value;
+        if (native_value > spec->max_value) native_value = spec->max_value;
+        if (spec->type == FX_PARAM_TYPE_BOOL) {
+            native_value = native_value >= 0.5f ? 1.0f : 0.0f;
+        } else if (spec->type == FX_PARAM_TYPE_INT || spec->type == FX_PARAM_TYPE_ENUM) {
+            native_value = floorf(native_value + 0.5f);
+            if (native_value < spec->min_value) native_value = spec->min_value;
+            if (native_value > spec->max_value) native_value = spec->max_value;
+            if (spec->type == FX_PARAM_TYPE_ENUM && spec->enum_count > 0) {
+                float enum_max = (float)(spec->enum_count - 1u);
+                if (native_value > enum_max) native_value = enum_max;
+            }
+        }
+    }
+    if (pidx < FX_MAX_PARAMS) {
+        inst->param_values[pidx] = native_value;
+        inst->param_mode[pidx] = mode;
+        inst->param_beats[pidx] = applied_beat_value;
+    }
+    if (!inst->vt.set_param) {
+        return false;
+    }
+    bool smooth = false;
+    if (!force_immediate && spec && !fx_param_is_discrete(spec)) {
+        smooth = spec->smoothing_ms > 0.0f;
+    }
+    if (!smooth) {
+        if (pidx < FX_MAX_PARAMS) {
+            inst->param_current[pidx] = native_value;
+        }
+        inst->vt.set_param(inst->handle, pidx, native_value);
+    }
+    return true;
+}
+
 bool fxm_master_remove(EffectsManager* fm, FxInstId id) {
     int idx = -1;
     if (!master_get_by_id(fm, id, &idx)) return false;
@@ -393,16 +528,18 @@ bool fxm_master_reorder(EffectsManager* fm, FxInstId id, int new_index) {
 
 bool fxm_master_set_param(EffectsManager* fm, FxInstId id, uint32_t pidx, float value) {
     FxInstance* inst = master_get_by_id(fm, id, NULL);
-    if (!inst) return false;
-    if (!inst->vt.set_param) return false;
-    if (pidx >= inst->desc.num_params) return false;
-    inst->vt.set_param(inst->handle, pidx, value);
-    if (pidx < FX_MAX_PARAMS) {
-        inst->param_values[pidx] = value;
-        inst->param_mode[pidx] = FX_PARAM_MODE_NATIVE;
-        inst->param_beats[pidx] = 0.0f;
-    }
-    return true;
+    return fxm_apply_param_change(inst, pidx, value, FX_PARAM_MODE_NATIVE, 0.0f, NULL, true);
+}
+
+bool fxm_master_set_param_target(EffectsManager* fm,
+                                 FxInstId id,
+                                 uint32_t pidx,
+                                 float value,
+                                 FxParamMode mode,
+                                 float beat_value,
+                                 const TempoState* tempo) {
+    FxInstance* inst = master_get_by_id(fm, id, NULL);
+    return fxm_apply_param_change(inst, pidx, value, mode, beat_value, tempo, false);
 }
 
 bool fxm_master_set_param_with_mode(EffectsManager* fm,
@@ -412,15 +549,7 @@ bool fxm_master_set_param_with_mode(EffectsManager* fm,
                                     FxParamMode mode,
                                     float beat_value) {
     FxInstance* inst = master_get_by_id(fm, id, NULL);
-    if (!inst || pidx >= inst->desc.num_params) return false;
-    if (!inst->vt.set_param) return false;
-    inst->vt.set_param(inst->handle, pidx, value);
-    if (pidx < FX_MAX_PARAMS) {
-        inst->param_values[pidx] = value;
-        inst->param_mode[pidx] = mode;
-        inst->param_beats[pidx] = beat_value;
-    }
-    return true;
+    return fxm_apply_param_change(inst, pidx, value, mode, beat_value, NULL, true);
 }
 
 bool fxm_master_set_enabled(EffectsManager* fm, FxInstId id, bool enabled) {
@@ -428,6 +557,32 @@ bool fxm_master_set_enabled(EffectsManager* fm, FxInstId id, bool enabled) {
     if (!inst) return false;
     inst->enabled = enabled;
     return true;
+}
+
+const EffectParamSpec* fxm_registry_get_param_specs(const EffectsManager* fm, FxTypeId type, uint32_t* out_count) {
+    if (!fm) {
+        return NULL;
+    }
+    if (out_count) {
+        *out_count = 0;
+    }
+    const FxRegistryEntry* entry = reg_find_by_id(fm, type);
+    if (!entry || !entry->param_specs || entry->param_spec_count == 0) {
+        return NULL;
+    }
+    if (out_count) {
+        *out_count = entry->param_spec_count;
+    }
+    return entry->param_specs;
+}
+
+const EffectParamSpec* fxm_registry_get_param_spec(const EffectsManager* fm, FxTypeId type, uint32_t param_index) {
+    uint32_t count = 0;
+    const EffectParamSpec* specs = fxm_registry_get_param_specs(fm, type, &count);
+    if (!specs || param_index >= count) {
+        return NULL;
+    }
+    return &specs[param_index];
 }
 
 bool fxm_master_snapshot(const EffectsManager* fm, FxMasterSnapshot* out) {
@@ -516,15 +671,19 @@ bool fxm_track_reorder(EffectsManager* fm, int track_index, FxInstId id, int new
 
 bool fxm_track_set_param(EffectsManager* fm, int track_index, FxInstId id, uint32_t pidx, float value) {
     FxInstance* inst = track_get_by_id(fm, track_index, id, NULL);
-    if (!inst || pidx >= inst->desc.num_params) return false;
-    if (!inst->vt.set_param) return false;
-    inst->vt.set_param(inst->handle, pidx, value);
-    if (pidx < FX_MAX_PARAMS) {
-        inst->param_values[pidx] = value;
-        inst->param_mode[pidx] = FX_PARAM_MODE_NATIVE;
-        inst->param_beats[pidx] = 0.0f;
-    }
-    return true;
+    return fxm_apply_param_change(inst, pidx, value, FX_PARAM_MODE_NATIVE, 0.0f, NULL, true);
+}
+
+bool fxm_track_set_param_target(EffectsManager* fm,
+                                int track_index,
+                                FxInstId id,
+                                uint32_t pidx,
+                                float value,
+                                FxParamMode mode,
+                                float beat_value,
+                                const TempoState* tempo) {
+    FxInstance* inst = track_get_by_id(fm, track_index, id, NULL);
+    return fxm_apply_param_change(inst, pidx, value, mode, beat_value, tempo, false);
 }
 
 bool fxm_track_set_param_with_mode(EffectsManager* fm,
@@ -535,15 +694,7 @@ bool fxm_track_set_param_with_mode(EffectsManager* fm,
                                    FxParamMode mode,
                                    float beat_value) {
     FxInstance* inst = track_get_by_id(fm, track_index, id, NULL);
-    if (!inst || pidx >= inst->desc.num_params) return false;
-    if (!inst->vt.set_param) return false;
-    inst->vt.set_param(inst->handle, pidx, value);
-    if (pidx < FX_MAX_PARAMS) {
-        inst->param_values[pidx] = value;
-        inst->param_mode[pidx] = mode;
-        inst->param_beats[pidx] = beat_value;
-    }
-    return true;
+    return fxm_apply_param_change(inst, pidx, value, mode, beat_value, NULL, true);
 }
 
 bool fxm_track_set_enabled(EffectsManager* fm, int track_index, FxInstId id, bool enabled) {
@@ -580,6 +731,45 @@ bool fxm_track_snapshot(const EffectsManager* fm, int track_index, FxMasterSnaps
     return true;
 }
 
+// Advances smoothed parameters for an instance and pushes changes into the DSP.
+static void fxm_apply_param_smoothing(EffectsManager* fm, FxInstance* inst, int frames) {
+    if (!fm || !inst || !inst->vt.set_param) {
+        return;
+    }
+    uint32_t pc = inst->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : inst->param_count;
+    for (uint32_t p = 0; p < pc; ++p) {
+        float target = inst->param_values[p];
+        float current = inst->param_current[p];
+        if (fabsf(target - current) < 1e-6f) {
+            continue;
+        }
+        const EffectParamSpec* spec = NULL;
+        if (inst->param_specs && p < inst->param_spec_count) {
+            spec = &inst->param_specs[p];
+        }
+        bool smooth = spec && !fx_param_is_discrete(spec) && spec->smoothing_ms > 0.0f;
+        if (!smooth) {
+            inst->param_current[p] = target;
+            inst->vt.set_param(inst->handle, p, target);
+            continue;
+        }
+        float coeff = fx_param_smoothing_coeff(spec->smoothing_ms, fm->sample_rate, frames);
+        if (coeff <= 0.0f) {
+            inst->param_current[p] = target;
+            inst->vt.set_param(inst->handle, p, target);
+            continue;
+        }
+        float next = target + (current - target) * coeff;
+        if (fabsf(next - target) < 1e-5f) {
+            next = target;
+        }
+        if (fabsf(next - current) >= 1e-6f) {
+            inst->param_current[p] = next;
+            inst->vt.set_param(inst->handle, p, next);
+        }
+    }
+}
+
 // -------------------------------
 // Real-time render (master bus)
 // -------------------------------
@@ -603,6 +793,11 @@ void fxm_render_master(EffectsManager* fm, float* interleaved_io, int frames, in
     for (int i = 0; i < fm->master.count; ++i) {
         FxInstance* inst = &fm->master.items[i];
         if (!inst->enabled) continue;
+        const bool emit_gr = fm->scope_cb && fxm_scope_is_gr_type(inst->type);
+        float in_rms = 0.0f;
+        if (emit_gr) {
+            in_rms = fxm_compute_rms(io, frames, channels);
+        }
         if (inst->type >= 100u && inst->type <= 109u) {
             if (fm->meter_cb) {
                 fm->meter_cb(fm->meter_cb_user, true, -1, inst->id, inst->type, io, frames, channels);
@@ -610,13 +805,24 @@ void fxm_render_master(EffectsManager* fm, float* interleaved_io, int frames, in
             continue;
         }
 
+        fxm_apply_param_smoothing(fm, inst, frames);
         const bool inplace_ok = (inst->desc.flags & FX_FLAG_INPLACE_OK) != 0;
         if (inplace_ok) {
             // process in-place: out == in
             inst->vt.process(inst->handle, io, io, frames, channels);
+            if (emit_gr) {
+                float out_rms = fxm_compute_rms(io, frames, channels);
+                float gr_db = 20.0f * log10f((out_rms + 1e-12f) / (in_rms + 1e-12f));
+                fm->scope_cb(fm->scope_cb_user, true, -1, inst->id, inst->type, gr_db);
+            }
         } else {
             // out-of-place: process to scratch, then copy back to io
             inst->vt.process(inst->handle, io, scratch, frames, channels);
+            if (emit_gr) {
+                float out_rms = fxm_compute_rms(scratch, frames, channels);
+                float gr_db = 20.0f * log10f((out_rms + 1e-12f) / (in_rms + 1e-12f));
+                fm->scope_cb(fm->scope_cb_user, true, -1, inst->id, inst->type, gr_db);
+            }
             memcpy(io, scratch, (size_t)n * sizeof(float));
         }
     }
@@ -639,6 +845,11 @@ void fxm_render_track(EffectsManager* fm, int track_index, float* interleaved_io
         if (!inst->enabled) continue;
         FxHandle* h = inst->handle;
         if (!h || !inst->vt.process) continue;
+        const bool emit_gr = fm->scope_cb && fxm_scope_is_gr_type(inst->type);
+        float in_rms = 0.0f;
+        if (emit_gr) {
+            in_rms = fxm_compute_rms(interleaved_io, frames, channels);
+        }
         if (inst->type >= 100u && inst->type <= 109u) {
             if (fm->meter_cb) {
                 fm->meter_cb(fm->meter_cb_user, false, track_index, inst->id, inst->type, interleaved_io, frames, channels);
@@ -646,13 +857,24 @@ void fxm_render_track(EffectsManager* fm, int track_index, float* interleaved_io
             continue;
         }
 
+        fxm_apply_param_smoothing(fm, inst, frames);
         if (inst->desc.flags & FX_FLAG_INPLACE_OK) {
             inst->vt.process(h, interleaved_io, interleaved_io, frames, channels);
+            if (emit_gr) {
+                float out_rms = fxm_compute_rms(interleaved_io, frames, channels);
+                float gr_db = 20.0f * log10f((out_rms + 1e-12f) / (in_rms + 1e-12f));
+                fm->scope_cb(fm->scope_cb_user, false, track_index, inst->id, inst->type, gr_db);
+            }
         } else {
             if (n > fm->scratch_frames * fm->scratch_channels) {
                 continue;
             }
             inst->vt.process(h, interleaved_io, scratch, frames, channels);
+            if (emit_gr) {
+                float out_rms = fxm_compute_rms(scratch, frames, channels);
+                float gr_db = 20.0f * log10f((out_rms + 1e-12f) / (in_rms + 1e-12f));
+                fm->scope_cb(fm->scope_cb_user, false, track_index, inst->id, inst->type, gr_db);
+            }
             memcpy(interleaved_io, scratch, (size_t)n * sizeof(float));
         }
     }

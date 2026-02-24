@@ -5,6 +5,8 @@
 #include "engine/automation.h"
 #include "engine/engine_eq.h"
 #include "engine/fade_curve.h"
+#include "engine/scope_host.h"
+#include "time/tempo.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -75,6 +77,14 @@ typedef struct {
     bool valid;
 } EngineFxMeterSnapshot;
 
+// Owns interleaved bounce samples and metadata produced by offline rendering.
+typedef struct {
+    float* data;
+    uint64_t frame_count;
+    int channels;
+    int sample_rate;
+} EngineBounceBuffer;
+
 // Holds runtime clip state including timing, fades, and automation.
 struct EngineClip {
     struct EngineSamplerSource* sampler;
@@ -117,6 +127,19 @@ void    engine_stop(Engine* engine);
 const EngineRuntimeConfig* engine_get_config(const Engine* engine);
 bool    engine_fx_get_registry(const Engine* engine, const FxRegistryEntry** out_entries, int* out_count);
 bool    engine_fx_registry_get_desc(const Engine* engine, FxTypeId type, FxDesc* out_desc);
+// Reads pending samples for a scope stream tied to an FX instance.
+int     engine_get_fx_scope_samples(const Engine* engine,
+                                    bool is_master,
+                                    int track_index,
+                                    FxInstId id,
+                                    EngineScopeStreamKind kind,
+                                    float* out_samples,
+                                    int max_samples);
+// Returns the parameter spec list for a given effect type.
+bool    engine_fx_registry_get_param_specs(const Engine* engine,
+                                           FxTypeId type,
+                                           const EffectParamSpec** out_specs,
+                                           uint32_t* out_count);
 bool    engine_fx_master_snapshot(const Engine* engine, FxMasterSnapshot* out_snapshot);
 FxInstId engine_fx_master_add(Engine* engine, FxTypeId type);
 bool    engine_fx_master_remove(Engine* engine, FxInstId id);
@@ -150,6 +173,8 @@ bool    engine_transport_stop(Engine* engine);
 bool    engine_transport_is_playing(const Engine* engine);
 bool    engine_transport_seek(Engine* engine, uint64_t frame);
 bool    engine_transport_set_loop(Engine* engine, bool enabled, uint64_t start_frame, uint64_t end_frame);
+// Updates the worker-side tempo state for beat-synced FX conversions.
+bool    engine_set_tempo_state(Engine* engine, const TempoState* tempo);
 bool    engine_queue_graph_swap(Engine* engine, struct EngineGraph* new_graph);
 bool    engine_load_wav(Engine* engine, const char* path);
 bool    engine_add_clip(Engine* engine, const char* filepath, uint64_t start_frame);
@@ -272,6 +297,15 @@ bool    engine_get_fx_spectrogram_snapshot(const Engine* engine,
 // Enables or disables spectrogram capture for a track FX meter instance.
 void    engine_set_fx_spectrogram_target(Engine* engine, int track_index, FxInstId id, bool enabled);
 void    engine_set_logging(Engine* engine, bool engine_logs, bool cache_logs, bool timing_logs);
+// Renders an offline bounce directly into an owned interleaved float buffer.
+bool    engine_bounce_range_to_buffer(Engine* engine,
+                                      uint64_t start_frame,
+                                      uint64_t end_frame,
+                                      void (*progress_cb)(uint64_t done_frames, uint64_t total_frames, void* user),
+                                      void* user,
+                                      EngineBounceBuffer* out_buffer);
+// Releases memory owned by an EngineBounceBuffer.
+void    engine_bounce_buffer_free(EngineBounceBuffer* buffer);
 bool    engine_bounce_range(Engine* engine,
                             uint64_t start_frame,
                             uint64_t end_frame,

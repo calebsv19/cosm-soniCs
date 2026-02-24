@@ -118,6 +118,12 @@ void engine_mix_tracks(Engine* engine,
     if (hold_blocks < 1) {
         hold_blocks = 1;
     }
+    int write_index = 1 - atomic_load_explicit(&engine->meter_snapshot_index, memory_order_acquire);
+    EngineMeterSnapshot* track_snaps = NULL;
+    if (engine->track_meter_snapshots && engine->track_meter_capacity > 0) {
+        track_snaps = engine->track_meter_snapshots +
+                      (size_t)write_index * (size_t)engine->track_meter_capacity;
+    }
     for (int t = 0; t < tcount; ++t) {
         memset(track_buffer, 0, (size_t)frames * (size_t)channels * sizeof(float));
         engine_graph_render_track(engine->graph,
@@ -125,10 +131,8 @@ void engine_mix_tracks(Engine* engine,
                                   frames,
                                   start_frame,
                                   t);
-        if (engine->fxm && engine->fxm_mutex) {
-            SDL_LockMutex(engine->fxm_mutex);
+        if (engine->fxm) {
             fxm_render_track(engine->fxm, t, track_buffer, frames, channels);
-            SDL_UnlockMutex(engine->fxm_mutex);
         }
         engine_eq_process(&engine->tracks[t].track_eq, track_buffer, frames, channels);
         engine_spectrum_update_track(engine, t, track_buffer, frames, channels);
@@ -137,12 +141,11 @@ void engine_mix_tracks(Engine* engine,
             float peak = 0.0f;
             float rms = 0.0f;
             compute_peak_rms(track_buffer, frames, channels, &peak, &rms);
-            if (engine->meter_mutex) {
-                SDL_LockMutex(engine->meter_mutex);
-            }
             update_meter_state(&engine->track_meters[t], peak, rms, hold_blocks);
-            if (engine->meter_mutex) {
-                SDL_UnlockMutex(engine->meter_mutex);
+            if (track_snaps) {
+                track_snaps[t].peak = engine->track_meters[t].peak;
+                track_snaps[t].rms = engine->track_meters[t].rms;
+                track_snaps[t].clipped = engine->track_meters[t].clip_hold > 0;
             }
         }
         for (int s = 0; s < frames * channels; ++s) {
@@ -151,10 +154,8 @@ void engine_mix_tracks(Engine* engine,
     }
 
     engine_eq_process(&engine->master_eq, out, frames, channels);
-    if (engine->fxm && engine->fxm_mutex) {
-        SDL_LockMutex(engine->fxm_mutex);
+    if (engine->fxm) {
         fxm_render_master(engine->fxm, out, frames, channels);
-        SDL_UnlockMutex(engine->fxm_mutex);
     }
 
     engine_sanitize_block(out, (size_t)frames * (size_t)channels);
@@ -162,12 +163,10 @@ void engine_mix_tracks(Engine* engine,
         float peak = 0.0f;
         float rms = 0.0f;
         compute_peak_rms(out, frames, channels, &peak, &rms);
-        if (engine->meter_mutex) {
-            SDL_LockMutex(engine->meter_mutex);
-        }
         update_meter_state(&engine->master_meter, peak, rms, hold_blocks);
-        if (engine->meter_mutex) {
-            SDL_UnlockMutex(engine->meter_mutex);
-        }
+        engine->master_meter_snapshots[write_index].peak = engine->master_meter.peak;
+        engine->master_meter_snapshots[write_index].rms = engine->master_meter.rms;
+        engine->master_meter_snapshots[write_index].clipped = engine->master_meter.clip_hold > 0;
     }
+    atomic_store_explicit(&engine->meter_snapshot_index, write_index, memory_order_release);
 }

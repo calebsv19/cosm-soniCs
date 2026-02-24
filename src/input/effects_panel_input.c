@@ -8,9 +8,12 @@
 #include "input/timeline_input.h"
 #include "ui/effects_panel.h"
 #include "ui/effects_panel_meter_detail.h"
+#include "ui/effects_panel_slot_layout.h"
+#include "ui/effects_panel_spec.h"
 #include "ui/font.h"
 #include "undo/undo_manager.h"
 
+#include <math.h>
 #include <stdbool.h>
 #include <string.h>
 
@@ -21,6 +24,14 @@ static float clampf(float v, float lo, float hi) {
 }
 
 static bool panel_targets_track(const EffectsPanelState* panel);
+// Syncs meter detail mode toggles from the open meter effect parameters.
+static void sync_meter_modes_from_slot_params(EffectsPanelState* panel, const FxSlotUIState* slot);
+// Toggles preview open state for the given slot.
+static void effects_panel_toggle_preview(EffectsPanelState* panel, int slot_index);
+// Sets preview open state for all preview-capable slots.
+static void effects_panel_set_all_previews(EffectsPanelState* panel, bool open);
+// Flips preview open state for all preview-capable slots.
+static void effects_panel_flip_all_previews(EffectsPanelState* panel);
 
 static void fx_instance_from_slot(const FxSlotUIState* slot, SessionFxInstance* out_instance) {
     if (!slot || !out_instance) {
@@ -85,6 +96,138 @@ static const FxTypeUIInfo* find_type_info(const EffectsPanelState* panel, FxType
 
 static bool panel_targets_track(const EffectsPanelState* panel) {
     return panel && panel->target == FX_PANEL_TARGET_TRACK && panel->target_track_index >= 0;
+}
+
+// Syncs meter detail mode toggles from the open meter effect parameters.
+static void sync_meter_modes_from_slot_params(EffectsPanelState* panel, const FxSlotUIState* slot) {
+    if (!panel || !slot) {
+        return;
+    }
+    if (slot->type_id == 102u && slot->param_count > 0) {
+        int mode = (int)lroundf(slot->param_values[0]);
+        panel->meter_scope_mode = mode == 0 ? FX_METER_SCOPE_MID_SIDE : FX_METER_SCOPE_LEFT_RIGHT;
+        return;
+    }
+    if (slot->type_id == 104u && slot->param_count > 0) {
+        int mode = (int)lroundf(slot->param_values[0]);
+        if (mode <= 0) {
+            panel->meter_lufs_mode = FX_METER_LUFS_INTEGRATED;
+        } else if (mode == 1) {
+            panel->meter_lufs_mode = FX_METER_LUFS_SHORT_TERM;
+        } else {
+            panel->meter_lufs_mode = FX_METER_LUFS_MOMENTARY;
+        }
+        return;
+    }
+    if (slot->type_id == 105u && slot->param_count > 2) {
+        int mode = (int)lroundf(slot->param_values[2]);
+        if (mode <= 0) {
+            panel->meter_spectrogram_mode = FX_METER_SPECTROGRAM_WHITE_BLACK;
+        } else if (mode == 1) {
+            panel->meter_spectrogram_mode = FX_METER_SPECTROGRAM_BLACK_WHITE;
+        } else {
+            panel->meter_spectrogram_mode = FX_METER_SPECTROGRAM_HEAT;
+        }
+    }
+}
+
+// effects_panel_slot_supports_preview returns true when the slot type renders a preview panel.
+static bool effects_panel_slot_supports_preview(FxTypeId type_id) {
+    switch (type_id) {
+        case 7u:
+        case 20u:
+        case 21u:
+        case 22u:
+        case 23u:
+        case 60u:
+        case 61u:
+        case 62u:
+        case 63u:
+        case 64u:
+        case 65u:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// effects_panel_refresh_preview_state updates the global preview toggle state.
+static void effects_panel_refresh_preview_state(EffectsPanelState* panel) {
+    if (!panel) {
+        return;
+    }
+    bool previews_open = true;
+    bool preview_found = false;
+    for (int i = 0; i < panel->chain_count; ++i) {
+        if (!effects_panel_slot_supports_preview(panel->chain[i].type_id)) {
+            continue;
+        }
+        preview_found = true;
+        if (!panel->preview_slots[i].open) {
+            previews_open = false;
+            break;
+        }
+    }
+    panel->preview_all_open = preview_found && previews_open;
+}
+
+// Toggles preview open state for the given slot.
+static void effects_panel_toggle_preview(EffectsPanelState* panel, int slot_index) {
+    if (!panel || slot_index < 0 || slot_index >= panel->chain_count) {
+        return;
+    }
+    EffectsPanelPreviewSlotState* preview = &panel->preview_slots[slot_index];
+    preview->open = !preview->open;
+    effects_panel_refresh_preview_state(panel);
+}
+
+// Sets preview open state for all preview-capable slots.
+static void effects_panel_set_all_previews(EffectsPanelState* panel, bool open) {
+    if (!panel) {
+        return;
+    }
+    for (int i = 0; i < panel->chain_count; ++i) {
+        if (!effects_panel_slot_supports_preview(panel->chain[i].type_id)) {
+            continue;
+        }
+        panel->preview_slots[i].open = open;
+    }
+    panel->preview_all_open = open;
+}
+
+// Flips preview open state for all preview-capable slots.
+static void effects_panel_flip_all_previews(EffectsPanelState* panel) {
+    if (!panel) {
+        return;
+    }
+    for (int i = 0; i < panel->chain_count; ++i) {
+        if (!effects_panel_slot_supports_preview(panel->chain[i].type_id)) {
+            continue;
+        }
+        panel->preview_slots[i].open = !panel->preview_slots[i].open;
+    }
+    effects_panel_refresh_preview_state(panel);
+}
+
+// Returns true when the spec-driven panel should handle the slot's controls.
+static bool panel_uses_spec_ui(const EffectsPanelState* panel, const FxSlotUIState* slot) {
+    if (!panel || !slot) {
+        return false;
+    }
+    return effects_panel_spec_enabled(panel, slot->type_id);
+}
+
+// Locates the widget index matching the given param index.
+static int spec_layout_find_widget(const EffectsSpecPanelLayout* layout, uint32_t param_index) {
+    if (!layout) {
+        return -1;
+    }
+    for (int i = 0; i < layout->widget_count; ++i) {
+        if (layout->widgets[i].param_index == param_index) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 static bool compute_detail_slot_layout(const AppState* state,
@@ -183,31 +326,23 @@ static float slider_value_from_mouse(const AppState* state,
         return slot->param_values[param_index];
     }
     const FxTypeUIInfo* info = find_type_info(panel, slot->type_id);
-    float min_v = info ? info->param_min[param_index] : 0.0f;
-    float max_v = info ? info->param_max[param_index] : 1.0f;
-    if (max_v - min_v < 1e-6f) {
-        max_v = min_v + 1.0f;
-    }
+    const EffectParamSpec* spec = info ? &info->param_specs[param_index] : NULL;
     FxParamMode mode = slot->param_mode[param_index];
-    FxParamKind kind = info ? info->param_kind[param_index] : FX_PARAM_KIND_GENERIC;
-    const float beat_min = 1.0f / 64.0f;
-    const float beat_max = 8.0f;
-    if (mode != FX_PARAM_MODE_NATIVE && fx_param_kind_is_syncable(kind)) {
-        min_v = beat_min;
-        max_v = beat_max;
-    }
-    if (min_v > max_v) {
-        float tmp = min_v;
-        min_v = max_v;
-        max_v = tmp;
-    }
     float t = (float)(mouse_x - slider_rect->x) / (float)slider_rect->w;
     t = clampf(t, 0.0f, 1.0f);
-    float value = min_v + t * (max_v - min_v);
-    if (mode != FX_PARAM_MODE_NATIVE && fx_param_kind_is_syncable(kind)) {
+    float value = 0.0f;
+    if (mode != FX_PARAM_MODE_NATIVE && fx_param_spec_is_syncable(spec)) {
+        float beat_min = 0.0f;
+        float beat_max = 0.0f;
+        if (!fx_param_spec_get_beat_bounds(spec, &state->tempo, &beat_min, &beat_max)) {
+            return fx_param_map_ui_to_value(spec, t);
+        }
+        value = beat_min + t * (beat_max - beat_min);
         value = fx_param_quantize_beats(value);
         if (value < beat_min) value = beat_min;
         if (value > beat_max) value = beat_max;
+    } else {
+        value = fx_param_map_ui_to_value(spec, t);
     }
     return value;
 }
@@ -225,18 +360,18 @@ static void apply_slider_value(AppState* state, int slot_index, int param_index,
         return;
     }
     const FxTypeUIInfo* info = find_type_info(panel, slot->type_id);
+    const EffectParamSpec* spec = info ? &info->param_specs[param_index] : NULL;
     FxParamMode mode = slot->param_mode[param_index];
-    FxParamKind kind = info ? info->param_kind[param_index] : FX_PARAM_KIND_GENERIC;
     float beat_value = slot->param_beats[param_index];
     float native_value = value;
-    if (mode != FX_PARAM_MODE_NATIVE && fx_param_kind_is_syncable(kind)) {
+    if (mode != FX_PARAM_MODE_NATIVE && fx_param_spec_is_syncable(spec)) {
         beat_value = value;
-        native_value = fx_param_beats_to_native(kind, beat_value, &state->tempo);
-    } else if (fx_param_kind_is_syncable(kind)) {
-        beat_value = fx_param_native_to_beats(kind, value, &state->tempo);
+        native_value = fx_param_spec_beats_to_native(spec, beat_value, &state->tempo);
+    } else if (fx_param_spec_is_syncable(spec)) {
+        beat_value = fx_param_spec_native_to_beats(spec, value, &state->tempo);
     }
     bool updated = false;
-    bool use_sync = (mode != FX_PARAM_MODE_NATIVE) && fx_param_kind_is_syncable(kind);
+    bool use_sync = (mode != FX_PARAM_MODE_NATIVE) && fx_param_spec_is_syncable(spec);
     if (panel_targets_track(panel)) {
         if (use_sync) {
             updated = engine_fx_track_set_param_with_mode(state->engine,
@@ -271,6 +406,98 @@ static void apply_slider_value(AppState* state, int slot_index, int param_index,
     }
 }
 
+// Applies a toggle/dropdown action for a spec widget.
+static bool apply_spec_widget_action(AppState* state,
+                                     int slot_index,
+                                     const EffectsSpecPanelLayout* layout,
+                                     int widget_index) {
+    if (!state || !layout) {
+        return false;
+    }
+    EffectsPanelState* panel = &state->effects_panel;
+    if (slot_index < 0 || slot_index >= panel->chain_count) {
+        return false;
+    }
+    FxSlotUIState* slot = &panel->chain[slot_index];
+    if (widget_index < 0 || widget_index >= layout->widget_count) {
+        return false;
+    }
+    const FxSpecWidget* widget = &layout->widgets[widget_index];
+    const FxTypeUIInfo* info = find_type_info(panel, slot->type_id);
+    if (!info || widget->param_index >= slot->param_count) {
+        return false;
+    }
+    const EffectParamSpec* spec = &info->param_specs[widget->param_index];
+    float value = slot->param_values[widget->param_index];
+    if (widget->type == FX_SPEC_WIDGET_TOGGLE) {
+        value = value >= 0.5f ? 0.0f : 1.0f;
+        apply_slider_value(state, slot_index, (int)widget->param_index, value);
+        return true;
+    }
+    if (widget->type == FX_SPEC_WIDGET_DROPDOWN && spec->enum_count > 0) {
+        int idx = (int)lroundf(value);
+        idx = (idx + 1) % (int)spec->enum_count;
+        value = (float)idx;
+        apply_slider_value(state, slot_index, (int)widget->param_index, value);
+        return true;
+    }
+    return false;
+}
+
+// Adjusts a spec-driven param by a small step using keyboard input.
+static bool adjust_spec_param(AppState* state, int slot_index, int param_index, bool increase) {
+    if (!state) {
+        return false;
+    }
+    EffectsPanelState* panel = &state->effects_panel;
+    if (slot_index < 0 || slot_index >= panel->chain_count) {
+        return false;
+    }
+    FxSlotUIState* slot = &panel->chain[slot_index];
+    if (param_index < 0 || param_index >= (int)slot->param_count) {
+        return false;
+    }
+    const FxTypeUIInfo* info = find_type_info(panel, slot->type_id);
+    if (!info) {
+        return false;
+    }
+    const EffectParamSpec* spec = &info->param_specs[param_index];
+    FxParamMode mode = slot->param_mode[param_index];
+    float value = slot->param_values[param_index];
+    float step = spec->step;
+    float min_value = spec->min_value;
+    float max_value = spec->max_value;
+    if (mode != FX_PARAM_MODE_NATIVE && fx_param_spec_is_syncable(spec)) {
+        float beat_min = 0.0f;
+        float beat_max = 0.0f;
+        if (!fx_param_spec_get_beat_bounds(spec, &state->tempo, &beat_min, &beat_max)) {
+            return false;
+        }
+        value = slot->param_beats[param_index];
+        if (fabsf(value) < 1e-6f) {
+            value = fx_param_spec_native_to_beats(spec, slot->param_values[param_index], &state->tempo);
+        }
+        min_value = beat_min;
+        max_value = beat_max;
+        if (step <= 0.0f) {
+            step = 1.0f / 16.0f;
+        }
+    } else if (spec->type == FX_PARAM_TYPE_BOOL || spec->type == FX_PARAM_TYPE_ENUM) {
+        step = 1.0f;
+    } else if (step <= 0.0f) {
+        step = (max_value - min_value) * 0.01f;
+    }
+
+    if (!increase) {
+        step = -step;
+    }
+    value += step;
+    if (value < min_value) value = min_value;
+    if (value > max_value) value = max_value;
+    apply_slider_value(state, slot_index, param_index, value);
+    return true;
+}
+
 static void toggle_param_mode(AppState* state, int slot_index, int param_index) {
     if (!state || !state->engine) {
         return;
@@ -292,29 +519,47 @@ static void toggle_param_mode(AppState* state, int slot_index, int param_index) 
     cmd.data.fx_edit.param_index = (uint32_t)param_index;
     fx_instance_from_slot(slot, &cmd.data.fx_edit.before_state);
     const FxTypeUIInfo* info = find_type_info(panel, slot->type_id);
-    FxParamKind kind = info ? info->param_kind[param_index] : FX_PARAM_KIND_GENERIC;
-    if (!fx_param_kind_is_syncable(kind)) {
+    const EffectParamSpec* spec = info ? &info->param_specs[param_index] : NULL;
+    if (!fx_param_spec_is_syncable(spec)) {
         return;
     }
     FxParamMode current = slot->param_mode[param_index];
     FxParamMode next = FX_PARAM_MODE_NATIVE;
     if (current == FX_PARAM_MODE_NATIVE) {
-        next = (kind == FX_PARAM_KIND_RATE_HZ) ? FX_PARAM_MODE_BEAT_RATE : FX_PARAM_MODE_BEATS;
+        next = (spec && spec->unit == FX_PARAM_UNIT_HZ) ? FX_PARAM_MODE_BEAT_RATE : FX_PARAM_MODE_BEATS;
     } else {
         next = FX_PARAM_MODE_NATIVE;
     }
     float native_value = slot->param_values[param_index];
     float beat_value = slot->param_beats[param_index];
-    const float beat_min = 1.0f / 64.0f;
-    const float beat_max = 8.0f;
+    float beat_min = 0.0f;
+    float beat_max = 0.0f;
+    if (!fx_param_spec_get_beat_bounds(spec, &state->tempo, &beat_min, &beat_max)) {
+        return;
+    }
+    float t = 0.0f;
+    if (current != FX_PARAM_MODE_NATIVE) {
+        float current_beats = beat_value;
+        if (fabsf(current_beats) < 1e-6f) {
+            current_beats = fx_param_spec_native_to_beats(spec, native_value, &state->tempo);
+        }
+        if (current_beats < beat_min) current_beats = beat_min;
+        if (current_beats > beat_max) current_beats = beat_max;
+        t = (current_beats - beat_min) / (beat_max - beat_min);
+    } else {
+        t = fx_param_map_value_to_ui(spec, native_value);
+    }
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
     if (next != FX_PARAM_MODE_NATIVE) {
-        beat_value = fx_param_native_to_beats(kind, native_value, &state->tempo);
+        beat_value = beat_min + t * (beat_max - beat_min);
         beat_value = fx_param_quantize_beats(beat_value);
         if (beat_value < beat_min) beat_value = beat_min;
         if (beat_value > beat_max) beat_value = beat_max;
-        native_value = fx_param_beats_to_native(kind, beat_value, &state->tempo);
-    } else if (fx_param_kind_is_syncable(kind)) {
-        beat_value = fx_param_native_to_beats(kind, native_value, &state->tempo);
+        native_value = fx_param_spec_beats_to_native(spec, beat_value, &state->tempo);
+    } else {
+        native_value = fx_param_map_ui_to_value(spec, t);
+        beat_value = fx_param_spec_native_to_beats(spec, native_value, &state->tempo);
     }
     slot->param_mode[param_index] = next;
     slot->param_beats[param_index] = beat_value;
@@ -397,15 +642,36 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
 
     switch (event->type) {
         case SDL_KEYDOWN: {
-            if (!panel->focused || panel->selected_slot_index < 0 || overlay_open) {
-                break;
-            }
             if (state->track_name_editor.editing) {
                 break;
             }
             SDL_Keycode key = event->key.keysym.sym;
+            if (panel->focused && !overlay_open) {
+                if (key == SDLK_p) {
+                    SDL_Keymod mods = SDL_GetModState();
+                    if (mods & KMOD_SHIFT) {
+                        effects_panel_flip_all_previews(panel);
+                    } else {
+                        effects_panel_set_all_previews(panel, !panel->preview_all_open);
+                    }
+                    return;
+                }
+            }
+            if (!panel->focused || panel->selected_slot_index < 0 || overlay_open) {
+                break;
+            }
             if (key != SDLK_LEFT && key != SDLK_RIGHT && key != SDLK_UP && key != SDLK_DOWN) {
                 break;
+            }
+            if (panel->active_slot_index >= 0 && panel->active_param_index >= 0) {
+                int slot_index = panel->active_slot_index;
+                if (slot_index >= 0 && slot_index < panel->chain_count &&
+                    panel_uses_spec_ui(panel, &panel->chain[slot_index])) {
+                    bool increase = (key == SDLK_RIGHT || key == SDLK_UP);
+                    if (adjust_spec_param(state, slot_index, panel->active_param_index, increase)) {
+                        return;
+                    }
+                }
             }
             int selected = panel->selected_slot_index;
             if (selected < 0 || selected >= panel->chain_count) {
@@ -459,6 +725,7 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                 panel->selected_slot_index = -1;
                 panel->highlighted_slot_index = -1;
                 panel->hovered_toggle_slot_index = -1;
+                panel->preview_toggle_hovered = false;
                 if (overlay_open) {
                     close_overlay(panel);
                 }
@@ -493,6 +760,7 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                                 FxTypeId type_id = panel->chain[i].type_id;
                                 if (type_id >= 100u && type_id <= 109u) {
                                     panel->list_detail_mode = FX_LIST_DETAIL_METER;
+                                    sync_meter_modes_from_slot_params(panel, &panel->chain[i]);
                                 } else {
                                     panel->list_detail_mode = FX_LIST_DETAIL_EFFECT;
                                 }
@@ -515,10 +783,16 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                             effects_panel_meter_detail_compute_toggle_rects(&layout.detail_rect, &toggle_ms, &toggle_lr);
                             if (SDL_PointInRect(&pt, &toggle_ms)) {
                                 panel->meter_scope_mode = FX_METER_SCOPE_MID_SIDE;
+                                if (panel->chain[panel->list_open_slot_index].param_count > 0) {
+                                    apply_slider_value(state, panel->list_open_slot_index, 0, 0.0f);
+                                }
                                 return;
                             }
                             if (SDL_PointInRect(&pt, &toggle_lr)) {
                                 panel->meter_scope_mode = FX_METER_SCOPE_LEFT_RIGHT;
+                                if (panel->chain[panel->list_open_slot_index].param_count > 0) {
+                                    apply_slider_value(state, panel->list_open_slot_index, 0, 1.0f);
+                                }
                                 return;
                             }
                         } else if (type_id == 104u) {
@@ -531,14 +805,23 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                                                                                  &toggle_momentary);
                             if (SDL_PointInRect(&pt, &toggle_int)) {
                                 panel->meter_lufs_mode = FX_METER_LUFS_INTEGRATED;
+                                if (panel->chain[panel->list_open_slot_index].param_count > 0) {
+                                    apply_slider_value(state, panel->list_open_slot_index, 0, 0.0f);
+                                }
                                 return;
                             }
                             if (SDL_PointInRect(&pt, &toggle_short)) {
                                 panel->meter_lufs_mode = FX_METER_LUFS_SHORT_TERM;
+                                if (panel->chain[panel->list_open_slot_index].param_count > 0) {
+                                    apply_slider_value(state, panel->list_open_slot_index, 0, 1.0f);
+                                }
                                 return;
                             }
                             if (SDL_PointInRect(&pt, &toggle_momentary)) {
                                 panel->meter_lufs_mode = FX_METER_LUFS_MOMENTARY;
+                                if (panel->chain[panel->list_open_slot_index].param_count > 0) {
+                                    apply_slider_value(state, panel->list_open_slot_index, 0, 2.0f);
+                                }
                                 return;
                             }
                         } else if (type_id == 105u) {
@@ -551,14 +834,23 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                                                                                          &toggle_heat);
                             if (SDL_PointInRect(&pt, &toggle_wb)) {
                                 panel->meter_spectrogram_mode = FX_METER_SPECTROGRAM_WHITE_BLACK;
+                                if (panel->chain[panel->list_open_slot_index].param_count > 2) {
+                                    apply_slider_value(state, panel->list_open_slot_index, 2, 0.0f);
+                                }
                                 return;
                             }
                             if (SDL_PointInRect(&pt, &toggle_bw)) {
                                 panel->meter_spectrogram_mode = FX_METER_SPECTROGRAM_BLACK_WHITE;
+                                if (panel->chain[panel->list_open_slot_index].param_count > 2) {
+                                    apply_slider_value(state, panel->list_open_slot_index, 2, 1.0f);
+                                }
                                 return;
                             }
                             if (SDL_PointInRect(&pt, &toggle_heat)) {
                                 panel->meter_spectrogram_mode = FX_METER_SPECTROGRAM_HEAT;
+                                if (panel->chain[panel->list_open_slot_index].param_count > 2) {
+                                    apply_slider_value(state, panel->list_open_slot_index, 2, 2.0f);
+                                }
                                 return;
                             }
                         }
@@ -645,6 +937,21 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                 panel->view_mode = panel->view_mode == FX_PANEL_VIEW_STACK ? FX_PANEL_VIEW_LIST : FX_PANEL_VIEW_STACK;
                 if (overlay_open) {
                     close_overlay(panel);
+                }
+                return;
+            }
+
+            if (SDL_PointInRect(&pt, &layout.spec_toggle_rect)) {
+                panel->spec_panel_enabled = !panel->spec_panel_enabled;
+                return;
+            }
+
+            if (SDL_PointInRect(&pt, &layout.preview_toggle_rect)) {
+                SDL_Keymod mods = SDL_GetModState();
+                if (mods & KMOD_SHIFT) {
+                    effects_panel_flip_all_previews(panel);
+                } else {
+                    effects_panel_set_all_previews(panel, !panel->preview_all_open);
                 }
                 return;
             }
@@ -820,7 +1127,42 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                 if (open_index >= 0 && open_index < panel->chain_count) {
                     EffectsSlotLayout detail_layout;
                     if (compute_detail_slot_layout(state, &layout, open_index, &detail_layout)) {
+                        if (detail_layout.preview_toggle_rect.w > 0 &&
+                            SDL_PointInRect(&pt, &detail_layout.preview_toggle_rect)) {
+                            effects_panel_toggle_preview(panel, open_index);
+                            return;
+                        }
                         FxSlotUIState* slot = &panel->chain[open_index];
+                        if (panel_uses_spec_ui(panel, slot)) {
+                            EffectsSpecPanelLayout spec_layout;
+                            float scroll_offset = panel->slot_runtime[open_index].scroll;
+                            effects_panel_spec_compute_layout(state,
+                                                              panel,
+                                                              slot,
+                                                              &detail_layout.body_rect,
+                                                              scroll_offset,
+                                                              &spec_layout);
+                            int widget_index = -1;
+                            bool mode_toggle = false;
+                            if (effects_panel_spec_hit_test(&spec_layout, &pt, &widget_index, &mode_toggle)) {
+                                const FxSpecWidget* widget = &spec_layout.widgets[widget_index];
+                                panel->active_slot_index = open_index;
+                                panel->active_param_index = (int)widget->param_index;
+                                if (mode_toggle) {
+                                    toggle_param_mode(state, open_index, (int)widget->param_index);
+                                    return;
+                                }
+                                if (apply_spec_widget_action(state, open_index, &spec_layout, widget_index)) {
+                                    return;
+                                }
+                                panel->dragging_slider = true;
+                                begin_fx_param_drag(state, open_index, (int)widget->param_index);
+                                float value =
+                                    effects_panel_spec_value_from_point(state, slot, &spec_layout, widget_index, pt.x, pt.y);
+                                apply_slider_value(state, open_index, (int)widget->param_index, value);
+                                return;
+                            }
+                        }
                         for (uint32_t p = 0; p < slot->param_count && p < FX_MAX_PARAMS; ++p) {
                             SDL_Rect mode_rect = detail_layout.mode_rects[p];
                             if (mode_rect.w > 0 && mode_rect.h > 0 && SDL_PointInRect(&pt, &mode_rect)) {
@@ -845,6 +1187,41 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
             } else {
                 for (int i = 0; i < layout.column_count && i < panel->chain_count; ++i) {
                     FxSlotUIState* slot = &panel->chain[i];
+                    if (layout.slots[i].preview_toggle_rect.w > 0 &&
+                        SDL_PointInRect(&pt, &layout.slots[i].preview_toggle_rect)) {
+                        effects_panel_toggle_preview(panel, i);
+                        return;
+                    }
+                    if (panel_uses_spec_ui(panel, slot)) {
+                        EffectsSpecPanelLayout spec_layout;
+                        float scroll_offset = panel->slot_runtime[i].scroll;
+                        effects_panel_spec_compute_layout(state,
+                                                          panel,
+                                                          slot,
+                                                          &layout.slots[i].body_rect,
+                                                          scroll_offset,
+                                                          &spec_layout);
+                        int widget_index = -1;
+                        bool mode_toggle = false;
+                        if (effects_panel_spec_hit_test(&spec_layout, &pt, &widget_index, &mode_toggle)) {
+                            const FxSpecWidget* widget = &spec_layout.widgets[widget_index];
+                            panel->active_slot_index = i;
+                            panel->active_param_index = (int)widget->param_index;
+                            if (mode_toggle) {
+                                toggle_param_mode(state, i, (int)widget->param_index);
+                                return;
+                            }
+                            if (apply_spec_widget_action(state, i, &spec_layout, widget_index)) {
+                                return;
+                            }
+                            panel->dragging_slider = true;
+                            begin_fx_param_drag(state, i, (int)widget->param_index);
+                            float value =
+                                effects_panel_spec_value_from_point(state, slot, &spec_layout, widget_index, pt.x, pt.y);
+                            apply_slider_value(state, i, (int)widget->param_index, value);
+                            return;
+                        }
+                    }
                     for (uint32_t p = 0; p < slot->param_count && p < FX_MAX_PARAMS; ++p) {
                         SDL_Rect mode_rect = layout.slots[i].mode_rects[p];
                         if (mode_rect.w > 0 && mode_rect.h > 0 && SDL_PointInRect(&pt, &mode_rect)) {
@@ -915,6 +1292,7 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
         }
         case SDL_MOUSEMOTION: {
             SDL_Point pt = {event->motion.x, event->motion.y};
+            panel->preview_toggle_hovered = SDL_PointInRect(&pt, &layout.preview_toggle_rect);
             int drag_slot = panel->param_scroll_drag_slot;
             if (drag_slot >= 0 &&
                 drag_slot < panel->chain_count &&
@@ -980,15 +1358,53 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                 if (panel->view_mode == FX_PANEL_VIEW_LIST) {
                     EffectsSlotLayout detail_layout;
                     if (compute_detail_slot_layout(state, &layout, slot_index, &detail_layout)) {
-                        EffectsPanelLayout temp_layout;
-                        SDL_zero(temp_layout);
-                        temp_layout.slots[slot_index] = detail_layout;
-                        float value = slider_value_from_mouse(state, &temp_layout, slot_index, param_index, event->motion.x);
-                        apply_slider_value(state, slot_index, param_index, value);
+                        FxSlotUIState* slot = &panel->chain[slot_index];
+                        if (panel_uses_spec_ui(panel, slot)) {
+                            EffectsSpecPanelLayout spec_layout;
+                            float scroll_offset = panel->slot_runtime[slot_index].scroll;
+                            effects_panel_spec_compute_layout(state,
+                                                              panel,
+                                                              slot,
+                                                              &detail_layout.body_rect,
+                                                              scroll_offset,
+                                                              &spec_layout);
+                            int widget_index = spec_layout_find_widget(&spec_layout, (uint32_t)param_index);
+                            if (widget_index >= 0) {
+                                float value =
+                                    effects_panel_spec_value_from_point(state, slot, &spec_layout, widget_index,
+                                                                        event->motion.x, event->motion.y);
+                                apply_slider_value(state, slot_index, param_index, value);
+                            }
+                        } else {
+                            EffectsPanelLayout temp_layout;
+                            SDL_zero(temp_layout);
+                            temp_layout.slots[slot_index] = detail_layout;
+                            float value = slider_value_from_mouse(state, &temp_layout, slot_index, param_index, event->motion.x);
+                            apply_slider_value(state, slot_index, param_index, value);
+                        }
                     }
                 } else {
-                    float value = slider_value_from_mouse(state, &layout, slot_index, param_index, event->motion.x);
-                    apply_slider_value(state, slot_index, param_index, value);
+                    FxSlotUIState* slot = &panel->chain[slot_index];
+                    if (panel_uses_spec_ui(panel, slot)) {
+                        EffectsSpecPanelLayout spec_layout;
+                        float scroll_offset = panel->slot_runtime[slot_index].scroll;
+                        effects_panel_spec_compute_layout(state,
+                                                          panel,
+                                                          slot,
+                                                          &layout.slots[slot_index].body_rect,
+                                                          scroll_offset,
+                                                          &spec_layout);
+                        int widget_index = spec_layout_find_widget(&spec_layout, (uint32_t)param_index);
+                        if (widget_index >= 0) {
+                            float value =
+                                effects_panel_spec_value_from_point(state, slot, &spec_layout, widget_index,
+                                                                    event->motion.x, event->motion.y);
+                            apply_slider_value(state, slot_index, param_index, value);
+                        }
+                    } else {
+                        float value = slider_value_from_mouse(state, &layout, slot_index, param_index, event->motion.x);
+                        apply_slider_value(state, slot_index, param_index, value);
+                    }
                 }
             } else {
                 panel->highlighted_slot_index = -1;

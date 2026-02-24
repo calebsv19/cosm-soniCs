@@ -1,6 +1,7 @@
 #include "ui/effects_panel.h"
 #include "ui/effects_panel_eq_detail.h"
 #include "ui/effects_panel_meter_detail.h"
+#include "ui/effects_panel_slot_layout.h"
 
 #include "app_state.h"
 #include "engine/engine.h"

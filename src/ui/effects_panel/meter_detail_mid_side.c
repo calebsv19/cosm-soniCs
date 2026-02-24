@@ -2,6 +2,7 @@
 
 #include "app_state.h"
 #include "ui/font.h"
+#include "ui/kit_viz_meter_adapter.h"
 #include "ui/render_utils.h"
 
 #include <math.h>
@@ -39,6 +40,53 @@ static float history_get_side_by_age(const EffectsMeterHistory* history, int age
     while (idx < 0) idx += FX_METER_MID_SIDE_HISTORY_POINTS;
     idx %= FX_METER_MID_SIDE_HISTORY_POINTS;
     return history->side_values[idx];
+}
+
+static bool render_mid_side_history_with_adapter(SDL_Renderer* renderer,
+                                                 const SDL_Rect* mid_hist,
+                                                 const SDL_Rect* side_hist,
+                                                 const EffectsMeterHistory* history) {
+    if (!renderer || !mid_hist || !side_hist || !history || history->mid_count <= 1 || mid_hist->w <= 0 || side_hist->w <= 0) {
+        return false;
+    }
+    const int count = history->mid_count;
+    float mid_samples[FX_METER_MID_SIDE_HISTORY_POINTS];
+    float side_samples[FX_METER_MID_SIDE_HISTORY_POINTS];
+    for (int i = 0; i < count; ++i) {
+        mid_samples[i] = clampf(history_get_mid_by_age(history, i), 0.0f, 1.0f);
+        side_samples[i] = clampf(history_get_side_by_age(history, i), 0.0f, 1.0f);
+    }
+
+    KitVizVecSegment mid_segments[FX_METER_MID_SIDE_HISTORY_POINTS];
+    KitVizVecSegment side_segments[FX_METER_MID_SIDE_HISTORY_POINTS];
+    size_t mid_segment_count = 0;
+    size_t side_segment_count = 0;
+    CoreResult mid_r = daw_kit_viz_meter_plot_line_from_y_samples(mid_samples,
+                                                                   (uint32_t)count,
+                                                                   mid_hist,
+                                                                   (DawKitVizMeterPlotRange){0.0f, 1.0f},
+                                                                   mid_segments,
+                                                                   FX_METER_MID_SIDE_HISTORY_POINTS,
+                                                                   &mid_segment_count);
+    CoreResult side_r = daw_kit_viz_meter_plot_line_from_y_samples(side_samples,
+                                                                    (uint32_t)count,
+                                                                    side_hist,
+                                                                    (DawKitVizMeterPlotRange){0.0f, 1.0f},
+                                                                    side_segments,
+                                                                    FX_METER_MID_SIDE_HISTORY_POINTS,
+                                                                    &side_segment_count);
+    if (mid_r.code != CORE_OK || side_r.code != CORE_OK || mid_segment_count == 0 || side_segment_count == 0) {
+        return false;
+    }
+    daw_kit_viz_meter_render_segments(renderer,
+                                      mid_segments,
+                                      mid_segment_count,
+                                      (SDL_Color){100, 150, 210, 180});
+    daw_kit_viz_meter_render_segments(renderer,
+                                      side_segments,
+                                      side_segment_count,
+                                      (SDL_Color){180, 120, 90, 180});
+    return true;
 }
 
 // effects_meter_render_mid_side draws mid/side history strips.
@@ -133,6 +181,9 @@ void effects_meter_render_mid_side(SDL_Renderer* renderer,
 
     if (mid_hist.h > 0 && history && history->mid_count > 1) {
         ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
+        if (render_mid_side_history_with_adapter(renderer, &mid_hist, &side_hist, history)) {
+            return;
+        }
         int count = history->mid_count;
         int total_slots = FX_METER_MID_SIDE_HISTORY_POINTS;
         float prev_mid_x = 0.0f;

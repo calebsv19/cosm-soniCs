@@ -3,6 +3,14 @@ BUILD_DIR := build
 SRC_DIR := src
 SDLAPP_DIR := SDLApp
 VK_RENDERER_DIR := ../shared/vk_renderer
+CORE_BASE_DIR := ../shared/core/core_base
+CORE_IO_DIR := ../shared/core/core_io
+CORE_DATA_DIR := ../shared/core/core_data
+CORE_PACK_DIR := ../shared/core/core_pack
+CORE_TIME_DIR := ../shared/core/core_time
+CORE_THEME_DIR := ../shared/core/core_theme
+CORE_FONT_DIR := ../shared/core/core_font
+KIT_VIZ_DIR := ../shared/kit/kit_viz
 
 # --- Auto-discover all effect sources (non-recursive per known subdir)
 # NOTE: the quotes in compile rules already protect the & in "filter&tone".
@@ -33,6 +41,7 @@ SRCS := \
 	$(SRC_DIR)/audio/wav_writer.c \
 	$(SRC_DIR)/audio/media_cache.c \
 	$(SRC_DIR)/audio/media_registry.c \
+	$(SRC_DIR)/export/daw_pack_export.c \
 	$(SRC_DIR)/engine/audio_source.c \
 	$(SRC_DIR)/engine/engine_core.c \
 	$(SRC_DIR)/engine/engine_io.c \
@@ -42,6 +51,7 @@ SRCS := \
 	$(SRC_DIR)/engine/engine_clips.c \
 	$(SRC_DIR)/engine/engine_audio.c \
 	$(SRC_DIR)/engine/engine_meter.c \
+	$(SRC_DIR)/engine/engine_scope_host.c \
 	$(SRC_DIR)/engine/engine_eq.c \
 	$(SRC_DIR)/engine/engine_spectrum.c \
 	$(SRC_DIR)/engine/engine_spectrogram.c \
@@ -66,15 +76,23 @@ SRCS := \
 	$(SRC_DIR)/ui/layout_config.c \
 	$(SRC_DIR)/ui/library_browser.c \
 	$(SRC_DIR)/ui/timeline_waveform.c \
+	$(SRC_DIR)/ui/kit_viz_waveform_adapter.c \
+	$(SRC_DIR)/ui/kit_viz_fx_preview_adapter.c \
+	$(SRC_DIR)/ui/kit_viz_meter_adapter.c \
 	$(SRC_DIR)/ui/waveform_render.c \
 	$(SRC_DIR)/ui/beat_grid.c \
 	$(SRC_DIR)/ui/time_grid.c \
 	$(SRC_DIR)/ui/timeline_view.c \
 	$(SRC_DIR)/ui/font.c \
+	$(SRC_DIR)/ui/shared_theme_font_adapter.c \
 	$(SRC_DIR)/ui/transport.c \
 	$(SRC_DIR)/ui/clip_inspector.c \
 	$(SRC_DIR)/ui/effects_panel/panel.c \
 	$(SRC_DIR)/ui/effects_panel/slot_view.c \
+	$(SRC_DIR)/ui/effects_panel/slot_preview.c \
+	$(SRC_DIR)/ui/effects_panel/slot_layout.c \
+	$(SRC_DIR)/ui/effects_panel/slot_widgets.c \
+	$(SRC_DIR)/ui/effects_panel/spec_panel.c \
 	$(SRC_DIR)/ui/effects_panel/list_view.c \
 	$(SRC_DIR)/ui/effects_panel/eq_detail_view.c \
 	$(SRC_DIR)/ui/effects_panel/meter_detail_view.c \
@@ -115,6 +133,22 @@ TIMER_HUD_DIR := ../shared/timer_hud
 TIMER_HUD_SRCS := $(shell find $(TIMER_HUD_DIR)/src -type f -name '*.c')
 TIMER_HUD_EXTERNAL_SRCS := $(TIMER_HUD_DIR)/external/cJSON.c
 SRCS += $(VK_RENDERER_SRCS) $(TIMER_HUD_SRCS) $(TIMER_HUD_EXTERNAL_SRCS)
+CORE_BASE_SRCS := $(CORE_BASE_DIR)/src/core_base.c
+CORE_IO_SRCS := $(CORE_IO_DIR)/src/core_io.c
+CORE_DATA_SRCS := $(CORE_DATA_DIR)/src/core_data.c
+CORE_PACK_SRCS := $(CORE_PACK_DIR)/src/core_pack.c
+CORE_TIME_SRCS := $(CORE_TIME_DIR)/src/core_time.c
+ifeq ($(shell uname -s),Darwin)
+CORE_TIME_SRCS += $(CORE_TIME_DIR)/src/core_time_mac.c
+else
+CORE_TIME_SRCS += $(CORE_TIME_DIR)/src/core_time_posix.c
+endif
+CORE_TIME_TEST_SUPPORT_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(CORE_TIME_SRCS))
+CORE_THEME_SRCS := $(CORE_THEME_DIR)/src/core_theme.c
+CORE_FONT_SRCS := $(CORE_FONT_DIR)/src/core_font.c
+SRCS += $(CORE_BASE_SRCS) $(CORE_IO_SRCS) $(CORE_DATA_SRCS) $(CORE_PACK_SRCS) $(CORE_TIME_SRCS) $(CORE_THEME_SRCS) $(CORE_FONT_SRCS)
+KIT_VIZ_SRCS := $(KIT_VIZ_DIR)/src/kit_viz.c
+SRCS += $(KIT_VIZ_SRCS)
 
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS))
 OBJS_QUOTED := $(foreach obj,$(OBJS),"$(obj)")
@@ -190,7 +224,7 @@ else
 	endif
 endif
 
-CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) -I$(VK_RENDERER_DIR)/include -I$(TIMER_HUD_DIR)/include -I$(TIMER_HUD_DIR)/external $(SDL2_CFLAGS) $(VULKAN_CFLAGS) -DVK_RENDERER_SHADER_ROOT=\"$(abspath $(VK_RENDERER_DIR))\" -include $(VK_RENDERER_DIR)/include/vk_renderer_sdl.h
+CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) -I$(VK_RENDERER_DIR)/include -I$(TIMER_HUD_DIR)/include -I$(TIMER_HUD_DIR)/external -I$(CORE_BASE_DIR)/include -I$(CORE_IO_DIR)/include -I$(CORE_DATA_DIR)/include -I$(CORE_PACK_DIR)/include -I$(CORE_TIME_DIR)/include -I$(CORE_THEME_DIR)/include -I$(CORE_FONT_DIR)/include -I$(KIT_VIZ_DIR)/include $(SDL2_CFLAGS) $(VULKAN_CFLAGS) -DVK_RENDERER_SHADER_ROOT=\"$(abspath $(VK_RENDERER_DIR))\" -include $(VK_RENDERER_DIR)/include/vk_renderer_sdl.h
 
 LDFLAGS := $(SDL2_LDFLAGS) $(SDL2_LIBS) $(SDL2_FRAMEWORKS) $(VULKAN_LIBS)
 ifeq ($(UNAME_S),Darwin)
@@ -224,6 +258,31 @@ SMOKE_TEST_SRCS := \
 SMOKE_TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SMOKE_TEST_SRCS))
 SMOKE_TEST_BIN := $(BUILD_DIR)/tests/engine_smoke_test
 
+KITVIZ_ADAPTER_TEST_SRCS := \
+	tests/kit_viz_waveform_adapter_test.c
+
+KITVIZ_ADAPTER_TEST_BIN := $(BUILD_DIR)/tests/kit_viz_waveform_adapter_test
+
+WAVEFORM_PACK_WARMSTART_TEST_SRCS := \
+	tests/waveform_cache_pack_warmstart_test.c
+
+WAVEFORM_PACK_WARMSTART_TEST_BIN := $(BUILD_DIR)/tests/waveform_cache_pack_warmstart_test
+
+KITVIZ_FX_PREVIEW_ADAPTER_TEST_SRCS := \
+	tests/kit_viz_fx_preview_adapter_test.c
+
+KITVIZ_FX_PREVIEW_ADAPTER_TEST_BIN := $(BUILD_DIR)/tests/kit_viz_fx_preview_adapter_test
+
+KITVIZ_METER_ADAPTER_TEST_SRCS := \
+	tests/kit_viz_meter_adapter_test.c
+
+KITVIZ_METER_ADAPTER_TEST_BIN := $(BUILD_DIR)/tests/kit_viz_meter_adapter_test
+
+SHARED_THEME_FONT_ADAPTER_TEST_SRCS := \
+	tests/shared_theme_font_adapter_test.c
+
+SHARED_THEME_FONT_ADAPTER_TEST_BIN := $(BUILD_DIR)/tests/shared_theme_font_adapter_test
+
 # ---- Engine test support: keep your existing set, but replace the giant FX list
 # with the auto-discovered EFFECTS_SRCS so it always stays in sync.
 ENGINE_TEST_SUPPORT_OBJS := \
@@ -241,6 +300,7 @@ ENGINE_TEST_SUPPORT_OBJS := \
 	$(BUILD_DIR)/src/audio/ringbuf.o \
 	$(BUILD_DIR)/src/audio/device_sdl.o \
 	$(BUILD_DIR)/src/config/config.o \
+	$(CORE_TIME_TEST_SUPPORT_OBJS) \
 	$(BUILD_DIR)/src/input/timeline/timeline_drag.o
 
 APP_DEPS := $(OBJS:.o=.d)
@@ -251,7 +311,7 @@ SMOKE_TEST_DEPS := $(SMOKE_TEST_OBJS:.o=.d)
 ENGINE_TEST_SUPPORT_DEPS := $(ENGINE_TEST_SUPPORT_OBJS:.o=.d)
 ALL_DEPS := $(APP_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(SMOKE_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
 
-.PHONY: all clean run test-session test-cache test-overlap test-smoke
+.PHONY: all clean run run-ide-theme test-session test-cache test-overlap test-smoke test-kitviz-adapter test-waveform-pack-warmstart test-kitviz-fx-preview-adapter test-kitviz-meter-adapter test-shared-theme-font-adapter
 
 all: $(APP_BIN)
 
@@ -268,6 +328,9 @@ clean:
 
 run: $(APP_BIN)
 	$(APP_BIN)
+
+run-ide-theme: $(APP_BIN)
+	DAW_USE_SHARED_THEME_FONT=1 DAW_USE_SHARED_THEME=1 DAW_USE_SHARED_FONT=1 DAW_THEME_PRESET=ide_gray DAW_FONT_PRESET=ide $(APP_BIN)
 
 test-session: $(TEST_BIN)
 	$(TEST_BIN)
@@ -304,6 +367,51 @@ test-smoke: $(SMOKE_TEST_BIN)
 $(SMOKE_TEST_BIN): $(SMOKE_TEST_OBJS) $(ENGINE_TEST_SUPPORT_OBJS)
 	@mkdir -p "$(dir $@)"
 	$(CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
+
+test-kitviz-adapter: $(KITVIZ_ADAPTER_TEST_BIN)
+	$(KITVIZ_ADAPTER_TEST_BIN)
+
+$(KITVIZ_ADAPTER_TEST_BIN): $(KITVIZ_ADAPTER_TEST_SRCS) src/ui/kit_viz_waveform_adapter.c src/ui/timeline_waveform.c ../shared/kit/kit_viz/src/kit_viz.c
+	@mkdir -p "$(dir $@)"
+	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I../shared/kit/kit_viz/include -I../shared/core/core_pack/include -I../shared/core/core_io/include -I../shared/core/core_base/include \
+		tests/kit_viz_waveform_adapter_test.c src/ui/kit_viz_waveform_adapter.c src/ui/timeline_waveform.c ../shared/kit/kit_viz/src/kit_viz.c ../shared/core/core_pack/src/core_pack.c ../shared/core/core_io/src/core_io.c ../shared/core/core_base/src/core_base.c \
+		$(SDL2_LDFLAGS) -lSDL2 -lm -o "$@"
+
+test-waveform-pack-warmstart: $(WAVEFORM_PACK_WARMSTART_TEST_BIN)
+	$(WAVEFORM_PACK_WARMSTART_TEST_BIN)
+
+$(WAVEFORM_PACK_WARMSTART_TEST_BIN): $(WAVEFORM_PACK_WARMSTART_TEST_SRCS) src/ui/timeline_waveform.c ../shared/kit/kit_viz/src/kit_viz.c ../shared/core/core_pack/src/core_pack.c ../shared/core/core_io/src/core_io.c ../shared/core/core_base/src/core_base.c
+	@mkdir -p "$(dir $@)"
+	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I../shared/kit/kit_viz/include -I../shared/core/core_pack/include -I../shared/core/core_io/include -I../shared/core/core_base/include \
+		tests/waveform_cache_pack_warmstart_test.c src/ui/timeline_waveform.c ../shared/kit/kit_viz/src/kit_viz.c ../shared/core/core_pack/src/core_pack.c ../shared/core/core_io/src/core_io.c ../shared/core/core_base/src/core_base.c \
+		$(SDL2_LDFLAGS) -lSDL2 -lm -o "$@"
+
+test-kitviz-fx-preview-adapter: $(KITVIZ_FX_PREVIEW_ADAPTER_TEST_BIN)
+	$(KITVIZ_FX_PREVIEW_ADAPTER_TEST_BIN)
+
+$(KITVIZ_FX_PREVIEW_ADAPTER_TEST_BIN): $(KITVIZ_FX_PREVIEW_ADAPTER_TEST_SRCS) src/ui/kit_viz_fx_preview_adapter.c ../shared/kit/kit_viz/src/kit_viz.c
+	@mkdir -p "$(dir $@)"
+	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I../shared/kit/kit_viz/include -I../shared/core/core_base/include \
+		tests/kit_viz_fx_preview_adapter_test.c src/ui/kit_viz_fx_preview_adapter.c ../shared/kit/kit_viz/src/kit_viz.c \
+		$(SDL2_LDFLAGS) -lSDL2 -lm -o "$@"
+
+test-kitviz-meter-adapter: $(KITVIZ_METER_ADAPTER_TEST_BIN)
+	$(KITVIZ_METER_ADAPTER_TEST_BIN)
+
+$(KITVIZ_METER_ADAPTER_TEST_BIN): $(KITVIZ_METER_ADAPTER_TEST_SRCS) src/ui/kit_viz_meter_adapter.c ../shared/kit/kit_viz/src/kit_viz.c
+	@mkdir -p "$(dir $@)"
+	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I../shared/kit/kit_viz/include -I../shared/core/core_base/include \
+		tests/kit_viz_meter_adapter_test.c src/ui/kit_viz_meter_adapter.c ../shared/kit/kit_viz/src/kit_viz.c \
+		$(SDL2_LDFLAGS) -lSDL2 -lm -o "$@"
+
+test-shared-theme-font-adapter: $(SHARED_THEME_FONT_ADAPTER_TEST_BIN)
+	$(SHARED_THEME_FONT_ADAPTER_TEST_BIN)
+
+$(SHARED_THEME_FONT_ADAPTER_TEST_BIN): $(SHARED_THEME_FONT_ADAPTER_TEST_SRCS) src/ui/shared_theme_font_adapter.c ../shared/core/core_theme/src/core_theme.c ../shared/core/core_font/src/core_font.c ../shared/core/core_base/src/core_base.c
+	@mkdir -p "$(dir $@)"
+	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I../shared/core/core_theme/include -I../shared/core/core_font/include -I../shared/core/core_base/include \
+		tests/shared_theme_font_adapter_test.c src/ui/shared_theme_font_adapter.c ../shared/core/core_theme/src/core_theme.c ../shared/core/core_font/src/core_font.c ../shared/core/core_base/src/core_base.c \
+		$(SDL2_LDFLAGS) -lSDL2 -o "$@"
 
 $(BUILD_DIR)/tests/%.o: tests/%.c
 	@mkdir -p "$(dir $@)"

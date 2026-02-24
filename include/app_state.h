@@ -24,6 +24,7 @@
 
 typedef struct EngineSamplerSource EngineSamplerSource;
 
+// Holds queued master FX params for session application.
 typedef struct {
     int track_index;
     int clip_index;
@@ -112,6 +113,7 @@ typedef struct {
     bool trimming_left;
     bool trimming_right;
     bool view_source;
+    bool use_kit_viz_waveform;
 } ClipInspectorWaveformState;
 
 // Stores the current clip inspector selections, edits, and interaction flags.
@@ -165,15 +167,14 @@ typedef enum {
     FX_PANEL_VIEW_LIST
 } EffectsPanelViewMode;
 
+// Stores UI-facing metadata for a single effect type.
 typedef struct {
     FxTypeId type_id;
     char name[32];
     uint32_t param_count;
     char param_names[FX_MAX_PARAMS][32];
     float param_defaults[FX_MAX_PARAMS];
-    float param_min[FX_MAX_PARAMS];
-    float param_max[FX_MAX_PARAMS];
-    FxParamKind param_kind[FX_MAX_PARAMS];
+    EffectParamSpec param_specs[FX_MAX_PARAMS];
 } FxTypeUIInfo;
 
 typedef struct {
@@ -334,6 +335,7 @@ typedef struct EffectsPanelState {
     int target_track_index;
     char target_label[64];
     EffectsPanelViewMode view_mode;
+    bool spec_panel_enabled; // Enables spec-driven FX panel layout for supported effects.
     int hovered_category_index;
     int hovered_effect_index;
     int active_category_index;
@@ -359,6 +361,9 @@ typedef struct EffectsPanelState {
     FxSlotUIState chain[FX_MASTER_MAX];
     int chain_count;
     EffectsSlotRuntime slot_runtime[FX_MASTER_MAX];
+    EffectsPanelPreviewSlotState preview_slots[FX_MASTER_MAX]; // Tracks preview open state + history per slot.
+    bool preview_all_open; // Tracks the last global preview toggle state.
+    bool preview_toggle_hovered; // Tracks hover state for the global preview toggle.
     int param_scroll_drag_slot;
     Uint32 title_last_click_ticks;
     bool title_debug_last_click; // transient debug flag
@@ -435,6 +440,11 @@ typedef struct {
     float param_values[FX_MAX_PARAMS];
     FxParamMode param_mode[FX_MAX_PARAMS];
     float param_beats[FX_MAX_PARAMS];
+    uint32_t param_id_count;
+    char param_ids[FX_MAX_PARAMS][32];
+    float param_values_by_id[FX_MAX_PARAMS];
+    FxParamMode param_modes_by_id[FX_MAX_PARAMS];
+    float param_beats_by_id[FX_MAX_PARAMS];
 } PendingMasterFx;
 
 typedef struct {

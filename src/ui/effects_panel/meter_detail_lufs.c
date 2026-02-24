@@ -2,6 +2,7 @@
 
 #include "app_state.h"
 #include "ui/font.h"
+#include "ui/kit_viz_meter_adapter.h"
 #include "ui/render_utils.h"
 
 #include <math.h>
@@ -30,6 +31,40 @@ static float history_get_lufs_by_age(const EffectsMeterHistory* history, int age
         return history->lufs_s_values[idx];
     }
     return history->lufs_m_values[idx];
+}
+
+static bool render_lufs_history_with_adapter(SDL_Renderer* renderer,
+                                             const SDL_Rect* history_rect,
+                                             const EffectsMeterHistory* history,
+                                             int lufs_mode,
+                                             float min_db,
+                                             float max_db) {
+    if (!renderer || !history_rect || !history || history->lufs_count <= 1 || history_rect->w <= 0) {
+        return false;
+    }
+    const int count = history->lufs_count;
+    float lufs_samples[FX_METER_LUFS_HISTORY_POINTS];
+    for (int i = 0; i < count; ++i) {
+        lufs_samples[i] = history_get_lufs_by_age(history, i, lufs_mode);
+    }
+
+    KitVizVecSegment segments[FX_METER_LUFS_HISTORY_POINTS];
+    size_t segment_count = 0;
+    CoreResult r = daw_kit_viz_meter_plot_line_from_y_samples(lufs_samples,
+                                                               (uint32_t)count,
+                                                               history_rect,
+                                                               (DawKitVizMeterPlotRange){min_db, max_db},
+                                                               segments,
+                                                               FX_METER_LUFS_HISTORY_POINTS,
+                                                               &segment_count);
+    if (r.code != CORE_OK || segment_count == 0) {
+        return false;
+    }
+    daw_kit_viz_meter_render_segments(renderer,
+                                      segments,
+                                      segment_count,
+                                      (SDL_Color){130, 170, 100, 180});
+    return true;
 }
 
 // effects_meter_render_lufs draws a LUFS history trace for the selected window.
@@ -119,6 +154,9 @@ void effects_meter_render_lufs(SDL_Renderer* renderer,
 
     if (history_rect.w > 0 && history && history->lufs_count > 1) {
         ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
+        if (render_lufs_history_with_adapter(renderer, &history_rect, history, lufs_mode, min_db, max_db)) {
+            return;
+        }
         int count = history->lufs_count;
         int total_slots = FX_METER_LUFS_HISTORY_POINTS;
         float prev_x = 0.0f;

@@ -156,7 +156,7 @@ void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* rendere
     SDL_Color highlight_color = {70, 95, 160, 160};
     SDL_Color selected_color = {110, 140, 190, 200};
     int y = rect->y + 32;
-    float text_scale = 1.5f;
+    float text_scale = 1.0f;
     for (int i = 0; i < browser->count; ++i) {
         if (y + line_height > rect->y + rect->h) {
             break;
@@ -199,7 +199,7 @@ void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* rendere
         y += line_height;
     }
     if (browser->count == 0) {
-        ui_draw_text(renderer, rect->x + 16, rect->y + 32, "(no wav files)", text_color, 1.5f);
+        ui_draw_text(renderer, rect->x + 16, rect->y + 32, "(no wav files)", text_color, 1.0f);
     }
 }
 

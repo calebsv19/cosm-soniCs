@@ -2,6 +2,7 @@
 
 #include "engine/sampler.h"
 #include "effects/effects_builtin.h"
+#include "core_time.h"
 
 #include <stdarg.h>
 #include <stdlib.h>
@@ -77,6 +78,26 @@ void engine_rebuild_sources(Engine* engine) {
     engine_graph_reset(engine->graph);
 }
 
+bool engine_request_rebuild_sources(Engine* engine) {
+    if (!engine) {
+        return false;
+    }
+    if (!engine->device_started || !engine->worker_thread) {
+        atomic_store_explicit(&engine->rebuild_sources_pending, false, memory_order_release);
+        engine_rebuild_sources(engine);
+        return true;
+    }
+    if (atomic_exchange_explicit(&engine->rebuild_sources_pending, true, memory_order_acq_rel)) {
+        return true;
+    }
+    EngineCommand cmd = {.type = ENGINE_CMD_REBUILD_SOURCES};
+    if (!engine_post_command(engine, &cmd)) {
+        atomic_store_explicit(&engine->rebuild_sources_pending, false, memory_order_release);
+        return false;
+    }
+    return true;
+}
+
 static void engine_process_commands(Engine* engine) {
     EngineCommand cmd;
     while (ringbuf_read(&engine->command_queue, &cmd, sizeof(cmd)) == sizeof(cmd)) {
@@ -128,6 +149,41 @@ static void engine_process_commands(Engine* engine) {
                     }
                 }
                 break;
+            case ENGINE_CMD_REBUILD_SOURCES:
+                engine_rebuild_sources(engine);
+                atomic_store_explicit(&engine->rebuild_sources_pending, false, memory_order_release);
+                break;
+            case ENGINE_CMD_SET_FX_PARAM:
+                if (engine->fxm) {
+                    if (cmd.payload.fx_param.is_master) {
+                        fxm_master_set_param_target(engine->fxm,
+                                                    cmd.payload.fx_param.id,
+                                                    cmd.payload.fx_param.param_index,
+                                                    cmd.payload.fx_param.value,
+                                                    cmd.payload.fx_param.mode,
+                                                    cmd.payload.fx_param.beat_value,
+                                                    &engine->tempo);
+                    } else {
+                        fxm_track_set_param_target(engine->fxm,
+                                                   cmd.payload.fx_param.track_index,
+                                                   cmd.payload.fx_param.id,
+                                                   cmd.payload.fx_param.param_index,
+                                                   cmd.payload.fx_param.value,
+                                                   cmd.payload.fx_param.mode,
+                                                   cmd.payload.fx_param.beat_value,
+                                                   &engine->tempo);
+                    }
+                }
+                break;
+            case ENGINE_CMD_SET_TEMPO: {
+                TempoState tempo = cmd.payload.tempo.tempo;
+                if (tempo.sample_rate <= 0.0) {
+                    tempo.sample_rate = engine->config.sample_rate;
+                }
+                tempo_state_clamp(&tempo);
+                engine->tempo = tempo;
+                break;
+            }
             default:
                 break;
         }
@@ -139,6 +195,9 @@ static int engine_worker_main(void* userdata) {
     if (!engine) {
         return -1;
     }
+    engine->worker_thread_id = SDL_ThreadID();
+    engine->render_warned_fxm_mutex = false;
+    engine->render_warned_meter_mutex = false;
     int channels = engine_graph_get_channels(engine->graph);
     if (channels <= 0) {
         channels = engine->output_queue.channels > 0 ? engine->output_queue.channels : 2;
@@ -150,8 +209,7 @@ static int engine_worker_main(void* userdata) {
         return -1;
     }
 
-    Uint64 perf_freq = SDL_GetPerformanceFrequency();
-    Uint64 last_report_counter = SDL_GetPerformanceCounter();
+    uint64_t last_report_ns = core_time_now_ns();
     double accum_ms = 0.0;
     int accum_blocks = 0;
 
@@ -170,7 +228,7 @@ static int engine_worker_main(void* userdata) {
         if (!engine->config.enable_timing_logs) {
             accum_ms = 0.0;
             accum_blocks = 0;
-            last_report_counter = SDL_GetPerformanceCounter();
+            last_report_ns = core_time_now_ns();
         }
 
         int graph_channels = engine_graph_get_channels(engine->graph);
@@ -222,7 +280,7 @@ static int engine_worker_main(void* userdata) {
                 chunk = frames_remaining;
             }
 
-            Uint64 start_counter = engine->config.enable_timing_logs ? SDL_GetPerformanceCounter() : 0;
+            uint64_t start_ns = engine->config.enable_timing_logs ? core_time_now_ns() : 0;
 
             engine_spectrum_begin_block(engine);
             engine_spectrogram_begin_block(engine);
@@ -235,18 +293,18 @@ static int engine_worker_main(void* userdata) {
             produced += chunk;
             frames_remaining -= chunk;
 
-            if (engine->config.enable_timing_logs && perf_freq > 0) {
-                Uint64 end_counter = SDL_GetPerformanceCounter();
-                double elapsed_ms = (double)(end_counter - start_counter) * 1000.0 / (double)perf_freq;
+            if (engine->config.enable_timing_logs) {
+                uint64_t end_ns = core_time_now_ns();
+                double elapsed_ms = core_time_ns_to_seconds(core_time_diff_ns(end_ns, start_ns)) * 1000.0;
                 accum_ms += elapsed_ms;
                 accum_blocks += 1;
-                if ((end_counter - last_report_counter) >= perf_freq && accum_blocks > 0) {
+                if (core_time_diff_ns(end_ns, last_report_ns) >= 1000000000ULL && accum_blocks > 0) {
                     double avg_ms = accum_ms / (double)accum_blocks;
                     size_t queued = audio_queue_available_frames(&engine->output_queue);
                     engine_timing_trace(engine, "worker avg render %.3fms (%d blocks) queue=%zu", avg_ms, accum_blocks, queued);
                     accum_ms = 0.0;
                     accum_blocks = 0;
-                    last_report_counter = end_counter;
+                    last_report_ns = end_ns;
                 }
             }
 
@@ -259,13 +317,6 @@ static int engine_worker_main(void* userdata) {
                     engine_graph_reset(engine->graph);
                 }
             }
-        }
-
-        // master effects chain over the completed block
-        if (engine->fxm) {
-            SDL_LockMutex(engine->fxm_mutex);
-            fxm_render_master(engine->fxm, block_buffer, block, channels);
-            SDL_UnlockMutex(engine->fxm_mutex);
         }
 
         engine_sanitize_block(block_buffer, (size_t)block * (size_t)channels);
@@ -293,6 +344,7 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
     engine->worker_thread = NULL;
     atomic_init(&engine->worker_running, false);
     atomic_init(&engine->transport_playing, false);
+    atomic_init(&engine->rebuild_sources_pending, false);
     atomic_init(&engine->loop_enabled, false);
     atomic_init(&engine->loop_start_frame, 0);
     atomic_init(&engine->loop_end_frame, 0);
@@ -455,9 +507,81 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         free(engine);
         return NULL;
     }
+    engine->track_meter_snapshots = (EngineMeterSnapshot*)calloc((size_t)engine->track_capacity * 2u,
+                                                                 sizeof(EngineMeterSnapshot));
+    if (!engine->track_meter_snapshots) {
+        free(engine->track_meters);
+        engine->track_meters = NULL;
+        free(engine->track_spectra);
+        engine->track_spectra = NULL;
+        free(engine->tracks);
+        engine->tracks = NULL;
+        engine_tone_source_destroy(engine->tone_source);
+        engine_graph_destroy(engine->graph);
+        SDL_DestroyMutex(engine->fxm_mutex);
+        SDL_DestroyMutex(engine->eq_mutex);
+        SDL_DestroyMutex(engine->spectrum_mutex);
+        SDL_DestroyMutex(engine->spectrogram_mutex);
+        SDL_DestroyMutex(engine->meter_mutex);
+        ringbuf_free(&engine->spectrogram_queue);
+        ringbuf_free(&engine->spectrum_queue);
+        ringbuf_free(&engine->command_queue);
+        free(engine);
+        return NULL;
+    }
     engine->track_fx_meter_capacity = engine->track_capacity;
     engine->track_fx_meters = (EngineFxMeterBank*)calloc((size_t)engine->track_capacity, sizeof(EngineFxMeterBank));
     if (!engine->track_fx_meters) {
+        free(engine->track_meter_snapshots);
+        engine->track_meter_snapshots = NULL;
+        free(engine->track_meters);
+        engine->track_meters = NULL;
+        free(engine->track_spectra);
+        engine->track_spectra = NULL;
+        free(engine->tracks);
+        engine->tracks = NULL;
+        engine_tone_source_destroy(engine->tone_source);
+        engine_graph_destroy(engine->graph);
+        SDL_DestroyMutex(engine->fxm_mutex);
+        SDL_DestroyMutex(engine->eq_mutex);
+        SDL_DestroyMutex(engine->spectrum_mutex);
+        SDL_DestroyMutex(engine->spectrogram_mutex);
+        SDL_DestroyMutex(engine->meter_mutex);
+        ringbuf_free(&engine->spectrogram_queue);
+        ringbuf_free(&engine->spectrum_queue);
+        ringbuf_free(&engine->command_queue);
+        free(engine);
+        return NULL;
+    }
+    engine->track_fx_meter_snapshots = (EngineFxMeterBank*)calloc((size_t)engine->track_capacity * 2u,
+                                                                  sizeof(EngineFxMeterBank));
+    if (!engine->track_fx_meter_snapshots) {
+        free(engine->track_fx_meters);
+        engine->track_fx_meters = NULL;
+        free(engine->track_meter_snapshots);
+        engine->track_meter_snapshots = NULL;
+        free(engine->track_meters);
+        engine->track_meters = NULL;
+        free(engine->track_spectra);
+        engine->track_spectra = NULL;
+        free(engine->tracks);
+        engine->tracks = NULL;
+        engine_tone_source_destroy(engine->tone_source);
+        engine_graph_destroy(engine->graph);
+        SDL_DestroyMutex(engine->fxm_mutex);
+        SDL_DestroyMutex(engine->eq_mutex);
+        SDL_DestroyMutex(engine->spectrum_mutex);
+        SDL_DestroyMutex(engine->spectrogram_mutex);
+        SDL_DestroyMutex(engine->meter_mutex);
+        ringbuf_free(&engine->spectrogram_queue);
+        ringbuf_free(&engine->spectrum_queue);
+        ringbuf_free(&engine->command_queue);
+        free(engine);
+        return NULL;
+    }
+    if (!engine_scope_host_init(engine, engine->track_capacity)) {
+        free(engine->track_fx_meters);
+        engine->track_fx_meters = NULL;
         free(engine->track_meters);
         engine->track_meters = NULL;
         free(engine->track_spectra);
@@ -530,6 +654,9 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
     }
     engine_meter_reset_state(&engine->master_meter);
     SDL_zero(engine->master_fx_meters);
+    SDL_zero(engine->master_meter_snapshots);
+    SDL_zero(engine->master_fx_meter_snapshots);
+    atomic_init(&engine->meter_snapshot_index, 0);
     engine->active_fx_meter_id = 0;
     engine->active_fx_meter_is_master = true;
     engine->active_fx_meter_track = -1;
@@ -564,6 +691,7 @@ void engine_destroy(Engine* engine) {
         engine_tone_source_destroy(engine->tone_source);
         engine->tone_source = NULL;
     }
+    engine_scope_host_free(engine);
     for (int i = 0; i < engine->track_capacity; ++i) {
         engine_track_clear(engine, &engine->tracks[i]);
     }
@@ -582,9 +710,13 @@ void engine_destroy(Engine* engine) {
     free(engine->track_meters);
     engine->track_meters = NULL;
     engine->track_meter_capacity = 0;
+    free(engine->track_meter_snapshots);
+    engine->track_meter_snapshots = NULL;
     free(engine->track_fx_meters);
     engine->track_fx_meters = NULL;
     engine->track_fx_meter_capacity = 0;
+    free(engine->track_fx_meter_snapshots);
+    engine->track_fx_meter_snapshots = NULL;
     audio_media_cache_shutdown(&engine->media_cache);
     ringbuf_free(&engine->command_queue);
     audio_queue_free(&engine->output_queue);
@@ -649,6 +781,7 @@ bool engine_start(Engine* engine) {
     }
 
     ringbuf_reset(&engine->command_queue);
+    atomic_store_explicit(&engine->rebuild_sources_pending, false, memory_order_release);
     ringbuf_reset(&engine->spectrum_queue);
     ringbuf_reset(&engine->spectrogram_queue);
     if (engine_graph_configure(engine->graph, have->sample_rate, have->channels, engine->config.block_size) != 0) {
@@ -688,6 +821,7 @@ bool engine_start(Engine* engine) {
     SDL_UnlockMutex(engine->fxm_mutex);
 
     engine_register_fx_meter_tap(engine);
+    engine_register_fx_scope_tap(engine);
     engine_fx_meter_clear_all(engine);
 
     engine->transport_frame = 0;
@@ -729,7 +863,8 @@ bool engine_start(Engine* engine) {
         SDL_Log("engine_start: failed to start audio device");
         atomic_store_explicit(&engine->spectrogram_running, false, memory_order_release);
         SDL_WaitThread(engine->spectrogram_thread, NULL);
-        engine->spectrogram_thread = NULL;
+    engine->spectrogram_thread = NULL;
+    engine->tempo = tempo_state_default(engine->config.sample_rate);
         atomic_store_explicit(&engine->spectrum_running, false, memory_order_release);
         SDL_WaitThread(engine->spectrum_thread, NULL);
         engine->spectrum_thread = NULL;
@@ -769,7 +904,9 @@ void engine_stop(Engine* engine) {
         SDL_WaitThread(engine->worker_thread, NULL);
         engine->worker_thread = NULL;
     }
+    engine->worker_thread_id = 0;
     atomic_store_explicit(&engine->transport_playing, false, memory_order_release);
+    atomic_store_explicit(&engine->rebuild_sources_pending, false, memory_order_release);
     engine_graph_reset(engine->graph);
     engine->transport_frame = 0;
 }
@@ -793,6 +930,29 @@ size_t engine_get_queued_frames(const Engine* engine) {
         return 0;
     }
     return audio_queue_available_frames(&engine->output_queue);
+}
+
+bool engine_set_tempo_state(Engine* engine, const TempoState* tempo) {
+    if (!engine || !tempo) {
+        return false;
+    }
+    if (!engine->device_started || !engine->worker_thread) {
+        engine->tempo = *tempo;
+        if (engine->tempo.sample_rate <= 0.0) {
+            engine->tempo.sample_rate = engine->config.sample_rate;
+        }
+        tempo_state_clamp(&engine->tempo);
+        return true;
+    }
+    EngineCommand cmd = {
+        .type = ENGINE_CMD_SET_TEMPO,
+    };
+    cmd.payload.tempo.tempo = *tempo;
+    if (!engine_post_command(engine, &cmd)) {
+        SDL_Log("engine_set_tempo_state: command queue full");
+        return false;
+    }
+    return true;
 }
 
 bool engine_queue_graph_swap(Engine* engine, EngineGraph* new_graph) {

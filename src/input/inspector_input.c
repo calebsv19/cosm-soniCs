@@ -568,6 +568,7 @@ void inspector_input_init(AppState* state) {
     state->inspector.waveform.trimming_left = false;
     state->inspector.waveform.trimming_right = false;
     state->inspector.waveform.view_source = true;
+    state->inspector.waveform.use_kit_viz_waveform = true;
 }
 
 void inspector_input_show(AppState* state, int track_index, int clip_index, const EngineClip* clip) {
@@ -598,6 +599,7 @@ void inspector_input_show(AppState* state, int track_index, int clip_index, cons
     state->inspector.waveform.trimming_left = false;
     state->inspector.waveform.trimming_right = false;
     state->inspector.waveform.view_source = true;
+    state->inspector.waveform.use_kit_viz_waveform = true;
     SDL_StopTextInput();
 }
 

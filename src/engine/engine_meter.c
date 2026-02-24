@@ -1,11 +1,25 @@
 #include "engine/engine_internal.h"
 
 #include <math.h>
+#include <string.h>
 
 static float clampf(float v, float lo, float hi) {
     if (v < lo) return lo;
     if (v > hi) return hi;
     return v;
+}
+
+// Returns the snapshot buffer index currently visible to UI readers.
+static int engine_meter_read_index(const Engine* engine) {
+    if (!engine) {
+        return 0;
+    }
+    return atomic_load_explicit(&engine->meter_snapshot_index, memory_order_acquire);
+}
+
+// Returns the snapshot buffer index reserved for render-thread writes.
+static int engine_meter_write_index(const Engine* engine) {
+    return 1 - engine_meter_read_index(engine);
 }
 
 // Converts LUFS energy to loudness units using BS.1770 scaling.
@@ -406,15 +420,9 @@ static void engine_fx_meter_tap_callback(void* user,
                        track_index >= engine->track_fx_meter_capacity)) {
         return;
     }
-    if (engine->meter_mutex) {
-        SDL_LockMutex(engine->meter_mutex);
-    }
     bank = is_master ? &engine->master_fx_meters : &engine->track_fx_meters[track_index];
     if (bank) {
         engine_fx_meter_copy_lufs_state(bank, id, &lufs_state);
-    }
-    if (engine->meter_mutex) {
-        SDL_UnlockMutex(engine->meter_mutex);
     }
     EngineFxMeterSnapshot snapshot = {0};
     snapshot.type = type;
@@ -433,19 +441,30 @@ static void engine_fx_meter_tap_callback(void* user,
         engine_spectrogram_update_fx(engine, is_master, track_index, id, interleaved, frames, channels);
     }
 
-    if (engine->meter_mutex) {
-        SDL_LockMutex(engine->meter_mutex);
-    }
     bank = is_master ? &engine->master_fx_meters : &engine->track_fx_meters[track_index];
     if (bank) {
         EngineFxMeterTap* tap = engine_fx_meter_get_or_add_tap(bank, id);
         if (tap) {
-            tap->snapshot = snapshot;
             tap->lufs_state = lufs_state;
         }
     }
-    if (engine->meter_mutex) {
-        SDL_UnlockMutex(engine->meter_mutex);
+
+    const int write_index = engine_meter_write_index(engine);
+    EngineFxMeterBank* snap_bank = NULL;
+    if (is_master) {
+        snap_bank = &engine->master_fx_meter_snapshots[write_index];
+    } else if (engine->track_fx_meter_snapshots &&
+               track_index >= 0 &&
+               track_index < engine->track_fx_meter_capacity) {
+        snap_bank = &engine->track_fx_meter_snapshots[(size_t)write_index * (size_t)engine->track_fx_meter_capacity +
+                                                      (size_t)track_index];
+    }
+    if (snap_bank) {
+        EngineFxMeterTap* tap = engine_fx_meter_get_or_add_tap(snap_bank, id);
+        if (tap) {
+            tap->snapshot = snapshot;
+            tap->snapshot.valid = true;
+        }
     }
 }
 
@@ -453,45 +472,26 @@ void engine_fx_meter_clear_all(Engine* engine) {
     if (!engine) {
         return;
     }
-    if (engine->meter_mutex) {
-        SDL_LockMutex(engine->meter_mutex);
-    }
     engine_fx_meter_clear_bank(&engine->master_fx_meters);
     if (engine->track_fx_meters) {
         for (int i = 0; i < engine->track_fx_meter_capacity; ++i) {
             engine_fx_meter_clear_bank(&engine->track_fx_meters[i]);
         }
     }
-    if (engine->meter_mutex) {
-        SDL_UnlockMutex(engine->meter_mutex);
+    SDL_zero(engine->master_fx_meter_snapshots);
+    if (engine->track_fx_meter_snapshots) {
+        size_t count = (size_t)engine->track_fx_meter_capacity * 2u;
+        memset(engine->track_fx_meter_snapshots, 0, sizeof(EngineFxMeterBank) * count);
     }
-}
-
-// Copies the latest meter state into a snapshot for UI use.
-static bool engine_meter_snapshot_from_state(const Engine* engine,
-                                             const EngineMeterState* state,
-                                             EngineMeterSnapshot* out_snapshot) {
-    if (!engine || !state || !out_snapshot) {
-        return false;
-    }
-    out_snapshot->peak = state->peak;
-    out_snapshot->rms = state->rms;
-    out_snapshot->clipped = state->clip_hold > 0;
-    return true;
 }
 
 bool engine_get_master_meter_snapshot(const Engine* engine, EngineMeterSnapshot* out_snapshot) {
     if (!engine || !out_snapshot) {
         return false;
     }
-    if (engine->meter_mutex) {
-        SDL_LockMutex(engine->meter_mutex);
-    }
-    bool ok = engine_meter_snapshot_from_state(engine, &engine->master_meter, out_snapshot);
-    if (engine->meter_mutex) {
-        SDL_UnlockMutex(engine->meter_mutex);
-    }
-    return ok;
+    int read_index = engine_meter_read_index(engine);
+    *out_snapshot = engine->master_meter_snapshots[read_index];
+    return true;
 }
 
 bool engine_get_track_meter_snapshot(const Engine* engine, int track_index, EngineMeterSnapshot* out_snapshot) {
@@ -501,14 +501,11 @@ bool engine_get_track_meter_snapshot(const Engine* engine, int track_index, Engi
     if (!engine->track_meters || track_index >= engine->track_meter_capacity) {
         return false;
     }
-    if (engine->meter_mutex) {
-        SDL_LockMutex(engine->meter_mutex);
-    }
-    bool ok = engine_meter_snapshot_from_state(engine, &engine->track_meters[track_index], out_snapshot);
-    if (engine->meter_mutex) {
-        SDL_UnlockMutex(engine->meter_mutex);
-    }
-    return ok;
+    int read_index = engine_meter_read_index(engine);
+    const EngineMeterSnapshot* snaps = engine->track_meter_snapshots +
+                                       (size_t)read_index * (size_t)engine->track_meter_capacity;
+    *out_snapshot = snaps[track_index];
+    return true;
 }
 
 bool engine_get_master_fx_meter_snapshot(const Engine* engine, FxInstId id, EngineFxMeterSnapshot* out_snapshot) {
@@ -516,13 +513,8 @@ bool engine_get_master_fx_meter_snapshot(const Engine* engine, FxInstId id, Engi
         return false;
     }
     bool ok = false;
-    if (engine->meter_mutex) {
-        SDL_LockMutex(engine->meter_mutex);
-    }
-    ok = engine_fx_meter_find_in_bank(&engine->master_fx_meters, id, out_snapshot);
-    if (engine->meter_mutex) {
-        SDL_UnlockMutex(engine->meter_mutex);
-    }
+    int read_index = engine_meter_read_index(engine);
+    ok = engine_fx_meter_find_in_bank(&engine->master_fx_meter_snapshots[read_index], id, out_snapshot);
     return ok;
 }
 
@@ -536,14 +528,15 @@ bool engine_get_track_fx_meter_snapshot(const Engine* engine,
     if (!engine->track_fx_meters || track_index >= engine->track_fx_meter_capacity) {
         return false;
     }
+    if (!engine->track_fx_meter_snapshots) {
+        return false;
+    }
     bool ok = false;
-    if (engine->meter_mutex) {
-        SDL_LockMutex(engine->meter_mutex);
-    }
-    ok = engine_fx_meter_find_in_bank(&engine->track_fx_meters[track_index], id, out_snapshot);
-    if (engine->meter_mutex) {
-        SDL_UnlockMutex(engine->meter_mutex);
-    }
+    int read_index = engine_meter_read_index(engine);
+    const EngineFxMeterBank* bank = &engine->track_fx_meter_snapshots[(size_t)read_index *
+                                                                      (size_t)engine->track_fx_meter_capacity +
+                                                                      (size_t)track_index];
+    ok = engine_fx_meter_find_in_bank(bank, id, out_snapshot);
     return ok;
 }
 
@@ -551,15 +544,9 @@ void engine_set_active_fx_meter(Engine* engine, bool is_master, int track_index,
     if (!engine) {
         return;
     }
-    if (engine->meter_mutex) {
-        SDL_LockMutex(engine->meter_mutex);
-    }
     engine->active_fx_meter_id = id;
     engine->active_fx_meter_is_master = is_master;
     engine->active_fx_meter_track = track_index;
-    if (engine->meter_mutex) {
-        SDL_UnlockMutex(engine->meter_mutex);
-    }
 }
 
 void engine_register_fx_meter_tap(Engine* engine) {

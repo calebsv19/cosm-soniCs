@@ -5,14 +5,18 @@
 #include "sdl_app_framework.h"
 #include "input/inspector_input.h"
 #include "input/effects_panel_input.h"
+#include "audio/wav_writer.h"
+#include "export/daw_pack_export.h"
 #include "ui/layout.h"
 #include "ui/panes.h"
 #include "ui/library_browser.h"
 #include "ui/transport.h"
 #include "ui/effects_panel.h"
 #include "ui/font.h"
+#include "ui/shared_theme_font_adapter.h"
 #include "session/project_manager.h"
 #include "time/tempo.h"
+#include "core_time.h"
 #include "render/timer_hud_adapter.h"
 #include "timer_hud/time_scope.h"
 
@@ -178,12 +182,50 @@ static void perform_bounce(AppContext* ctx, AppState* state) {
         .last_render_ms = SDL_GetTicks(),
         .render_interval_ms = 50
     };
-    bool ok = engine_bounce_range(state->engine,
-                                  start_frame,
-                                  end_frame,
-                                  path,
-                                  bounce_progress_cb,
-                                  &prog);
+    EngineBounceBuffer bounce = {0};
+    bool ok = engine_bounce_range_to_buffer(state->engine,
+                                            start_frame,
+                                            end_frame,
+                                            bounce_progress_cb,
+                                            &prog,
+                                            &bounce);
+    if (ok) {
+        char float_path[512];
+        snprintf(float_path, sizeof(float_path), "%s.f32.wav", path);
+        bool ok_float = wav_write_f32(float_path,
+                                      bounce.data,
+                                      bounce.frame_count,
+                                      bounce.channels,
+                                      bounce.sample_rate);
+        uint32_t dither_seed = (uint32_t)(core_time_now_ns() & 0xffffffffu);
+        ok = wav_write_pcm16_dithered(path,
+                                      bounce.data,
+                                      bounce.frame_count,
+                                      bounce.channels,
+                                      bounce.sample_rate,
+                                      dither_seed);
+        (void)ok_float;
+
+        if (ok) {
+            uint64_t project_duration_frames = find_project_end_frame(state->engine);
+            char pack_path[512];
+            if (daw_pack_path_from_wav(path, pack_path, sizeof(pack_path))) {
+                if (daw_pack_export_from_bounce(pack_path,
+                                                state,
+                                                &bounce,
+                                                start_frame,
+                                                end_frame,
+                                                project_duration_frames)) {
+                    SDL_Log("Bounce pack exported: %s", pack_path);
+                } else {
+                    SDL_Log("Bounce pack export warning: failed to write %s", pack_path);
+                }
+            } else {
+                SDL_Log("Bounce pack export warning: failed to build pack path for %s", path);
+            }
+        }
+    }
+    engine_bounce_buffer_free(&bounce);
 
     state->bounce_active = false;
     state->bounce_requested = false;
@@ -216,6 +258,7 @@ int main(void) {
     state.automation_ui.clip_index = -1;
     state.automation_ui.point_index = -1;
     state.reset_meter_history_on_seek = true;
+    state.inspector.waveform.use_kit_viz_waveform = true;
     waveform_cache_init(&state.waveform_cache);
     undo_manager_init(&state.undo);
     media_registry_init(&state.media_registry, "config/library_index.json");
@@ -302,7 +345,15 @@ int main(void) {
         }
         return 1;
     }
-    ui_font_set("include/fonts/Montserrat/Montserrat-Regular.ttf", 9);
+    {
+        char font_path[256];
+        int font_point_size = 9;
+        if (daw_shared_font_resolve_ui_regular(font_path, sizeof(font_path), &font_point_size)) {
+            ui_font_set(font_path, font_point_size);
+        } else {
+            ui_font_set("include/fonts/Montserrat/Montserrat-Regular.ttf", 9);
+        }
+    }
     timer_hud_register_backend();
     timer_hud_bind_context(&ctx);
     ts_init();

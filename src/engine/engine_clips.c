@@ -777,7 +777,7 @@ bool engine_add_clip_to_track_with_id(Engine* engine,
                  (unsigned long long)start_frame,
                  filepath ? filepath : "");
 
-    engine_rebuild_sources(engine);
+    engine_request_rebuild_sources(engine);
     return true;
 }
 
@@ -818,7 +818,7 @@ bool engine_clip_set_timeline_start(Engine* engine, int track_index, int clip_in
         }
     }
 
-    engine_rebuild_sources(engine);
+    engine_request_rebuild_sources(engine);
     return true;
 }
 
@@ -861,7 +861,7 @@ bool engine_clip_set_region(Engine* engine, int track_index, int clip_index, uin
     clip->duration_frames = duration_frames;
     engine_clip_refresh_sampler(engine, clip);
 
-    engine_rebuild_sources(engine);
+    engine_request_rebuild_sources(engine);
     return true;
 }
 
@@ -903,7 +903,7 @@ bool engine_remove_clip(Engine* engine, int track_index, int clip_index) {
     } else {
         track->active = false;
     }
-    engine_rebuild_sources(engine);
+    engine_request_rebuild_sources(engine);
     return true;
 }
 
@@ -941,7 +941,7 @@ bool engine_clip_set_gain(Engine* engine, int track_index, int clip_index, float
         return false;
     }
     clip->gain = gain;
-    engine_rebuild_sources(engine);
+    engine_request_rebuild_sources(engine);
     return true;
 }
 
@@ -1375,7 +1375,7 @@ bool engine_add_clip_segment(Engine* engine, int track_index, const EngineClip* 
         }
     }
 
-    engine_rebuild_sources(engine);
+    engine_request_rebuild_sources(engine);
     return true;
 }
 
@@ -1443,7 +1443,7 @@ bool engine_duplicate_clip(Engine* engine, int track_index, int clip_index, uint
         }
     }
 
-    engine_rebuild_sources(engine);
+    engine_request_rebuild_sources(engine);
     return true;
 }
 

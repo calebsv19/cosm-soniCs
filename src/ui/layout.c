@@ -9,6 +9,7 @@
 #include "ui/transport.h"
 #include "ui/clip_inspector.h"
 #include "ui/effects_panel.h"
+#include "ui/shared_theme_font_adapter.h"
 #include "session/project_manager.h"
 
 #include <SDL2/SDL.h>
@@ -49,7 +50,7 @@ static void render_single_pane(SDL_Renderer* renderer, const Pane* pane) {
     SDL_RenderFillRect(renderer, &pane->rect);
 
     if (pane->drawTitle){
-	    SDL_Color title_color = {220, 220, 230, 255};
+	    SDL_Color title_color = daw_shared_theme_title_color();
 	    ui_draw_text(renderer, pane->rect.x + 12, pane->rect.y + 12, pane->title, title_color, 1);
     }
 
@@ -118,11 +119,13 @@ void ui_init_panes(AppState* state) {
     if (!state) {
         return;
     }
+    DawThemePalette theme_palette = {0};
+    const bool use_shared_theme = daw_shared_theme_resolve_palette(&theme_palette);
     state->pane_count = 4;
     state->panes[0] = (Pane){
         .rect = {0, 0, 0, 0},
         .border_color = {200, 200, 210, 255},
-        .fill_color = {26, 26, 34, 255},
+        .fill_color = use_shared_theme ? theme_palette.menu_fill : (SDL_Color){26, 26, 34, 255},
         .title = "MENU",
 	.drawTitle = false,
         .visible = true,
@@ -131,7 +134,7 @@ void ui_init_panes(AppState* state) {
     state->panes[1] = (Pane){
         .rect = {0, 0, 0, 0},
         .border_color = {200, 200, 210, 255},
-        .fill_color = {32, 32, 40, 255},
+        .fill_color = use_shared_theme ? theme_palette.timeline_fill : (SDL_Color){32, 32, 40, 255},
         .title = "TIMELINE",
 	.drawTitle = false,
         .visible = true,
@@ -140,7 +143,7 @@ void ui_init_panes(AppState* state) {
     state->panes[2] = (Pane){
         .rect = {0, 0, 0, 0},
         .border_color = {200, 200, 210, 255},
-        .fill_color = {28, 28, 36, 255},
+        .fill_color = use_shared_theme ? theme_palette.inspector_fill : (SDL_Color){28, 28, 36, 255},
         .title = "CLIP INSPECTOR",
         .drawTitle = false,
 	.visible = true,
@@ -149,7 +152,7 @@ void ui_init_panes(AppState* state) {
     state->panes[3] = (Pane){
         .rect = {0, 0, 0, 0},
         .border_color = {200, 200, 210, 255},
-        .fill_color = {24, 24, 32, 255},
+        .fill_color = use_shared_theme ? theme_palette.library_fill : (SDL_Color){24, 24, 32, 255},
         .title = "LIBRARY",
         .drawTitle = true,
 	.visible = true,
@@ -305,7 +308,7 @@ void ui_render_panes(SDL_Renderer* renderer, const AppState* state) {
     }
     const Pane* library = ui_layout_get_pane(state, 3);
     if (library) {
-        library_browser_render(&state->library, renderer, &library->rect, 20);
+        library_browser_render(&state->library, renderer, &library->rect, 16);
     }
     render_layout_grid(renderer, state);
 }
@@ -824,7 +827,7 @@ void ui_layout_handle_hover(AppState* state, int mouse_x, int mouse_y) {
         state->library.hovered_index = -1;
         return;
     }
-    int line_height = 20;
+    int line_height = 16;
     int hit = library_browser_hit_test(&state->library, &library->rect, mouse_x, mouse_y, line_height);
     state->library.hovered_index = hit;
 }

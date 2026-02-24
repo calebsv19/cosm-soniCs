@@ -2,64 +2,32 @@
 
 #include "app_state.h"
 #include "ui/font.h"
+#include "ui/kit_viz_meter_adapter.h"
 #include "vk_renderer.h"
 
 #include <math.h>
 #include <stdio.h>
 
-// Clamps a value between bounds for stable color mapping.
-static float clampf(float v, float lo, float hi) {
-    if (v < lo) return lo;
-    if (v > hi) return hi;
-    return v;
-}
+enum {
+    METER_SPECTROGRAM_RGBA_CAPACITY = ENGINE_SPECTROGRAM_HISTORY * ENGINE_SPECTROGRAM_BINS * 4
+};
 
-// Linearly interpolates between two colors.
-static SDL_Color color_lerp(SDL_Color a, SDL_Color b, float t) {
-    t = clampf(t, 0.0f, 1.0f);
-    SDL_Color out = {
-        (Uint8)lroundf(a.r + (b.r - a.r) * t),
-        (Uint8)lroundf(a.g + (b.g - a.g) * t),
-        (Uint8)lroundf(a.b + (b.b - a.b) * t),
-        255
-    };
-    return out;
-}
+// Reused render-thread scratch to avoid per-frame heap allocation.
+static uint8_t g_meter_spectrogram_rgba[METER_SPECTROGRAM_RGBA_CAPACITY];
+// Reused SDL surface wrapper over the static RGBA staging buffer.
+static SDL_Surface* g_meter_spectrogram_surface = NULL;
 
-// Maps a normalized intensity to a color palette.
-static SDL_Color spectrogram_color(float t, float age_fade, int palette_mode) {
-    float eased = powf(clampf(t, 0.0f, 1.0f), 0.7f);
-    SDL_Color out = {236, 240, 248, 255};
-    if (palette_mode == FX_METER_SPECTROGRAM_BLACK_WHITE) {
-        eased = 1.0f - eased;
+static SDL_Surface* meter_spectrogram_get_surface(void) {
+    if (g_meter_spectrogram_surface) {
+        return g_meter_spectrogram_surface;
     }
-    if (palette_mode == FX_METER_SPECTROGRAM_HEAT) {
-        SDL_Color c0 = {20, 40, 90, 255};
-        SDL_Color c1 = {40, 160, 120, 255};
-        SDL_Color c2 = {220, 200, 80, 255};
-        SDL_Color c3 = {220, 60, 40, 255};
-        if (eased < 0.4f) {
-            out = color_lerp(c0, c1, eased / 0.4f);
-        } else if (eased < 0.7f) {
-            out = color_lerp(c1, c2, (eased - 0.4f) / 0.3f);
-        } else {
-            out = color_lerp(c2, c3, (eased - 0.7f) / 0.3f);
-        }
-    } else {
-        SDL_Color base = {236, 240, 248, 255};
-        SDL_Color hi = {10, 14, 22, 255};
-        out = color_lerp(base, hi, eased);
-    }
-    float r = out.r * age_fade;
-    float g = out.g * age_fade;
-    float b = out.b * age_fade;
-    SDL_Color faded = {
-        (Uint8)lroundf(clampf(r, 0.0f, 255.0f)),
-        (Uint8)lroundf(clampf(g, 0.0f, 255.0f)),
-        (Uint8)lroundf(clampf(b, 0.0f, 255.0f)),
-        255
-    };
-    return faded;
+    g_meter_spectrogram_surface = SDL_CreateRGBSurfaceWithFormatFrom(g_meter_spectrogram_rgba,
+                                                                      ENGINE_SPECTROGRAM_HISTORY,
+                                                                      ENGINE_SPECTROGRAM_BINS,
+                                                                      32,
+                                                                      ENGINE_SPECTROGRAM_HISTORY * 4,
+                                                                      SDL_PIXELFORMAT_RGBA32);
+    return g_meter_spectrogram_surface;
 }
 
 static void format_hz_label(float hz, char* out, size_t out_size) {
@@ -73,6 +41,103 @@ static void format_hz_label(float hz, char* out, size_t out_size) {
     } else {
         snprintf(out, out_size, "%.0f", hz);
     }
+}
+
+static void build_spectrogram_legacy_rgba(const float* frames,
+                                          int bins,
+                                          int frame_count,
+                                          int max_frames,
+                                          float floor_db,
+                                          float ceil_db,
+                                          int palette_mode,
+                                          uint8_t* out_rgba,
+                                          size_t out_rgba_size) {
+    if (!frames || !out_rgba || bins <= 0 || max_frames <= 0) {
+        return;
+    }
+    size_t needed = (size_t)bins * (size_t)max_frames * 4u;
+    if (out_rgba_size < needed) {
+        return;
+    }
+    float range = (ceil_db - floor_db);
+    if (range <= 0.0f) {
+        range = 1.0f;
+    }
+    for (int frame = 0; frame < max_frames; ++frame) {
+        float age = max_frames > 1 ? (float)frame / (float)(max_frames - 1) : 0.0f;
+        float age_fade = 1.0f - 0.35f * age;
+        for (int bin = 0; bin < bins; ++bin) {
+            float norm = 0.0f;
+            if (frame < frame_count) {
+                float db = frames[frame * bins + bin];
+                norm = (db - floor_db) / range;
+                if (norm < 0.0f) norm = 0.0f;
+                if (norm > 1.0f) norm = 1.0f;
+            }
+            if (palette_mode == FX_METER_SPECTROGRAM_WHITE_BLACK) {
+                norm = 1.0f - norm;
+            }
+            uint8_t r = 0;
+            uint8_t g = 0;
+            uint8_t b = 0;
+            if (palette_mode == FX_METER_SPECTROGRAM_HEAT) {
+                if (norm < 0.25f) {
+                    float k = norm / 0.25f;
+                    r = 0;
+                    g = (uint8_t)(k * 255.0f);
+                    b = 255;
+                } else if (norm < 0.5f) {
+                    float k = (norm - 0.25f) / 0.25f;
+                    r = 0;
+                    g = 255;
+                    b = (uint8_t)((1.0f - k) * 255.0f);
+                } else if (norm < 0.75f) {
+                    float k = (norm - 0.5f) / 0.25f;
+                    r = (uint8_t)(k * 255.0f);
+                    g = 255;
+                    b = 0;
+                } else {
+                    float k = (norm - 0.75f) / 0.25f;
+                    r = 255;
+                    g = (uint8_t)((1.0f - k) * 255.0f);
+                    b = 0;
+                }
+            } else {
+                uint8_t c = (uint8_t)lroundf(norm * 255.0f);
+                r = c;
+                g = c;
+                b = c;
+            }
+            r = (uint8_t)lroundf((float)r * age_fade);
+            g = (uint8_t)lroundf((float)g * age_fade);
+            b = (uint8_t)lroundf((float)b * age_fade);
+            int y = bins - 1 - bin;
+            size_t p = ((size_t)y * (size_t)max_frames + (size_t)frame) * 4u;
+            out_rgba[p + 0] = r;
+            out_rgba[p + 1] = g;
+            out_rgba[p + 2] = b;
+            out_rgba[p + 3] = 255;
+        }
+    }
+}
+
+static void render_spectrogram_surface(SDL_Renderer* renderer,
+                                       SDL_Surface* surface,
+                                       const SDL_Rect* history_rect,
+                                       int bins,
+                                       int max_frames,
+                                       SDL_Color border) {
+    if (!renderer || !surface || !history_rect || bins <= 0 || max_frames <= 0) {
+        return;
+    }
+    VkRendererTexture tex;
+    if (vk_renderer_upload_sdl_surface_with_filter(renderer, surface, &tex, VK_FILTER_NEAREST) == VK_SUCCESS) {
+        SDL_Rect src = {0, 0, max_frames, bins};
+        vk_renderer_draw_texture(renderer, &tex, &src, history_rect);
+        vk_renderer_queue_texture_destroy(renderer, &tex);
+    }
+    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+    SDL_RenderDrawRect(renderer, history_rect);
 }
 
 // effects_meter_render_spectrogram draws a scrolling spectrogram heatmap.
@@ -152,40 +217,74 @@ void effects_meter_render_spectrogram(SDL_Renderer* renderer,
     int max_frames = ENGINE_SPECTROGRAM_HISTORY;
     float floor_db = spectrogram->db_floor;
     float ceil_db = spectrogram->db_ceil;
-    float range = (ceil_db - floor_db);
-    if (range <= 0.0f) {
-        range = 1.0f;
+    if (bins > ENGINE_SPECTROGRAM_BINS || frame_count > ENGINE_SPECTROGRAM_HISTORY || bins <= 0 || frame_count < 0) {
+        build_spectrogram_legacy_rgba(frames,
+                                      bins,
+                                      frame_count,
+                                      max_frames,
+                                      floor_db,
+                                      ceil_db,
+                                      palette_mode,
+                                      g_meter_spectrogram_rgba,
+                                      METER_SPECTROGRAM_RGBA_CAPACITY);
+        render_spectrogram_surface(renderer,
+                                   meter_spectrogram_get_surface(),
+                                   &history_rect,
+                                   bins,
+                                   max_frames,
+                                   border);
+        return;
+    }
+    size_t rgba_size = (size_t)max_frames * (size_t)bins * 4u;
+    if (rgba_size > (size_t)METER_SPECTROGRAM_RGBA_CAPACITY) {
+        build_spectrogram_legacy_rgba(frames,
+                                      bins,
+                                      frame_count,
+                                      max_frames,
+                                      floor_db,
+                                      ceil_db,
+                                      palette_mode,
+                                      g_meter_spectrogram_rgba,
+                                      METER_SPECTROGRAM_RGBA_CAPACITY);
+        render_spectrogram_surface(renderer,
+                                   meter_spectrogram_get_surface(),
+                                   &history_rect,
+                                   bins,
+                                   max_frames,
+                                   border);
+        return;
     }
 
-    SDL_Surface* surface = SDL_CreateRGBSurfaceWithFormat(0, max_frames, bins, 32, SDL_PIXELFORMAT_RGBA32);
+    DawKitVizMeterSpectrogramPalette palette = DAW_KIT_VIZ_METER_SPECTROGRAM_WHITE_BLACK;
+    if (palette_mode == FX_METER_SPECTROGRAM_BLACK_WHITE) {
+        palette = DAW_KIT_VIZ_METER_SPECTROGRAM_BLACK_WHITE;
+    } else if (palette_mode == FX_METER_SPECTROGRAM_HEAT) {
+        palette = DAW_KIT_VIZ_METER_SPECTROGRAM_HEAT;
+    }
+    CoreResult rgba_r = daw_kit_viz_meter_build_spectrogram_rgba(frames,
+                                                                 (uint32_t)frame_count,
+                                                                 (uint32_t)bins,
+                                                                 (uint32_t)max_frames,
+                                                                 floor_db,
+                                                                 ceil_db,
+                                                                 palette,
+                                                                 g_meter_spectrogram_rgba,
+                                                                 rgba_size);
+    if (rgba_r.code != CORE_OK) {
+        build_spectrogram_legacy_rgba(frames,
+                                      bins,
+                                      frame_count,
+                                      max_frames,
+                                      floor_db,
+                                      ceil_db,
+                                      palette_mode,
+                                      g_meter_spectrogram_rgba,
+                                      METER_SPECTROGRAM_RGBA_CAPACITY);
+    }
+
+    SDL_Surface* surface = meter_spectrogram_get_surface();
     if (!surface) {
         return;
     }
-    Uint32* pixels = (Uint32*)surface->pixels;
-    SDL_PixelFormat* fmt = surface->format;
-    for (int frame = 0; frame < max_frames; ++frame) {
-        float age = max_frames > 1 ? (float)frame / (float)(max_frames - 1) : 0.0f;
-        float age_fade = 1.0f - 0.35f * age;
-        for (int bin = 0; bin < bins; ++bin) {
-            SDL_Color c = {26, 28, 36, 255};
-            if (frame < frame_count) {
-                float db = frames[frame * bins + bin];
-                float norm = (db - floor_db) / range;
-                c = spectrogram_color(norm, age_fade, palette_mode);
-            }
-            int y = bins - 1 - bin;
-            pixels[y * max_frames + frame] = SDL_MapRGBA(fmt, c.r, c.g, c.b, c.a);
-        }
-    }
-
-    VkRendererTexture tex;
-    if (vk_renderer_upload_sdl_surface_with_filter(renderer, surface, &tex, VK_FILTER_NEAREST) == VK_SUCCESS) {
-        SDL_Rect src = {0, 0, max_frames, bins};
-        vk_renderer_draw_texture(renderer, &tex, &src, &history_rect);
-        vk_renderer_queue_texture_destroy(renderer, &tex);
-    }
-    SDL_FreeSurface(surface);
-
-    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-    SDL_RenderDrawRect(renderer, &history_rect);
+    render_spectrogram_surface(renderer, surface, &history_rect, bins, max_frames, border);
 }

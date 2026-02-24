@@ -26,6 +26,7 @@ struct AppState;
 #define FX_PANEL_LIST_SCROLLBAR_HIT_WIDTH 14
 #define FX_PANEL_LIST_SCROLLBAR_MIN_THUMB 18
 
+// Layout rectangles for the track snapshot sub-section of the panel.
 typedef struct {
     SDL_Rect container_rect;
     SDL_Rect eq_rect;
@@ -48,10 +49,13 @@ typedef struct {
     SDL_Rect meter_label_rects[FX_PANEL_METER_TICK_COUNT];
 } EffectsPanelTrackSnapshotLayout;
 
+// Pre-computed rectangles + overlay state that define the full effects panel.
 typedef struct {
     SDL_Rect panel_rect;
     SDL_Rect dropdown_button_rect;
+    SDL_Rect preview_toggle_rect;
     SDL_Rect view_toggle_rect;
+    SDL_Rect spec_toggle_rect;
     SDL_Rect target_label_rect;
     SDL_Rect list_rect;
     EffectsPanelTrackSnapshotLayout track_snapshot;
@@ -79,7 +83,7 @@ typedef struct {
 #define FX_PANEL_HEADER_BUTTON_GAP 6
 #define FX_PANEL_HEADER_BUTTON_PAD_X 6
 #define FX_PANEL_HEADER_BUTTON_PAD_Y 2
-#define FX_PANEL_BUTTON_SCALE 1.5f
+#define FX_PANEL_BUTTON_SCALE 1.0f
 #define FX_PANEL_TITLE_SCALE 1.5f
 #define FX_PANEL_MARGIN 16
 #define FX_PANEL_COLUMN_GAP 16

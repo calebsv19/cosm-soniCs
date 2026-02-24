@@ -2,6 +2,7 @@
 
 #include "app_state.h"
 #include "ui/font.h"
+#include "ui/kit_viz_meter_adapter.h"
 #include "ui/render_utils.h"
 
 #include <math.h>
@@ -21,6 +22,37 @@ static float history_get_corr_by_age(const EffectsMeterHistory* history, int age
     while (idx < 0) idx += FX_METER_CORR_HISTORY_POINTS;
     idx %= FX_METER_CORR_HISTORY_POINTS;
     return history->corr_values[idx];
+}
+
+static bool render_corr_history_with_adapter(SDL_Renderer* renderer,
+                                             const SDL_Rect* history_rect,
+                                             const EffectsMeterHistory* history) {
+    if (!renderer || !history_rect || !history || history->corr_count <= 1 || history_rect->w <= 0) {
+        return false;
+    }
+    const int count = history->corr_count;
+    float y_samples[FX_METER_CORR_HISTORY_POINTS];
+    for (int i = 0; i < count; ++i) {
+        y_samples[i] = clampf(history_get_corr_by_age(history, i), -1.0f, 1.0f);
+    }
+
+    KitVizVecSegment segments[FX_METER_CORR_HISTORY_POINTS];
+    size_t segment_count = 0;
+    CoreResult r = daw_kit_viz_meter_plot_line_from_y_samples(y_samples,
+                                                               (uint32_t)count,
+                                                               history_rect,
+                                                               (DawKitVizMeterPlotRange){-1.0f, 1.0f},
+                                                               segments,
+                                                               FX_METER_CORR_HISTORY_POINTS,
+                                                               &segment_count);
+    if (r.code != CORE_OK || segment_count == 0) {
+        return false;
+    }
+    daw_kit_viz_meter_render_segments(renderer,
+                                      segments,
+                                      segment_count,
+                                      (SDL_Color){100, 150, 210, 180});
+    return true;
 }
 
 // effects_meter_render_correlation draws a horizontal correlation bar.
@@ -97,6 +129,9 @@ void effects_meter_render_correlation(SDL_Renderer* renderer,
 
     if (history_rect.w > 0 && history && history->corr_count > 1) {
         ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
+        if (render_corr_history_with_adapter(renderer, &history_rect, history)) {
+            return;
+        }
         int count = history->corr_count;
         int total_slots = FX_METER_CORR_HISTORY_POINTS;
         float prev_x = 0.0f;

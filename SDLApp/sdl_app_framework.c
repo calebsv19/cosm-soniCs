@@ -1,5 +1,6 @@
 #include "sdl_app_framework.h"
 #include "ui/font.h"
+#include "core_time.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_vulkan.h>
 #include <stdio.h>
@@ -113,7 +114,7 @@ bool App_Init(AppContext* ctx, const char* title, int width, int height, bool vs
 }
 
 void App_Run(AppContext* ctx, AppCallbacks* callbacks) {
-    Uint64 lastTime = SDL_GetPerformanceCounter();
+    uint64_t last_time_ns = core_time_now_ns();
     SDL_Event event;
 
     while (!ctx->quit) {
@@ -147,9 +148,9 @@ void App_Run(AppContext* ctx, AppCallbacks* callbacks) {
         }
 
         // Delta Time Calculation
-        Uint64 now = SDL_GetPerformanceCounter();
-	ctx->deltaTime = (float)(now - lastTime) / SDL_GetPerformanceFrequency();
-	lastTime = now;
+        uint64_t now_ns = core_time_now_ns();
+        ctx->deltaTime = (float)core_time_ns_to_seconds(core_time_diff_ns(now_ns, last_time_ns));
+        last_time_ns = now_ns;
 	
 	ctx->timeSinceLastRender += ctx->deltaTime;
 	

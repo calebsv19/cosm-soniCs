@@ -6,7 +6,9 @@
 
 // FxPeakRmsMeter holds analysis state for a peak/RMS meter effect.
 typedef struct FxPeakRmsMeter {
-    int reserved;
+    float rms_window_ms;
+    float peak_hold_ms;
+    float range_db;
 } FxPeakRmsMeter;
 
 // peak_rms_meter_process passes audio through unchanged for analysis-only use.
@@ -25,9 +27,29 @@ static void peak_rms_meter_process(FxHandle* h,
 
 // peak_rms_meter_set_param ignores params until analysis controls are added.
 static void peak_rms_meter_set_param(FxHandle* h, uint32_t idx, float value) {
-    (void)h;
-    (void)idx;
-    (void)value;
+    FxPeakRmsMeter* meter = (FxPeakRmsMeter*)h;
+    if (!meter) {
+        return;
+    }
+    switch (idx) {
+        case 0:
+            if (value < 10.0f) value = 10.0f;
+            if (value > 1000.0f) value = 1000.0f;
+            meter->rms_window_ms = value;
+            break;
+        case 1:
+            if (value < 0.0f) value = 0.0f;
+            if (value > 2000.0f) value = 2000.0f;
+            meter->peak_hold_ms = value;
+            break;
+        case 2:
+            if (value < 24.0f) value = 24.0f;
+            if (value > 120.0f) value = 120.0f;
+            meter->range_db = value;
+            break;
+        default:
+            break;
+    }
 }
 
 // peak_rms_meter_reset clears internal analysis state.
@@ -46,8 +68,18 @@ static void peak_rms_meter_destroy(FxHandle* h) {
 int peak_rms_meter_get_desc(FxDesc* out) {
     if (!out) return 0;
     out->name = "PeakRmsMeter";
-    out->num_params = 0;
+    out->api_version = FX_API_VERSION;
+    out->num_inputs = 1;
+    out->num_outputs = 1;
+    out->num_params = 3;
+    out->param_names[0] = "rms_window_ms";
+    out->param_names[1] = "peak_hold_ms";
+    out->param_names[2] = "range_db";
+    out->param_defaults[0] = 300.0f;
+    out->param_defaults[1] = 300.0f;
+    out->param_defaults[2] = 60.0f;
     out->flags = FX_FLAG_INPLACE_OK;
+    out->latency_samples = 0;
     return 1;
 }
 
@@ -66,6 +98,9 @@ int peak_rms_meter_create(const FxDesc* desc,
 
     FxPeakRmsMeter* meter = (FxPeakRmsMeter*)calloc(1, sizeof(FxPeakRmsMeter));
     if (!meter) return 0;
+    meter->rms_window_ms = 300.0f;
+    meter->peak_hold_ms = 300.0f;
+    meter->range_db = 60.0f;
 
     out_vt->process = peak_rms_meter_process;
     out_vt->set_param = peak_rms_meter_set_param;

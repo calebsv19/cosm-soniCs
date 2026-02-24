@@ -113,6 +113,30 @@ bool engine_ensure_track_capacity(Engine* engine, int required_tracks) {
             SDL_UnlockMutex(engine->meter_mutex);
         }
     }
+    if (engine->track_meter_snapshots) {
+        if (engine->meter_mutex) {
+            SDL_LockMutex(engine->meter_mutex);
+        }
+        size_t snap_count = (size_t)new_capacity * 2u;
+        EngineMeterSnapshot* resized_snaps = (EngineMeterSnapshot*)realloc(engine->track_meter_snapshots,
+                                                                           sizeof(EngineMeterSnapshot) * snap_count);
+        if (!resized_snaps) {
+            if (engine->meter_mutex) {
+                SDL_UnlockMutex(engine->meter_mutex);
+            }
+            return false;
+        }
+        engine->track_meter_snapshots = resized_snaps;
+        for (int t = engine->track_meter_capacity; t < new_capacity; ++t) {
+            for (int b = 0; b < 2; ++b) {
+                size_t idx = (size_t)b * (size_t)new_capacity + (size_t)t;
+                SDL_zero(engine->track_meter_snapshots[idx]);
+            }
+        }
+        if (engine->meter_mutex) {
+            SDL_UnlockMutex(engine->meter_mutex);
+        }
+    }
     if (engine->track_fx_meters) {
         if (engine->meter_mutex) {
             SDL_LockMutex(engine->meter_mutex);
@@ -134,6 +158,33 @@ bool engine_ensure_track_capacity(Engine* engine, int required_tracks) {
             SDL_UnlockMutex(engine->meter_mutex);
         }
     }
+    if (engine->track_fx_meter_snapshots) {
+        if (engine->meter_mutex) {
+            SDL_LockMutex(engine->meter_mutex);
+        }
+        size_t snap_count = (size_t)new_capacity * 2u;
+        EngineFxMeterBank* resized_banks = (EngineFxMeterBank*)realloc(engine->track_fx_meter_snapshots,
+                                                                       sizeof(EngineFxMeterBank) * snap_count);
+        if (!resized_banks) {
+            if (engine->meter_mutex) {
+                SDL_UnlockMutex(engine->meter_mutex);
+            }
+            return false;
+        }
+        engine->track_fx_meter_snapshots = resized_banks;
+        for (int t = engine->track_fx_meter_capacity; t < new_capacity; ++t) {
+            for (int b = 0; b < 2; ++b) {
+                size_t idx = (size_t)b * (size_t)new_capacity + (size_t)t;
+                SDL_zero(engine->track_fx_meter_snapshots[idx]);
+            }
+        }
+        if (engine->meter_mutex) {
+            SDL_UnlockMutex(engine->meter_mutex);
+        }
+    }
+    if (!engine_scope_ensure_track_capacity(engine, new_capacity)) {
+        return false;
+    }
     engine->track_capacity = new_capacity;
     return true;
 }
@@ -151,6 +202,7 @@ EngineTrack* engine_get_track_mutable(Engine* engine, int track_index) {
                        (float)engine->config.sample_rate,
                        engine_graph_get_channels(engine->graph));
         engine->tracks[engine->track_count].active = false;
+        engine_scope_reset_track_bank(engine, engine->track_count);
         ++engine->track_count;
     }
     return &engine->tracks[track_index];
@@ -208,6 +260,21 @@ bool engine_insert_track(Engine* engine, int track_index) {
                 SDL_UnlockMutex(engine->meter_mutex);
             }
         }
+        if (engine->track_meter_snapshots) {
+            if (engine->meter_mutex) {
+                SDL_LockMutex(engine->meter_mutex);
+            }
+            for (int b = 0; b < 2; ++b) {
+                EngineMeterSnapshot* snaps = engine->track_meter_snapshots +
+                                             (size_t)b * (size_t)engine->track_meter_capacity;
+                memmove(&snaps[track_index + 1],
+                        &snaps[track_index],
+                        (size_t)(engine->track_count - track_index) * sizeof(EngineMeterSnapshot));
+            }
+            if (engine->meter_mutex) {
+                SDL_UnlockMutex(engine->meter_mutex);
+            }
+        }
         if (engine->track_fx_meters) {
             if (engine->meter_mutex) {
                 SDL_LockMutex(engine->meter_mutex);
@@ -218,6 +285,26 @@ bool engine_insert_track(Engine* engine, int track_index) {
             if (engine->meter_mutex) {
                 SDL_UnlockMutex(engine->meter_mutex);
             }
+        }
+        if (engine->track_fx_meter_snapshots) {
+            if (engine->meter_mutex) {
+                SDL_LockMutex(engine->meter_mutex);
+            }
+            for (int b = 0; b < 2; ++b) {
+                EngineFxMeterBank* banks = engine->track_fx_meter_snapshots +
+                                           (size_t)b * (size_t)engine->track_fx_meter_capacity;
+                memmove(&banks[track_index + 1],
+                        &banks[track_index],
+                        (size_t)(engine->track_count - track_index) * sizeof(EngineFxMeterBank));
+            }
+            if (engine->meter_mutex) {
+                SDL_UnlockMutex(engine->meter_mutex);
+            }
+        }
+        if (engine->scope_host.tracks) {
+            memmove(&engine->scope_host.tracks[track_index + 1],
+                    &engine->scope_host.tracks[track_index],
+                    (size_t)(engine->track_count - track_index) * sizeof(EngineFxScopeBank));
         }
     }
     engine_track_init(&engine->tracks[track_index]);
@@ -247,6 +334,18 @@ bool engine_insert_track(Engine* engine, int track_index) {
             SDL_UnlockMutex(engine->meter_mutex);
         }
     }
+    if (engine->track_meter_snapshots) {
+        if (engine->meter_mutex) {
+            SDL_LockMutex(engine->meter_mutex);
+        }
+        for (int b = 0; b < 2; ++b) {
+            size_t idx = (size_t)b * (size_t)engine->track_meter_capacity + (size_t)track_index;
+            SDL_zero(engine->track_meter_snapshots[idx]);
+        }
+        if (engine->meter_mutex) {
+            SDL_UnlockMutex(engine->meter_mutex);
+        }
+    }
     if (engine->track_fx_meters) {
         if (engine->meter_mutex) {
             SDL_LockMutex(engine->meter_mutex);
@@ -256,7 +355,20 @@ bool engine_insert_track(Engine* engine, int track_index) {
             SDL_UnlockMutex(engine->meter_mutex);
         }
     }
-    engine_rebuild_sources(engine);
+    if (engine->track_fx_meter_snapshots) {
+        if (engine->meter_mutex) {
+            SDL_LockMutex(engine->meter_mutex);
+        }
+        for (int b = 0; b < 2; ++b) {
+            size_t idx = (size_t)b * (size_t)engine->track_fx_meter_capacity + (size_t)track_index;
+            SDL_zero(engine->track_fx_meter_snapshots[idx]);
+        }
+        if (engine->meter_mutex) {
+            SDL_UnlockMutex(engine->meter_mutex);
+        }
+    }
+    engine_scope_reset_track_bank(engine, track_index);
+    engine_request_rebuild_sources(engine);
     return true;
 }
 
@@ -294,6 +406,21 @@ bool engine_remove_track(Engine* engine, int track_index) {
                 SDL_UnlockMutex(engine->meter_mutex);
             }
         }
+        if (engine->track_meter_snapshots) {
+            if (engine->meter_mutex) {
+                SDL_LockMutex(engine->meter_mutex);
+            }
+            for (int b = 0; b < 2; ++b) {
+                EngineMeterSnapshot* snaps = engine->track_meter_snapshots +
+                                             (size_t)b * (size_t)engine->track_meter_capacity;
+                memmove(&snaps[track_index],
+                        &snaps[track_index + 1],
+                        (size_t)(engine->track_count - track_index - 1) * sizeof(EngineMeterSnapshot));
+            }
+            if (engine->meter_mutex) {
+                SDL_UnlockMutex(engine->meter_mutex);
+            }
+        }
         if (engine->track_fx_meters) {
             if (engine->meter_mutex) {
                 SDL_LockMutex(engine->meter_mutex);
@@ -304,6 +431,26 @@ bool engine_remove_track(Engine* engine, int track_index) {
             if (engine->meter_mutex) {
                 SDL_UnlockMutex(engine->meter_mutex);
             }
+        }
+        if (engine->track_fx_meter_snapshots) {
+            if (engine->meter_mutex) {
+                SDL_LockMutex(engine->meter_mutex);
+            }
+            for (int b = 0; b < 2; ++b) {
+                EngineFxMeterBank* banks = engine->track_fx_meter_snapshots +
+                                           (size_t)b * (size_t)engine->track_fx_meter_capacity;
+                memmove(&banks[track_index],
+                        &banks[track_index + 1],
+                        (size_t)(engine->track_count - track_index - 1) * sizeof(EngineFxMeterBank));
+            }
+            if (engine->meter_mutex) {
+                SDL_UnlockMutex(engine->meter_mutex);
+            }
+        }
+        if (engine->scope_host.tracks) {
+            memmove(&engine->scope_host.tracks[track_index],
+                    &engine->scope_host.tracks[track_index + 1],
+                    (size_t)(engine->track_count - track_index - 1) * sizeof(EngineFxScopeBank));
         }
     }
 
@@ -333,6 +480,18 @@ bool engine_remove_track(Engine* engine, int track_index) {
                 SDL_UnlockMutex(engine->meter_mutex);
             }
         }
+        if (engine->track_meter_snapshots) {
+            if (engine->meter_mutex) {
+                SDL_LockMutex(engine->meter_mutex);
+            }
+            for (int b = 0; b < 2; ++b) {
+                size_t idx = (size_t)b * (size_t)engine->track_meter_capacity + (size_t)engine->track_count;
+                SDL_zero(engine->track_meter_snapshots[idx]);
+            }
+            if (engine->meter_mutex) {
+                SDL_UnlockMutex(engine->meter_mutex);
+            }
+        }
         if (engine->track_fx_meters) {
             if (engine->meter_mutex) {
                 SDL_LockMutex(engine->meter_mutex);
@@ -342,9 +501,22 @@ bool engine_remove_track(Engine* engine, int track_index) {
                 SDL_UnlockMutex(engine->meter_mutex);
             }
         }
+        if (engine->track_fx_meter_snapshots) {
+            if (engine->meter_mutex) {
+                SDL_LockMutex(engine->meter_mutex);
+            }
+            for (int b = 0; b < 2; ++b) {
+                size_t idx = (size_t)b * (size_t)engine->track_fx_meter_capacity + (size_t)engine->track_count;
+                SDL_zero(engine->track_fx_meter_snapshots[idx]);
+            }
+            if (engine->meter_mutex) {
+                SDL_UnlockMutex(engine->meter_mutex);
+            }
+        }
     }
 
-    engine_rebuild_sources(engine);
+    engine_scope_reset_track_bank(engine, engine->track_count);
+    engine_request_rebuild_sources(engine);
     return true;
 }
 
@@ -388,7 +560,7 @@ bool engine_track_set_muted(Engine* engine, int track_index, bool muted) {
         return false;
     }
     track->muted = muted;
-    engine_rebuild_sources(engine);
+    engine_request_rebuild_sources(engine);
     return true;
 }
 
@@ -401,7 +573,7 @@ bool engine_track_set_solo(Engine* engine, int track_index, bool solo) {
         return false;
     }
     track->solo = solo;
-    engine_rebuild_sources(engine);
+    engine_request_rebuild_sources(engine);
     return true;
 }
 
@@ -414,7 +586,7 @@ bool engine_track_set_gain(Engine* engine, int track_index, float gain) {
         return false;
     }
     track->gain = gain;
-    engine_rebuild_sources(engine);
+    engine_request_rebuild_sources(engine);
     return true;
 }
 
@@ -427,7 +599,7 @@ bool engine_track_set_pan(Engine* engine, int track_index, float pan) {
         return false;
     }
     track->pan = pan;
-    engine_rebuild_sources(engine);
+    engine_request_rebuild_sources(engine);
     return true;
 }
 

@@ -457,7 +457,7 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
             int millis = total_ms % 1000;
             snprintf(time_text, sizeof(time_text), "%02d:%02d.%03d", minutes, seconds_part, millis);
         }
-        int time_scale = 2;
+        int time_scale = 1;
         float dot_ratio = state->timeline_view_in_beats ? (5.0f / 8.0f) : (4.0f / 7.0f);
         int dot_index = state->timeline_view_in_beats ? 2 : 1;
         draw_time_with_decimal(renderer, &ui->time_label_rect, time_text, time_color, time_scale, dot_ratio, dot_index);
@@ -489,7 +489,7 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         } else {
             snprintf(bpm_text, sizeof(bpm_text), "%.0f", tempo_bpm);
         }
-        int bpm_scale = 2;
+        int bpm_scale = 1;
         int bpm_tw = ui_measure_text_width(bpm_text, bpm_scale);
         int bpm_th = ui_font_line_height(bpm_scale);
         int bpm_tx = bpm_rect.x + (bpm_rect.w - bpm_tw) / 2;
@@ -542,7 +542,7 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         } else {
             snprintf(ts_den_text, sizeof(ts_den_text), "%d", ts_den);
         }
-        int ts_scale = 2;
+        int ts_scale = 1;
         int num_tw = ui_measure_text_width(ts_num_text, ts_scale);
         int den_tw = ui_measure_text_width(ts_den_text, ts_scale);
         int ts_th = ui_font_line_height(ts_scale);

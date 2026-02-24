@@ -128,6 +128,7 @@ typedef struct {
     SessionEqBand bands[4];
 } SessionEqCurve;
 
+// Captures serialized effect instance parameters for session persistence.
 typedef struct SessionFxInstance {
     FxTypeId type;
     bool enabled;
@@ -135,6 +136,11 @@ typedef struct SessionFxInstance {
     float params[FX_MAX_PARAMS];
     FxParamMode param_mode[FX_MAX_PARAMS];
     float param_beats[FX_MAX_PARAMS];
+    uint32_t param_id_count;
+    char param_ids[FX_MAX_PARAMS][32];
+    float param_values_by_id[FX_MAX_PARAMS];
+    FxParamMode param_modes_by_id[FX_MAX_PARAMS];
+    float param_beats_by_id[FX_MAX_PARAMS];
     char name[SESSION_FX_NAME_MAX];
 } SessionFxInstance;
 

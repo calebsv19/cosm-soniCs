@@ -3,6 +3,25 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Finds or appends a parameter id entry for session FX parsing.
+static int session_fx_find_or_add_param_id(SessionFxInstance* fx, const char* id) {
+    if (!fx || !id || id[0] == '\0') {
+        return -1;
+    }
+    for (uint32_t i = 0; i < fx->param_id_count && i < FX_MAX_PARAMS; ++i) {
+        if (strncmp(fx->param_ids[i], id, sizeof(fx->param_ids[i])) == 0) {
+            return (int)i;
+        }
+    }
+    if (fx->param_id_count >= FX_MAX_PARAMS) {
+        return -1;
+    }
+    uint32_t idx = fx->param_id_count++;
+    strncpy(fx->param_ids[idx], id, sizeof(fx->param_ids[idx]) - 1);
+    fx->param_ids[idx][sizeof(fx->param_ids[idx]) - 1] = '\0';
+    return (int)idx;
+}
+
 static SessionTrack* session_document_append_track(SessionDocument* doc) {
     int new_count = doc->track_count + 1;
     SessionTrack* resized = (SessionTrack*)realloc(doc->tracks, (size_t)new_count * sizeof(SessionTrack));
@@ -695,6 +714,136 @@ static bool parse_session_track(JsonReader* r, SessionTrack* track) {
                                     return false;
                                 }
                             }
+                        } else if (strcmp(fx_key, "param_ids") == 0) {
+                            if (!json_expect(r, '[')) {
+                                return false;
+                            }
+                            json_skip_whitespace(r);
+                            if (r->pos < r->length && r->data[r->pos] == ']') {
+                                ++r->pos;
+                            } else {
+                                while (true) {
+                                    char id_buf[64];
+                                    if (!json_parse_string(r, id_buf, sizeof(id_buf))) {
+                                        return false;
+                                    }
+                                    session_fx_find_or_add_param_id(fx, id_buf);
+                                    json_skip_whitespace(r);
+                                    if (r->pos < r->length && r->data[r->pos] == ',') {
+                                        ++r->pos;
+                                        continue;
+                                    }
+                                    break;
+                                }
+                                if (!json_expect(r, ']')) {
+                                    return false;
+                                }
+                            }
+                        } else if (strcmp(fx_key, "param_values_by_id") == 0) {
+                            if (!json_expect(r, '{')) {
+                                return false;
+                            }
+                            json_skip_whitespace(r);
+                            if (r->pos < r->length && r->data[r->pos] == '}') {
+                                ++r->pos;
+                            } else {
+                                while (true) {
+                                    char id_buf[64];
+                                    if (!json_parse_string(r, id_buf, sizeof(id_buf))) {
+                                        return false;
+                                    }
+                                    if (!json_expect(r, ':')) {
+                                        return false;
+                                    }
+                                    double val;
+                                    if (!json_parse_number(r, &val)) {
+                                        return false;
+                                    }
+                                    int idx = session_fx_find_or_add_param_id(fx, id_buf);
+                                    if (idx >= 0) {
+                                        fx->param_values_by_id[idx] = (float)val;
+                                    }
+                                    json_skip_whitespace(r);
+                                    if (r->pos < r->length && r->data[r->pos] == ',') {
+                                        ++r->pos;
+                                        continue;
+                                    }
+                                    break;
+                                }
+                                if (!json_expect(r, '}')) {
+                                    return false;
+                                }
+                            }
+                        } else if (strcmp(fx_key, "param_modes_by_id") == 0) {
+                            if (!json_expect(r, '{')) {
+                                return false;
+                            }
+                            json_skip_whitespace(r);
+                            if (r->pos < r->length && r->data[r->pos] == '}') {
+                                ++r->pos;
+                            } else {
+                                while (true) {
+                                    char id_buf[64];
+                                    if (!json_parse_string(r, id_buf, sizeof(id_buf))) {
+                                        return false;
+                                    }
+                                    if (!json_expect(r, ':')) {
+                                        return false;
+                                    }
+                                    double val;
+                                    if (!json_parse_number(r, &val)) {
+                                        return false;
+                                    }
+                                    int idx = session_fx_find_or_add_param_id(fx, id_buf);
+                                    if (idx >= 0) {
+                                        fx->param_modes_by_id[idx] = (FxParamMode)((int)val);
+                                    }
+                                    json_skip_whitespace(r);
+                                    if (r->pos < r->length && r->data[r->pos] == ',') {
+                                        ++r->pos;
+                                        continue;
+                                    }
+                                    break;
+                                }
+                                if (!json_expect(r, '}')) {
+                                    return false;
+                                }
+                            }
+                        } else if (strcmp(fx_key, "param_beats_by_id") == 0) {
+                            if (!json_expect(r, '{')) {
+                                return false;
+                            }
+                            json_skip_whitespace(r);
+                            if (r->pos < r->length && r->data[r->pos] == '}') {
+                                ++r->pos;
+                            } else {
+                                while (true) {
+                                    char id_buf[64];
+                                    if (!json_parse_string(r, id_buf, sizeof(id_buf))) {
+                                        return false;
+                                    }
+                                    if (!json_expect(r, ':')) {
+                                        return false;
+                                    }
+                                    double val;
+                                    if (!json_parse_number(r, &val)) {
+                                        return false;
+                                    }
+                                    int idx = session_fx_find_or_add_param_id(fx, id_buf);
+                                    if (idx >= 0) {
+                                        fx->param_beats_by_id[idx] = (float)val;
+                                    }
+                                    json_skip_whitespace(r);
+                                    if (r->pos < r->length && r->data[r->pos] == ',') {
+                                        ++r->pos;
+                                        continue;
+                                    }
+                                    break;
+                                }
+                                if (!json_expect(r, '}')) {
+                                    return false;
+                                }
+                            }
                         } else if (strcmp(fx_key, "param_count") == 0) {
                             double val;
                             if (!json_parse_number(r, &val)) {
@@ -911,6 +1060,140 @@ bool parse_master_fx(JsonReader* r, SessionDocument* doc) {
                             continue;
                         }
                         if (r->pos < r->length && r->data[r->pos] == ']') {
+                            ++r->pos;
+                            break;
+                        }
+                        return false;
+                    }
+                }
+            } else if (strcmp(key, "param_ids") == 0) {
+                if (!json_expect(r, '[')) {
+                    return false;
+                }
+                json_skip_whitespace(r);
+                if (r->pos < r->length && r->data[r->pos] == ']') {
+                    ++r->pos;
+                } else {
+                    while (true) {
+                        char id_buf[64];
+                        if (!json_parse_string(r, id_buf, sizeof(id_buf))) {
+                            return false;
+                        }
+                        session_fx_find_or_add_param_id(fx, id_buf);
+                        json_skip_whitespace(r);
+                        if (r->pos < r->length && r->data[r->pos] == ',') {
+                            ++r->pos;
+                            continue;
+                        }
+                        if (r->pos < r->length && r->data[r->pos] == ']') {
+                            ++r->pos;
+                            break;
+                        }
+                        return false;
+                    }
+                }
+            } else if (strcmp(key, "param_values_by_id") == 0) {
+                if (!json_expect(r, '{')) {
+                    return false;
+                }
+                json_skip_whitespace(r);
+                if (r->pos < r->length && r->data[r->pos] == '}') {
+                    ++r->pos;
+                } else {
+                    while (true) {
+                        char id_buf[64];
+                        if (!json_parse_string(r, id_buf, sizeof(id_buf))) {
+                            return false;
+                        }
+                        if (!json_expect(r, ':')) {
+                            return false;
+                        }
+                        double val;
+                        if (!json_parse_number(r, &val)) {
+                            return false;
+                        }
+                        int idx = session_fx_find_or_add_param_id(fx, id_buf);
+                        if (idx >= 0) {
+                            fx->param_values_by_id[idx] = (float)val;
+                        }
+                        json_skip_whitespace(r);
+                        if (r->pos < r->length && r->data[r->pos] == ',') {
+                            ++r->pos;
+                            continue;
+                        }
+                        if (r->pos < r->length && r->data[r->pos] == '}') {
+                            ++r->pos;
+                            break;
+                        }
+                        return false;
+                    }
+                }
+            } else if (strcmp(key, "param_modes_by_id") == 0) {
+                if (!json_expect(r, '{')) {
+                    return false;
+                }
+                json_skip_whitespace(r);
+                if (r->pos < r->length && r->data[r->pos] == '}') {
+                    ++r->pos;
+                } else {
+                    while (true) {
+                        char id_buf[64];
+                        if (!json_parse_string(r, id_buf, sizeof(id_buf))) {
+                            return false;
+                        }
+                        if (!json_expect(r, ':')) {
+                            return false;
+                        }
+                        double val;
+                        if (!json_parse_number(r, &val)) {
+                            return false;
+                        }
+                        int idx = session_fx_find_or_add_param_id(fx, id_buf);
+                        if (idx >= 0) {
+                            fx->param_modes_by_id[idx] = (FxParamMode)((int)val);
+                        }
+                        json_skip_whitespace(r);
+                        if (r->pos < r->length && r->data[r->pos] == ',') {
+                            ++r->pos;
+                            continue;
+                        }
+                        if (r->pos < r->length && r->data[r->pos] == '}') {
+                            ++r->pos;
+                            break;
+                        }
+                        return false;
+                    }
+                }
+            } else if (strcmp(key, "param_beats_by_id") == 0) {
+                if (!json_expect(r, '{')) {
+                    return false;
+                }
+                json_skip_whitespace(r);
+                if (r->pos < r->length && r->data[r->pos] == '}') {
+                    ++r->pos;
+                } else {
+                    while (true) {
+                        char id_buf[64];
+                        if (!json_parse_string(r, id_buf, sizeof(id_buf))) {
+                            return false;
+                        }
+                        if (!json_expect(r, ':')) {
+                            return false;
+                        }
+                        double val;
+                        if (!json_parse_number(r, &val)) {
+                            return false;
+                        }
+                        int idx = session_fx_find_or_add_param_id(fx, id_buf);
+                        if (idx >= 0) {
+                            fx->param_beats_by_id[idx] = (float)val;
+                        }
+                        json_skip_whitespace(r);
+                        if (r->pos < r->length && r->data[r->pos] == ',') {
+                            ++r->pos;
+                            continue;
+                        }
+                        if (r->pos < r->length && r->data[r->pos] == '}') {
                             ++r->pos;
                             break;
                         }

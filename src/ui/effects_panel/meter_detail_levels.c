@@ -2,6 +2,7 @@
 
 #include "app_state.h"
 #include "ui/font.h"
+#include "ui/kit_viz_meter_adapter.h"
 #include "ui/render_utils.h"
 
 #include <math.h>
@@ -44,6 +45,56 @@ static float history_get_rms_by_age(const EffectsMeterHistory* history, int age_
     while (idx < 0) idx += FX_METER_LEVEL_HISTORY_POINTS;
     idx %= FX_METER_LEVEL_HISTORY_POINTS;
     return history->rms_values[idx];
+}
+
+static bool render_level_history_with_adapter(SDL_Renderer* renderer,
+                                              const SDL_Rect* history_rect,
+                                              const EffectsMeterHistory* history,
+                                              float min_db,
+                                              float max_db) {
+    if (!renderer || !history_rect || !history || history->level_count <= 1 || history_rect->w <= 0) {
+        return false;
+    }
+    const int count = history->level_count;
+    float peak_samples[FX_METER_LEVEL_HISTORY_POINTS];
+    float rms_samples[FX_METER_LEVEL_HISTORY_POINTS];
+    for (int i = 0; i < count; ++i) {
+        float peak = clampf(history_get_peak_by_age(history, i), 0.0f, 2.0f);
+        float rms = clampf(history_get_rms_by_age(history, i), 0.0f, 2.0f);
+        peak_samples[i] = meter_db(peak);
+        rms_samples[i] = meter_db(rms);
+    }
+
+    KitVizVecSegment peak_segments[FX_METER_LEVEL_HISTORY_POINTS];
+    KitVizVecSegment rms_segments[FX_METER_LEVEL_HISTORY_POINTS];
+    size_t peak_segment_count = 0;
+    size_t rms_segment_count = 0;
+    CoreResult peak_r = daw_kit_viz_meter_plot_line_from_y_samples(peak_samples,
+                                                                    (uint32_t)count,
+                                                                    history_rect,
+                                                                    (DawKitVizMeterPlotRange){min_db, max_db},
+                                                                    peak_segments,
+                                                                    FX_METER_LEVEL_HISTORY_POINTS,
+                                                                    &peak_segment_count);
+    CoreResult rms_r = daw_kit_viz_meter_plot_line_from_y_samples(rms_samples,
+                                                                   (uint32_t)count,
+                                                                   history_rect,
+                                                                   (DawKitVizMeterPlotRange){min_db, max_db},
+                                                                   rms_segments,
+                                                                   FX_METER_LEVEL_HISTORY_POINTS,
+                                                                   &rms_segment_count);
+    if (peak_r.code != CORE_OK || rms_r.code != CORE_OK || peak_segment_count == 0 || rms_segment_count == 0) {
+        return false;
+    }
+    daw_kit_viz_meter_render_segments(renderer,
+                                      peak_segments,
+                                      peak_segment_count,
+                                      (SDL_Color){90, 150, 210, 180});
+    daw_kit_viz_meter_render_segments(renderer,
+                                      rms_segments,
+                                      rms_segment_count,
+                                      (SDL_Color){140, 120, 110, 180});
+    return true;
 }
 
 // effects_meter_render_levels draws a peak/RMS history trace.
@@ -130,6 +181,9 @@ void effects_meter_render_levels(SDL_Renderer* renderer,
 
     if (history_rect.w > 0 && history && history->level_count > 1) {
         ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
+        if (render_level_history_with_adapter(renderer, &history_rect, history, min_db, max_db)) {
+            return;
+        }
         int count = history->level_count;
         int total_slots = FX_METER_LEVEL_HISTORY_POINTS;
         float prev_peak_x = 0.0f;

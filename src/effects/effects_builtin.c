@@ -2,6 +2,15 @@
 #include "effects/effects_api.h"
 #include "effects/effects_manager.h"
 #include "effects/effects_builtin.h"
+#include "effects/param_specs/basics_param_specs.h"
+#include "effects/param_specs/delay_param_specs.h"
+#include "effects/param_specs/dynamics_param_specs.h"
+#include "effects/param_specs/distortion_param_specs.h"
+#include "effects/param_specs/eq_param_specs.h"
+#include "effects/param_specs/filter_tone_param_specs.h"
+#include "effects/param_specs/metering_param_specs.h"
+#include "effects/param_specs/modulation_param_specs.h"
+#include "effects/param_specs/reverb_param_specs.h"
 
 // Forward declarations for every compiled effect
 
@@ -48,6 +57,10 @@ int biquad_get_desc(FxDesc *out);
 int biquad_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
 int eq_fixed3_get_desc(FxDesc*);
 int eq_fixed3_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
+int eq_notch_get_desc(FxDesc *out);
+int eq_notch_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
+int eq_tilt_get_desc(FxDesc *out);
+int eq_tilt_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
 
 // Filter & Tone
 int svf_get_desc(FxDesc *out);
@@ -131,77 +144,94 @@ int lufs_meter_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t
 int spectrogram_meter_get_desc(FxDesc *out);
 int spectrogram_meter_create(const FxDesc*, FxHandle **, FxVTable *, uint32_t, uint32_t, uint32_t);
 
+#define FX_ENTRY(id, name, get_desc, create) {id, name, get_desc, create, NULL, 0}
+#define FX_ENTRY_SPEC(id, name, get_desc, create, specs, count) {id, name, get_desc, create, specs, count}
+
 static FxRegistryEntry kBuiltinFxTable[] = {
     // Basics / Utility (01–19)
-    {  1u, "Gain",             gain_get_desc,            gain_create            },
-    {  2u, "DCBlock",          dcblock_get_desc,         dcblock_create         },
-    {  3u, "Pan",              pan_get_desc,             pan_create             },
-    {  4u, "Mute",             mute_get_desc,            mute_create            },
-    {  5u, "MonoMakerLow",     monomaker_get_desc,       monomaker_create       },
-    {  6u, "StereoBlend",      stereo_blend_get_desc,    stereo_blend_create    },
-    {  7u, "AutoTrim",         auto_trim_get_desc,       auto_trim_create       },
+    FX_ENTRY_SPEC( 1u, "Gain",             gain_get_desc,            gain_create, kGainParamSpecs, GAIN_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC( 2u, "DCBlock",          dcblock_get_desc,         dcblock_create, kDcBlockParamSpecs, DCBLOCK_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC( 3u, "Pan",              pan_get_desc,             pan_create, kPanParamSpecs, PAN_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC( 4u, "Mute",             mute_get_desc,            mute_create, kMuteParamSpecs, MUTE_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC( 5u, "MonoMakerLow",     monomaker_get_desc,       monomaker_create, kMonoMakerParamSpecs, MONOMAKER_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC( 6u, "StereoBlend",      stereo_blend_get_desc,    stereo_blend_create, kStereoBlendParamSpecs, STEREOBLEND_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC( 7u, "AutoTrim",         auto_trim_get_desc,       auto_trim_create, kAutoTrimParamSpecs, AUTOTRIM_PARAM_SPEC_COUNT),
 
     // Dynamics (20–29)
-    { 20u, "Compressor",       compressor_get_desc,      compressor_create      },
-    { 21u, "Limiter",          limiter_get_desc,         limiter_create         },
-    { 22u, "Gate",             gate_get_desc,            gate_create            },
-    { 23u, "DeEsser",          deesser_get_desc,         deesser_create         },
-    { 24u, "SCCompressor",     sccomp_get_desc,          sccomp_create          },
-    { 25u, "UpwardComp",       upward_comp_get_desc,     upward_comp_create     },
-    { 26u, "Expander",         expander_get_desc,        expander_create        },
-    { 27u, "TransientShaper",  transient_shaper_get_desc,transient_shaper_create},
+    FX_ENTRY_SPEC(20u, "Compressor",  compressor_get_desc,      compressor_create, kCompressorParamSpecs, COMPRESSOR_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(21u, "Limiter",     limiter_get_desc,         limiter_create, kLimiterParamSpecs, LIMITER_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(22u, "Gate",        gate_get_desc,            gate_create, kGateParamSpecs, GATE_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(23u, "DeEsser",     deesser_get_desc,         deesser_create, kDeEsserParamSpecs, DEESSER_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(24u, "SCCompressor",    sccomp_get_desc,          sccomp_create, kSidechainCompressorParamSpecs, SIDECHAIN_COMP_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(25u, "UpwardComp",      upward_comp_get_desc,     upward_comp_create, kUpwardCompParamSpecs, UPWARD_COMP_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(26u, "Expander",        expander_get_desc,        expander_create, kExpanderParamSpecs, EXPANDER_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(27u, "TransientShaper", transient_shaper_get_desc, transient_shaper_create, kTransientShaperParamSpecs, TRANSIENT_SHAPER_PARAM_SPEC_COUNT),
 
     // EQ (30–39)
-    { 30u, "BiquadEQ",         biquad_get_desc,          biquad_create          },
-    { 31u, "EQ_Fixed3",        eq_fixed3_get_desc,       eq_fixed3_create       },
+    FX_ENTRY_SPEC(30u, "BiquadEQ",         biquad_get_desc,          biquad_create, kBiquadEqParamSpecs, BIQUAD_EQ_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(31u, "EQ_Fixed3",        eq_fixed3_get_desc,       eq_fixed3_create, kEqFixed3ParamSpecs, EQ_FIXED3_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(32u, "EQ_Notch",         eq_notch_get_desc,        eq_notch_create, kEqNotchParamSpecs, EQ_NOTCH_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(33u, "EQ_Tilt",          eq_tilt_get_desc,         eq_tilt_create, kEqTiltParamSpecs, EQ_TILT_PARAM_SPEC_COUNT),
 
     // Filter & Tone (40–49)
-    { 40u, "SVF",              svf_get_desc,             svf_create             },
-    { 41u, "AutoWah",          autowah_get_desc,         autowah_create         },
-    { 42u, "StereoWidth",      width_get_desc,           width_create           },
-    { 43u, "TiltEQ",           tilt_get_desc,            tilt_create            },
-    { 44u, "Phaser",           phaser_get_desc,          phaser_create          },
-    { 45u, "FormantFilter",    formant_get_desc,         formant_create         },
-    { 46u, "CombFF",           comb_get_desc,            comb_create            },
+    FX_ENTRY_SPEC(40u, "SVF",              svf_get_desc,             svf_create, kSvfParamSpecs, SVF_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(41u, "AutoWah",          autowah_get_desc,         autowah_create, kAutoWahParamSpecs, AUTOWAH_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(42u, "StereoWidth",      width_get_desc,           width_create, kStereoWidthParamSpecs, STEREO_WIDTH_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(43u, "TiltEQ",           tilt_get_desc,            tilt_create, kTiltEqParamSpecs, TILT_EQ_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(44u, "Phaser",           phaser_get_desc,          phaser_create, kPhaserParamSpecs, PHASER_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(45u, "FormantFilter",    formant_get_desc,         formant_create, kFormantFilterParamSpecs, FORMANT_FILTER_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(46u, "CombFF",           comb_get_desc,            comb_create, kCombFFParamSpecs, COMB_FF_PARAM_SPEC_COUNT),
 
     // Delay (50–59)
-    { 50u, "Delay",            delay_get_desc,           delay_create           },
-    { 51u, "PingPongDelay",    pingpong_get_desc,        pingpong_create        },
-    { 52u, "MultiTapDelay",    multitap_get_desc,        multitap_create        },
-    { 53u, "TapeEcho",         tape_echo_get_desc,       tape_echo_create       },
-    { 54u, "DiffusionDelay",   diffusion_delay_get_desc, diffusion_delay_create },
+    FX_ENTRY_SPEC(50u, "Delay",            delay_get_desc,           delay_create, kDelayParamSpecs, DELAY_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(51u, "PingPongDelay",    pingpong_get_desc,        pingpong_create, kPingPongParamSpecs, PINGPONG_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(52u, "MultiTapDelay",    multitap_get_desc,        multitap_create, kMultiTapParamSpecs, MULTITAP_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(53u, "TapeEcho",         tape_echo_get_desc,       tape_echo_create, kTapeEchoParamSpecs, TAPE_ECHO_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(54u, "DiffusionDelay",   diffusion_delay_get_desc, diffusion_delay_create, kDiffusionDelayParamSpecs, DIFFUSION_DELAY_PARAM_SPEC_COUNT),
 
     // Distortion / Lo-Fi (60–69)
-    { 60u, "HardClip",         hardclip_get_desc,        hardclip_create        },
-    { 61u, "SoftSaturation",   softsat_get_desc,         softsat_create         },
-    { 62u, "BitCrusher",       bitcrusher_get_desc,      bitcrusher_create      },
-    { 63u, "Overdrive",        overdrive_get_desc,       overdrive_create       },
-    { 64u, "Waveshaper",       waveshaper_get_desc,      waveshaper_create      },
-    { 65u, "Decimator",        decimator_get_desc,       decimator_create       },
+    FX_ENTRY_SPEC(60u, "HardClip",        hardclip_get_desc,        hardclip_create, kHardClipParamSpecs, HARDCLIP_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(61u, "SoftSaturation",  softsat_get_desc,         softsat_create, kSoftSatParamSpecs, SOFTSAT_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(62u, "BitCrusher",      bitcrusher_get_desc,      bitcrusher_create, kBitCrusherParamSpecs, BITCRUSHER_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(63u, "Overdrive",       overdrive_get_desc,       overdrive_create, kOverdriveParamSpecs, OVERDRIVE_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(64u, "Waveshaper",      waveshaper_get_desc,      waveshaper_create, kWaveshaperParamSpecs, WAVESHAPER_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(65u, "Decimator",       decimator_get_desc,       decimator_create, kDecimatorParamSpecs, DECIMATOR_PARAM_SPEC_COUNT),
 
     // Modulation (70–79)
-    { 70u, "TremoloPan",       trempan_get_desc,         trempan_create         },
-    { 71u, "Chorus",           chorus_get_desc,          chorus_create          },
-    { 72u, "Flanger",          flanger_get_desc,         flanger_create         },
-    { 73u, "Vibrato",          vibrato_get_desc,         vibrato_create         },
-    { 74u, "RingMod",          ringmod_get_desc,         ringmod_create         },
-    { 75u, "AutoPan",          autopan_get_desc,         autopan_create         },
-    { 76u, "BarberpolePhaser", barberpole_phaser_get_desc, barberpole_phaser_create },
+    FX_ENTRY_SPEC(70u, "TremoloPan",       trempan_get_desc,         trempan_create, kTremoloPanParamSpecs, TREMPAN_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(71u, "Chorus",           chorus_get_desc,          chorus_create, kChorusParamSpecs, CHORUS_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(72u, "Flanger",          flanger_get_desc,         flanger_create, kFlangerParamSpecs, FLANGER_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(73u, "Vibrato",          vibrato_get_desc,         vibrato_create, kVibratoParamSpecs, VIBRATO_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(74u, "RingMod",          ringmod_get_desc,         ringmod_create, kRingModParamSpecs, RINGMOD_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(75u, "AutoPan",          autopan_get_desc,         autopan_create, kAutoPanParamSpecs, AUTOPAN_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(76u, "BarberpolePhaser", barberpole_phaser_get_desc, barberpole_phaser_create, kBarberpolePhaserParamSpecs, BARBERPOLE_PHASER_PARAM_SPEC_COUNT),
 
     // Reverb / Spatial (90–99)
-    { 90u, "Reverb",           reverb_get_desc,          reverb_create          },
-    { 91u, "EarlyReflections", early_reflections_get_desc, early_reflections_create },
-    { 92u, "PlateLite",        plate_lite_get_desc,      plate_lite_create      },
-    { 93u, "GatedReverb",      gated_reverb_get_desc,    gated_reverb_create    },
+    FX_ENTRY_SPEC(90u, "Reverb",           reverb_get_desc,          reverb_create, kReverbParamSpecs, REVERB_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(91u, "EarlyReflections", early_reflections_get_desc, early_reflections_create,
+                  kEarlyReflectionsParamSpecs, EARLY_REFLECTIONS_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(92u, "PlateLite",        plate_lite_get_desc,      plate_lite_create,
+                  kPlateLiteParamSpecs, PLATE_LITE_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(93u, "GatedReverb",      gated_reverb_get_desc,    gated_reverb_create,
+                  kGatedReverbParamSpecs, GATED_REVERB_PARAM_SPEC_COUNT),
 
     // Metering (100–109)
-    { 100u, "CorrelationMeter", correlation_meter_get_desc, correlation_meter_create },
-    { 101u, "MidSideMeter",     mid_side_meter_get_desc,     mid_side_meter_create   },
-    { 102u, "VectorScope",      vectorscope_meter_get_desc,  vectorscope_meter_create },
-    { 103u, "PeakRmsMeter",     peak_rms_meter_get_desc,     peak_rms_meter_create   },
-    { 104u, "LufsMeter",        lufs_meter_get_desc,         lufs_meter_create       },
-    { 105u, "SpectrogramMeter", spectrogram_meter_get_desc,  spectrogram_meter_create },
+    FX_ENTRY_SPEC(100u, "CorrelationMeter", correlation_meter_get_desc, correlation_meter_create,
+                  kCorrelationMeterParamSpecs, CORRELATION_METER_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(101u, "MidSideMeter",     mid_side_meter_get_desc,     mid_side_meter_create,
+                  kMidSideMeterParamSpecs, MID_SIDE_METER_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(102u, "VectorScope",      vectorscope_meter_get_desc,  vectorscope_meter_create,
+                  kVectorScopeParamSpecs, VECTOR_SCOPE_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(103u, "PeakRmsMeter",     peak_rms_meter_get_desc,     peak_rms_meter_create,
+                  kPeakRmsMeterParamSpecs, PEAK_RMS_METER_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(104u, "LufsMeter",        lufs_meter_get_desc,         lufs_meter_create,
+                  kLufsMeterParamSpecs, LUFS_METER_PARAM_SPEC_COUNT),
+    FX_ENTRY_SPEC(105u, "SpectrogramMeter", spectrogram_meter_get_desc,  spectrogram_meter_create,
+                  kSpectrogramMeterParamSpecs, SPECTROGRAM_METER_PARAM_SPEC_COUNT),
 };
+
+#undef FX_ENTRY
+#undef FX_ENTRY_SPEC
 
 static const int kBuiltinFxCount = (int)(sizeof(kBuiltinFxTable) / sizeof(kBuiltinFxTable[0]));
 

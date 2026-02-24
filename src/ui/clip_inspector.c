@@ -6,6 +6,7 @@
 #include "engine/sampler.h"
 #include "audio/media_registry.h"
 #include "ui/font.h"
+#include "ui/kit_viz_waveform_adapter.h"
 #include "ui/layout.h"
 #include "ui/render_utils.h"
 #include "ui/waveform_render.h"
@@ -28,6 +29,16 @@
 #define INSPECTOR_WAVE_HEADER_PAD 8
 #define INSPECTOR_WAVE_SECTION_GAP 10
 #define INSPECTOR_WAVE_HEIGHT 140
+
+static const char* waveform_result_label(DawKitVizWaveformResult result) {
+    switch (result) {
+        case DAW_KIT_VIZ_WAVEFORM_RENDERED: return "kit_viz";
+        case DAW_KIT_VIZ_WAVEFORM_INVALID_REQUEST: return "fallback:invalid";
+        case DAW_KIT_VIZ_WAVEFORM_MISSING_CACHE: return "fallback:cache";
+        case DAW_KIT_VIZ_WAVEFORM_SAMPLING_FAILED: return "fallback:sample";
+        default: return "fallback:unknown";
+    }
+}
 
 static EngineRuntimeConfig clip_inspector_active_config(const AppState* state) {
     EngineRuntimeConfig cfg;
@@ -953,21 +964,51 @@ void clip_inspector_render(SDL_Renderer* renderer, AppState* state, const ClipIn
             SDL_SetRenderDrawColor(renderer, panel_border.r, panel_border.g, panel_border.b, panel_border.a);
             SDL_RenderDrawRect(renderer, &layout->right_waveform_rect);
 
-            if (clip->media && clip->media->samples && clip->media->frame_count > 0) {
+            if (clip->media && clip->media->frame_count > 0) {
                 bool view_source = state->inspector.waveform.view_source;
                 uint64_t total = clip->media->frame_count;
                 uint64_t view_start = 0;
                 uint64_t view_frames = 0;
+                DawKitVizWaveformResult waveform_result = DAW_KIT_VIZ_WAVEFORM_INVALID_REQUEST;
                 if (clip_inspector_get_waveform_view(state, clip, clip_frames, &view_start, &view_frames)) {
                     if (source_path && source_path[0] != '\0') {
-                        waveform_render_view(renderer,
-                                             &state->waveform_cache,
-                                             clip->media,
-                                             source_path,
-                                             &layout->right_waveform_rect,
-                                             view_start,
-                                             view_frames,
-                                             wave_color);
+                        bool rendered = false;
+                        if (state->inspector.waveform.use_kit_viz_waveform) {
+                            DawKitVizWaveformRequest request = {
+                                .renderer = renderer,
+                                .cache = &state->waveform_cache,
+                                .clip = clip->media,
+                                .source_path = source_path,
+                                .target_rect = &layout->right_waveform_rect,
+                                .view_start_frame = view_start,
+                                .view_frame_count = view_frames,
+                                .color = wave_color,
+                            };
+                            waveform_result = daw_kit_viz_render_waveform_ex(&request);
+                            rendered = (waveform_result == DAW_KIT_VIZ_WAVEFORM_RENDERED);
+                        } else {
+                            waveform_result = DAW_KIT_VIZ_WAVEFORM_INVALID_REQUEST;
+                        }
+                        if (!rendered) {
+                            (void)waveform_render_view(renderer,
+                                                      &state->waveform_cache,
+                                                      clip->media,
+                                                      source_path,
+                                                      &layout->right_waveform_rect,
+                                                      view_start,
+                                                      view_frames,
+                                                      wave_color);
+                        }
+
+                        if (waveform_result != DAW_KIT_VIZ_WAVEFORM_RENDERED) {
+                            SDL_Color dbg = {130, 140, 160, 255};
+                            ui_draw_text(renderer,
+                                         layout->right_waveform_rect.x + 8,
+                                         layout->right_waveform_rect.y + 8,
+                                         waveform_result_label(waveform_result),
+                                         dbg,
+                                         0.8f);
+                        }
                     }
 
                     if (view_source) {

@@ -7,6 +7,7 @@
 #include "ui/font.h"
 #include "ui/render_utils.h"
 #include "ui/beat_grid.h"
+#include "ui/kit_viz_waveform_adapter.h"
 #include "ui/time_grid.h"
 #include "ui/timeline_waveform.h"
 #include "ui/waveform_render.h"
@@ -1135,7 +1136,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
                 SDL_RenderDrawRect(renderer, &clip_rect);
 
                 const char* media_path = engine_clip_get_media_path(clip);
-                if (clip->media && clip->media->samples && clip->media->frame_count > 0 &&
+                if (clip->media && clip->media->frame_count > 0 &&
                     media_path && media_path[0] != '\0') {
                     int wave_label_pad = 4;
                     float label_scale = 1.3f;
@@ -1167,14 +1168,30 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
                             }
                             if (visible_frames > 0) {
                                 SDL_Color wave_color = {WAVEFORM_COLOR_R, WAVEFORM_COLOR_G, WAVEFORM_COLOR_B, 200};
-                                waveform_render_view(renderer,
-                                                     &state->waveform_cache,
-                                                     clip->media,
-                                                     media_path,
-                                                     &waveform_rect,
-                                                     local_visible_start,
-                                                     visible_frames,
-                                                     wave_color);
+                                bool rendered = false;
+                                if (state->inspector.waveform.use_kit_viz_waveform) {
+                                    DawKitVizWaveformRequest request = {
+                                        .renderer = renderer,
+                                        .cache = &state->waveform_cache,
+                                        .clip = clip->media,
+                                        .source_path = media_path,
+                                        .target_rect = &waveform_rect,
+                                        .view_start_frame = local_visible_start,
+                                        .view_frame_count = visible_frames,
+                                        .color = wave_color,
+                                    };
+                                    rendered = daw_kit_viz_render_waveform(&request);
+                                }
+                                if (!rendered) {
+                                    waveform_render_view(renderer,
+                                                         &state->waveform_cache,
+                                                         clip->media,
+                                                         media_path,
+                                                         &waveform_rect,
+                                                         local_visible_start,
+                                                         visible_frames,
+                                                         wave_color);
+                                }
                             }
                         }
                     }
@@ -1247,7 +1264,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
                 const char* name = timeline_clip_display_name(state, clip, name_buf, sizeof(name_buf));
                 int label_padding = 6;
                 int label_width = clip_rect.w - label_padding * 2;
-                float scale_f = 1.3f;
+                float scale_f = 1.0f;
                 int label_y = clip_rect.y + 4;
                 if (label_width > 0) {
                     ui_draw_text_clipped(renderer,

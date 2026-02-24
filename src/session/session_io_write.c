@@ -55,6 +55,90 @@ static void json_write_string(FILE* file, const char* value) {
     fputc('"', file);
 }
 
+static void json_write_float(FILE* file, float value);
+
+static bool session_fx_has_param_ids(const SessionFxInstance* fx) {
+    if (!fx || fx->param_id_count == 0) {
+        return false;
+    }
+    for (uint32_t i = 0; i < fx->param_id_count && i < FX_MAX_PARAMS; ++i) {
+        if (fx->param_ids[i][0] != '\0') {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void session_write_param_id_fields(FILE* file, const SessionFxInstance* fx, int indent) {
+    if (!file || !session_fx_has_param_ids(fx)) {
+        return;
+    }
+    json_write_indent(file, indent);
+    fprintf(file, "\"param_ids\": [");
+    bool first = true;
+    for (uint32_t i = 0; i < fx->param_id_count && i < FX_MAX_PARAMS; ++i) {
+        if (fx->param_ids[i][0] == '\0') {
+            continue;
+        }
+        if (!first) {
+            fprintf(file, ", ");
+        }
+        json_write_string(file, fx->param_ids[i]);
+        first = false;
+    }
+    fprintf(file, "],\n");
+
+    json_write_indent(file, indent);
+    fprintf(file, "\"param_values_by_id\": {");
+    first = true;
+    for (uint32_t i = 0; i < fx->param_id_count && i < FX_MAX_PARAMS; ++i) {
+        if (fx->param_ids[i][0] == '\0') {
+            continue;
+        }
+        if (!first) {
+            fprintf(file, ", ");
+        }
+        json_write_string(file, fx->param_ids[i]);
+        fprintf(file, ": ");
+        json_write_float(file, fx->param_values_by_id[i]);
+        first = false;
+    }
+    fprintf(file, "},\n");
+
+    json_write_indent(file, indent);
+    fprintf(file, "\"param_modes_by_id\": {");
+    first = true;
+    for (uint32_t i = 0; i < fx->param_id_count && i < FX_MAX_PARAMS; ++i) {
+        if (fx->param_ids[i][0] == '\0') {
+            continue;
+        }
+        if (!first) {
+            fprintf(file, ", ");
+        }
+        json_write_string(file, fx->param_ids[i]);
+        fprintf(file, ": %d", (int)fx->param_modes_by_id[i]);
+        first = false;
+    }
+    fprintf(file, "},\n");
+
+    json_write_indent(file, indent);
+    fprintf(file, "\"param_beats_by_id\": {");
+    first = true;
+    for (uint32_t i = 0; i < fx->param_id_count && i < FX_MAX_PARAMS; ++i) {
+        if (fx->param_ids[i][0] == '\0') {
+            continue;
+        }
+        if (!first) {
+            fprintf(file, ", ");
+        }
+        json_write_string(file, fx->param_ids[i]);
+        fprintf(file, ": ");
+        json_write_float(file, fx->param_beats_by_id[i]);
+        first = false;
+    }
+    fprintf(file, "},\n");
+}
+
 static void json_write_float(FILE* file, float value) {
     float corrected = fabsf(value) < 1e-6f ? 0.0f : value;
     fprintf(file, "%.6f", corrected);
@@ -363,6 +447,7 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
             json_write_float(file, fx->param_beats[p]);
         }
         fprintf(file, "],\n");
+        session_write_param_id_fields(file, fx, 3);
         json_write_indent(file, 3);
         fprintf(file, "\"param_count\": %u\n", fx->param_count);
         json_write_indent(file, 2);
@@ -555,6 +640,7 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
                 json_write_float(file, fx->param_beats[p]);
             }
             fprintf(file, "],\n");
+            session_write_param_id_fields(file, fx, 5);
             json_write_indent(file, 5);
             fprintf(file, "\"param_count\": %u\n", fx->param_count);
             json_write_indent(file, 4);

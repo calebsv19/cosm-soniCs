@@ -10,6 +10,26 @@
 #include <stdlib.h>
 #include <string.h>
 
+// Stores spec-derived parameter ids and values for stable session serialization.
+static void session_fx_capture_param_ids(SessionFxInstance* dst_fx,
+                                         const EffectParamSpec* specs,
+                                         uint32_t spec_count) {
+    if (!dst_fx || !specs || spec_count == 0) {
+        return;
+    }
+    uint32_t count = spec_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : spec_count;
+    dst_fx->param_id_count = count;
+    for (uint32_t p = 0; p < count; ++p) {
+        const EffectParamSpec* spec = &specs[p];
+        const char* id = spec->id ? spec->id : "";
+        strncpy(dst_fx->param_ids[p], id, sizeof(dst_fx->param_ids[p]) - 1);
+        dst_fx->param_ids[p][sizeof(dst_fx->param_ids[p]) - 1] = '\0';
+        dst_fx->param_values_by_id[p] = dst_fx->params[p];
+        dst_fx->param_modes_by_id[p] = dst_fx->param_mode[p];
+        dst_fx->param_beats_by_id[p] = dst_fx->param_beats[p];
+    }
+}
+
 static void copy_string(char* dst, size_t dst_len, const char* src) {
     if (!dst || dst_len == 0) {
         return;
@@ -433,6 +453,11 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
             for (int i = 0; i < fx_count; ++i) {
                 SessionFxInstance* dst_fx = &fx[i];
                 const FxMasterInstanceInfo* src = &track_fx.items[i];
+                const EffectParamSpec* specs = NULL;
+                uint32_t spec_count = 0;
+                if (state->engine) {
+                    engine_fx_registry_get_param_specs(state->engine, src->type, &specs, &spec_count);
+                }
                 dst_fx->type = src->type;
                 dst_fx->enabled = src->enabled;
                 dst_fx->param_count = src->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : src->param_count;
@@ -440,6 +465,9 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
                     dst_fx->params[p] = src->params[p];
                     dst_fx->param_mode[p] = src->param_mode[p];
                     dst_fx->param_beats[p] = src->param_beats[p];
+                }
+                if (specs && spec_count > 0) {
+                    session_fx_capture_param_ids(dst_fx, specs, spec_count);
                 }
                 dst_fx->name[0] = '\0';
                 if (state->engine) {
@@ -472,6 +500,11 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
         for (int i = 0; i < count; ++i) {
             SessionFxInstance* dst = &fx[i];
             const FxMasterInstanceInfo* src = &snap.items[i];
+            const EffectParamSpec* specs = NULL;
+            uint32_t spec_count = 0;
+            if (state->engine) {
+                engine_fx_registry_get_param_specs(state->engine, src->type, &specs, &spec_count);
+            }
             dst->type = src->type;
             dst->enabled = src->enabled;
             dst->param_count = src->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : src->param_count;
@@ -479,6 +512,9 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
                 dst->params[p] = src->params[p];
                 dst->param_mode[p] = src->param_mode[p];
                 dst->param_beats[p] = src->param_beats[p];
+            }
+            if (specs && spec_count > 0) {
+                session_fx_capture_param_ids(dst, specs, spec_count);
             }
             dst->name[0] = '\0';
             if (state->engine) {

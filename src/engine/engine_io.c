@@ -1,6 +1,7 @@
 #include "engine/engine_internal.h"
 
 #include "audio/wav_writer.h"
+#include "core_time.h"
 
 #include <SDL2/SDL.h>
 #include <math.h>
@@ -15,15 +16,46 @@ bool engine_load_wav(Engine* engine, const char* path) {
     return engine_add_clip(engine, path, 0);
 }
 
-bool engine_bounce_range(Engine* engine,
-                         uint64_t start_frame,
-                         uint64_t end_frame,
-                         const char* out_path,
-                         void (*progress_cb)(uint64_t done_frames, uint64_t total_frames, void* user),
-                         void* user) {
-    if (!engine || !out_path || end_frame <= start_frame) {
+// Restores engine running and transport state after offline rendering.
+static bool restore_engine_after_bounce(Engine* engine, bool was_running, bool was_playing, uint64_t prev_transport) {
+    if (!was_running) {
+        return true;
+    }
+    if (!engine_start(engine)) {
         return false;
     }
+    engine_transport_seek(engine, prev_transport);
+    if (was_playing) {
+        engine_transport_play(engine);
+    }
+    return true;
+}
+
+void engine_bounce_buffer_free(EngineBounceBuffer* buffer) {
+    if (!buffer) {
+        return;
+    }
+    free(buffer->data);
+    buffer->data = NULL;
+    buffer->frame_count = 0;
+    buffer->channels = 0;
+    buffer->sample_rate = 0;
+}
+
+bool engine_bounce_range_to_buffer(Engine* engine,
+                                   uint64_t start_frame,
+                                   uint64_t end_frame,
+                                   void (*progress_cb)(uint64_t done_frames, uint64_t total_frames, void* user),
+                                   void* user,
+                                   EngineBounceBuffer* out_buffer) {
+    if (!engine || !out_buffer || end_frame <= start_frame) {
+        return false;
+    }
+    out_buffer->data = NULL;
+    out_buffer->frame_count = 0;
+    out_buffer->channels = 0;
+    out_buffer->sample_rate = 0;
+
     int channels = engine_graph_get_channels(engine->graph);
     int sample_rate = engine->config.sample_rate;
     if (channels <= 0 || sample_rate <= 0) {
@@ -44,7 +76,7 @@ bool engine_bounce_range(Engine* engine,
         engine_stop(engine);
     }
 
-    engine_rebuild_sources(engine);
+    engine_request_rebuild_sources(engine);
     engine_graph_reset(engine->graph);
 
     int block = engine->config.block_size > 0 ? engine->config.block_size : 512;
@@ -52,13 +84,9 @@ bool engine_bounce_range(Engine* engine,
     float* buffer = (float*)calloc((size_t)total_frames * (size_t)channels, sizeof(float));
     float* track_buffer = (float*)calloc((size_t)offline_block * (size_t)channels, sizeof(float));
     if (!buffer || !track_buffer) {
-        if (was_running) {
-            engine_start(engine);
-            engine_transport_seek(engine, prev_transport);
-            if (was_playing) {
-                engine_transport_play(engine);
-            }
-        }
+        free(buffer);
+        free(track_buffer);
+        restore_engine_after_bounce(engine, was_running, was_playing, prev_transport);
         return false;
     }
 
@@ -76,12 +104,14 @@ bool engine_bounce_range(Engine* engine,
         }
     }
 
-    // Normalize to prevent clipping; also emit a float WAV for fidelity/debug.
+    // Normalize to prevent clipping in downstream exports.
     float peak = 0.0f;
     size_t total_samples = (size_t)total_frames * (size_t)channels;
     for (size_t i = 0; i < total_samples; ++i) {
         float a = fabsf(buffer[i]);
-        if (a > peak) peak = a;
+        if (a > peak) {
+            peak = a;
+        }
     }
     float norm = (peak > 1.0f) ? (1.0f / peak) : 1.0f;
     if (norm < 1.0f) {
@@ -90,27 +120,51 @@ bool engine_bounce_range(Engine* engine,
         }
     }
 
+    free(track_buffer);
+
+    if (!restore_engine_after_bounce(engine, was_running, was_playing, prev_transport)) {
+        free(buffer);
+        return false;
+    }
+
+    out_buffer->data = buffer;
+    out_buffer->frame_count = total_frames;
+    out_buffer->channels = channels;
+    out_buffer->sample_rate = sample_rate;
+    return true;
+}
+
+bool engine_bounce_range(Engine* engine,
+                         uint64_t start_frame,
+                         uint64_t end_frame,
+                         const char* out_path,
+                         void (*progress_cb)(uint64_t done_frames, uint64_t total_frames, void* user),
+                         void* user) {
+    if (!engine || !out_path || end_frame <= start_frame) {
+        return false;
+    }
+    EngineBounceBuffer bounce = {0};
+    if (!engine_bounce_range_to_buffer(engine, start_frame, end_frame, progress_cb, user, &bounce)) {
+        return false;
+    }
+
     // Write a float WAV alongside the PCM16 for comparison.
     char float_path[512];
     snprintf(float_path, sizeof(float_path), "%s.f32.wav", out_path);
 
-    bool ok_float = wav_write_f32(float_path, buffer, total_frames, channels, sample_rate);
-    uint32_t dither_seed = (uint32_t)(SDL_GetPerformanceCounter() & 0xffffffffu);
-    bool ok = wav_write_pcm16_dithered(out_path, buffer, total_frames, channels, sample_rate, dither_seed);
+    bool ok_float = wav_write_f32(float_path,
+                                  bounce.data,
+                                  bounce.frame_count,
+                                  bounce.channels,
+                                  bounce.sample_rate);
+    uint32_t dither_seed = (uint32_t)(core_time_now_ns() & 0xffffffffu);
+    bool ok = wav_write_pcm16_dithered(out_path,
+                                       bounce.data,
+                                       bounce.frame_count,
+                                       bounce.channels,
+                                       bounce.sample_rate,
+                                       dither_seed);
     (void)ok_float;
-    free(buffer);
-    free(track_buffer);
-
-    if (was_running) {
-        if (engine_start(engine)) {
-            engine_transport_seek(engine, prev_transport);
-            if (was_playing) {
-                engine_transport_play(engine);
-            }
-        } else {
-            ok = false;
-        }
-    }
-
+    engine_bounce_buffer_free(&bounce);
     return ok;
 }
