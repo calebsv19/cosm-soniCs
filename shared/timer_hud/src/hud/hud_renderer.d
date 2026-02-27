@@ -80,7 +80,6 @@ build/../shared/timer_hud/src/hud/hud_renderer.o: \
   ../shared/timer_hud/include/timer_hud/timer_hud_backend.h \
   ../shared/timer_hud/src/hud/../core/timer_manager.h \
   ../shared/timer_hud/src/hud/../core/timer.h \
-  ../shared/timer_hud/src/hud/../core/time_utils.h \
   ../shared/timer_hud/include/timer_hud/settings_loader.h
 ../shared/vk_renderer/include/vk_renderer_sdl.h:
 ../shared/vk_renderer/include/vk_renderer.h:
@@ -163,5 +162,4 @@ build/../shared/timer_hud/src/hud/hud_renderer.o: \
 ../shared/timer_hud/include/timer_hud/timer_hud_backend.h:
 ../shared/timer_hud/src/hud/../core/timer_manager.h:
 ../shared/timer_hud/src/hud/../core/timer.h:
-../shared/timer_hud/src/hud/../core/time_utils.h:
 ../shared/timer_hud/include/timer_hud/settings_loader.h:

@@ -1,10 +1,25 @@
 #include "ui/time_grid.h"
 
 #include "ui/font.h"
+#include "ui/shared_theme_font_adapter.h"
 
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+
+static void resolve_grid_theme(DawThemePalette* palette) {
+    if (!palette) {
+        return;
+    }
+    if (!daw_shared_theme_resolve_palette(palette)) {
+        *palette = (DawThemePalette){
+            .pane_border = {60, 60, 72, 255},
+            .text_muted = {150, 150, 160, 255},
+            .grid_minor = {65, 65, 85, 255},
+            .grid_major = {80, 82, 115, 255}
+        };
+    }
+}
 
 // Initializes a time grid cache to empty state.
 void time_grid_cache_init(TimeGridCache* cache) {
@@ -126,16 +141,22 @@ void time_grid_cache_draw(SDL_Renderer* renderer,
                           int top,
                           int height,
                           const TimeGridCache* cache) {
+    DawThemePalette palette = {0};
     if (!renderer || !cache || !cache->active) {
         return;
     }
-    SDL_SetRenderDrawColor(renderer, 60, 60, 72, 255);
+    resolve_grid_theme(&palette);
+    SDL_SetRenderDrawColor(renderer,
+                           palette.pane_border.r,
+                           palette.pane_border.g,
+                           palette.pane_border.b,
+                           palette.pane_border.a);
     SDL_Rect border = {x0, top, width, height};
     SDL_RenderDrawRect(renderer, &border);
 
-    SDL_Color label_color = {150, 150, 160, 255};
-    SDL_Color minor_line = {65, 65, 85, 255};
-    SDL_Color major_line = {80, 82, 115, 255};
+    SDL_Color label_color = palette.text_muted;
+    SDL_Color minor_line = palette.grid_minor;
+    SDL_Color major_line = palette.grid_major;
 
     if (cache->show_all_lines) {
         SDL_SetRenderDrawColor(renderer, minor_line.r, minor_line.g, minor_line.b, minor_line.a);

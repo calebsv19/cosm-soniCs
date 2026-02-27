@@ -4,9 +4,40 @@
 #include "engine/engine.h"
 #include "ui/effects_panel_meter_views.h"
 #include "ui/font.h"
+#include "ui/shared_theme_font_adapter.h"
 
 #include <math.h>
 #include <stdio.h>
+
+static void resolve_meter_detail_theme(SDL_Color* border,
+                                       SDL_Color* fill,
+                                       SDL_Color* left_fill,
+                                       SDL_Color* right_fill,
+                                       SDL_Color* label_color,
+                                       SDL_Color* dim_color,
+                                       SDL_Color* btn_on,
+                                       SDL_Color* btn_off) {
+    DawThemePalette theme = {0};
+    if (daw_shared_theme_resolve_palette(&theme)) {
+        if (border) *border = theme.pane_border;
+        if (fill) *fill = theme.inspector_fill;
+        if (left_fill) *left_fill = theme.timeline_fill;
+        if (right_fill) *right_fill = theme.inspector_fill;
+        if (label_color) *label_color = theme.text_primary;
+        if (dim_color) *dim_color = theme.text_muted;
+        if (btn_on) *btn_on = theme.control_active_fill;
+        if (btn_off) *btn_off = theme.control_fill;
+        return;
+    }
+    if (border) *border = (SDL_Color){70, 75, 92, 255};
+    if (fill) *fill = (SDL_Color){24, 26, 32, 255};
+    if (left_fill) *left_fill = (SDL_Color){26, 28, 36, 255};
+    if (right_fill) *right_fill = (SDL_Color){22, 24, 30, 255};
+    if (label_color) *label_color = (SDL_Color){210, 210, 220, 255};
+    if (dim_color) *dim_color = (SDL_Color){150, 160, 180, 255};
+    if (btn_on) *btn_on = (SDL_Color){90, 120, 170, 220};
+    if (btn_off) *btn_off = (SDL_Color){40, 44, 54, 220};
+}
 
 static float clampf(float v, float lo, float hi) {
     if (v < lo) return lo;
@@ -339,10 +370,15 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
         return;
     }
 
-    SDL_Color border = {70, 75, 92, 255};
-    SDL_Color fill = {24, 26, 32, 255};
-    SDL_Color label_color = {210, 210, 220, 255};
-    SDL_Color dim_color = {150, 160, 180, 255};
+    SDL_Color border = {0};
+    SDL_Color fill = {0};
+    SDL_Color left_fill = {0};
+    SDL_Color right_fill = {0};
+    SDL_Color label_color = {0};
+    SDL_Color dim_color = {0};
+    SDL_Color btn_on = {0};
+    SDL_Color btn_off = {0};
+    resolve_meter_detail_theme(&border, &fill, &left_fill, &right_fill, &label_color, &dim_color, &btn_on, &btn_off);
 
     SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
     SDL_RenderFillRect(renderer, &rect);
@@ -362,12 +398,12 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
         right_rect.w = 0;
     }
 
-    SDL_SetRenderDrawColor(renderer, 26, 28, 36, 255);
+    SDL_SetRenderDrawColor(renderer, left_fill.r, left_fill.g, left_fill.b, left_fill.a);
     SDL_RenderFillRect(renderer, &left_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &left_rect);
 
-    SDL_SetRenderDrawColor(renderer, 22, 24, 30, 255);
+    SDL_SetRenderDrawColor(renderer, right_fill.r, right_fill.g, right_fill.b, right_fill.a);
     SDL_RenderFillRect(renderer, &right_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &right_rect);
@@ -566,8 +602,6 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
     }
 
     if (show_ms_toggle) {
-        SDL_Color btn_on = {90, 120, 170, 220};
-        SDL_Color btn_off = {40, 44, 54, 220};
         bool ms_active = panel->meter_scope_mode == FX_METER_SCOPE_MID_SIDE;
         SDL_Color ms_fill = ms_active ? btn_on : btn_off;
         SDL_Color lr_fill = ms_active ? btn_off : btn_on;
@@ -587,8 +621,6 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
     }
 
     if (show_lufs_toggle) {
-        SDL_Color btn_on = {90, 120, 170, 220};
-        SDL_Color btn_off = {40, 44, 54, 220};
         bool int_active = panel->meter_lufs_mode == FX_METER_LUFS_INTEGRATED;
         bool short_active = panel->meter_lufs_mode == FX_METER_LUFS_SHORT_TERM;
         SDL_Color int_fill = int_active ? btn_on : btn_off;
@@ -616,8 +648,6 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
     }
 
     if (show_spectrogram_toggle) {
-        SDL_Color btn_on = {90, 120, 170, 220};
-        SDL_Color btn_off = {40, 44, 54, 220};
         bool wb_active = panel->meter_spectrogram_mode == FX_METER_SPECTROGRAM_WHITE_BLACK;
         bool bw_active = panel->meter_spectrogram_mode == FX_METER_SPECTROGRAM_BLACK_WHITE;
         SDL_Color wb_fill = wb_active ? btn_on : btn_off;

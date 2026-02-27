@@ -1,0 +1,49 @@
+name: DAW Loop Gates
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/**'
+      - 'include/**'
+      - 'SDLApp/**'
+      - 'tools/run_loop_gates.sh'
+      - 'Makefile'
+      - '.github/workflows/loop-gates.yml'
+
+jobs:
+  loop-gates:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: daw
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build DAW
+        run: make
+
+      - name: Run Gate Harness
+        id: gates
+        shell: bash
+        run: |
+          set +e
+          RUN_SECONDS=6 ./tools/run_loop_gates.sh
+          gate_exit=$?
+          echo "gate_exit=$gate_exit" >> "$GITHUB_OUTPUT"
+          set -e
+          if [ "$gate_exit" -eq 1 ]; then
+            echo "Gate harness reported failure"
+            exit 1
+          fi
+          if [ "$gate_exit" -eq 2 ]; then
+            echo "Gate harness inconclusive in CI environment"
+          fi
+
+      - name: Upload Gate Logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daw-loop-gate-logs
+          path: /tmp/daw_loop_gates_*

@@ -42,6 +42,14 @@ static void timer_hud_draw_rect(int x, int y, int w, int h, TimerHUDColor color)
     SDL_RenderFillRect(g_timer_hud_renderer, &rect);
 }
 
+// timer_hud_draw_line draws line segments for TimerHUD graph mode.
+static void timer_hud_draw_line(int x1, int y1, int x2, int y2, TimerHUDColor color) {
+    if (!g_timer_hud_renderer) return;
+    SDL_SetRenderDrawBlendMode(g_timer_hud_renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(g_timer_hud_renderer, color.r, color.g, color.b, color.a);
+    SDL_RenderDrawLine(g_timer_hud_renderer, x1, y1, x2, y2);
+}
+
 // timer_hud_draw_text draws HUD text using the DAW font renderer.
 static void timer_hud_draw_text(const char* text, int x, int y, int align_flags, TimerHUDColor color) {
     if (!g_timer_hud_renderer || !text) return;
@@ -65,6 +73,7 @@ static const TimerHUDBackend g_timer_hud_backend = {
     .measure_text = timer_hud_measure_text,
     .get_line_height = timer_hud_line_height,
     .draw_rect = timer_hud_draw_rect,
+    .draw_line = timer_hud_draw_line,
     .draw_text = timer_hud_draw_text,
     .hud_padding = 6,
     .hud_spacing = 4,

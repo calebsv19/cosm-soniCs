@@ -3,9 +3,44 @@
 #include "ui/font.h"
 #include "ui/kit_viz_fx_preview_adapter.h"
 #include "ui/render_utils.h"
+#include "ui/shared_theme_font_adapter.h"
 
 #include <math.h>
 #include <stdio.h>
+
+static void resolve_preview_shell_theme(SDL_Color* bg,
+                                        SDL_Color* plot_bg,
+                                        SDL_Color* border,
+                                        SDL_Color* grid) {
+    DawThemePalette theme = {0};
+    if (daw_shared_theme_resolve_palette(&theme)) {
+        if (bg) {
+            *bg = theme.inspector_fill;
+        }
+        if (plot_bg) {
+            *plot_bg = theme.timeline_fill;
+        }
+        if (border) {
+            *border = theme.pane_border;
+        }
+        if (grid) {
+            *grid = theme.grid_major;
+        }
+        return;
+    }
+    if (bg) {
+        *bg = (SDL_Color){22, 24, 30, 255};
+    }
+    if (plot_bg) {
+        *plot_bg = (SDL_Color){26, 28, 36, 255};
+    }
+    if (border) {
+        *border = (SDL_Color){70, 76, 92, 255};
+    }
+    if (grid) {
+        *grid = (SDL_Color){50, 54, 66, 255};
+    }
+}
 
 // effects_slot_preview_has_gr returns true if the FX type emits gain reduction scope samples.
 bool effects_slot_preview_has_gr(FxTypeId type_id) {
@@ -566,10 +601,12 @@ static void effects_slot_preview_render_history(SDL_Renderer* renderer,
     if (!renderer || !preview || !rect || rect->w <= 0 || rect->h <= 0) {
         return;
     }
-    SDL_Color bg = {22, 24, 30, 255};
-    SDL_Color border = {70, 76, 92, 255};
+    SDL_Color bg = {0};
+    SDL_Color plot_bg = {0};
+    SDL_Color border = {0};
     SDL_Color line = {90, 150, 210, 220};
-    SDL_Color grid = {50, 54, 66, 255};
+    SDL_Color grid = {0};
+    resolve_preview_shell_theme(&bg, &plot_bg, &border, &grid);
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -588,7 +625,7 @@ static void effects_slot_preview_render_history(SDL_Renderer* renderer,
     };
     if (plot_rect.w < 0) plot_rect.w = 0;
     if (plot_rect.h < 0) plot_rect.h = 0;
-    SDL_SetRenderDrawColor(renderer, 26, 28, 36, 255);
+    SDL_SetRenderDrawColor(renderer, plot_bg.r, plot_bg.g, plot_bg.b, plot_bg.a);
     SDL_RenderFillRect(renderer, &plot_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &plot_rect);
@@ -691,11 +728,13 @@ static void effects_slot_preview_render_curve(SDL_Renderer* renderer,
     if (!renderer || !slot || !rect || rect->w <= 0 || rect->h <= 0) {
         return;
     }
-    SDL_Color bg = {22, 24, 30, 255};
-    SDL_Color border = {70, 76, 92, 255};
+    SDL_Color bg = {0};
+    SDL_Color plot_bg = {0};
+    SDL_Color border = {0};
     SDL_Color line = {110, 190, 240, 220};
-    SDL_Color grid = {50, 54, 66, 255};
+    SDL_Color grid = {0};
     SDL_Color unity = {90, 100, 120, 200};
+    resolve_preview_shell_theme(&bg, &plot_bg, &border, &grid);
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -714,7 +753,7 @@ static void effects_slot_preview_render_curve(SDL_Renderer* renderer,
     };
     if (plot_rect.w < 0) plot_rect.w = 0;
     if (plot_rect.h < 0) plot_rect.h = 0;
-    SDL_SetRenderDrawColor(renderer, 26, 28, 36, 255);
+    SDL_SetRenderDrawColor(renderer, plot_bg.r, plot_bg.g, plot_bg.b, plot_bg.a);
     SDL_RenderFillRect(renderer, &plot_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &plot_rect);
@@ -799,12 +838,14 @@ static void effects_slot_preview_render_eq(SDL_Renderer* renderer,
     if (!renderer || !slot || !rect || rect->w <= 0 || rect->h <= 0) {
         return;
     }
-    SDL_Color bg = {22, 24, 30, 255};
-    SDL_Color border = {70, 76, 92, 255};
+    SDL_Color bg = {0};
+    SDL_Color plot_bg = {0};
+    SDL_Color border = {0};
     SDL_Color line = {110, 190, 240, 220};
     SDL_Color line_alt = {130, 120, 220, 200};
-    SDL_Color grid = {50, 54, 66, 255};
+    SDL_Color grid = {0};
     SDL_Color zero = {90, 100, 120, 200};
+    resolve_preview_shell_theme(&bg, &plot_bg, &border, &grid);
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -823,7 +864,7 @@ static void effects_slot_preview_render_eq(SDL_Renderer* renderer,
     };
     if (plot_rect.w < 0) plot_rect.w = 0;
     if (plot_rect.h < 0) plot_rect.h = 0;
-    SDL_SetRenderDrawColor(renderer, 26, 28, 36, 255);
+    SDL_SetRenderDrawColor(renderer, plot_bg.r, plot_bg.g, plot_bg.b, plot_bg.a);
     SDL_RenderFillRect(renderer, &plot_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &plot_rect);
@@ -963,10 +1004,12 @@ static void effects_slot_preview_render_lfo(SDL_Renderer* renderer,
     if (!renderer || !slot || !rect || rect->w <= 0 || rect->h <= 0) {
         return;
     }
-    SDL_Color bg = {22, 24, 30, 255};
-    SDL_Color border = {70, 76, 92, 255};
+    SDL_Color bg = {0};
+    SDL_Color plot_bg = {0};
+    SDL_Color border = {0};
     SDL_Color line = {110, 190, 240, 220};
-    SDL_Color grid = {50, 54, 66, 255};
+    SDL_Color grid = {0};
+    resolve_preview_shell_theme(&bg, &plot_bg, &border, &grid);
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -985,7 +1028,7 @@ static void effects_slot_preview_render_lfo(SDL_Renderer* renderer,
     };
     if (plot_rect.w < 0) plot_rect.w = 0;
     if (plot_rect.h < 0) plot_rect.h = 0;
-    SDL_SetRenderDrawColor(renderer, 26, 28, 36, 255);
+    SDL_SetRenderDrawColor(renderer, plot_bg.r, plot_bg.g, plot_bg.b, plot_bg.a);
     SDL_RenderFillRect(renderer, &plot_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &plot_rect);
@@ -1120,11 +1163,13 @@ static void effects_slot_preview_render_reverb(SDL_Renderer* renderer,
     if (!renderer || !slot || !rect || rect->w <= 0 || rect->h <= 0) {
         return;
     }
-    SDL_Color bg = {22, 24, 30, 255};
-    SDL_Color border = {70, 76, 92, 255};
+    SDL_Color bg = {0};
+    SDL_Color plot_bg = {0};
+    SDL_Color border = {0};
     SDL_Color line = {110, 190, 240, 220};
     SDL_Color line_dim = {120, 120, 200, 180};
-    SDL_Color grid = {50, 54, 66, 255};
+    SDL_Color grid = {0};
+    resolve_preview_shell_theme(&bg, &plot_bg, &border, &grid);
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -1143,7 +1188,7 @@ static void effects_slot_preview_render_reverb(SDL_Renderer* renderer,
     };
     if (plot_rect.w < 0) plot_rect.w = 0;
     if (plot_rect.h < 0) plot_rect.h = 0;
-    SDL_SetRenderDrawColor(renderer, 26, 28, 36, 255);
+    SDL_SetRenderDrawColor(renderer, plot_bg.r, plot_bg.g, plot_bg.b, plot_bg.a);
     SDL_RenderFillRect(renderer, &plot_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &plot_rect);
@@ -1311,11 +1356,13 @@ static void effects_slot_preview_render_delay(SDL_Renderer* renderer,
     if (!renderer || !slot || !rect || rect->w <= 0 || rect->h <= 0) {
         return;
     }
-    SDL_Color bg = {22, 24, 30, 255};
-    SDL_Color border = {70, 76, 92, 255};
+    SDL_Color bg = {0};
+    SDL_Color plot_bg = {0};
+    SDL_Color border = {0};
     SDL_Color line = {110, 190, 240, 220};
     SDL_Color line_dim = {120, 120, 200, 180};
-    SDL_Color grid = {50, 54, 66, 255};
+    SDL_Color grid = {0};
+    resolve_preview_shell_theme(&bg, &plot_bg, &border, &grid);
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -1334,7 +1381,7 @@ static void effects_slot_preview_render_delay(SDL_Renderer* renderer,
     };
     if (plot_rect.w < 0) plot_rect.w = 0;
     if (plot_rect.h < 0) plot_rect.h = 0;
-    SDL_SetRenderDrawColor(renderer, 26, 28, 36, 255);
+    SDL_SetRenderDrawColor(renderer, plot_bg.r, plot_bg.g, plot_bg.b, plot_bg.a);
     SDL_RenderFillRect(renderer, &plot_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &plot_rect);
@@ -1663,8 +1710,13 @@ void effects_slot_preview_render(SDL_Renderer* renderer,
         }
         ui_set_clip_rect(renderer, had_clip ? &prev_clip : NULL);
     } else {
-        SDL_Color border = {80, 85, 100, 200};
-        SDL_SetRenderDrawColor(renderer, 30, 32, 40, 255);
+        SDL_Color bg = {0};
+        SDL_Color plot_bg = {0};
+        SDL_Color border = {0};
+        SDL_Color grid = {0};
+        resolve_preview_shell_theme(&bg, &plot_bg, &border, &grid);
+        border.a = 200;
+        SDL_SetRenderDrawColor(renderer, plot_bg.r, plot_bg.g, plot_bg.b, plot_bg.a);
         SDL_RenderFillRect(renderer, preview_rect);
         SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
         SDL_RenderDrawRect(renderer, preview_rect);

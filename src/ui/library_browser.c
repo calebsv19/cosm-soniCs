@@ -3,6 +3,7 @@
 #include "audio/media_clip.h"
 #include "audio/media_registry.h"
 #include "ui/font.h"
+#include "ui/shared_theme_font_adapter.h"
 
 #include <dirent.h>
 #include <string.h>
@@ -14,6 +15,20 @@
 #endif
 
 #include <stdio.h>
+
+static void resolve_library_theme(DawThemePalette* palette) {
+    if (!palette) {
+        return;
+    }
+    if (!daw_shared_theme_resolve_palette(palette)) {
+        *palette = (DawThemePalette){
+            .text_primary = {200, 200, 210, 255},
+            .selection_fill = {110, 140, 190, 200},
+            .control_hover_fill = {70, 95, 160, 160},
+            .text_muted = {180, 184, 198, 255}
+        };
+    }
+}
 
 void library_browser_init(LibraryBrowser* browser, const char* directory) {
     if (!browser) {
@@ -149,12 +164,14 @@ void library_browser_scan(LibraryBrowser* browser, MediaRegistry* registry) {
 }
 
 void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* renderer, const SDL_Rect* rect, int line_height) {
+    DawThemePalette theme = {0};
     if (!browser || !renderer || !rect) {
         return;
     }
-    SDL_Color text_color = {200, 200, 210, 255};
-    SDL_Color highlight_color = {70, 95, 160, 160};
-    SDL_Color selected_color = {110, 140, 190, 200};
+    resolve_library_theme(&theme);
+    SDL_Color text_color = theme.text_primary;
+    SDL_Color highlight_color = theme.control_hover_fill;
+    SDL_Color selected_color = theme.selection_fill;
     int y = rect->y + 32;
     float text_scale = 1.0f;
     for (int i = 0; i < browser->count; ++i) {
@@ -193,7 +210,11 @@ void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* rendere
             int cursor_x = rect->x + 16 + ui_measure_text_width(temp, text_scale);
             int cursor_y = y;
             int cursor_h = ui_font_line_height(text_scale);
-            SDL_SetRenderDrawColor(renderer, 240, 240, 250, 255);
+            SDL_SetRenderDrawColor(renderer,
+                                   theme.text_muted.r,
+                                   theme.text_muted.g,
+                                   theme.text_muted.b,
+                                   theme.text_muted.a);
             SDL_RenderDrawLine(renderer, cursor_x, cursor_y, cursor_x, cursor_y + cursor_h);
         }
         y += line_height;

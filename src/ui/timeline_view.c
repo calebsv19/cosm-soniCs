@@ -8,6 +8,7 @@
 #include "ui/render_utils.h"
 #include "ui/beat_grid.h"
 #include "ui/kit_viz_waveform_adapter.h"
+#include "ui/shared_theme_font_adapter.h"
 #include "ui/time_grid.h"
 #include "ui/timeline_waveform.h"
 #include "ui/waveform_render.h"
@@ -21,6 +22,130 @@
 #define MOVE_GHOST_ALPHA 140
 #define TEMPO_OVERLAY_MIN_BPM 20.0
 #define TEMPO_OVERLAY_MAX_BPM 200.0
+
+typedef struct TimelineTheme {
+    SDL_Color bg;
+    SDL_Color header_fill;
+    SDL_Color header_border;
+    SDL_Color text;
+    SDL_Color text_muted;
+    SDL_Color button_fill;
+    SDL_Color button_hover_fill;
+    SDL_Color button_disabled_fill;
+    SDL_Color button_border;
+    SDL_Color lane_header_fill;
+    SDL_Color lane_header_fill_active;
+    SDL_Color lane_header_border;
+    SDL_Color clip_fill;
+    SDL_Color clip_border;
+    SDL_Color clip_border_selected;
+    SDL_Color clip_text;
+    SDL_Color waveform;
+    SDL_Color loop_fill;
+    SDL_Color loop_border;
+    SDL_Color loop_handle_start;
+    SDL_Color loop_handle_end;
+    SDL_Color loop_handle_border;
+    SDL_Color loop_label;
+    SDL_Color playhead;
+    SDL_Color toggle_active_loop;
+    SDL_Color toggle_active_snap;
+    SDL_Color toggle_active_auto;
+    SDL_Color toggle_active_tempo;
+    SDL_Color toggle_active_label;
+} TimelineTheme;
+
+static SDL_Color mix_color(SDL_Color base, SDL_Color accent, float accent_weight) {
+    if (accent_weight < 0.0f) {
+        accent_weight = 0.0f;
+    }
+    if (accent_weight > 1.0f) {
+        accent_weight = 1.0f;
+    }
+    float base_weight = 1.0f - accent_weight;
+    SDL_Color out = {
+        (Uint8)lroundf((float)base.r * base_weight + (float)accent.r * accent_weight),
+        (Uint8)lroundf((float)base.g * base_weight + (float)accent.g * accent_weight),
+        (Uint8)lroundf((float)base.b * base_weight + (float)accent.b * accent_weight),
+        (Uint8)lroundf((float)base.a * base_weight + (float)accent.a * accent_weight)
+    };
+    return out;
+}
+
+static void resolve_timeline_theme(TimelineTheme* out_theme) {
+    DawThemePalette theme = {0};
+    if (!out_theme) {
+        return;
+    }
+    if (daw_shared_theme_resolve_palette(&theme)) {
+        out_theme->bg = theme.timeline_fill;
+        out_theme->header_fill = theme.control_fill;
+        out_theme->header_border = theme.pane_border;
+        out_theme->text = theme.text_primary;
+        out_theme->text_muted = theme.text_muted;
+        out_theme->button_fill = theme.control_fill;
+        out_theme->button_hover_fill = theme.control_hover_fill;
+        out_theme->button_disabled_fill = theme.slider_track;
+        out_theme->button_border = theme.control_border;
+        out_theme->lane_header_fill = theme.control_fill;
+        out_theme->lane_header_fill_active = theme.control_hover_fill;
+        out_theme->lane_header_border = theme.control_border;
+        out_theme->clip_fill = mix_color(theme.timeline_fill, theme.selection_fill, 0.18f);
+        out_theme->clip_fill.a = 238;
+        out_theme->clip_border = theme.timeline_border;
+        out_theme->clip_border_selected = theme.slider_handle;
+        out_theme->clip_border_selected.a = 220;
+        out_theme->clip_text = theme.text_primary;
+        out_theme->waveform = theme.slider_handle;
+        out_theme->waveform.a = 200;
+        out_theme->loop_fill = theme.accent_primary;
+        out_theme->loop_fill.a = 50;
+        out_theme->loop_border = theme.accent_primary;
+        out_theme->loop_border.a = 180;
+        out_theme->loop_handle_start = theme.slider_handle;
+        out_theme->loop_handle_end = theme.accent_primary;
+        out_theme->loop_handle_border = theme.timeline_border;
+        out_theme->loop_label = theme.text_primary;
+        out_theme->playhead = theme.accent_error;
+        out_theme->toggle_active_loop = theme.accent_warning;
+        out_theme->toggle_active_snap = theme.accent_primary;
+        out_theme->toggle_active_auto = theme.control_active_fill;
+        out_theme->toggle_active_tempo = theme.control_active_fill;
+        out_theme->toggle_active_label = theme.slider_handle;
+        return;
+    }
+    *out_theme = (TimelineTheme){
+        .bg = {38, 44, 58, 255},
+        .header_fill = {28, 32, 40, 255},
+        .header_border = {50, 55, 70, 255},
+        .text = {220, 220, 230, 255},
+        .text_muted = {140, 140, 150, 255},
+        .button_fill = {50, 58, 70, 255},
+        .button_hover_fill = {72, 82, 100, 255},
+        .button_disabled_fill = {34, 36, 40, 255},
+        .button_border = {90, 95, 110, 255},
+        .lane_header_fill = {30, 30, 38, 255},
+        .lane_header_fill_active = {62, 62, 86, 255},
+        .lane_header_border = {70, 70, 90, 255},
+        .clip_fill = {36, 40, 52, 230},
+        .clip_border = {20, 20, 26, 255},
+        .clip_border_selected = {200, 220, 255, 220},
+        .clip_text = {200, 200, 210, 255},
+        .waveform = {120, 140, 170, 200},
+        .loop_fill = {60, 120, 140, 50},
+        .loop_border = {90, 170, 190, 180},
+        .loop_handle_start = {170, 220, 200, 255},
+        .loop_handle_end = {160, 190, 230, 255},
+        .loop_handle_border = {40, 70, 90, 255},
+        .loop_label = {210, 220, 235, 255},
+        .playhead = {240, 110, 110, 255},
+        .toggle_active_loop = {130, 200, 180, 255},
+        .toggle_active_snap = {130, 160, 210, 255},
+        .toggle_active_auto = {110, 150, 200, 255},
+        .toggle_active_tempo = {120, 170, 210, 255},
+        .toggle_active_label = {150, 170, 220, 255}
+    };
+}
 
 static bool timeline_clip_is_selected(const AppState* state, int track_index, int clip_index) {
     if (!state) {
@@ -112,22 +237,23 @@ static void draw_timeline_button(SDL_Renderer* renderer,
                                  const SDL_Rect* rect,
                                  const char* label,
                                  bool hovered,
-                                 bool enabled) {
+                                 bool enabled,
+                                 const TimelineTheme* theme) {
     if (!renderer || !rect || !label) {
         return;
     }
-    SDL_Color base = {50, 58, 70, 255};
-    SDL_Color hover = {72, 82, 100, 255};
-    SDL_Color disabled = {34, 36, 40, 255};
-    SDL_Color border = {90, 95, 110, 255};
-    SDL_Color text = {220, 220, 230, 255};
-    SDL_Color text_disabled = {140, 140, 150, 255};
+    SDL_Color base = theme ? theme->button_fill : (SDL_Color){50, 58, 70, 255};
+    SDL_Color disabled = theme ? theme->button_disabled_fill : (SDL_Color){34, 36, 40, 255};
+    SDL_Color border = theme ? theme->button_border : (SDL_Color){90, 95, 110, 255};
+    SDL_Color text = theme ? theme->text : (SDL_Color){220, 220, 230, 255};
+    SDL_Color text_disabled = theme ? theme->text_muted : (SDL_Color){140, 140, 150, 255};
 
-    SDL_Color fill = enabled ? (hovered ? hover : base) : disabled;
+    SDL_Color fill = enabled ? base : disabled;
+    SDL_Color border_color = hovered && enabled && theme ? theme->clip_border_selected : border;
     SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
     SDL_RenderFillRect(renderer, rect);
 
-    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+    SDL_SetRenderDrawColor(renderer, border_color.r, border_color.g, border_color.b, border_color.a);
     SDL_RenderDrawRect(renderer, rect);
 
     SDL_Color text_color = enabled ? text : text_disabled;
@@ -176,26 +302,32 @@ static void draw_toggle_button(SDL_Renderer* renderer,
                                const char* label,
                                bool active,
                                bool hovered,
-                               SDL_Color active_col) {
+                               SDL_Color active_col,
+                               const TimelineTheme* theme) {
     if (!renderer || !rect || !label) {
         return;
     }
-    SDL_Color base = {58, 62, 70, 255};
-    SDL_Color hover = {82, 92, 110, 255};
+    SDL_Color base = theme ? theme->button_fill : (SDL_Color){58, 62, 70, 255};
     SDL_Color active_color = active_col;
-    SDL_Color text = {220, 220, 230, 255};
-    SDL_Color border = {90, 95, 110, 255};
+    SDL_Color text = theme ? theme->text : (SDL_Color){220, 220, 230, 255};
+    SDL_Color border = theme ? theme->button_border : (SDL_Color){90, 95, 110, 255};
 
     SDL_Color fill = base;
+    SDL_Color border_color = border;
     if (active) {
         fill = active_color;
+        if (theme) {
+            border_color = theme->clip_border_selected;
+        }
     } else if (hovered) {
-        fill = hover;
+        if (theme) {
+            border_color = theme->clip_border_selected;
+        }
     }
     SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
     SDL_RenderFillRect(renderer, rect);
 
-    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+    SDL_SetRenderDrawColor(renderer, border_color.r, border_color.g, border_color.b, border_color.a);
     SDL_RenderDrawRect(renderer, rect);
 
     int scale = 1;
@@ -754,11 +886,13 @@ static void draw_timeline_clip_automation(SDL_Renderer* renderer,
 }
 
 void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState* state) {
+    TimelineTheme theme = {0};
     if (!renderer || !rect || !state || !state->engine) {
         return;
     }
+    resolve_timeline_theme(&theme);
 
-    SDL_SetRenderDrawColor(renderer, TRACK_BG_R, TRACK_BG_G, TRACK_BG_B, 255);
+    SDL_SetRenderDrawColor(renderer, theme.bg.r, theme.bg.g, theme.bg.b, theme.bg.a);
     SDL_RenderFillRect(renderer, rect);
 
     float visible_seconds = clamp_float(state->timeline_visible_seconds, TIMELINE_MIN_VISIBLE_SECONDS, TIMELINE_MAX_VISIBLE_SECONDS);
@@ -791,9 +925,9 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
     const int sample_rate = engine_get_config(engine)->sample_rate;
 
     SDL_Rect header_rect = {rect->x, rect->y, rect->w, controls_height};
-    SDL_SetRenderDrawColor(renderer, 28, 32, 40, 255);
+    SDL_SetRenderDrawColor(renderer, theme.header_fill.r, theme.header_fill.g, theme.header_fill.b, theme.header_fill.a);
     SDL_RenderFillRect(renderer, &header_rect);
-    SDL_SetRenderDrawColor(renderer, 50, 55, 70, 255);
+    SDL_SetRenderDrawColor(renderer, theme.header_border.r, theme.header_border.g, theme.header_border.b, theme.header_border.a);
     SDL_RenderDrawLine(renderer, rect->x, rect->y + controls_height - 1, rect->x + rect->w, rect->y + controls_height - 1);
 
     TimelineControlsUI* controls = (TimelineControlsUI*)&state->timeline_controls;
@@ -820,33 +954,33 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
                                                         button_y, 40, button_h};
 
     bool remove_enabled = track_count > 0;
-    draw_timeline_button(renderer, &controls->add_rect, "+", controls->add_hovered, true);
-    draw_timeline_button(renderer, &controls->remove_rect, "-", controls->remove_hovered, remove_enabled);
-    draw_timeline_button(renderer, &controls->loop_toggle_rect, "LOOP", controls->loop_toggle_hovered, true);
-    draw_timeline_button(renderer, &controls->snap_toggle_rect, "SNAP", controls->snap_toggle_hovered, true);
-    draw_timeline_button(renderer, &controls->automation_toggle_rect, "AUTO", controls->automation_toggle_hovered, true);
+    draw_timeline_button(renderer, &controls->add_rect, "+", controls->add_hovered, true, &theme);
+    draw_timeline_button(renderer, &controls->remove_rect, "-", controls->remove_hovered, remove_enabled, &theme);
+    draw_timeline_button(renderer, &controls->loop_toggle_rect, "LOOP", controls->loop_toggle_hovered, true, &theme);
+    draw_timeline_button(renderer, &controls->snap_toggle_rect, "SNAP", controls->snap_toggle_hovered, true, &theme);
+    draw_timeline_button(renderer, &controls->automation_toggle_rect, "AUTO", controls->automation_toggle_hovered, true, &theme);
     const char* target_label = state->automation_ui.target == ENGINE_AUTOMATION_TARGET_PAN ? "PAN" : "VOL";
-    draw_timeline_button(renderer, &controls->automation_target_rect, target_label, controls->automation_target_hovered, true);
-    draw_timeline_button(renderer, &controls->tempo_toggle_rect, "TEMPO", controls->tempo_toggle_hovered, true);
-    draw_timeline_button(renderer, &controls->automation_label_toggle_rect, "VAL", controls->automation_label_toggle_hovered, true);
+    draw_timeline_button(renderer, &controls->automation_target_rect, target_label, controls->automation_target_hovered, true, &theme);
+    draw_timeline_button(renderer, &controls->tempo_toggle_rect, "TEMPO", controls->tempo_toggle_hovered, true, &theme);
+    draw_timeline_button(renderer, &controls->automation_label_toggle_rect, "VAL", controls->automation_label_toggle_hovered, true, &theme);
     if (state->loop_enabled) {
-        SDL_SetRenderDrawColor(renderer, 130, 200, 180, 255);
+        SDL_SetRenderDrawColor(renderer, theme.toggle_active_loop.r, theme.toggle_active_loop.g, theme.toggle_active_loop.b, theme.toggle_active_loop.a);
         SDL_RenderDrawRect(renderer, &controls->loop_toggle_rect);
     }
     if (state->timeline_snap_enabled) {
-        SDL_SetRenderDrawColor(renderer, 130, 160, 210, 255);
+        SDL_SetRenderDrawColor(renderer, theme.toggle_active_snap.r, theme.toggle_active_snap.g, theme.toggle_active_snap.b, theme.toggle_active_snap.a);
         SDL_RenderDrawRect(renderer, &controls->snap_toggle_rect);
     }
     if (state->timeline_automation_mode) {
-        SDL_SetRenderDrawColor(renderer, 110, 150, 200, 255);
+        SDL_SetRenderDrawColor(renderer, theme.toggle_active_auto.r, theme.toggle_active_auto.g, theme.toggle_active_auto.b, theme.toggle_active_auto.a);
         SDL_RenderDrawRect(renderer, &controls->automation_toggle_rect);
     }
     if (state->timeline_tempo_overlay_enabled) {
-        SDL_SetRenderDrawColor(renderer, 120, 170, 210, 255);
+        SDL_SetRenderDrawColor(renderer, theme.toggle_active_tempo.r, theme.toggle_active_tempo.g, theme.toggle_active_tempo.b, theme.toggle_active_tempo.a);
         SDL_RenderDrawRect(renderer, &controls->tempo_toggle_rect);
     }
     if (state->timeline_automation_labels_enabled) {
-        SDL_SetRenderDrawColor(renderer, 150, 170, 220, 255);
+        SDL_SetRenderDrawColor(renderer, theme.toggle_active_label.r, theme.toggle_active_label.g, theme.toggle_active_label.b, theme.toggle_active_label.a);
         SDL_RenderDrawRect(renderer, &controls->automation_label_toggle_rect);
     }
 
@@ -905,8 +1039,8 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
     }
 
     if (have_loop_region) {
-        SDL_Color loop_fill = {60, 120, 140, 50};
-        SDL_Color loop_border = {90, 170, 190, 180};
+        SDL_Color loop_fill = theme.loop_fill;
+        SDL_Color loop_border = theme.loop_border;
         SDL_SetRenderDrawColor(renderer, loop_fill.r, loop_fill.g, loop_fill.b, loop_fill.a);
         SDL_RenderFillRect(renderer, &loop_region_rect);
         SDL_SetRenderDrawColor(renderer, loop_border.r, loop_border.g, loop_border.b, loop_border.a);
@@ -972,9 +1106,9 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
     beat_grid_cache_free(&beat_cache);
     time_grid_cache_free(&time_cache);
 
-    SDL_Color header_bg = {30, 30, 38, 255};
-    SDL_Color header_border = {70, 70, 90, 255};
-    SDL_Color header_text = {200, 200, 210, 255};
+    SDL_Color header_bg = theme.lane_header_fill;
+    SDL_Color header_border = theme.lane_header_border;
+    SDL_Color header_text = theme.text;
     int active_track = (state->selected_track_index >= 0 && state->selected_track_index < track_count)
                            ? state->selected_track_index
                            : -1;
@@ -990,18 +1124,13 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
             SDL_Color header_fill = header_bg;
             SDL_Color label_color = header_text;
             if (active_track == t) {
-                int r = header_fill.r + 32;
-                int g = header_fill.g + 32;
-                int b = header_fill.b + 48;
-                header_fill.r = (Uint8)(r > 255 ? 255 : r);
-                header_fill.g = (Uint8)(g > 255 ? 255 : g);
-                header_fill.b = (Uint8)(b > 255 ? 255 : b);
+                header_fill = theme.lane_header_fill_active;
             }
             if (track && track->muted) {
                 header_fill.r = (Uint8)((int)header_fill.r * 3 / 5);
                 header_fill.g = (Uint8)((int)header_fill.g * 3 / 5);
                 header_fill.b = (Uint8)((int)header_fill.b * 3 / 5);
-                label_color = (SDL_Color){160, 160, 170, 255};
+                label_color = theme.text_muted;
             }
             SDL_SetRenderDrawColor(renderer, header_fill.r, header_fill.g, header_fill.b, header_fill.a);
             SDL_RenderFillRect(renderer, &header_rect);
@@ -1033,10 +1162,12 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
 
             bool mute_hover = SDL_PointInRect(&mouse_point, &mute_rect);
             bool solo_hover = SDL_PointInRect(&mouse_point, &solo_rect);
-            SDL_Color mute_active = {170, 80, 80, 255};
-            SDL_Color solo_active = {90, 150, 220, 255};
-            draw_toggle_button(renderer, &mute_rect, "M", track ? track->muted : false, mute_hover, mute_active);
-            draw_toggle_button(renderer, &solo_rect, "S", track ? track->solo : false, solo_hover, solo_active);
+            SDL_Color mute_active = mix_color(theme.lane_header_fill, theme.toggle_active_loop, 0.18f);
+            SDL_Color solo_active = mix_color(theme.lane_header_fill, theme.toggle_active_snap, 0.18f);
+            mute_active.a = 242;
+            solo_active.a = 242;
+            draw_toggle_button(renderer, &mute_rect, "M", track ? track->muted : false, mute_hover, mute_active, &theme);
+            draw_toggle_button(renderer, &solo_rect, "S", track ? track->solo : false, solo_hover, solo_active, &theme);
 
             int text_x = header_rect.x + 6;
             int text_max_x = mute_rect.x - 4;
@@ -1072,7 +1203,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
                     2,
                     caret_h
                 };
-                SDL_SetRenderDrawColor(renderer, 220, 230, 255, 255);
+                SDL_SetRenderDrawColor(renderer, theme.text.r, theme.text.g, theme.text.b, theme.text.a);
                 SDL_RenderFillRect(renderer, &caret_rect);
             }
 
@@ -1125,13 +1256,17 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
                 };
 
                 bool is_selected = timeline_clip_is_selected(state, t, i);
-                SDL_SetRenderDrawColor(renderer, CLIP_COLOR_R, CLIP_COLOR_G, CLIP_COLOR_B, 230);
+                SDL_SetRenderDrawColor(renderer, theme.clip_fill.r, theme.clip_fill.g, theme.clip_fill.b, theme.clip_fill.a);
                 SDL_RenderFillRect(renderer, &clip_rect);
 
                 if (is_selected) {
-                    SDL_SetRenderDrawColor(renderer, 200, 220, 255, 220);
+                    SDL_SetRenderDrawColor(renderer,
+                                           theme.clip_border_selected.r,
+                                           theme.clip_border_selected.g,
+                                           theme.clip_border_selected.b,
+                                           theme.clip_border_selected.a);
                 } else {
-                    SDL_SetRenderDrawColor(renderer, 20, 20, 26, 255);
+                    SDL_SetRenderDrawColor(renderer, theme.clip_border.r, theme.clip_border.g, theme.clip_border.b, theme.clip_border.a);
                 }
                 SDL_RenderDrawRect(renderer, &clip_rect);
 
@@ -1167,7 +1302,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
                                 visible_frames = max_frame > local_visible_start ? max_frame - local_visible_start : 0;
                             }
                             if (visible_frames > 0) {
-                                SDL_Color wave_color = {WAVEFORM_COLOR_R, WAVEFORM_COLOR_G, WAVEFORM_COLOR_B, 200};
+                                SDL_Color wave_color = theme.waveform;
                                 bool rendered = false;
                                 if (state->inspector.waveform.use_kit_viz_waveform) {
                                     DawKitVizWaveformRequest request = {
@@ -1214,7 +1349,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
                         if (fade_in_draw > clip_rect.w) fade_in_draw = clip_rect.w;
                     }
                     if (fade_in_draw > 0 && fade_in_px > 0) {
-                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 28);
+                        SDL_SetRenderDrawColor(renderer, theme.text.r, theme.text.g, theme.text.b, 28);
                         for (int fx = 0; fx < fade_in_draw; ++fx) {
                             float tf = (float)(clip_offset_px + fx) / (float)fade_in_px;
                             float gain = ui_fade_curve_eval(fade_in_curve, tf);
@@ -1241,7 +1376,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
                         }
                     }
                     if (fade_out_draw > 0 && fade_out_px > 0) {
-                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 28);
+                        SDL_SetRenderDrawColor(renderer, theme.text.r, theme.text.g, theme.text.b, 28);
                         int start_x = clip_rect.w - fade_out_draw;
                         for (int fx = 0; fx < fade_out_draw; ++fx) {
                             int local_px = clip_offset_px + start_x + fx;
@@ -1259,7 +1394,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
                     ui_set_blend_mode(renderer, SDL_BLENDMODE_NONE);
                 }
 
-                SDL_Color text_color = {200, 200, 210, 255};
+                SDL_Color text_color = theme.clip_text;
                 char name_buf[ENGINE_CLIP_NAME_MAX];
                 const char* name = timeline_clip_display_name(state, clip, name_buf, sizeof(name_buf));
                 int label_padding = 6;
@@ -1277,7 +1412,11 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
                 }
 
                 if (is_selected) {
-                    SDL_SetRenderDrawColor(renderer, 200, 220, 255, 220);
+                    SDL_SetRenderDrawColor(renderer,
+                                           theme.clip_border_selected.r,
+                                           theme.clip_border_selected.g,
+                                           theme.clip_border_selected.b,
+                                           theme.clip_border_selected.a);
                     SDL_Rect left_handle = {
                         clip_rect.x - 2,
                         clip_rect.y,
@@ -1385,12 +1524,14 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
     }
 
     if (have_loop_controls) {
-        SDL_Color start_color = controls->loop_start_hovered || controls->adjusting_loop_start
-                                     ? (SDL_Color){200, 240, 220, 255}
-                                     : (SDL_Color){170, 220, 200, 255};
-        SDL_Color end_color = controls->loop_end_hovered || controls->adjusting_loop_end
-                                     ? (SDL_Color){200, 220, 250, 255}
-                                     : (SDL_Color){160, 190, 230, 255};
+        SDL_Color start_color = controls->adjusting_loop_start ? theme.text : theme.loop_handle_start;
+        SDL_Color end_color = controls->adjusting_loop_end ? theme.text : theme.loop_handle_end;
+        SDL_Color start_border = (controls->loop_start_hovered || controls->adjusting_loop_start)
+                                     ? theme.clip_border_selected
+                                     : theme.loop_handle_border;
+        SDL_Color end_border = (controls->loop_end_hovered || controls->adjusting_loop_end)
+                                   ? theme.clip_border_selected
+                                   : theme.loop_handle_border;
         SDL_Rect start_draw = controls->loop_start_rect;
         SDL_Rect end_draw = controls->loop_end_rect;
         int shrink_w = 4;
@@ -1413,11 +1554,11 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
         }
         SDL_SetRenderDrawColor(renderer, start_color.r, start_color.g, start_color.b, start_color.a);
         SDL_RenderFillRect(renderer, &start_draw);
-        SDL_SetRenderDrawColor(renderer, 40, 70, 80, 255);
+        SDL_SetRenderDrawColor(renderer, start_border.r, start_border.g, start_border.b, start_border.a);
         SDL_RenderDrawRect(renderer, &start_draw);
         SDL_SetRenderDrawColor(renderer, end_color.r, end_color.g, end_color.b, end_color.a);
         SDL_RenderFillRect(renderer, &end_draw);
-        SDL_SetRenderDrawColor(renderer, 40, 70, 90, 255);
+        SDL_SetRenderDrawColor(renderer, end_border.r, end_border.g, end_border.b, end_border.a);
         SDL_RenderDrawRect(renderer, &end_draw);
 
         // Loop labels (time or beat) above handles.
@@ -1437,7 +1578,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
                               &state->time_signature_map,
                               end_label,
                               sizeof(end_label));
-        SDL_Color loop_label_color = {210, 220, 235, 255};
+        SDL_Color loop_label_color = theme.loop_label;
         int label_scale = 1;
         int start_w = ui_measure_text_width(start_label, label_scale);
         int end_w = ui_measure_text_width(end_label, label_scale);
@@ -1465,7 +1606,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
     int timeline_bottom = track_y + (track_count > 0
                                       ? (track_count * (track_height + track_spacing)) - track_spacing
                                       : track_height);
-    SDL_SetRenderDrawColor(renderer, 240, 110, 110, 255);
+    SDL_SetRenderDrawColor(renderer, theme.playhead.r, theme.playhead.g, theme.playhead.b, theme.playhead.a);
     SDL_RenderDrawLine(renderer, playhead_x, track_y - 8, playhead_x, timeline_bottom + 8);
 
     if (state->timeline_drag.active) {

@@ -26,10 +26,12 @@ int main(void) {
     CoreResult r;
     size_t i;
     const char* theme_presets[] = {
-        "daw_default",
-        "ide_gray",
-        "dark_default",
-        "light_default"
+        "studio_blue",
+        "harbor_blue",
+        "midnight_contrast",
+        "soft_light",
+        "standard_grey",
+        "greyscale"
     };
 
     unsetenv("DAW_USE_SHARED_THEME_FONT");
@@ -47,17 +49,36 @@ int main(void) {
            "font should default to fallback path");
     setenv("DAW_USE_SHARED_FONT", "1", 1);
 
-    setenv("DAW_THEME_PRESET", "daw_default", 1);
+    setenv("DAW_THEME_PRESET", "studio_blue", 1);
     setenv("DAW_FONT_PRESET", "daw_default", 1);
 
     expect(daw_shared_theme_resolve_palette(&palette), "theme should resolve when shared mode is enabled");
     expect(palette.menu_fill.r == 26 && palette.menu_fill.g == 26 && palette.menu_fill.b == 34,
-           "menu fill should map to daw_default surface token");
+           "menu fill should map to studio_blue surface token");
     expect(daw_shared_theme_title_color().r == 220, "title color should map to primary text token");
 
     expect(daw_shared_font_resolve_ui_regular(font_path, sizeof(font_path), &point_size),
            "font should resolve when shared mode is enabled");
     expect(point_size > 0, "point size should be positive");
+
+    expect(daw_shared_theme_set_preset("midnight_contrast"),
+           "runtime preset set should accept known preset");
+    expect(daw_shared_theme_current_preset(font_path, sizeof(font_path)),
+           "runtime preset query should succeed");
+    expect(strcmp(font_path, "midnight_contrast") == 0,
+           "runtime preset query should return the set preset");
+    expect(daw_shared_theme_cycle_next(), "runtime next-cycle should succeed");
+    expect(daw_shared_theme_current_preset(font_path, sizeof(font_path)),
+           "runtime preset query should succeed after cycling next");
+    expect(strcmp(font_path, "soft_light") == 0,
+           "runtime next-cycle should move to soft_light");
+    expect(daw_shared_theme_cycle_prev(), "runtime prev-cycle should succeed");
+    expect(daw_shared_theme_current_preset(font_path, sizeof(font_path)),
+           "runtime preset query should succeed after cycling prev");
+    expect(strcmp(font_path, "midnight_contrast") == 0,
+           "runtime prev-cycle should move back to midnight_contrast");
+    expect(!daw_shared_theme_set_preset("missing_preset"),
+           "runtime preset set should reject unknown preset");
 
     for (i = 0; i < sizeof(theme_presets) / sizeof(theme_presets[0]); ++i) {
         setenv("DAW_THEME_PRESET", theme_presets[i], 1);

@@ -3,6 +3,7 @@
 #include "app_state.h"
 #include "ui/font.h"
 #include "ui/kit_viz_meter_adapter.h"
+#include "ui/shared_theme_font_adapter.h"
 #include "vk_renderer.h"
 
 #include <math.h>
@@ -16,6 +17,27 @@ enum {
 static uint8_t g_meter_spectrogram_rgba[METER_SPECTROGRAM_RGBA_CAPACITY];
 // Reused SDL surface wrapper over the static RGBA staging buffer.
 static SDL_Surface* g_meter_spectrogram_surface = NULL;
+
+static void resolve_spectrogram_theme(SDL_Color* fill,
+                                      SDL_Color* border,
+                                      SDL_Color* history_bg,
+                                      SDL_Color* meter_bg,
+                                      SDL_Color* axis) {
+    DawThemePalette theme = {0};
+    if (daw_shared_theme_resolve_palette(&theme)) {
+        if (fill) *fill = theme.inspector_fill;
+        if (border) *border = theme.pane_border;
+        if (history_bg) *history_bg = theme.timeline_fill;
+        if (meter_bg) *meter_bg = theme.slider_track;
+        if (axis) *axis = theme.text_muted;
+        return;
+    }
+    if (fill) *fill = (SDL_Color){22, 24, 30, 255};
+    if (border) *border = (SDL_Color){70, 75, 92, 255};
+    if (history_bg) *history_bg = (SDL_Color){26, 28, 36, 255};
+    if (meter_bg) *meter_bg = (SDL_Color){50, 54, 66, 255};
+    if (axis) *axis = (SDL_Color){130, 150, 170, 255};
+}
 
 static SDL_Surface* meter_spectrogram_get_surface(void) {
     if (g_meter_spectrogram_surface) {
@@ -151,8 +173,12 @@ void effects_meter_render_spectrogram(SDL_Renderer* renderer,
     if (!renderer || !rect || rect->w <= 0 || rect->h <= 0) {
         return;
     }
-    SDL_Color border = {70, 75, 92, 255};
-    SDL_Color fill = {22, 24, 30, 255};
+    SDL_Color border = {0};
+    SDL_Color fill = {0};
+    SDL_Color history_bg = {0};
+    SDL_Color meter_bg = {0};
+    SDL_Color axis = {0};
+    resolve_spectrogram_theme(&fill, &border, &history_bg, &meter_bg, &axis);
     SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -182,17 +208,17 @@ void effects_meter_render_spectrogram(SDL_Renderer* renderer,
     ui_draw_text(renderer, rect->x + pad, rect->y + 6, "Spectrogram", label_color, 1.2f);
     ui_draw_text(renderer, rect->x + pad, rect->y + 22, "Track Output", dim_color, 1.0f);
 
-    SDL_SetRenderDrawColor(renderer, 26, 28, 36, 255);
+    SDL_SetRenderDrawColor(renderer, history_bg.r, history_bg.g, history_bg.b, history_bg.a);
     SDL_RenderFillRect(renderer, &history_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &history_rect);
 
-    SDL_SetRenderDrawColor(renderer, 50, 54, 66, 255);
+    SDL_SetRenderDrawColor(renderer, meter_bg.r, meter_bg.g, meter_bg.b, meter_bg.a);
     SDL_RenderFillRect(renderer, &meter_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &meter_rect);
 
-    SDL_SetRenderDrawColor(renderer, 130, 150, 170, 255);
+    SDL_SetRenderDrawColor(renderer, axis.r, axis.g, axis.b, axis.a);
     SDL_RenderDrawLine(renderer, meter_rect.x + meter_rect.w / 2, meter_rect.y,
                        meter_rect.x + meter_rect.w / 2, meter_rect.y + meter_rect.h);
 

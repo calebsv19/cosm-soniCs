@@ -4,9 +4,34 @@
 #include "ui/font.h"
 #include "ui/kit_viz_meter_adapter.h"
 #include "ui/render_utils.h"
+#include "ui/shared_theme_font_adapter.h"
 
 #include <math.h>
 #include <stdio.h>
+
+static void resolve_levels_theme(SDL_Color* fill,
+                                 SDL_Color* border,
+                                 SDL_Color* history_bg,
+                                 SDL_Color* meter_bg,
+                                 SDL_Color* peak_marker,
+                                 SDL_Color* rms_marker) {
+    DawThemePalette theme = {0};
+    if (daw_shared_theme_resolve_palette(&theme)) {
+        if (fill) *fill = theme.inspector_fill;
+        if (border) *border = theme.pane_border;
+        if (history_bg) *history_bg = theme.timeline_fill;
+        if (meter_bg) *meter_bg = theme.slider_track;
+        if (peak_marker) *peak_marker = theme.slider_handle;
+        if (rms_marker) *rms_marker = theme.accent_warning;
+        return;
+    }
+    if (fill) *fill = (SDL_Color){22, 24, 30, 255};
+    if (border) *border = (SDL_Color){70, 75, 92, 255};
+    if (history_bg) *history_bg = (SDL_Color){26, 28, 36, 255};
+    if (meter_bg) *meter_bg = (SDL_Color){50, 54, 66, 255};
+    if (peak_marker) *peak_marker = (SDL_Color){150, 220, 255, 255};
+    if (rms_marker) *rms_marker = (SDL_Color){210, 180, 150, 255};
+}
 
 // Clamps a value between bounds for stable meter rendering.
 static float clampf(float v, float lo, float hi) {
@@ -86,14 +111,17 @@ static bool render_level_history_with_adapter(SDL_Renderer* renderer,
     if (peak_r.code != CORE_OK || rms_r.code != CORE_OK || peak_segment_count == 0 || rms_segment_count == 0) {
         return false;
     }
+    SDL_Color peak_marker = {0};
+    SDL_Color rms_marker = {0};
+    resolve_levels_theme(NULL, NULL, NULL, NULL, &peak_marker, &rms_marker);
     daw_kit_viz_meter_render_segments(renderer,
                                       peak_segments,
                                       peak_segment_count,
-                                      (SDL_Color){90, 150, 210, 180});
+                                      peak_marker);
     daw_kit_viz_meter_render_segments(renderer,
                                       rms_segments,
                                       rms_segment_count,
-                                      (SDL_Color){140, 120, 110, 180});
+                                      rms_marker);
     return true;
 }
 
@@ -107,8 +135,13 @@ void effects_meter_render_levels(SDL_Renderer* renderer,
     if (!renderer || !rect || rect->w <= 0 || rect->h <= 0) {
         return;
     }
-    SDL_Color border = {70, 75, 92, 255};
-    SDL_Color fill = {22, 24, 30, 255};
+    SDL_Color border = {0};
+    SDL_Color fill = {0};
+    SDL_Color history_bg = {0};
+    SDL_Color meter_bg = {0};
+    SDL_Color peak_marker = {0};
+    SDL_Color rms_marker = {0};
+    resolve_levels_theme(&fill, &border, &history_bg, &meter_bg, &peak_marker, &rms_marker);
     SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -150,12 +183,12 @@ void effects_meter_render_levels(SDL_Renderer* renderer,
         ui_draw_text(renderer, rect->x + pad, rect->y + 22, "No data", dim_color, 1.0f);
     }
 
-    SDL_SetRenderDrawColor(renderer, 26, 28, 36, 255);
+    SDL_SetRenderDrawColor(renderer, history_bg.r, history_bg.g, history_bg.b, history_bg.a);
     SDL_RenderFillRect(renderer, &history_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &history_rect);
 
-    SDL_SetRenderDrawColor(renderer, 50, 54, 66, 255);
+    SDL_SetRenderDrawColor(renderer, meter_bg.r, meter_bg.g, meter_bg.b, meter_bg.a);
     SDL_RenderFillRect(renderer, &meter_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &meter_rect);
@@ -169,9 +202,9 @@ void effects_meter_render_levels(SDL_Renderer* renderer,
         rms_norm = clampf(rms_norm, 0.0f, 1.0f);
         int peak_y = meter_rect.y + (int)lroundf((1.0f - peak_norm) * (float)meter_rect.h);
         int rms_y = meter_rect.y + (int)lroundf((1.0f - rms_norm) * (float)meter_rect.h);
-        SDL_SetRenderDrawColor(renderer, 150, 220, 255, 255);
+        SDL_SetRenderDrawColor(renderer, peak_marker.r, peak_marker.g, peak_marker.b, peak_marker.a);
         SDL_RenderDrawLine(renderer, meter_rect.x - 4, peak_y, meter_rect.x + meter_rect.w + 4, peak_y);
-        SDL_SetRenderDrawColor(renderer, 210, 180, 150, 255);
+        SDL_SetRenderDrawColor(renderer, rms_marker.r, rms_marker.g, rms_marker.b, rms_marker.a);
         SDL_RenderDrawLine(renderer, meter_rect.x - 4, rms_y, meter_rect.x + meter_rect.w + 4, rms_y);
     }
 
@@ -202,7 +235,7 @@ void effects_meter_render_levels(SDL_Renderer* renderer,
             float y1 = (float)history_rect.y + (1.0f - y_peak) * (float)history_rect.h;
             float y2 = (float)history_rect.y + (1.0f - y_rms) * (float)history_rect.h;
             int alpha = (int)lroundf(120.0f * (1.0f - t) + 120.0f);
-            SDL_SetRenderDrawColor(renderer, 90, 150, 210, alpha);
+            SDL_SetRenderDrawColor(renderer, peak_marker.r, peak_marker.g, peak_marker.b, alpha);
             if (i > 0) {
                 SDL_RenderDrawLine(renderer,
                                    (int)lroundf(prev_peak_x),
@@ -210,7 +243,7 @@ void effects_meter_render_levels(SDL_Renderer* renderer,
                                    (int)lroundf(x),
                                    (int)lroundf(y1));
             }
-            SDL_SetRenderDrawColor(renderer, 140, 120, 110, alpha);
+            SDL_SetRenderDrawColor(renderer, rms_marker.r, rms_marker.g, rms_marker.b, alpha);
             if (i > 0) {
                 SDL_RenderDrawLine(renderer,
                                    (int)lroundf(prev_rms_x),

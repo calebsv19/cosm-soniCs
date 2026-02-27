@@ -4,8 +4,30 @@
 #include "ui/font.h"
 #include "ui/kit_viz_meter_adapter.h"
 #include "ui/render_utils.h"
+#include "ui/shared_theme_font_adapter.h"
 
 #include <math.h>
+
+static void resolve_vectorscope_theme(SDL_Color* fill,
+                                      SDL_Color* border,
+                                      SDL_Color* scope_bg,
+                                      SDL_Color* grid,
+                                      SDL_Color* trace) {
+    DawThemePalette theme = {0};
+    if (daw_shared_theme_resolve_palette(&theme)) {
+        if (fill) *fill = theme.inspector_fill;
+        if (border) *border = theme.pane_border;
+        if (scope_bg) *scope_bg = theme.timeline_fill;
+        if (grid) *grid = theme.grid_major;
+        if (trace) *trace = theme.accent_warning;
+        return;
+    }
+    if (fill) *fill = (SDL_Color){22, 24, 30, 255};
+    if (border) *border = (SDL_Color){70, 75, 92, 255};
+    if (scope_bg) *scope_bg = (SDL_Color){30, 34, 46, 255};
+    if (grid) *grid = (SDL_Color){60, 70, 90, 255};
+    if (trace) *trace = (SDL_Color){170, 220, 120, 255};
+}
 
 static float clampf(float v, float lo, float hi) {
     if (v < lo) return lo;
@@ -66,9 +88,11 @@ static bool render_scope_history_with_adapter(SDL_Renderer* renderer,
 
     for (size_t i = 0; i < segment_count; ++i) {
         float t = segment_count > 1 ? (float)i / (float)(segment_count - 1u) : 0.0f;
+        SDL_Color trace = {0};
+        resolve_vectorscope_theme(NULL, NULL, NULL, NULL, &trace);
         float fade = powf(1.0f - t, 2.6f);
         int alpha = (int)lroundf(20.0f + 235.0f * fade);
-        SDL_SetRenderDrawColor(renderer, 170, 220, 120, alpha);
+        SDL_SetRenderDrawColor(renderer, trace.r, trace.g, trace.b, alpha);
         const KitVizVecSegment* s = &segments[i];
         SDL_RenderDrawLine(renderer,
                            (int)lroundf(s->x0),
@@ -90,8 +114,12 @@ void effects_meter_render_vectorscope(SDL_Renderer* renderer,
     if (!renderer || !rect || rect->w <= 0 || rect->h <= 0) {
         return;
     }
-    SDL_Color border = {70, 75, 92, 255};
-    SDL_Color fill = {22, 24, 30, 255};
+    SDL_Color border = {0};
+    SDL_Color fill = {0};
+    SDL_Color scope_bg = {0};
+    SDL_Color grid = {0};
+    SDL_Color trace = {0};
+    resolve_vectorscope_theme(&fill, &border, &scope_bg, &grid, &trace);
     SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -104,14 +132,14 @@ void effects_meter_render_vectorscope(SDL_Renderer* renderer,
     scope.w -= pad * 2;
     scope.h -= pad * 2 + 12;
 
-    SDL_SetRenderDrawColor(renderer, 30, 34, 46, 255);
+    SDL_SetRenderDrawColor(renderer, scope_bg.r, scope_bg.g, scope_bg.b, scope_bg.a);
     SDL_RenderFillRect(renderer, &scope);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &scope);
 
     int cx = scope.x + scope.w / 2;
     int cy = scope.y + scope.h / 2;
-    SDL_SetRenderDrawColor(renderer, 60, 70, 90, 255);
+    SDL_SetRenderDrawColor(renderer, grid.r, grid.g, grid.b, grid.a);
     SDL_RenderDrawLine(renderer, cx, scope.y, cx, scope.y + scope.h);
     SDL_RenderDrawLine(renderer, scope.x, cy, scope.x + scope.w, cy);
 
@@ -146,7 +174,7 @@ void effects_meter_render_vectorscope(SDL_Renderer* renderer,
             float y = (float)cy - py * (float)(scope.h / 2) * scale;
             float fade = powf(1.0f - t, 2.6f);
             int alpha = (int)lroundf(20.0f + 235.0f * fade);
-            SDL_SetRenderDrawColor(renderer, 170, 220, 120, alpha);
+            SDL_SetRenderDrawColor(renderer, trace.r, trace.g, trace.b, alpha);
             if (i > 0) {
                 SDL_RenderDrawLine(renderer, (int)lroundf(prev_x), (int)lroundf(prev_y), (int)lroundf(x), (int)lroundf(y));
             }
@@ -165,7 +193,7 @@ void effects_meter_render_vectorscope(SDL_Renderer* renderer,
         float scale = 1.5f;
         int px = cx + (int)lroundf(x * (float)(scope.w / 2) * scale);
         int py = cy - (int)lroundf(y * (float)(scope.h / 2) * scale);
-        SDL_SetRenderDrawColor(renderer, 170, 220, 120, 255);
+        SDL_SetRenderDrawColor(renderer, trace.r, trace.g, trace.b, trace.a);
         SDL_Rect dot = {px - 3, py - 3, 6, 6};
         SDL_RenderFillRect(renderer, &dot);
     } else {

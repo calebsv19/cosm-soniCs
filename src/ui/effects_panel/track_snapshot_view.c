@@ -5,6 +5,7 @@
 #include "ui/font.h"
 #include "ui/effects_panel_eq_detail.h"
 #include "ui/render_utils.h"
+#include "ui/shared_theme_font_adapter.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -15,14 +16,88 @@ static float clampf(float v, float lo, float hi) {
     return v;
 }
 
+typedef struct TrackSnapshotTheme {
+    SDL_Color slider_bg;
+    SDL_Color slider_border;
+    SDL_Color slider_fill;
+    SDL_Color slider_handle;
+    SDL_Color eq_bg;
+    SDL_Color eq_curve;
+    SDL_Color list_bg;
+    SDL_Color list_border;
+    SDL_Color scroll_track;
+    SDL_Color scroll_thumb;
+    SDL_Color meter_bg;
+    SDL_Color meter_fill;
+    SDL_Color meter_peak;
+    SDL_Color meter_clip_off;
+    SDL_Color meter_clip_on;
+    SDL_Color meter_tick;
+    SDL_Color text;
+    SDL_Color button_bg;
+    SDL_Color button_active;
+} TrackSnapshotTheme;
+
+static void resolve_track_snapshot_theme(TrackSnapshotTheme* out) {
+    if (!out) {
+        return;
+    }
+    DawThemePalette palette = {0};
+    if (daw_shared_theme_resolve_palette(&palette)) {
+        out->slider_bg = palette.slider_track;
+        out->slider_border = palette.control_border;
+        out->slider_fill = palette.selection_fill;
+        out->slider_handle = palette.slider_handle;
+        out->eq_bg = palette.timeline_fill;
+        out->eq_curve = palette.accent_primary;
+        out->list_bg = palette.inspector_fill;
+        out->list_border = palette.pane_border;
+        out->scroll_track = palette.control_fill;
+        out->scroll_thumb = palette.slider_handle;
+        out->meter_bg = palette.timeline_fill;
+        out->meter_fill = palette.selection_fill;
+        out->meter_peak = palette.text_primary;
+        out->meter_clip_off = palette.control_fill;
+        out->meter_clip_on = palette.accent_error;
+        out->meter_tick = palette.grid_major;
+        out->text = palette.text_muted;
+        out->button_bg = palette.control_fill;
+        out->button_active = palette.control_active_fill;
+        return;
+    }
+    *out = (TrackSnapshotTheme){
+        .slider_bg = {36, 36, 44, 255},
+        .slider_border = {90, 90, 110, 255},
+        .slider_fill = {80, 120, 170, 220},
+        .slider_handle = {180, 210, 255, 255},
+        .eq_bg = {22, 24, 30, 255},
+        .eq_curve = {90, 170, 200, 255},
+        .list_bg = {26, 28, 34, 255},
+        .list_border = {70, 75, 92, 255},
+        .scroll_track = {20, 22, 28, 255},
+        .scroll_thumb = {90, 110, 150, 220},
+        .meter_bg = {22, 24, 30, 255},
+        .meter_fill = {60, 110, 170, 210},
+        .meter_peak = {200, 220, 250, 230},
+        .meter_clip_off = {50, 40, 40, 255},
+        .meter_clip_on = {220, 80, 80, 255},
+        .meter_tick = {80, 90, 110, 255},
+        .text = {170, 180, 200, 255},
+        .button_bg = {44, 48, 58, 255},
+        .button_active = {90, 120, 170, 200},
+    };
+}
+
 static void draw_slider(SDL_Renderer* renderer, const SDL_Rect* rect, float t) {
     if (!renderer || !rect || rect->w <= 0 || rect->h <= 0) {
         return;
     }
     t = clampf(t, 0.0f, 1.0f);
-    SDL_Color track_bg = {36, 36, 44, 255};
-    SDL_Color track_border = {90, 90, 110, 255};
-    SDL_Color fill = {80, 120, 170, 220};
+    TrackSnapshotTheme theme = {0};
+    resolve_track_snapshot_theme(&theme);
+    SDL_Color track_bg = theme.slider_bg;
+    SDL_Color track_border = theme.slider_border;
+    SDL_Color fill = theme.slider_fill;
     SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
@@ -39,6 +114,8 @@ static void draw_slider(SDL_Renderer* renderer, const SDL_Rect* rect, float t) {
     };
     if (handle.x < rect->x - 2) handle.x = rect->x - 2;
     if (handle.x + handle.w > rect->x + rect->w + 2) handle.x = rect->x + rect->w - 2;
+    SDL_SetRenderDrawColor(renderer, theme.slider_handle.r, theme.slider_handle.g, theme.slider_handle.b, theme.slider_handle.a);
+    SDL_RenderFillRect(renderer, &handle);
     SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
     SDL_RenderDrawRect(renderer, &handle);
 }
@@ -99,8 +176,10 @@ static void draw_eq_preview(SDL_Renderer* renderer, const SDL_Rect* rect, const 
     if (!renderer || !rect || !curve || rect->w <= 0 || rect->h <= 0) {
         return;
     }
-    SDL_Color bg = {22, 24, 30, 255};
-    SDL_Color border = {70, 75, 92, 255};
+    TrackSnapshotTheme theme = {0};
+    resolve_track_snapshot_theme(&theme);
+    SDL_Color bg = theme.eq_bg;
+    SDL_Color border = theme.list_border;
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -117,7 +196,7 @@ static void draw_eq_preview(SDL_Renderer* renderer, const SDL_Rect* rect, const 
     enum { PREVIEW_SAMPLES = 64 };
     float curve_db[PREVIEW_SAMPLES];
     compute_eq_preview_curve(curve, &graph, curve_db, PREVIEW_SAMPLES);
-    SDL_SetRenderDrawColor(renderer, 70, 160, 230, 255);
+    SDL_SetRenderDrawColor(renderer, theme.eq_curve.r, theme.eq_curve.g, theme.eq_curve.b, theme.eq_curve.a);
     int prev_x = graph.x;
     int prev_y = (int)lroundf(effects_eq_db_to_y(&graph, curve_db[0]));
     for (int i = 1; i < PREVIEW_SAMPLES; ++i) {
@@ -135,10 +214,12 @@ static void draw_effects_list_background(SDL_Renderer* renderer, const EffectsPa
     if (!renderer || !snap || snap->list_rect.w <= 0 || snap->list_rect.h <= 0) {
         return;
     }
-    SDL_Color bg = {26, 28, 34, 255};
-    SDL_Color border = {70, 75, 92, 255};
-    SDL_Color scroll_track = {20, 22, 28, 255};
-    SDL_Color scroll_thumb = {90, 110, 150, 220};
+    TrackSnapshotTheme theme = {0};
+    resolve_track_snapshot_theme(&theme);
+    SDL_Color bg = theme.list_bg;
+    SDL_Color border = theme.list_border;
+    SDL_Color scroll_track = theme.scroll_track;
+    SDL_Color scroll_thumb = theme.scroll_thumb;
 
     SDL_Rect prev_clip;
     SDL_bool had_clip = ui_clip_is_enabled(renderer);
@@ -179,14 +260,16 @@ static void draw_meter(SDL_Renderer* renderer,
     if (!renderer || !snap || snap->meter_rect.w <= 0 || snap->meter_rect.h <= 0) {
         return;
     }
-    SDL_Color bg = {22, 24, 30, 255};
-    SDL_Color border = {70, 75, 92, 255};
-    SDL_Color rms_fill = {60, 110, 170, 210};
-    SDL_Color peak_line = {200, 220, 250, 230};
-    SDL_Color clip_off = {50, 40, 40, 255};
-    SDL_Color clip_on = {220, 80, 80, 255};
-    SDL_Color tick = {80, 90, 110, 255};
-    SDL_Color text = {170, 180, 200, 255};
+    TrackSnapshotTheme theme = {0};
+    resolve_track_snapshot_theme(&theme);
+    SDL_Color bg = theme.meter_bg;
+    SDL_Color border = theme.list_border;
+    SDL_Color rms_fill = theme.meter_fill;
+    SDL_Color peak_line = theme.meter_peak;
+    SDL_Color clip_off = theme.meter_clip_off;
+    SDL_Color clip_on = theme.meter_clip_on;
+    SDL_Color tick = theme.meter_tick;
+    SDL_Color text = theme.text;
     static const char* kMeterLabels[FX_PANEL_METER_TICK_COUNT] = {"0", "-6", "-12", "-24", "-36", "-48"};
 
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
@@ -238,10 +321,12 @@ void effects_panel_render_track_snapshot(SDL_Renderer* renderer, const AppState*
     }
     const EffectsPanelState* panel = &state->effects_panel;
     const EffectsPanelTrackSnapshotLayout* snap = &layout->track_snapshot;
-    SDL_Color label = {210, 210, 220, 255};
-    SDL_Color card_border = {70, 75, 92, 255};
-    SDL_Color button_bg = {44, 48, 58, 255};
-    SDL_Color active_bg = {90, 120, 170, 200};
+    TrackSnapshotTheme theme = {0};
+    resolve_track_snapshot_theme(&theme);
+    SDL_Color label = theme.meter_peak;
+    SDL_Color card_border = theme.list_border;
+    SDL_Color button_bg = theme.button_bg;
+    SDL_Color active_bg = theme.button_active;
 
     const EngineTrack* track = NULL;
     if (state->engine && panel->target == FX_PANEL_TARGET_TRACK && panel->target_track_index >= 0) {

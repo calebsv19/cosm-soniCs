@@ -4,8 +4,36 @@
 #include "ui/font.h"
 #include "ui/kit_viz_meter_adapter.h"
 #include "ui/render_utils.h"
+#include "ui/shared_theme_font_adapter.h"
 
 #include <math.h>
+
+static void resolve_mid_side_theme(SDL_Color* fill,
+                                   SDL_Color* border,
+                                   SDL_Color* history_bg,
+                                   SDL_Color* meter_bg,
+                                   SDL_Color* lane_bg,
+                                   SDL_Color* mid_marker,
+                                   SDL_Color* side_marker) {
+    DawThemePalette theme = {0};
+    if (daw_shared_theme_resolve_palette(&theme)) {
+        if (fill) *fill = theme.inspector_fill;
+        if (border) *border = theme.pane_border;
+        if (history_bg) *history_bg = theme.timeline_fill;
+        if (meter_bg) *meter_bg = theme.slider_track;
+        if (lane_bg) *lane_bg = theme.control_fill;
+        if (mid_marker) *mid_marker = theme.slider_handle;
+        if (side_marker) *side_marker = theme.accent_warning;
+        return;
+    }
+    if (fill) *fill = (SDL_Color){22, 24, 30, 255};
+    if (border) *border = (SDL_Color){70, 75, 92, 255};
+    if (history_bg) *history_bg = (SDL_Color){26, 28, 36, 255};
+    if (meter_bg) *meter_bg = (SDL_Color){50, 54, 66, 255};
+    if (lane_bg) *lane_bg = (SDL_Color){60, 64, 74, 255};
+    if (mid_marker) *mid_marker = (SDL_Color){150, 210, 255, 255};
+    if (side_marker) *side_marker = (SDL_Color){255, 190, 140, 255};
+}
 
 static float clampf(float v, float lo, float hi) {
     if (v < lo) return lo;
@@ -78,14 +106,17 @@ static bool render_mid_side_history_with_adapter(SDL_Renderer* renderer,
     if (mid_r.code != CORE_OK || side_r.code != CORE_OK || mid_segment_count == 0 || side_segment_count == 0) {
         return false;
     }
+    SDL_Color mid_trace = {0};
+    SDL_Color side_trace = {0};
+    resolve_mid_side_theme(NULL, NULL, NULL, NULL, NULL, &mid_trace, &side_trace);
     daw_kit_viz_meter_render_segments(renderer,
                                       mid_segments,
                                       mid_segment_count,
-                                      (SDL_Color){100, 150, 210, 180});
+                                      mid_trace);
     daw_kit_viz_meter_render_segments(renderer,
                                       side_segments,
                                       side_segment_count,
-                                      (SDL_Color){180, 120, 90, 180});
+                                      side_trace);
     return true;
 }
 
@@ -99,8 +130,14 @@ void effects_meter_render_mid_side(SDL_Renderer* renderer,
     if (!renderer || !rect || rect->w <= 0 || rect->h <= 0) {
         return;
     }
-    SDL_Color border = {70, 75, 92, 255};
-    SDL_Color fill = {22, 24, 30, 255};
+    SDL_Color border = {0};
+    SDL_Color fill = {0};
+    SDL_Color history_bg = {0};
+    SDL_Color meter_bg = {0};
+    SDL_Color lane_bg = {0};
+    SDL_Color mid_marker = {0};
+    SDL_Color side_marker = {0};
+    resolve_mid_side_theme(&fill, &border, &history_bg, &meter_bg, &lane_bg, &mid_marker, &side_marker);
     SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -129,12 +166,12 @@ void effects_meter_render_mid_side(SDL_Renderer* renderer,
 
     ui_draw_text(renderer, rect->x + pad, rect->y + 6, "Mid/Side", label_color, 1.2f);
 
-    SDL_SetRenderDrawColor(renderer, 26, 28, 36, 255);
+    SDL_SetRenderDrawColor(renderer, history_bg.r, history_bg.g, history_bg.b, history_bg.a);
     SDL_RenderFillRect(renderer, &history_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &history_rect);
 
-    SDL_SetRenderDrawColor(renderer, 50, 54, 66, 255);
+    SDL_SetRenderDrawColor(renderer, meter_bg.r, meter_bg.g, meter_bg.b, meter_bg.a);
     SDL_RenderFillRect(renderer, &meter_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &meter_rect);
@@ -144,7 +181,7 @@ void effects_meter_render_mid_side(SDL_Renderer* renderer,
     SDL_Rect mid_meter = {meter_rect.x, meter_rect.y, meter_rect.w, lane_h};
     SDL_Rect side_meter = {meter_rect.x, meter_rect.y + lane_h + lane_gap, meter_rect.w, lane_h};
 
-    SDL_SetRenderDrawColor(renderer, 60, 64, 74, 255);
+    SDL_SetRenderDrawColor(renderer, lane_bg.r, lane_bg.g, lane_bg.b, lane_bg.a);
     SDL_RenderFillRect(renderer, &mid_meter);
     SDL_RenderFillRect(renderer, &side_meter);
 
@@ -165,9 +202,9 @@ void effects_meter_render_mid_side(SDL_Renderer* renderer,
         float side_norm = clampf(side / 1.0f, 0.0f, 1.0f);
         int mid_y = mid_meter.y + (int)lroundf((1.0f - mid_norm) * (float)mid_meter.h);
         int side_y = side_meter.y + (int)lroundf((1.0f - side_norm) * (float)side_meter.h);
-        SDL_SetRenderDrawColor(renderer, 150, 210, 255, 255);
+        SDL_SetRenderDrawColor(renderer, mid_marker.r, mid_marker.g, mid_marker.b, mid_marker.a);
         SDL_RenderDrawLine(renderer, mid_meter.x - 3, mid_y, mid_meter.x + mid_meter.w + 3, mid_y);
-        SDL_SetRenderDrawColor(renderer, 255, 190, 140, 255);
+        SDL_SetRenderDrawColor(renderer, side_marker.r, side_marker.g, side_marker.b, side_marker.a);
         SDL_RenderDrawLine(renderer, side_meter.x - 3, side_y, side_meter.x + side_meter.w + 3, side_y);
 
         char buf[64];
@@ -198,7 +235,7 @@ void effects_meter_render_mid_side(SDL_Renderer* renderer,
             float mid_y = (float)mid_hist.y + (1.0f - mid_hist_val) * (float)mid_hist.h;
             float side_y = (float)side_hist.y + (1.0f - side_hist_val) * (float)side_hist.h;
             int alpha = (int)lroundf(90.0f * (1.0f - t) + 90.0f);
-            SDL_SetRenderDrawColor(renderer, 100, 150, 210, alpha);
+            SDL_SetRenderDrawColor(renderer, mid_marker.r, mid_marker.g, mid_marker.b, alpha);
             if (i > 0) {
                 SDL_RenderDrawLine(renderer,
                                    (int)lroundf(prev_mid_x),
@@ -206,7 +243,7 @@ void effects_meter_render_mid_side(SDL_Renderer* renderer,
                                    (int)lroundf(x),
                                    (int)lroundf(mid_y));
             }
-            SDL_SetRenderDrawColor(renderer, 180, 120, 90, alpha);
+            SDL_SetRenderDrawColor(renderer, side_marker.r, side_marker.g, side_marker.b, alpha);
             if (i > 0) {
                 SDL_RenderDrawLine(renderer,
                                    (int)lroundf(prev_side_x),

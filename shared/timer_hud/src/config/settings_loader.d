@@ -77,6 +77,7 @@ build/../shared/timer_hud/src/config/settings_loader.o: \
   ../shared/vk_renderer/include/vk_renderer_textures.h \
   ../shared/vk_renderer/include/vk_renderer_compat_sdl.h \
   ../shared/timer_hud/include/timer_hud/settings_loader.h \
+  ../shared/timer_hud/src/config/../core/timer.h \
   ../shared/timer_hud/src/config/../../external/cJSON.h
 ../shared/vk_renderer/include/vk_renderer_sdl.h:
 ../shared/vk_renderer/include/vk_renderer.h:
@@ -156,4 +157,5 @@ build/../shared/timer_hud/src/config/settings_loader.o: \
 ../shared/vk_renderer/include/vk_renderer_textures.h:
 ../shared/vk_renderer/include/vk_renderer_compat_sdl.h:
 ../shared/timer_hud/include/timer_hud/settings_loader.h:
+../shared/timer_hud/src/config/../core/timer.h:
 ../shared/timer_hud/src/config/../../external/cJSON.h:

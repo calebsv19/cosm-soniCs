@@ -6,6 +6,7 @@
 #include "ui/font.h"
 #include "ui/effects_panel_slot_layout.h"
 #include "ui/layout.h"
+#include "ui/shared_theme_font_adapter.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -39,6 +40,28 @@ static const FxCategorySpec kCategorySpecs[] = {
     {"Reverb",        90u, 99u},
     {"Metering",      100u, 109u},
 };
+
+static void resolve_effects_panel_theme(DawThemePalette* palette) {
+    if (!palette) {
+        return;
+    }
+    if (!daw_shared_theme_resolve_palette(palette)) {
+        *palette = (DawThemePalette){
+            .timeline_fill = {28, 30, 38, 255},
+            .inspector_fill = {26, 26, 32, 240},
+            .pane_border = {90, 95, 110, 255},
+            .control_fill = {48, 52, 62, 255},
+            .control_hover_fill = {70, 90, 120, 255},
+            .control_active_fill = {120, 160, 220, 255},
+            .control_border = {90, 95, 110, 255},
+            .text_primary = {220, 220, 230, 255},
+            .text_muted = {160, 170, 190, 255},
+            .selection_fill = {80, 110, 160, 255},
+            .slider_track = {52, 56, 64, 220},
+            .slider_handle = {120, 160, 220, 255}
+        };
+    }
+}
 
 static void zero_layout(EffectsPanelLayout* layout) {
     if (!layout) {
@@ -709,19 +732,25 @@ static void effects_panel_ensure_last_open_tracks(EffectsPanelState* panel, int 
     panel->last_open_track_fx_count = track_count;
 }
 
-static void draw_button(SDL_Renderer* renderer, const SDL_Rect* rect, bool highlighted, const char* label, float scale) {
+static void draw_button(SDL_Renderer* renderer,
+                        const SDL_Rect* rect,
+                        bool highlighted,
+                        const char* label,
+                        float scale,
+                        const DawThemePalette* theme) {
     if (!renderer || !rect) {
         return;
     }
-    SDL_Color base = {48, 52, 62, 255};
-    SDL_Color highlight = {120, 160, 220, 255};
-    SDL_Color border = {90, 95, 110, 255};
-    SDL_Color text = {220, 220, 230, 255};
+    SDL_Color base = theme ? theme->control_fill : (SDL_Color){48, 52, 62, 255};
+    SDL_Color highlight = theme ? theme->control_active_fill : (SDL_Color){120, 160, 220, 255};
+    SDL_Color border = theme ? theme->control_border : (SDL_Color){90, 95, 110, 255};
+    SDL_Color text = theme ? theme->text_primary : (SDL_Color){220, 220, 230, 255};
 
-    SDL_Color fill = highlighted ? highlight : base;
+    SDL_Color fill = base;
+    SDL_Color draw_border = highlighted ? highlight : border;
     SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
     SDL_RenderFillRect(renderer, rect);
-    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+    SDL_SetRenderDrawColor(renderer, draw_border.r, draw_border.g, draw_border.b, draw_border.a);
     SDL_RenderDrawRect(renderer, rect);
     if (label) {
         int text_h = ui_font_line_height(scale);
@@ -1262,15 +1291,17 @@ void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* lay
 }
 
 static void render_overlay(SDL_Renderer* renderer, const AppState* state, const EffectsPanelLayout* layout) {
+    DawThemePalette theme = {0};
     if (!renderer || !state || !layout || !layout->overlay_visible) {
         return;
     }
+    resolve_effects_panel_theme(&theme);
     const EffectsPanelState* panel = &state->effects_panel;
-    SDL_Color bg = {26, 26, 32, 240};
-    SDL_Color border = {90, 95, 110, 255};
-    SDL_Color header_bg = {48, 52, 62, 255};
-    SDL_Color label = {210, 210, 220, 255};
-    SDL_Color hover = {80, 110, 160, 255};
+    SDL_Color bg = theme.inspector_fill;
+    SDL_Color border = theme.pane_border;
+    SDL_Color header_bg = theme.control_fill;
+    SDL_Color label = theme.text_primary;
+    SDL_Color hover = theme.selection_fill;
 
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
     SDL_RenderFillRect(renderer, &layout->overlay_rect);
@@ -1299,7 +1330,7 @@ static void render_overlay(SDL_Renderer* renderer, const AppState* state, const 
                  2);
 
     if (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS) {
-        SDL_Color back_color = {70, 90, 120, 255};
+        SDL_Color back_color = theme.control_hover_fill;
         SDL_SetRenderDrawColor(renderer, back_color.r, back_color.g, back_color.b, back_color.a);
         SDL_RenderFillRect(renderer, &layout->overlay_back_rect);
         SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -1370,8 +1401,8 @@ static void render_overlay(SDL_Renderer* renderer, const AppState* state, const 
     }
 
     if (layout->overlay_has_scrollbar) {
-        SDL_Color track = {52, 56, 64, 220};
-        SDL_Color thumb = {120, 160, 220, 255};
+        SDL_Color track = theme.slider_track;
+        SDL_Color thumb = theme.slider_handle;
         SDL_SetRenderDrawColor(renderer, track.r, track.g, track.b, track.a);
         SDL_RenderFillRect(renderer, &layout->overlay_scrollbar_track);
         SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -1384,14 +1415,16 @@ static void render_overlay(SDL_Renderer* renderer, const AppState* state, const 
 }
 
 void effects_panel_render(SDL_Renderer* renderer, const AppState* state, const EffectsPanelLayout* layout) {
+    DawThemePalette theme = {0};
     if (!renderer || !state || !layout) {
         return;
     }
+    resolve_effects_panel_theme(&theme);
     const EffectsPanelState* panel = &state->effects_panel;
-    SDL_Color label_color = {210, 210, 220, 255};
-    SDL_Color text_dim = {160, 170, 190, 255};
+    SDL_Color label_color = theme.text_primary;
+    SDL_Color text_dim = theme.text_muted;
 
-    SDL_SetRenderDrawColor(renderer, 28, 30, 38, 255);
+    SDL_SetRenderDrawColor(renderer, theme.timeline_fill.r, theme.timeline_fill.g, theme.timeline_fill.b, theme.timeline_fill.a);
     SDL_RenderFillRect(renderer, &layout->panel_rect);
 
     if (panel->title_debug_last_click) {
@@ -1420,9 +1453,9 @@ void effects_panel_render(SDL_Renderer* renderer, const AppState* state, const E
                                                                        layout->panel_rect.y + FX_PANEL_MARGIN + 6,
                                                                        ui_measure_text_width(target_line, title_scale) + 12,
                                                                        ui_font_line_height(title_scale) + 8};
-    SDL_SetRenderDrawColor(renderer, 40, 44, 54, 200);
+    SDL_SetRenderDrawColor(renderer, theme.control_fill.r, theme.control_fill.g, theme.control_fill.b, 200);
     SDL_RenderFillRect(renderer, &title_rect);
-    SDL_SetRenderDrawColor(renderer, 90, 95, 110, 255);
+    SDL_SetRenderDrawColor(renderer, theme.control_border.r, theme.control_border.g, theme.control_border.b, theme.control_border.a);
     SDL_RenderDrawRect(renderer, &title_rect);
     int text_h = ui_font_line_height(title_scale);
     int text_y = title_rect.y + (title_rect.h - text_h) / 2;
@@ -1438,17 +1471,17 @@ void effects_panel_render(SDL_Renderer* renderer, const AppState* state, const E
         }
         int caret_h = ui_font_line_height(title_scale);
         SDL_Rect caret = {caret_x, text_y, 2, caret_h};
-        SDL_SetRenderDrawColor(renderer, 240, 240, 240, 255);
+        SDL_SetRenderDrawColor(renderer, theme.text_primary.r, theme.text_primary.g, theme.text_primary.b, theme.text_primary.a);
         SDL_RenderFillRect(renderer, &caret);
     }
 
     // View mode + add button
     const char* toggle_label = panel->view_mode == FX_PANEL_VIEW_STACK ? "List" : "Rack";
-    draw_button(renderer, &layout->view_toggle_rect, false, toggle_label, FX_PANEL_BUTTON_SCALE);
-    draw_button(renderer, &layout->spec_toggle_rect, panel->spec_panel_enabled, "Spec", FX_PANEL_BUTTON_SCALE);
+    draw_button(renderer, &layout->view_toggle_rect, false, toggle_label, FX_PANEL_BUTTON_SCALE, &theme);
+    draw_button(renderer, &layout->spec_toggle_rect, panel->spec_panel_enabled, "Spec", FX_PANEL_BUTTON_SCALE, &theme);
     bool button_active = (panel->overlay_layer != FX_PANEL_OVERLAY_CLOSED);
-    draw_button(renderer, &layout->dropdown_button_rect, button_active, "Add FX", FX_PANEL_BUTTON_SCALE);
-    draw_button(renderer, &layout->preview_toggle_rect, panel->preview_toggle_hovered, "Preview", FX_PANEL_BUTTON_SCALE);
+    draw_button(renderer, &layout->dropdown_button_rect, button_active, "Add FX", FX_PANEL_BUTTON_SCALE, &theme);
+    draw_button(renderer, &layout->preview_toggle_rect, panel->preview_toggle_hovered, "Preview", FX_PANEL_BUTTON_SCALE, &theme);
 
     if (panel->view_mode == FX_PANEL_VIEW_LIST) {
         effects_panel_render_list(renderer, state, layout);

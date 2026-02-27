@@ -4,9 +4,53 @@
 #include "time/tempo.h"
 
 #include "ui/font.h"
+#include "ui/shared_theme_font_adapter.h"
 
 #include <string.h>
 #include <math.h>
+
+static void fill_fallback_theme_palette(DawThemePalette* palette) {
+    if (!palette) {
+        return;
+    }
+    *palette = (DawThemePalette){
+        .menu_fill = {26, 26, 34, 255},
+        .timeline_fill = {32, 32, 40, 255},
+        .inspector_fill = {28, 28, 36, 255},
+        .library_fill = {24, 24, 32, 255},
+        .pane_border = {90, 90, 110, 255},
+        .pane_highlight_fill = {42, 46, 58, 255},
+        .pane_highlight_border = {120, 160, 220, 255},
+        .title_text = {220, 220, 230, 255},
+        .text_primary = {220, 220, 230, 255},
+        .text_muted = {200, 200, 210, 255},
+        .control_fill = {60, 60, 70, 255},
+        .control_hover_fill = {90, 90, 110, 255},
+        .control_active_fill = {120, 140, 180, 255},
+        .control_border = {120, 120, 128, 255},
+        .slider_track = {36, 36, 44, 255},
+        .slider_handle = {180, 210, 255, 255},
+        .slider_handle_hover = {210, 230, 255, 255},
+        .timeline_border = {90, 90, 110, 255},
+        .grid_minor = {65, 65, 85, 255},
+        .grid_sub = {66, 70, 100, 200},
+        .grid_major = {80, 82, 115, 255},
+        .grid_downbeat = {90, 100, 130, 255},
+        .selection_fill = {110, 140, 190, 180},
+        .accent_primary = {120, 160, 220, 255},
+        .accent_warning = {230, 190, 110, 255},
+        .accent_error = {220, 110, 110, 255}
+    };
+}
+
+static void resolve_transport_theme(DawThemePalette* palette) {
+    if (!palette) {
+        return;
+    }
+    if (!daw_shared_theme_resolve_palette(palette)) {
+        fill_fallback_theme_palette(palette);
+    }
+}
 
 void transport_ui_init(TransportUI* ui) {
     if (!ui) {
@@ -320,26 +364,28 @@ void transport_ui_sync(TransportUI* ui, const AppState* state) {
         ui->window_handle_rect.x = ui->window_track_rect.x + ui->window_track_rect.w - handle_w;
 }
 
-static void render_button(SDL_Renderer* renderer, const SDL_Rect* rect, bool hovered, bool active, const char* label, SDL_Color base_color) {
-    SDL_Color fill = base_color;
-    if (active) {
-        fill.r = (Uint8)((fill.r + 80) > 255 ? 255 : fill.r + 80);
-        fill.g = (Uint8)((fill.g + 100) > 255 ? 255 : fill.g + 100);
-        fill.b = (Uint8)((fill.b + 140) > 255 ? 255 : fill.b + 140);
-    } else if (hovered) {
-        fill.r = (Uint8)((fill.r + 30) > 255 ? 255 : fill.r + 30);
-        fill.g = (Uint8)((fill.g + 30) > 255 ? 255 : fill.g + 30);
-        fill.b = (Uint8)((fill.b + 40) > 255 ? 255 : fill.b + 40);
+static void render_button(SDL_Renderer* renderer,
+                          const SDL_Rect* rect,
+                          bool hovered,
+                          bool active,
+                          const char* label,
+                          const DawThemePalette* palette) {
+    SDL_Color fill = palette ? palette->control_fill : (SDL_Color){60, 60, 70, 255};
+    SDL_Color border = palette ? palette->control_border : (SDL_Color){120, 120, 128, 255};
+    SDL_Color text = palette ? palette->text_primary : (SDL_Color){220, 220, 230, 255};
+    if (active && palette) {
+        fill = palette->control_active_fill;
+        border = palette->pane_highlight_border;
+    } else if (hovered && palette) {
+        border = palette->pane_highlight_border;
     }
 
     SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
     SDL_RenderFillRect(renderer, rect);
 
-    SDL_Color border = {120, 120, 128, 255};
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, rect);
 
-    SDL_Color text = {220, 220, 230, 255};
     const int scale = 1;
     int text_width = ui_measure_text_width(label, scale);
     int text_height = ui_font_line_height(scale);
@@ -399,30 +445,31 @@ static void draw_time_with_decimal(SDL_Renderer* renderer, const SDL_Rect* rect,
 }
 
 void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const AppState* state, bool is_playing) {
+    DawThemePalette theme = {0};
     if (!renderer || !ui) {
         return;
     }
-    SDL_Color label_zoom = {200, 200, 210, 255};
+    resolve_transport_theme(&theme);
+    SDL_Color label_zoom = theme.text_muted;
 
-    SDL_Color underline = {90, 90, 100, 255};
+    SDL_Color underline = theme.pane_border;
     int underline_y = ui->panel_rect.y + ui->panel_rect.h - 1;
     SDL_SetRenderDrawColor(renderer, underline.r, underline.g, underline.b, underline.a);
     SDL_RenderDrawLine(renderer, ui->panel_rect.x, underline_y, ui->panel_rect.x + ui->panel_rect.w, underline_y);
 
-    SDL_Color button_base = {60, 60, 70, 255};
-    render_button(renderer, &ui->load_rect, ui->load_hovered, false, "LOAD", button_base);
-    render_button(renderer, &ui->save_rect, ui->save_hovered, false, "SAVE", button_base);
-    render_button(renderer, &ui->play_rect, ui->play_hovered, is_playing, "PLAY", button_base);
-    render_button(renderer, &ui->stop_rect, ui->stop_hovered, !is_playing, "STOP", button_base);
+    render_button(renderer, &ui->load_rect, ui->load_hovered, false, "LOAD", &theme);
+    render_button(renderer, &ui->save_rect, ui->save_hovered, false, "SAVE", &theme);
+    render_button(renderer, &ui->play_rect, ui->play_hovered, is_playing, "PLAY", &theme);
+    render_button(renderer, &ui->stop_rect, ui->stop_hovered, !is_playing, "STOP", &theme);
 
-    SDL_Color track_bg = {36, 36, 44, 255};
-    SDL_Color track_border = {90, 90, 110, 255};
+    SDL_Color track_bg = theme.slider_track;
+    SDL_Color track_border = theme.timeline_border;
 
     bool grid_active = state ? state->timeline_show_all_grid_lines : false;
-    render_button(renderer, &ui->grid_rect, ui->grid_hovered, grid_active, grid_active ? "GRID:ALL" : "GRID:AUTO", button_base);
+    render_button(renderer, &ui->grid_rect, ui->grid_hovered, grid_active, grid_active ? "GRID:ALL" : "GRID:AUTO", &theme);
 
     if (state && state->engine) {
-        SDL_Color time_bg = {32, 32, 40, 255};
+        SDL_Color time_bg = theme.timeline_fill;
         SDL_SetRenderDrawColor(renderer, time_bg.r, time_bg.g, time_bg.b, time_bg.a);
         SDL_RenderFillRect(renderer, &ui->time_label_rect);
         SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
@@ -433,7 +480,7 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         double seconds = (sample_rate > 0) ? (double)frame / (double)sample_rate : 0.0;
 
         char time_text[48];
-        SDL_Color time_color = state->timeline_view_in_beats ? (SDL_Color){200, 210, 230, 255} : (SDL_Color){225, 225, 235, 255};
+        SDL_Color time_color = state->timeline_view_in_beats ? theme.text_muted : theme.text_primary;
         if (state->timeline_view_in_beats && state->tempo_map.event_count > 0) {
             double beats = tempo_map_seconds_to_beats(&state->tempo_map, seconds);
             int bar = 1;
@@ -464,14 +511,14 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
 
         // BPM field and TS stub
         SDL_Rect bpm_rect = ui->bpm_rect;
-        SDL_Color bpm_bg = {36, 36, 44, 255};
-        SDL_Color bpm_border = {90, 90, 110, 255};
-        SDL_Color bpm_text_color = {230, 230, 240, 255};
+        SDL_Color bpm_bg = theme.slider_track;
+        SDL_Color bpm_border = theme.control_border;
+        SDL_Color bpm_text_color = theme.text_primary;
         if (state->tempo_ui.focus == TEMPO_FOCUS_BPM) {
-            bpm_bg = (SDL_Color){50, 60, 80, 255};
+            bpm_bg = theme.control_hover_fill;
         }
         if (state->tempo_ui.editing && state->tempo_ui.focus == TEMPO_FOCUS_BPM) {
-            bpm_bg = (SDL_Color){60, 80, 110, 255};
+            bpm_bg = theme.control_active_fill;
         }
         SDL_SetRenderDrawColor(renderer, bpm_bg.r, bpm_bg.g, bpm_bg.b, bpm_bg.a);
         SDL_RenderFillRect(renderer, &bpm_rect);
@@ -506,9 +553,9 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
             ts_den = active_signature->ts_den;
         }
 
-        SDL_Color ts_bg = {36, 36, 44, 255};
-        SDL_Color ts_focus_bg = (SDL_Color){50, 60, 80, 255};
-        SDL_Color ts_edit_bg = (SDL_Color){60, 80, 110, 255};
+        SDL_Color ts_bg = theme.slider_track;
+        SDL_Color ts_focus_bg = theme.control_hover_fill;
+        SDL_Color ts_edit_bg = theme.control_active_fill;
         bool focus_ts = state->tempo_ui.focus == TEMPO_FOCUS_TS;
         bool editing_ts = state->tempo_ui.editing && focus_ts;
 
@@ -552,15 +599,13 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         ui_draw_text(renderer, num_tx, ts_ty, ts_num_text, bpm_text_color, ts_scale);
         ui_draw_text(renderer, den_tx, ts_ty, ts_den_text, bpm_text_color, ts_scale);
 
-        SDL_Color toggle_bg = state->timeline_view_in_beats ? (SDL_Color){70, 110, 140, 255} : (SDL_Color){36, 36, 44, 255};
-        if (ui->beat_toggle_hovered) {
-            toggle_bg.r = (Uint8)((toggle_bg.r + 30) > 255 ? 255 : toggle_bg.r + 30);
-            toggle_bg.g = (Uint8)((toggle_bg.g + 30) > 255 ? 255 : toggle_bg.g + 30);
-            toggle_bg.b = (Uint8)((toggle_bg.b + 30) > 255 ? 255 : toggle_bg.b + 30);
-        }
+        SDL_Color toggle_bg = state->timeline_view_in_beats ? theme.control_active_fill : theme.control_fill;
+        SDL_Color toggle_border = state->timeline_view_in_beats || ui->beat_toggle_hovered
+                                      ? theme.pane_highlight_border
+                                      : bpm_border;
         SDL_SetRenderDrawColor(renderer, toggle_bg.r, toggle_bg.g, toggle_bg.b, toggle_bg.a);
         SDL_RenderFillRect(renderer, &ui->beat_toggle_rect);
-        SDL_SetRenderDrawColor(renderer, bpm_border.r, bpm_border.g, bpm_border.b, bpm_border.a);
+        SDL_SetRenderDrawColor(renderer, toggle_border.r, toggle_border.g, toggle_border.b, toggle_border.a);
         SDL_RenderDrawRect(renderer, &ui->beat_toggle_rect);
         const char* toggle_label = "B";
         int toggle_scale = 1;
@@ -568,16 +613,16 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         int togg_th = ui_font_line_height(toggle_scale);
         int togg_tx = ui->beat_toggle_rect.x + (ui->beat_toggle_rect.w - togg_tw) / 2;
         int togg_ty = ui->beat_toggle_rect.y + (ui->beat_toggle_rect.h - togg_th) / 2;
-        ui_draw_text(renderer, togg_tx, togg_ty, toggle_label, (SDL_Color){230, 230, 240, 255}, toggle_scale);
+        ui_draw_text(renderer, togg_tx, togg_ty, toggle_label, theme.text_primary, toggle_scale);
     }
 
     SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
     SDL_RenderFillRect(renderer, &ui->seek_track_rect);
     SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
     SDL_RenderDrawRect(renderer, &ui->seek_track_rect);
-    SDL_Color seek_handle_col = {180, 210, 255, 255};
+    SDL_Color seek_handle_col = theme.slider_handle;
     if (ui->seek_hovered || ui->adjusting_seek) {
-        seek_handle_col = (SDL_Color){210, 230, 255, 255};
+        seek_handle_col = theme.slider_handle_hover;
     }
     SDL_SetRenderDrawColor(renderer, seek_handle_col.r, seek_handle_col.g, seek_handle_col.b, seek_handle_col.a);
     SDL_RenderFillRect(renderer, &ui->seek_handle_rect);
@@ -587,9 +632,9 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
     SDL_RenderFillRect(renderer, &ui->window_track_rect);
     SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
     SDL_RenderDrawRect(renderer, &ui->window_track_rect);
-    SDL_Color window_handle_col = {170, 200, 245, 255};
+    SDL_Color window_handle_col = theme.slider_handle;
     if (ui->window_hovered || ui->adjusting_window) {
-        window_handle_col = (SDL_Color){200, 220, 255, 255};
+        window_handle_col = theme.slider_handle_hover;
     }
     SDL_SetRenderDrawColor(renderer, window_handle_col.r, window_handle_col.g, window_handle_col.b, window_handle_col.a);
     SDL_RenderFillRect(renderer, &ui->window_handle_rect);
@@ -606,7 +651,7 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
     SDL_RenderDrawRect(renderer, &ui->vert_track_rect);
 
     if (state) {
-        SDL_SetRenderDrawColor(renderer, 180, 210, 255, 255);
+        SDL_SetRenderDrawColor(renderer, theme.slider_handle.r, theme.slider_handle.g, theme.slider_handle.b, theme.slider_handle.a);
         SDL_RenderFillRect(renderer, &ui->horiz_handle_rect);
         SDL_RenderDrawRect(renderer, &ui->horiz_handle_rect);
 
@@ -614,25 +659,25 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         SDL_RenderDrawRect(renderer, &ui->vert_handle_rect);
     }
 
-    SDL_Color fit_base = {36, 36, 44, 255};
-    SDL_Color fit_border = {90, 90, 110, 255};
-    SDL_Color fit_hover = {72, 92, 120, 255};
+    SDL_Color fit_base = theme.slider_track;
+    SDL_Color fit_border = theme.control_border;
 
     SDL_Rect buttons[2] = {ui->fit_width_rect, ui->fit_height_rect};
     const char* labels[2] = {"W", "H"};
     bool hovers[2] = {ui->fit_width_hovered, ui->fit_height_hovered};
     for (int i = 0; i < 2; ++i) {
-        SDL_Color fill = hovers[i] ? fit_hover : fit_base;
+        SDL_Color fill = fit_base;
+        SDL_Color border = hovers[i] ? theme.pane_highlight_border : fit_border;
         SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
         SDL_RenderFillRect(renderer, &buttons[i]);
-        SDL_SetRenderDrawColor(renderer, fit_border.r, fit_border.g, fit_border.b, fit_border.a);
+        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
         SDL_RenderDrawRect(renderer, &buttons[i]);
         int scale = 1;
         int tw = ui_measure_text_width(labels[i], scale);
         int th = ui_font_line_height(scale);
         int tx = buttons[i].x + (buttons[i].w - tw) / 2;
         int ty = buttons[i].y + (buttons[i].h - th) / 2;
-        ui_draw_text(renderer, tx, ty, labels[i], (SDL_Color){220, 220, 230, 255}, scale);
+        ui_draw_text(renderer, tx, ty, labels[i], theme.text_primary, scale);
     }
 
     ui_draw_text(renderer, ui->seek_track_rect.x, ui->seek_track_rect.y - 12, "Playhead", label_zoom, 1);

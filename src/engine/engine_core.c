@@ -2,6 +2,7 @@
 
 #include "engine/sampler.h"
 #include "effects/effects_builtin.h"
+#include "core/loop/daw_mainthread_messages.h"
 #include "core_time.h"
 
 #include <stdarg.h>
@@ -210,6 +211,7 @@ static int engine_worker_main(void* userdata) {
     }
 
     uint64_t last_report_ns = core_time_now_ns();
+    uint64_t last_transport_notify_ns = last_report_ns;
     double accum_ms = 0.0;
     int accum_blocks = 0;
 
@@ -321,6 +323,14 @@ static int engine_worker_main(void* userdata) {
 
         engine_sanitize_block(block_buffer, (size_t)block * (size_t)channels);
         engine_spectrum_update(engine, block_buffer, block, channels);
+
+        uint64_t now_ns = core_time_now_ns();
+        if (core_time_diff_ns(now_ns, last_transport_notify_ns) >= 16000000ULL) {
+            (void)daw_mainthread_message_post(DAW_MAINTHREAD_MSG_ENGINE_TRANSPORT,
+                                              engine->transport_frame,
+                                              engine);
+            last_transport_notify_ns = now_ns;
+        }
 
         audio_queue_write(&engine->output_queue, block_buffer, (size_t)block);
     }

@@ -1,4 +1,5 @@
 #include "engine/engine_internal.h"
+#include "core/loop/daw_mainthread_messages.h"
 
 #include <math.h>
 #include <string.h>
@@ -466,6 +467,11 @@ static void engine_fx_meter_tap_callback(void* user,
             tap->snapshot.valid = true;
         }
     }
+
+    // Notify main-thread UI that FX meter-visible data changed; posting is coalesced.
+    (void)daw_mainthread_message_post(DAW_MAINTHREAD_MSG_ENGINE_FX_METER,
+                                      (uint64_t)id,
+                                      engine);
 }
 
 void engine_fx_meter_clear_all(Engine* engine) {

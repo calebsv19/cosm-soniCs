@@ -4,9 +4,34 @@
 #include "ui/font.h"
 #include "ui/kit_viz_meter_adapter.h"
 #include "ui/render_utils.h"
+#include "ui/shared_theme_font_adapter.h"
 
 #include <math.h>
 #include <stdio.h>
+
+static void resolve_lufs_theme(SDL_Color* fill,
+                               SDL_Color* border,
+                               SDL_Color* history_bg,
+                               SDL_Color* meter_bg,
+                               SDL_Color* marker,
+                               SDL_Color* trace) {
+    DawThemePalette theme = {0};
+    if (daw_shared_theme_resolve_palette(&theme)) {
+        if (fill) *fill = theme.inspector_fill;
+        if (border) *border = theme.pane_border;
+        if (history_bg) *history_bg = theme.timeline_fill;
+        if (meter_bg) *meter_bg = theme.slider_track;
+        if (marker) *marker = theme.accent_warning;
+        if (trace) *trace = theme.accent_warning;
+        return;
+    }
+    if (fill) *fill = (SDL_Color){22, 24, 30, 255};
+    if (border) *border = (SDL_Color){70, 75, 92, 255};
+    if (history_bg) *history_bg = (SDL_Color){26, 28, 36, 255};
+    if (meter_bg) *meter_bg = (SDL_Color){50, 54, 66, 255};
+    if (marker) *marker = (SDL_Color){190, 230, 140, 255};
+    if (trace) *trace = (SDL_Color){130, 170, 100, 180};
+}
 
 // Clamps a value between bounds for stable meter rendering.
 static float clampf(float v, float lo, float hi) {
@@ -60,10 +85,12 @@ static bool render_lufs_history_with_adapter(SDL_Renderer* renderer,
     if (r.code != CORE_OK || segment_count == 0) {
         return false;
     }
+    SDL_Color trace = {0};
+    resolve_lufs_theme(NULL, NULL, NULL, NULL, NULL, &trace);
     daw_kit_viz_meter_render_segments(renderer,
                                       segments,
                                       segment_count,
-                                      (SDL_Color){130, 170, 100, 180});
+                                      trace);
     return true;
 }
 
@@ -78,8 +105,13 @@ void effects_meter_render_lufs(SDL_Renderer* renderer,
     if (!renderer || !rect || rect->w <= 0 || rect->h <= 0) {
         return;
     }
-    SDL_Color border = {70, 75, 92, 255};
-    SDL_Color fill = {22, 24, 30, 255};
+    SDL_Color border = {0};
+    SDL_Color fill = {0};
+    SDL_Color history_bg = {0};
+    SDL_Color meter_bg = {0};
+    SDL_Color marker = {0};
+    SDL_Color trace = {0};
+    resolve_lufs_theme(&fill, &border, &history_bg, &meter_bg, &marker, &trace);
     SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -124,12 +156,12 @@ void effects_meter_render_lufs(SDL_Renderer* renderer,
         ui_draw_text(renderer, rect->x + pad, rect->y + 22, "No data", dim_color, 1.0f);
     }
 
-    SDL_SetRenderDrawColor(renderer, 26, 28, 36, 255);
+    SDL_SetRenderDrawColor(renderer, history_bg.r, history_bg.g, history_bg.b, history_bg.a);
     SDL_RenderFillRect(renderer, &history_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &history_rect);
 
-    SDL_SetRenderDrawColor(renderer, 50, 54, 66, 255);
+    SDL_SetRenderDrawColor(renderer, meter_bg.r, meter_bg.g, meter_bg.b, meter_bg.a);
     SDL_RenderFillRect(renderer, &meter_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &meter_rect);
@@ -144,7 +176,7 @@ void effects_meter_render_lufs(SDL_Renderer* renderer,
         float norm = (current - min_db) / (max_db - min_db);
         norm = clampf(norm, 0.0f, 1.0f);
         int marker_y = meter_rect.y + (int)lroundf((1.0f - norm) * (float)meter_rect.h);
-        SDL_SetRenderDrawColor(renderer, 190, 230, 140, 255);
+        SDL_SetRenderDrawColor(renderer, marker.r, marker.g, marker.b, marker.a);
         SDL_RenderDrawLine(renderer, meter_rect.x - 4, marker_y, meter_rect.x + meter_rect.w + 4, marker_y);
     }
 
@@ -169,7 +201,7 @@ void effects_meter_render_lufs(SDL_Renderer* renderer,
             float x = (float)history_rect.x + t * (float)history_rect.w;
             float y = (float)history_rect.y + (1.0f - y_norm) * (float)history_rect.h;
             int alpha = (int)lroundf(90.0f * (1.0f - t) + 90.0f);
-            SDL_SetRenderDrawColor(renderer, 130, 170, 100, alpha);
+            SDL_SetRenderDrawColor(renderer, trace.r, trace.g, trace.b, alpha);
             if (i > 0) {
                 SDL_RenderDrawLine(renderer,
                                    (int)lroundf(prev_x),

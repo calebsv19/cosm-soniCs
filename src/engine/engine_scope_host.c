@@ -1,4 +1,5 @@
 #include "engine/engine_internal.h"
+#include "core/loop/daw_mainthread_messages.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -248,6 +249,9 @@ static void engine_fx_scope_tap_callback(void* user,
         return;
     }
     engine_scope_write_gr(engine, is_master, track_index, id, value);
+    (void)daw_mainthread_message_post(DAW_MAINTHREAD_MSG_ENGINE_FX_SCOPE,
+                                      (uint64_t)id,
+                                      engine);
 }
 
 void engine_register_fx_scope_tap(Engine* engine) {

@@ -14,8 +14,10 @@
 #include "ui/effects_panel.h"
 #include "ui/panes.h"
 #include "ui/transport.h"
+#include "ui/shared_theme_font_adapter.h"
 #include "session/project_manager.h"
 #include "undo/undo_manager.h"
+#include "core/loop/daw_render_invalidation.h"
 
 #include <SDL2/SDL.h>
 
@@ -297,6 +299,36 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
         return;
     }
 
+    {
+        bool theme_next_now = ctrl_or_cmd && shift_held && keys[SDL_SCANCODE_T];
+        if (theme_next_now && !manager->previous_theme_next) {
+            if (daw_shared_theme_cycle_next()) {
+                daw_shared_theme_save_persisted();
+                ui_apply_shared_theme(state);
+                daw_invalidate_all(state->panes,
+                                   state->pane_count,
+                                   DAW_RENDER_INVALIDATION_THEME | DAW_RENDER_INVALIDATION_BACKGROUND);
+                daw_request_full_redraw(DAW_RENDER_INVALIDATION_THEME | DAW_RENDER_INVALIDATION_BACKGROUND);
+            }
+        }
+        manager->previous_theme_next = theme_next_now;
+    }
+
+    {
+        bool theme_prev_now = ctrl_or_cmd && shift_held && keys[SDL_SCANCODE_Y];
+        if (theme_prev_now && !manager->previous_theme_prev) {
+            if (daw_shared_theme_cycle_prev()) {
+                daw_shared_theme_save_persisted();
+                ui_apply_shared_theme(state);
+                daw_invalidate_all(state->panes,
+                                   state->pane_count,
+                                   DAW_RENDER_INVALIDATION_THEME | DAW_RENDER_INVALIDATION_BACKGROUND);
+                daw_request_full_redraw(DAW_RENDER_INVALIDATION_THEME | DAW_RENDER_INVALIDATION_BACKGROUND);
+            }
+        }
+        manager->previous_theme_prev = theme_prev_now;
+    }
+
     bool space_now = keys[SDL_SCANCODE_SPACE] != 0;
     if (!inspector_text_focus && space_now && !manager->previous_space) {
         bool shift_down = (SDL_GetModState() & KMOD_SHIFT) != 0;
@@ -429,6 +461,8 @@ void input_manager_init(InputManager* manager) {
     manager->previous_f7 = false;
     manager->previous_f8 = false;
     manager->previous_f9 = false;
+    manager->previous_theme_next = false;
+    manager->previous_theme_prev = false;
     manager->last_click_ticks = 0;
     manager->last_click_track = -1;
     manager->last_click_clip = -1;

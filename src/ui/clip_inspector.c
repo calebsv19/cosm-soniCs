@@ -9,6 +9,7 @@
 #include "ui/kit_viz_waveform_adapter.h"
 #include "ui/layout.h"
 #include "ui/render_utils.h"
+#include "ui/shared_theme_font_adapter.h"
 #include "ui/waveform_render.h"
 
 #include <math.h>
@@ -29,6 +30,51 @@
 #define INSPECTOR_WAVE_HEADER_PAD 8
 #define INSPECTOR_WAVE_SECTION_GAP 10
 #define INSPECTOR_WAVE_HEIGHT 140
+
+static void resolve_inspector_theme(DawThemePalette* palette) {
+    if (!palette) {
+        return;
+    }
+    if (!daw_shared_theme_resolve_palette(palette)) {
+        *palette = (DawThemePalette){
+            .timeline_fill = {32, 32, 40, 255},
+            .inspector_fill = {28, 28, 36, 255},
+            .pane_border = {70, 75, 92, 255},
+            .control_fill = {48, 52, 62, 255},
+            .control_active_fill = {120, 160, 220, 255},
+            .control_border = {90, 95, 110, 255},
+            .slider_track = {36, 36, 44, 255},
+            .slider_handle = {80, 120, 170, 220},
+            .text_primary = {220, 220, 230, 255},
+            .text_muted = {180, 180, 190, 255},
+            .selection_fill = {120, 160, 220, 40},
+            .accent_primary = {140, 180, 240, 120},
+            .accent_warning = {255, 210, 110, 220}
+        };
+    }
+}
+
+static void clip_inspector_automation_colors(SDL_Color* line_color,
+                                             SDL_Color* point_color,
+                                             SDL_Color* point_selected_color) {
+    DawThemePalette theme = {0};
+    if (daw_shared_theme_resolve_palette(&theme)) {
+        if (line_color) {
+            *line_color = theme.accent_primary;
+            line_color->a = 220;
+        }
+        if (point_color) {
+            *point_color = theme.text_muted;
+        }
+        if (point_selected_color) {
+            *point_selected_color = theme.text_primary;
+        }
+        return;
+    }
+    if (line_color) *line_color = (SDL_Color){170, 210, 230, 220};
+    if (point_color) *point_color = (SDL_Color){120, 150, 170, 255};
+    if (point_selected_color) *point_selected_color = (SDL_Color){230, 240, 255, 255};
+}
 
 static const char* waveform_result_label(DawKitVizWaveformResult result) {
     switch (result) {
@@ -63,13 +109,13 @@ static void zero_layout(ClipInspectorLayout* layout) {
     SDL_zero(*layout);
 }
 
-static void draw_slider(SDL_Renderer* renderer, const SDL_Rect* track_rect, float t) {
+static void draw_slider(SDL_Renderer* renderer, const SDL_Rect* track_rect, float t, const DawThemePalette* theme) {
     if (!renderer || !track_rect || track_rect->w <= 0 || track_rect->h <= 0) {
         return;
     }
-    SDL_Color track_bg = {36, 36, 44, 255};
-    SDL_Color track_border = {90, 90, 110, 255};
-    SDL_Color fill_color = {80, 120, 170, 220};
+    SDL_Color track_bg = theme ? theme->slider_track : (SDL_Color){36, 36, 44, 255};
+    SDL_Color track_border = theme ? theme->control_border : (SDL_Color){90, 90, 110, 255};
+    SDL_Color fill_color = theme ? theme->slider_handle : (SDL_Color){80, 120, 170, 220};
     SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
     SDL_RenderFillRect(renderer, track_rect);
     SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
@@ -99,14 +145,18 @@ static void draw_slider(SDL_Renderer* renderer, const SDL_Rect* track_rect, floa
     SDL_RenderDrawRect(renderer, &handle_rect);
 }
 
-static void draw_button(SDL_Renderer* renderer, const SDL_Rect* rect, const char* label, bool active) {
+static void draw_button(SDL_Renderer* renderer,
+                        const SDL_Rect* rect,
+                        const char* label,
+                        bool active,
+                        const DawThemePalette* theme) {
     if (!renderer || !rect || !label) {
         return;
     }
-    SDL_Color base = {48, 52, 62, 255};
-    SDL_Color highlight = {120, 160, 220, 255};
-    SDL_Color border = {90, 95, 110, 255};
-    SDL_Color text = {220, 220, 230, 255};
+    SDL_Color base = theme ? theme->control_fill : (SDL_Color){48, 52, 62, 255};
+    SDL_Color highlight = theme ? theme->control_active_fill : (SDL_Color){120, 160, 220, 255};
+    SDL_Color border = theme ? theme->control_border : (SDL_Color){90, 95, 110, 255};
+    SDL_Color text = theme ? theme->text_primary : (SDL_Color){220, 220, 230, 255};
 
     SDL_Color fill = active ? highlight : base;
     SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
@@ -122,13 +172,17 @@ static void draw_button(SDL_Renderer* renderer, const SDL_Rect* rect, const char
     ui_draw_text(renderer, text_x, text_y, label, text, scale);
 }
 
-static void clip_inspector_draw_edit_box(SDL_Renderer* renderer, const SDL_Rect* rect) {
+static void clip_inspector_draw_edit_box(SDL_Renderer* renderer,
+                                         const SDL_Rect* rect,
+                                         const DawThemePalette* theme) {
     if (!renderer || !rect || rect->w <= 0 || rect->h <= 0) {
         return;
     }
-    SDL_SetRenderDrawColor(renderer, 36, 38, 46, 255);
+    SDL_Color fill = theme ? theme->slider_track : (SDL_Color){36, 38, 46, 255};
+    SDL_Color border = theme ? theme->control_border : (SDL_Color){100, 110, 130, 255};
+    SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
     SDL_RenderFillRect(renderer, rect);
-    SDL_SetRenderDrawColor(renderer, 100, 110, 130, 255);
+    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, rect);
 }
 
@@ -406,7 +460,11 @@ static void clip_inspector_draw_automation(SDL_Renderer* renderer,
     uint64_t clip_end = clip_start + clip_frames;
     float prev_value = 0.0f;
     uint64_t prev_frame = clip_start;
-    SDL_SetRenderDrawColor(renderer, 170, 210, 230, 220);
+    SDL_Color line_color = {0};
+    SDL_Color point_color = {0};
+    SDL_Color point_selected_color = {0};
+    clip_inspector_automation_colors(&line_color, &point_color, &point_selected_color);
+    SDL_SetRenderDrawColor(renderer, line_color.r, line_color.g, line_color.b, line_color.a);
     if (lane && lane->point_count > 0) {
         for (int i = 0; i < lane->point_count; ++i) {
             const EngineAutomationPoint* point = &lane->points[i];
@@ -457,9 +515,17 @@ static void clip_inspector_draw_automation(SDL_Renderer* renderer,
                             automation_ui->point_index == i &&
                             automation_ui->target == target;
             if (selected) {
-                SDL_SetRenderDrawColor(renderer, 230, 240, 255, 255);
+                SDL_SetRenderDrawColor(renderer,
+                                       point_selected_color.r,
+                                       point_selected_color.g,
+                                       point_selected_color.b,
+                                       point_selected_color.a);
             } else {
-                SDL_SetRenderDrawColor(renderer, 120, 150, 170, 255);
+                SDL_SetRenderDrawColor(renderer,
+                                       point_color.r,
+                                       point_color.g,
+                                       point_color.b,
+                                       point_color.a);
             }
             SDL_RenderFillRect(renderer, &dot);
         }
@@ -615,18 +681,35 @@ static void clip_inspector_draw_row(SDL_Renderer* renderer,
 }
 
 void clip_inspector_render(SDL_Renderer* renderer, AppState* state, const ClipInspectorLayout* layout) {
+    DawThemePalette theme = {0};
     if (!renderer || !state || !layout) {
         return;
     }
+    resolve_inspector_theme(&theme);
 
-    SDL_Color label = {180, 180, 190, 255};
-    SDL_Color value = {220, 220, 230, 255};
-    SDL_Color muted = {140, 140, 150, 255};
-    SDL_Color box_bg = {34, 36, 44, 255};
-    SDL_Color box_border = {80, 85, 100, 255};
-    SDL_Color panel_bg = {26, 28, 34, 255};
-    SDL_Color panel_border = {70, 75, 92, 255};
-    SDL_Color wave_color = {120, 140, 170, 200};
+    SDL_Color label = theme.text_muted;
+    SDL_Color value = theme.text_primary;
+    SDL_Color muted = theme.text_muted;
+    SDL_Color box_bg = theme.slider_track;
+    SDL_Color box_border = theme.control_border;
+    SDL_Color panel_bg = theme.inspector_fill;
+    SDL_Color panel_border = theme.pane_border;
+    SDL_Color wave_color = theme.slider_handle;
+    SDL_Color waveform_bg = theme.timeline_fill;
+
+    if (layout->panel_rect.w > 0 && layout->panel_rect.h > 0) {
+        SDL_SetRenderDrawColor(renderer, panel_bg.r, panel_bg.g, panel_bg.b, panel_bg.a);
+        SDL_RenderFillRect(renderer, &layout->panel_rect);
+        SDL_SetRenderDrawColor(renderer, panel_border.r, panel_border.g, panel_border.b, panel_border.a);
+        SDL_RenderDrawRect(renderer, &layout->panel_rect);
+    }
+
+    if (layout->left_rect.w > 0 && layout->left_rect.h > 0) {
+        SDL_SetRenderDrawColor(renderer, panel_bg.r, panel_bg.g, panel_bg.b, panel_bg.a);
+        SDL_RenderFillRect(renderer, &layout->left_rect);
+        SDL_SetRenderDrawColor(renderer, panel_border.r, panel_border.g, panel_border.b, panel_border.a);
+        SDL_RenderDrawRect(renderer, &layout->left_rect);
+    }
 
     const EngineTrack* tracks = engine_get_tracks(state->engine);
     int track_count = engine_get_track_count(state->engine);
@@ -794,22 +877,22 @@ void clip_inspector_render(SDL_Renderer* renderer, AppState* state, const ClipIn
     clip_inspector_draw_row(renderer, &layout->rows[CLIP_INSPECTOR_ROW_SOURCE], "Source", source_name, label, value);
     clip_inspector_draw_row(renderer, &layout->rows[CLIP_INSPECTOR_ROW_FORMAT], "Format", format_line, label, value);
     if (state->inspector.edit.editing_timeline_start) {
-        clip_inspector_draw_edit_box(renderer, &layout->rows[CLIP_INSPECTOR_ROW_TIMELINE_START].value_rect);
+        clip_inspector_draw_edit_box(renderer, &layout->rows[CLIP_INSPECTOR_ROW_TIMELINE_START].value_rect, &theme);
     }
     if (state->inspector.edit.editing_timeline_end) {
-        clip_inspector_draw_edit_box(renderer, &layout->rows[CLIP_INSPECTOR_ROW_TIMELINE_END].value_rect);
+        clip_inspector_draw_edit_box(renderer, &layout->rows[CLIP_INSPECTOR_ROW_TIMELINE_END].value_rect, &theme);
     }
     if (state->inspector.edit.editing_timeline_length) {
-        clip_inspector_draw_edit_box(renderer, &layout->rows[CLIP_INSPECTOR_ROW_TIMELINE_LENGTH].value_rect);
+        clip_inspector_draw_edit_box(renderer, &layout->rows[CLIP_INSPECTOR_ROW_TIMELINE_LENGTH].value_rect, &theme);
     }
     if (state->inspector.edit.editing_source_start) {
-        clip_inspector_draw_edit_box(renderer, &layout->rows[CLIP_INSPECTOR_ROW_SOURCE_START].value_rect);
+        clip_inspector_draw_edit_box(renderer, &layout->rows[CLIP_INSPECTOR_ROW_SOURCE_START].value_rect, &theme);
     }
     if (state->inspector.edit.editing_source_end) {
-        clip_inspector_draw_edit_box(renderer, &layout->rows[CLIP_INSPECTOR_ROW_SOURCE_END].value_rect);
+        clip_inspector_draw_edit_box(renderer, &layout->rows[CLIP_INSPECTOR_ROW_SOURCE_END].value_rect, &theme);
     }
     if (state->inspector.edit.editing_playback_rate) {
-        clip_inspector_draw_edit_box(renderer, &layout->rows[CLIP_INSPECTOR_ROW_PLAYBACK_RATE].value_rect);
+        clip_inspector_draw_edit_box(renderer, &layout->rows[CLIP_INSPECTOR_ROW_PLAYBACK_RATE].value_rect, &theme);
     }
 
     clip_inspector_draw_row(renderer, &layout->rows[CLIP_INSPECTOR_ROW_TIMELINE_START], "Timeline Start", timeline_start_text, label, value);
@@ -866,7 +949,7 @@ void clip_inspector_render(SDL_Renderer* renderer, AppState* state, const ClipIn
         scratch[count] = '\0';
         int caret_x = layout->name_rect.x + 6 + left_ellipsis_w + ui_measure_text_width(scratch, INSPECTOR_VALUE_SCALE);
         int caret_y = layout->name_rect.y + 2;
-        SDL_SetRenderDrawColor(renderer, 220, 220, 240, 255);
+        SDL_SetRenderDrawColor(renderer, value.r, value.g, value.b, value.a);
         SDL_RenderDrawLine(renderer, caret_x, caret_y, caret_x, caret_y + layout->name_rect.h - 4);
     } else {
         ui_draw_text_clipped(renderer,
@@ -902,13 +985,13 @@ void clip_inspector_render(SDL_Renderer* renderer, AppState* state, const ClipIn
     if (edit_rect && edit_text) {
         int caret_x = edit_rect->x + 6 + ui_measure_text_width(edit_text, INSPECTOR_VALUE_SCALE);
         int caret_y = edit_rect->y + 2;
-        SDL_SetRenderDrawColor(renderer, 220, 220, 240, 255);
+        SDL_SetRenderDrawColor(renderer, value.r, value.g, value.b, value.a);
         SDL_RenderDrawLine(renderer, caret_x, caret_y, caret_x, caret_y + edit_rect->h - 4);
     }
 
-    draw_slider(renderer, &layout->gain_track_rect, (gain_value - INSPECTOR_GAIN_MIN) / (INSPECTOR_GAIN_MAX - INSPECTOR_GAIN_MIN));
-    draw_slider(renderer, &layout->fade_in_track_rect, fade_in_ratio);
-    draw_slider(renderer, &layout->fade_out_track_rect, fade_out_ratio);
+    draw_slider(renderer, &layout->gain_track_rect, (gain_value - INSPECTOR_GAIN_MIN) / (INSPECTOR_GAIN_MAX - INSPECTOR_GAIN_MIN), &theme);
+    draw_slider(renderer, &layout->fade_in_track_rect, fade_in_ratio, &theme);
+    draw_slider(renderer, &layout->fade_out_track_rect, fade_out_ratio, &theme);
 
     if (layout->rows[CLIP_INSPECTOR_ROW_PHASE].value_rect.w > 0) {
         SDL_Rect phase_rect = layout->rows[CLIP_INSPECTOR_ROW_PHASE].value_rect;
@@ -917,22 +1000,22 @@ void clip_inspector_render(SDL_Renderer* renderer, AppState* state, const ClipIn
         if (button_w < 0) button_w = 0;
         SDL_Rect left_btn = {phase_rect.x, phase_rect.y + 2, button_w, button_h};
         SDL_Rect right_btn = {phase_rect.x + button_w + INSPECTOR_PRESET_GAP, phase_rect.y + 2, button_w, button_h};
-        draw_button(renderer, &left_btn, "L", state->inspector.phase_invert_l);
-        draw_button(renderer, &right_btn, "R", state->inspector.phase_invert_r);
+        draw_button(renderer, &left_btn, "L", state->inspector.phase_invert_l, &theme);
+        draw_button(renderer, &right_btn, "R", state->inspector.phase_invert_r, &theme);
     }
     if (layout->rows[CLIP_INSPECTOR_ROW_NORMALIZE].value_rect.w > 0) {
         SDL_Rect toggle_rect = layout->rows[CLIP_INSPECTOR_ROW_NORMALIZE].value_rect;
         toggle_rect.h -= 4;
         toggle_rect.y += 2;
         toggle_rect.w = 52;
-        draw_button(renderer, &toggle_rect, state->inspector.normalize ? "On" : "Off", state->inspector.normalize);
+        draw_button(renderer, &toggle_rect, state->inspector.normalize ? "On" : "Off", state->inspector.normalize, &theme);
     }
     if (layout->rows[CLIP_INSPECTOR_ROW_REVERSE].value_rect.w > 0) {
         SDL_Rect toggle_rect = layout->rows[CLIP_INSPECTOR_ROW_REVERSE].value_rect;
         toggle_rect.h -= 4;
         toggle_rect.y += 2;
         toggle_rect.w = 52;
-        draw_button(renderer, &toggle_rect, state->inspector.reverse ? "On" : "Off", state->inspector.reverse);
+        draw_button(renderer, &toggle_rect, state->inspector.reverse ? "On" : "Off", state->inspector.reverse, &theme);
     }
 
     if (layout->right_rect.w > 0 && layout->right_rect.h > 0) {
@@ -945,7 +1028,7 @@ void clip_inspector_render(SDL_Renderer* renderer, AppState* state, const ClipIn
             SDL_Rect header_bg = layout->right_header_rect;
             header_bg.x -= 4;
             header_bg.w += 8;
-            SDL_SetRenderDrawColor(renderer, 32, 34, 40, 255);
+            SDL_SetRenderDrawColor(renderer, box_bg.r, box_bg.g, box_bg.b, box_bg.a);
             SDL_RenderFillRect(renderer, &header_bg);
             bool view_source = state->inspector.waveform.view_source;
             ui_draw_text(renderer,
@@ -954,12 +1037,12 @@ void clip_inspector_render(SDL_Renderer* renderer, AppState* state, const ClipIn
                          view_source ? "Source View" : "Clip View",
                          label,
                          1.0f);
-            draw_button(renderer, &layout->right_mode_source_rect, "Source", view_source);
-            draw_button(renderer, &layout->right_mode_clip_rect, "Clip", !view_source);
+            draw_button(renderer, &layout->right_mode_source_rect, "Source", view_source, &theme);
+            draw_button(renderer, &layout->right_mode_clip_rect, "Clip", !view_source, &theme);
         }
 
         if (layout->right_waveform_rect.w > 0 && layout->right_waveform_rect.h > 0) {
-            SDL_SetRenderDrawColor(renderer, 22, 24, 30, 255);
+            SDL_SetRenderDrawColor(renderer, waveform_bg.r, waveform_bg.g, waveform_bg.b, waveform_bg.a);
             SDL_RenderFillRect(renderer, &layout->right_waveform_rect);
             SDL_SetRenderDrawColor(renderer, panel_border.r, panel_border.g, panel_border.b, panel_border.a);
             SDL_RenderDrawRect(renderer, &layout->right_waveform_rect);
@@ -1026,9 +1109,17 @@ void clip_inspector_render(SDL_Renderer* renderer, AppState* state, const ClipIn
                                 if (hw < 1) hw = 1;
                                 SDL_Rect highlight = {hx, layout->right_waveform_rect.y, hw, layout->right_waveform_rect.h};
                                 ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
-                                SDL_SetRenderDrawColor(renderer, 120, 160, 220, 40);
+                                SDL_SetRenderDrawColor(renderer,
+                                                       theme.selection_fill.r,
+                                                       theme.selection_fill.g,
+                                                       theme.selection_fill.b,
+                                                       theme.selection_fill.a);
                                 SDL_RenderFillRect(renderer, &highlight);
-                                SDL_SetRenderDrawColor(renderer, 140, 180, 240, 120);
+                                SDL_SetRenderDrawColor(renderer,
+                                                       theme.accent_primary.r,
+                                                       theme.accent_primary.g,
+                                                       theme.accent_primary.b,
+                                                       theme.accent_primary.a);
                                 SDL_RenderDrawRect(renderer, &highlight);
                                 ui_set_blend_mode(renderer, SDL_BLENDMODE_NONE);
                             }
@@ -1089,7 +1180,11 @@ void clip_inspector_render(SDL_Renderer* renderer, AppState* state, const ClipIn
                             if (local_frame >= view_start && local_frame <= view_start + view_frames) {
                                 double t = (double)(local_frame - view_start) / (double)view_frames;
                                 int px = layout->right_waveform_rect.x + (int)llround(t * (double)layout->right_waveform_rect.w);
-                                SDL_SetRenderDrawColor(renderer, 255, 210, 110, 220);
+                                SDL_SetRenderDrawColor(renderer,
+                                                       theme.accent_warning.r,
+                                                       theme.accent_warning.g,
+                                                       theme.accent_warning.b,
+                                                       theme.accent_warning.a);
                                 SDL_RenderDrawLine(renderer,
                                                    px,
                                                    layout->right_waveform_rect.y,
@@ -1110,7 +1205,7 @@ void clip_inspector_render(SDL_Renderer* renderer, AppState* state, const ClipIn
         }
 
         if (layout->right_detail_rect.w > 0 && layout->right_detail_rect.h > 0) {
-            SDL_SetRenderDrawColor(renderer, 24, 26, 32, 255);
+            SDL_SetRenderDrawColor(renderer, box_bg.r, box_bg.g, box_bg.b, box_bg.a);
             SDL_RenderFillRect(renderer, &layout->right_detail_rect);
             SDL_SetRenderDrawColor(renderer, panel_border.r, panel_border.g, panel_border.b, panel_border.a);
             SDL_RenderDrawRect(renderer, &layout->right_detail_rect);

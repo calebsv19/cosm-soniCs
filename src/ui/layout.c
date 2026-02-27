@@ -19,30 +19,27 @@
 #include <time.h>
 
 static void render_single_pane(SDL_Renderer* renderer, const Pane* pane) {
+    DawThemePalette theme_palette = {0};
+    const bool use_shared_theme = daw_shared_theme_resolve_palette(&theme_palette);
     if (!pane->visible) {
         return;
     }
     SDL_Color fill = pane->fill_color;
-    SDL_Color border = pane->border_color;
+    SDL_Color border = use_shared_theme ? theme_palette.pane_border : pane->border_color;
     if (pane->highlighted) {
-        int boost = 18;
-        if (pane->title &&
-            (strcmp(pane->title, "LIBRARY") == 0 || strcmp(pane->title, "CLIP INSPECTOR") == 0)) {
-            boost = 6;
-            border.r = 90;
-            border.g = 120;
-            border.b = 170;
-        }
-        int r = fill.r + boost;
-        int g = fill.g + boost;
-        int b = fill.b + boost;
-        fill.r = (Uint8)(r > 255 ? 255 : r);
-        fill.g = (Uint8)(g > 255 ? 255 : g);
-        fill.b = (Uint8)(b > 255 ? 255 : b);
-        if (boost == 18) {
-            border.r = 120;
-            border.g = 160;
-            border.b = 220;
+        if (use_shared_theme) {
+            border = theme_palette.pane_highlight_border;
+        } else {
+            if (pane->title &&
+                (strcmp(pane->title, "LIBRARY") == 0 || strcmp(pane->title, "CLIP INSPECTOR") == 0)) {
+                border.r = 90;
+                border.g = 120;
+                border.b = 170;
+            } else {
+                border.r = 120;
+                border.g = 160;
+                border.b = 220;
+            }
         }
     }
 
@@ -61,7 +58,10 @@ static void render_single_pane(SDL_Renderer* renderer, const Pane* pane) {
 }
 
 static void render_layout_grid(SDL_Renderer* renderer, const AppState* state) {
-    SDL_Color border_color = {200, 200, 210, 255};
+    DawThemePalette theme_palette = {0};
+    SDL_Color border_color = daw_shared_theme_resolve_palette(&theme_palette)
+                                 ? theme_palette.pane_border
+                                 : (SDL_Color){200, 200, 210, 255};
     SDL_SetRenderDrawColor(renderer, border_color.r, border_color.g, border_color.b, border_color.a);
 
     int min_x = state->window_width;
@@ -114,50 +114,102 @@ static void render_layout_grid(SDL_Renderer* renderer, const AppState* state) {
     }
 }
 
+static void render_content_separators(SDL_Renderer* renderer, const AppState* state) {
+    if (!renderer || !state || state->pane_count < 3) {
+        return;
+    }
+
+    const Pane* timeline = &state->panes[1];
+    const Pane* mixer = &state->panes[2];
+    if (!timeline->visible || !mixer->visible) {
+        return;
+    }
+
+    DawThemePalette theme_palette = {0};
+    SDL_Color border_color = daw_shared_theme_resolve_palette(&theme_palette)
+                                 ? theme_palette.pane_border
+                                 : (SDL_Color){200, 200, 210, 255};
+    int y = mixer->rect.y;
+    SDL_SetRenderDrawColor(renderer, border_color.r, border_color.g, border_color.b, border_color.a);
+    SDL_RenderDrawLine(renderer, timeline->rect.x, y, timeline->rect.x + timeline->rect.w, y);
+}
+
+static void resolve_modal_theme(SDL_Color* modal_fill,
+                                SDL_Color* modal_border,
+                                SDL_Color* input_fill,
+                                SDL_Color* input_border,
+                                SDL_Color* text_color,
+                                SDL_Color* selection_fill,
+                                SDL_Color* button_fill,
+                                SDL_Color* button_fill_alt) {
+    DawThemePalette theme = {0};
+    if (daw_shared_theme_resolve_palette(&theme)) {
+        if (modal_fill) {
+            *modal_fill = theme.inspector_fill;
+            modal_fill->a = 236;
+        }
+        if (modal_border) *modal_border = theme.pane_border;
+        if (input_fill) *input_fill = theme.timeline_fill;
+        if (input_border) *input_border = theme.control_border;
+        if (text_color) *text_color = theme.text_primary;
+        if (selection_fill) *selection_fill = theme.slider_handle;
+        if (button_fill) *button_fill = theme.control_active_fill;
+        if (button_fill_alt) *button_fill_alt = theme.control_fill;
+        return;
+    }
+    if (modal_fill) *modal_fill = (SDL_Color){22, 22, 30, 236};
+    if (modal_border) *modal_border = (SDL_Color){120, 140, 180, 255};
+    if (input_fill) *input_fill = (SDL_Color){32, 36, 48, 255};
+    if (input_border) *input_border = (SDL_Color){140, 150, 170, 255};
+    if (text_color) *text_color = (SDL_Color){230, 230, 240, 255};
+    if (selection_fill) *selection_fill = (SDL_Color){200, 220, 255, 255};
+    if (button_fill) *button_fill = (SDL_Color){60, 80, 110, 255};
+    if (button_fill_alt) *button_fill_alt = (SDL_Color){60, 60, 70, 255};
+}
+
 
 void ui_init_panes(AppState* state) {
     if (!state) {
         return;
     }
-    DawThemePalette theme_palette = {0};
-    const bool use_shared_theme = daw_shared_theme_resolve_palette(&theme_palette);
     state->pane_count = 4;
     state->panes[0] = (Pane){
         .rect = {0, 0, 0, 0},
         .border_color = {200, 200, 210, 255},
-        .fill_color = use_shared_theme ? theme_palette.menu_fill : (SDL_Color){26, 26, 34, 255},
+        .fill_color = (SDL_Color){26, 26, 34, 255},
         .title = "MENU",
-	.drawTitle = false,
+		.drawTitle = false,
         .visible = true,
         .highlighted = false,
     };
     state->panes[1] = (Pane){
         .rect = {0, 0, 0, 0},
         .border_color = {200, 200, 210, 255},
-        .fill_color = use_shared_theme ? theme_palette.timeline_fill : (SDL_Color){32, 32, 40, 255},
+        .fill_color = (SDL_Color){32, 32, 40, 255},
         .title = "TIMELINE",
-	.drawTitle = false,
+		.drawTitle = false,
         .visible = true,
         .highlighted = false,
     };
     state->panes[2] = (Pane){
         .rect = {0, 0, 0, 0},
         .border_color = {200, 200, 210, 255},
-        .fill_color = use_shared_theme ? theme_palette.inspector_fill : (SDL_Color){28, 28, 36, 255},
+        .fill_color = (SDL_Color){28, 28, 36, 255},
         .title = "CLIP INSPECTOR",
         .drawTitle = false,
-	.visible = true,
+		.visible = true,
         .highlighted = false,
     };
     state->panes[3] = (Pane){
         .rect = {0, 0, 0, 0},
         .border_color = {200, 200, 210, 255},
-        .fill_color = use_shared_theme ? theme_palette.library_fill : (SDL_Color){24, 24, 32, 255},
+        .fill_color = (SDL_Color){24, 24, 32, 255},
         .title = "LIBRARY",
         .drawTitle = true,
-	.visible = true,
+		.visible = true,
         .highlighted = false,
     };
+    ui_apply_shared_theme(state);
     transport_ui_init(&state->transport_ui);
 
     UILayoutRuntime* runtime = &state->layout_runtime;
@@ -168,6 +220,22 @@ void ui_init_panes(AppState* state) {
     runtime->zone_count = 0;
     runtime->drag.active = false;
     runtime->drag.target = UI_RESIZE_NONE;
+}
+
+void ui_apply_shared_theme(AppState* state) {
+    DawThemePalette theme_palette = {0};
+    const bool use_shared_theme = state && daw_shared_theme_resolve_palette(&theme_palette);
+    if (!state || state->pane_count < 4) {
+        return;
+    }
+    state->panes[0].fill_color = use_shared_theme ? theme_palette.menu_fill : (SDL_Color){26, 26, 34, 255};
+    state->panes[1].fill_color = use_shared_theme ? theme_palette.timeline_fill : (SDL_Color){32, 32, 40, 255};
+    state->panes[2].fill_color = use_shared_theme ? theme_palette.inspector_fill : (SDL_Color){28, 28, 36, 255};
+    state->panes[3].fill_color = use_shared_theme ? theme_palette.library_fill : (SDL_Color){24, 24, 32, 255};
+    state->panes[0].border_color = use_shared_theme ? theme_palette.pane_border : (SDL_Color){200, 200, 210, 255};
+    state->panes[1].border_color = use_shared_theme ? theme_palette.pane_border : (SDL_Color){200, 200, 210, 255};
+    state->panes[2].border_color = use_shared_theme ? theme_palette.pane_border : (SDL_Color){200, 200, 210, 255};
+    state->panes[3].border_color = use_shared_theme ? theme_palette.pane_border : (SDL_Color){200, 200, 210, 255};
 }
 
 void ui_layout_panes(AppState* state, int width, int height) {
@@ -271,9 +339,9 @@ void ui_layout_panes(AppState* state, int width, int height) {
     ui_layout_update_zones(state);
 }
 
-void ui_ensure_layout(AppState* state, SDL_Window* window, SDL_Renderer* renderer) {
+bool ui_ensure_layout(AppState* state, SDL_Window* window, SDL_Renderer* renderer) {
     if (!state) {
-        return;
+        return false;
     }
 #ifdef VK_RENDERER_ENABLE_SDL_COMPAT
     (void)renderer;
@@ -282,21 +350,23 @@ void ui_ensure_layout(AppState* state, SDL_Window* window, SDL_Renderer* rendere
     int height = 0;
 #ifdef VK_RENDERER_ENABLE_SDL_COMPAT
     if (!window) {
-        return;
+        return false;
     }
     SDL_GetWindowSize(window, &width, &height);
 #else
     if (!renderer) {
-        return;
+        return false;
     }
     if (SDL_GetRendererOutputSize(renderer, &width, &height) != 0) {
         SDL_Log("SDL_GetRendererOutputSize failed: %s", SDL_GetError());
-        return;
+        return false;
     }
 #endif
     if (width != state->window_width || height != state->window_height) {
         ui_layout_panes(state, width, height);
+        return true;
     }
+    return false;
 }
 
 void ui_render_panes(SDL_Renderer* renderer, const AppState* state) {
@@ -321,7 +391,17 @@ void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
     ClipInspectorLayout inspector_layout;
     clip_inspector_compute_layout(state, &inspector_layout);
     if (state->inspector.visible) {
+        const Pane* mixer = ui_layout_get_pane(state, 2);
+        SDL_Rect prev_clip;
+        SDL_bool had_clip = ui_clip_is_enabled(renderer);
+        if (mixer) {
+            ui_get_clip_rect(renderer, &prev_clip);
+            ui_set_clip_rect(renderer, &mixer->rect);
+        }
         clip_inspector_render(renderer, state, &inspector_layout);
+        if (mixer) {
+            ui_set_clip_rect(renderer, had_clip ? &prev_clip : NULL);
+        }
     } else {
         EffectsPanelLayout effects_layout;
         effects_panel_compute_layout(state, &effects_layout);
@@ -341,6 +421,13 @@ void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
     // Status log display removed per request.
 
     if (state->project_prompt.active) {
+        SDL_Color modal_fill = {0};
+        SDL_Color modal_border = {0};
+        SDL_Color input_fill = {0};
+        SDL_Color input_border = {0};
+        SDL_Color text_col = {0};
+        SDL_Color caret_fill = {0};
+        resolve_modal_theme(&modal_fill, &modal_border, &input_fill, &input_border, &text_col, &caret_fill, NULL, NULL);
         int width = state->window_width > 0 ? state->window_width : 800;
         int height = state->window_height > 0 ? state->window_height : 600;
         int box_w = 480;
@@ -351,13 +438,12 @@ void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
             box_w,
             box_h
         };
-        SDL_SetRenderDrawColor(renderer, 22, 22, 30, 220);
+        SDL_SetRenderDrawColor(renderer, modal_fill.r, modal_fill.g, modal_fill.b, 220);
         SDL_RenderFillRect(renderer, &modal);
-        SDL_SetRenderDrawColor(renderer, 120, 140, 180, 255);
+        SDL_SetRenderDrawColor(renderer, modal_border.r, modal_border.g, modal_border.b, modal_border.a);
         SDL_RenderDrawRect(renderer, &modal);
 
         const char* title = "Save Project As";
-        SDL_Color text_col = {230, 230, 240, 255};
         int title_w = ui_measure_text_width(title, 2);
         ui_draw_text(renderer, modal.x + (modal.w - title_w) / 2, modal.y + 12, title, text_col, 2);
 
@@ -370,9 +456,9 @@ void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
             modal.w - 32,
             44
         };
-        SDL_SetRenderDrawColor(renderer, 32, 36, 48, 255);
+        SDL_SetRenderDrawColor(renderer, input_fill.r, input_fill.g, input_fill.b, input_fill.a);
         SDL_RenderFillRect(renderer, &input_box);
-        SDL_SetRenderDrawColor(renderer, 140, 150, 170, 255);
+        SDL_SetRenderDrawColor(renderer, input_border.r, input_border.g, input_border.b, input_border.a);
         SDL_RenderDrawRect(renderer, &input_box);
 
         int scale = 2;
@@ -390,11 +476,27 @@ void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
         if (caret_x < text_x) caret_x = text_x;
         int caret_h = ui_font_line_height(scale);
         SDL_Rect caret = {caret_x, text_y, 2, caret_h};
-        SDL_SetRenderDrawColor(renderer, 200, 220, 255, 255);
+        SDL_SetRenderDrawColor(renderer, caret_fill.r, caret_fill.g, caret_fill.b, caret_fill.a);
         SDL_RenderFillRect(renderer, &caret);
     }
 
     if (state->project_load.active) {
+        SDL_Color modal_fill = {0};
+        SDL_Color modal_border = {0};
+        SDL_Color input_fill = {0};
+        SDL_Color input_border = {0};
+        SDL_Color text_col = {0};
+        SDL_Color selection_fill = {0};
+        SDL_Color button_fill = {0};
+        SDL_Color button_fill_alt = {0};
+        resolve_modal_theme(&modal_fill,
+                            &modal_border,
+                            &input_fill,
+                            &input_border,
+                            &text_col,
+                            &selection_fill,
+                            &button_fill,
+                            &button_fill_alt);
         int width = state->window_width > 0 ? state->window_width : 800;
         int height = state->window_height > 0 ? state->window_height : 600;
         SDL_Rect modal = {
@@ -403,12 +505,11 @@ void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
             720,
             420
         };
-        SDL_SetRenderDrawColor(renderer, 22, 22, 30, 240);
+        SDL_SetRenderDrawColor(renderer, modal_fill.r, modal_fill.g, modal_fill.b, 240);
         SDL_RenderFillRect(renderer, &modal);
-        SDL_SetRenderDrawColor(renderer, 120, 140, 180, 255);
+        SDL_SetRenderDrawColor(renderer, modal_border.r, modal_border.g, modal_border.b, modal_border.a);
         SDL_RenderDrawRect(renderer, &modal);
 
-        SDL_Color text_col = {230, 230, 240, 255};
         const char* title = "Load Project";
         ui_draw_text(renderer, modal.x + 16, modal.y + 12, title, text_col, 2);
 
@@ -437,14 +538,14 @@ void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
             36
         };
 
-        SDL_SetRenderDrawColor(renderer, 30, 34, 44, 255);
+        SDL_SetRenderDrawColor(renderer, input_fill.r, input_fill.g, input_fill.b, input_fill.a);
         SDL_RenderFillRect(renderer, &list_rect);
-        SDL_SetRenderDrawColor(renderer, 90, 110, 140, 255);
+        SDL_SetRenderDrawColor(renderer, modal_border.r, modal_border.g, modal_border.b, modal_border.a);
         SDL_RenderDrawRect(renderer, &list_rect);
 
-        SDL_SetRenderDrawColor(renderer, 30, 34, 44, 255);
+        SDL_SetRenderDrawColor(renderer, input_fill.r, input_fill.g, input_fill.b, input_fill.a);
         SDL_RenderFillRect(renderer, &info_rect);
-        SDL_SetRenderDrawColor(renderer, 90, 110, 140, 255);
+        SDL_SetRenderDrawColor(renderer, modal_border.r, modal_border.g, modal_border.b, modal_border.a);
         SDL_RenderDrawRect(renderer, &info_rect);
 
         // List entries
@@ -466,11 +567,11 @@ void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
                 continue;
             }
             bool selected = (i == state->project_load.selected_index);
-            SDL_Color row_col = selected ? (SDL_Color){60, 90, 140, 255} : (SDL_Color){40, 44, 54, 255};
+            SDL_Color row_col = selected ? selection_fill : input_fill;
             SDL_Rect row = {list_rect.x, y, list_rect.w, item_h};
             SDL_SetRenderDrawColor(renderer, row_col.r, row_col.g, row_col.b, row_col.a);
             SDL_RenderFillRect(renderer, &row);
-            SDL_SetRenderDrawColor(renderer, 20, 24, 30, 255);
+            SDL_SetRenderDrawColor(renderer, modal_fill.r, modal_fill.g, modal_fill.b, modal_fill.a);
             SDL_RenderDrawRect(renderer, &row);
 
             const char* name = state->project_load.entries[i].name[0] ? state->project_load.entries[i].name : "project";
@@ -486,7 +587,7 @@ void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
             if (bar_h < 24) bar_h = 24;
             int bar_y = list_rect.y + (int)(t * (list_rect.h - bar_h));
             SDL_Rect bar = {list_rect.x + list_rect.w - 8, bar_y, 6, bar_h};
-            SDL_SetRenderDrawColor(renderer, 120, 140, 180, 220);
+            SDL_SetRenderDrawColor(renderer, selection_fill.r, selection_fill.g, selection_fill.b, 220);
             SDL_RenderFillRect(renderer, &bar);
         }
 
@@ -522,18 +623,20 @@ void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
         }
 
         // Buttons
-        SDL_SetRenderDrawColor(renderer, 60, 80, 110, 255);
+        SDL_SetRenderDrawColor(renderer, button_fill.r, button_fill.g, button_fill.b, button_fill.a);
         SDL_RenderFillRect(renderer, &load_button);
-        SDL_SetRenderDrawColor(renderer, 90, 110, 140, 255);
+        SDL_SetRenderDrawColor(renderer, modal_border.r, modal_border.g, modal_border.b, modal_border.a);
         SDL_RenderDrawRect(renderer, &load_button);
         ui_draw_text(renderer, load_button.x + 12, load_button.y + 10, "Load", text_col, 1);
 
-        SDL_SetRenderDrawColor(renderer, 60, 60, 70, 255);
+        SDL_SetRenderDrawColor(renderer, button_fill_alt.r, button_fill_alt.g, button_fill_alt.b, button_fill_alt.a);
         SDL_RenderFillRect(renderer, &cancel_button);
-        SDL_SetRenderDrawColor(renderer, 90, 110, 140, 255);
+        SDL_SetRenderDrawColor(renderer, modal_border.r, modal_border.g, modal_border.b, modal_border.a);
         SDL_RenderDrawRect(renderer, &cancel_button);
         ui_draw_text(renderer, cancel_button.x + 8, cancel_button.y + 10, "Cancel", text_col, 1);
     }
+
+    render_content_separators(renderer, state);
 }
 
 void ui_render_controls(SDL_Renderer* renderer, AppState* state) {

@@ -4,9 +4,22 @@
 #include "core_theme.h"
 
 #include <ctype.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+
+static bool g_theme_runtime_initialized = false;
+static CoreThemePresetId g_theme_runtime_preset = CORE_THEME_PRESET_DAW_DEFAULT;
+static const char* k_theme_persist_path = "config/theme_preset.txt";
+static const CoreThemePresetId k_theme_cycle_order[] = {
+    CORE_THEME_PRESET_DAW_DEFAULT,
+    CORE_THEME_PRESET_MAP_FORGE_DEFAULT,
+    CORE_THEME_PRESET_DARK_DEFAULT,
+    CORE_THEME_PRESET_LIGHT_DEFAULT,
+    CORE_THEME_PRESET_IDE_GRAY,
+    CORE_THEME_PRESET_GREYSCALE
+};
 
 static bool parse_bool_env(const char* value, bool* out_value) {
     char lowered[16];
@@ -55,43 +68,143 @@ static SDL_Color theme_color_or_default(const CoreThemePreset* preset,
     return (SDL_Color){raw.r, raw.g, raw.b, raw.a};
 }
 
+static Uint8 clamp_channel(int value) {
+    if (value < 0) {
+        return 0;
+    }
+    if (value > 255) {
+        return 255;
+    }
+    return (Uint8)value;
+}
+
+static SDL_Color color_shift(SDL_Color color, int delta_r, int delta_g, int delta_b) {
+    color.r = clamp_channel((int)color.r + delta_r);
+    color.g = clamp_channel((int)color.g + delta_g);
+    color.b = clamp_channel((int)color.b + delta_b);
+    return color;
+}
+
+static SDL_Color color_mix(SDL_Color a, SDL_Color b, int a_weight, int b_weight) {
+    int total = a_weight + b_weight;
+    if (total <= 0) {
+        return a;
+    }
+    return (SDL_Color){
+        clamp_channel(((int)a.r * a_weight + (int)b.r * b_weight) / total),
+        clamp_channel(((int)a.g * a_weight + (int)b.g * b_weight) / total),
+        clamp_channel(((int)a.b * a_weight + (int)b.b * b_weight) / total),
+        clamp_channel(((int)a.a * a_weight + (int)b.a * b_weight) / total)
+    };
+}
+
 static int stat_path_exists(const char* path, void* user) {
     struct stat st;
     (void)user;
     return path && stat(path, &st) == 0;
 }
 
-bool daw_shared_theme_resolve_palette(DawThemePalette* out_palette) {
+static void trim_trailing_whitespace(char* text) {
+    size_t len;
+    if (!text) {
+        return;
+    }
+    len = strlen(text);
+    while (len > 0) {
+        char c = text[len - 1];
+        if (c != '\n' && c != '\r' && c != '\t' && c != ' ') {
+            break;
+        }
+        text[len - 1] = '\0';
+        --len;
+    }
+}
+
+static void theme_runtime_init_if_needed(void) {
     const char* preset_name;
-    CoreThemePreset preset = {0};
+    CoreThemePresetId resolved_id;
+    if (g_theme_runtime_initialized) {
+        return;
+    }
+    preset_name = getenv("DAW_THEME_PRESET");
+    if (preset_name && preset_name[0] &&
+        core_theme_preset_id_from_name(preset_name, &resolved_id).code == CORE_OK) {
+        g_theme_runtime_preset = resolved_id;
+    } else {
+        g_theme_runtime_preset = CORE_THEME_PRESET_DAW_DEFAULT;
+    }
+    g_theme_runtime_initialized = true;
+}
+
+static bool resolve_theme_preset(CoreThemePreset* out_preset) {
     CoreResult r;
+    theme_runtime_init_if_needed();
+    r = core_theme_get_preset(g_theme_runtime_preset, out_preset);
+    if (r.code == CORE_OK) {
+        return true;
+    }
+    r = core_theme_get_preset(CORE_THEME_PRESET_DAW_DEFAULT, out_preset);
+    return r.code == CORE_OK;
+}
+
+bool daw_shared_theme_resolve_palette(DawThemePalette* out_palette) {
+    CoreThemePreset preset = {0};
+    SDL_Color surface0;
+    SDL_Color surface1;
+    SDL_Color surface2;
+    SDL_Color text_primary;
+    SDL_Color text_muted;
+    SDL_Color accent_primary;
+    SDL_Color accent_warn;
+    SDL_Color accent_error;
     if (!out_palette || !is_shared_toggle_enabled("DAW_USE_SHARED_THEME")) {
         return false;
     }
-
-    preset_name = getenv("DAW_THEME_PRESET");
-    if (!preset_name || !preset_name[0]) {
-        preset_name = "daw_default";
+    if (!resolve_theme_preset(&preset)) {
+        return false;
     }
 
-    r = core_theme_get_preset_by_name(preset_name, &preset);
-    if (r.code != CORE_OK) {
-        r = core_theme_get_preset(CORE_THEME_PRESET_DAW_DEFAULT, &preset);
-        if (r.code != CORE_OK) {
-            return false;
-        }
-    }
-
-    out_palette->menu_fill =
-        theme_color_or_default(&preset, CORE_THEME_COLOR_SURFACE_1, (SDL_Color){26, 26, 34, 255});
-    out_palette->timeline_fill =
-        theme_color_or_default(&preset, CORE_THEME_COLOR_SURFACE_2, (SDL_Color){32, 32, 40, 255});
-    out_palette->inspector_fill =
-        theme_color_or_default(&preset, CORE_THEME_COLOR_SURFACE_1, (SDL_Color){28, 28, 36, 255});
-    out_palette->library_fill =
-        theme_color_or_default(&preset, CORE_THEME_COLOR_SURFACE_0, (SDL_Color){24, 24, 32, 255});
-    out_palette->title_text =
+    surface0 = theme_color_or_default(&preset, CORE_THEME_COLOR_SURFACE_0, (SDL_Color){24, 24, 32, 255});
+    surface1 = theme_color_or_default(&preset, CORE_THEME_COLOR_SURFACE_1, (SDL_Color){26, 26, 34, 255});
+    surface2 = theme_color_or_default(&preset, CORE_THEME_COLOR_SURFACE_2, (SDL_Color){32, 32, 40, 255});
+    text_primary =
         theme_color_or_default(&preset, CORE_THEME_COLOR_TEXT_PRIMARY, (SDL_Color){220, 220, 230, 255});
+    text_muted =
+        theme_color_or_default(&preset, CORE_THEME_COLOR_TEXT_MUTED, (SDL_Color){180, 184, 198, 255});
+    accent_primary =
+        theme_color_or_default(&preset, CORE_THEME_COLOR_ACCENT_PRIMARY, (SDL_Color){120, 160, 220, 255});
+    accent_warn =
+        theme_color_or_default(&preset, CORE_THEME_COLOR_STATUS_WARN, (SDL_Color){230, 190, 110, 255});
+    accent_error =
+        theme_color_or_default(&preset, CORE_THEME_COLOR_STATUS_ERROR, (SDL_Color){220, 110, 110, 255});
+
+    out_palette->menu_fill = surface1;
+    out_palette->timeline_fill = surface2;
+    out_palette->inspector_fill = color_mix(surface1, surface2, 3, 1);
+    out_palette->library_fill = surface0;
+    out_palette->pane_border = color_mix(surface2, text_muted, 3, 1);
+    out_palette->pane_highlight_fill = color_mix(surface2, accent_primary, 5, 2);
+    out_palette->pane_highlight_border = color_mix(out_palette->pane_border, accent_primary, 1, 2);
+    out_palette->title_text = text_primary;
+    out_palette->text_primary = text_primary;
+    out_palette->text_muted = text_muted;
+    out_palette->control_fill = color_mix(surface1, surface2, 1, 1);
+    out_palette->control_hover_fill = color_mix(out_palette->control_fill, accent_primary, 4, 1);
+    out_palette->control_active_fill = color_mix(out_palette->control_fill, accent_primary, 2, 1);
+    out_palette->control_border = color_mix(out_palette->pane_border, text_muted, 3, 1);
+    out_palette->slider_track = color_shift(surface2, 4, 4, 8);
+    out_palette->slider_handle = color_mix(accent_primary, text_primary, 3, 1);
+    out_palette->slider_handle_hover = color_mix(out_palette->slider_handle, text_primary, 2, 1);
+    out_palette->timeline_border = color_mix(surface2, accent_primary, 5, 1);
+    out_palette->grid_minor = color_mix(surface2, out_palette->pane_border, 3, 1);
+    out_palette->grid_sub = color_mix(out_palette->grid_minor, accent_primary, 4, 1);
+    out_palette->grid_major = color_mix(out_palette->grid_minor, accent_primary, 2, 1);
+    out_palette->grid_downbeat = color_mix(out_palette->grid_major, text_primary, 1, 1);
+    out_palette->selection_fill = color_mix(accent_primary, surface2, 1, 1);
+    out_palette->selection_fill.a = 180;
+    out_palette->accent_primary = accent_primary;
+    out_palette->accent_warning = accent_warn;
+    out_palette->accent_error = accent_error;
     return true;
 }
 
@@ -101,6 +214,105 @@ SDL_Color daw_shared_theme_title_color(void) {
         return palette.title_text;
     }
     return (SDL_Color){220, 220, 230, 255};
+}
+
+bool daw_shared_theme_set_preset(const char* preset_name) {
+    CoreThemePresetId id;
+    if (!preset_name || !preset_name[0]) {
+        return false;
+    }
+    if (core_theme_preset_id_from_name(preset_name, &id).code != CORE_OK) {
+        return false;
+    }
+    g_theme_runtime_preset = id;
+    g_theme_runtime_initialized = true;
+    return true;
+}
+
+bool daw_shared_theme_current_preset(char* out_name, size_t out_name_size) {
+    const char* name;
+    if (!out_name || out_name_size == 0) {
+        return false;
+    }
+    theme_runtime_init_if_needed();
+    name = core_theme_preset_name(g_theme_runtime_preset);
+    if (!name || !name[0]) {
+        return false;
+    }
+    strncpy(out_name, name, out_name_size - 1);
+    out_name[out_name_size - 1] = '\0';
+    return true;
+}
+
+bool daw_shared_theme_load_persisted(void) {
+    FILE* file;
+    char preset_name[64];
+    if (!stat_path_exists(k_theme_persist_path, NULL)) {
+        return false;
+    }
+    file = fopen(k_theme_persist_path, "rb");
+    if (!file) {
+        return false;
+    }
+    preset_name[0] = '\0';
+    if (!fgets(preset_name, (int)sizeof(preset_name), file)) {
+        fclose(file);
+        return false;
+    }
+    fclose(file);
+    trim_trailing_whitespace(preset_name);
+    if (!preset_name[0]) {
+        return false;
+    }
+    return daw_shared_theme_set_preset(preset_name);
+}
+
+bool daw_shared_theme_save_persisted(void) {
+    FILE* file;
+    char preset_name[64];
+    if (!daw_shared_theme_current_preset(preset_name, sizeof(preset_name))) {
+        return false;
+    }
+    file = fopen(k_theme_persist_path, "wb");
+    if (!file) {
+        return false;
+    }
+    if (fputs(preset_name, file) < 0 || fputc('\n', file) == EOF) {
+        fclose(file);
+        return false;
+    }
+    if (fclose(file) != 0) {
+        return false;
+    }
+    return true;
+}
+
+bool daw_shared_theme_cycle_next(void) {
+    size_t i;
+    size_t n = sizeof(k_theme_cycle_order) / sizeof(k_theme_cycle_order[0]);
+    theme_runtime_init_if_needed();
+    for (i = 0; i < n; ++i) {
+        if (k_theme_cycle_order[i] == g_theme_runtime_preset) {
+            g_theme_runtime_preset = k_theme_cycle_order[(i + 1u) % n];
+            return true;
+        }
+    }
+    g_theme_runtime_preset = k_theme_cycle_order[0];
+    return true;
+}
+
+bool daw_shared_theme_cycle_prev(void) {
+    size_t i;
+    size_t n = sizeof(k_theme_cycle_order) / sizeof(k_theme_cycle_order[0]);
+    theme_runtime_init_if_needed();
+    for (i = 0; i < n; ++i) {
+        if (k_theme_cycle_order[i] == g_theme_runtime_preset) {
+            g_theme_runtime_preset = k_theme_cycle_order[(i + n - 1u) % n];
+            return true;
+        }
+    }
+    g_theme_runtime_preset = k_theme_cycle_order[0];
+    return true;
 }
 
 bool daw_shared_font_resolve_ui_regular(char* out_path, size_t out_path_size, int* out_point_size) {

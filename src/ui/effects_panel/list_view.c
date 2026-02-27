@@ -7,6 +7,26 @@
 #include "engine/engine.h"
 #include "ui/font.h"
 #include "ui/render_utils.h"
+#include "ui/shared_theme_font_adapter.h"
+
+static void resolve_effects_list_theme(DawThemePalette* palette) {
+    if (!palette) {
+        return;
+    }
+    if (!daw_shared_theme_resolve_palette(palette)) {
+        *palette = (DawThemePalette){
+            .timeline_fill = {30, 32, 40, 255},
+            .inspector_fill = {26, 28, 34, 255},
+            .pane_border = {70, 75, 92, 255},
+            .control_border = {90, 95, 110, 255},
+            .text_primary = {210, 210, 220, 255},
+            .text_muted = {150, 160, 180, 255},
+            .selection_fill = {90, 120, 170, 180},
+            .control_hover_fill = {48, 56, 74, 180},
+            .accent_error = {180, 60, 60, 220}
+        };
+    }
+}
 
 static const FxTypeUIInfo* find_type_info(const EffectsPanelState* panel, FxTypeId type_id) {
     if (!panel) {
@@ -20,12 +40,15 @@ static const FxTypeUIInfo* find_type_info(const EffectsPanelState* panel, FxType
     return NULL;
 }
 
-static void draw_list_toggle(SDL_Renderer* renderer, const SDL_Rect* rect, bool enabled) {
+static void draw_list_toggle(SDL_Renderer* renderer,
+                             const SDL_Rect* rect,
+                             bool enabled,
+                             const DawThemePalette* theme) {
     if (!renderer || !rect) {
         return;
     }
-    SDL_Color border = {90, 95, 110, 255};
-    SDL_Color fill_off = {180, 60, 60, 220};
+    SDL_Color border = theme ? theme->control_border : (SDL_Color){90, 95, 110, 255};
+    SDL_Color fill_off = theme ? theme->accent_error : (SDL_Color){180, 60, 60, 220};
     if (!enabled) {
         SDL_SetRenderDrawColor(renderer, fill_off.r, fill_off.g, fill_off.b, fill_off.a);
         SDL_RenderFillRect(renderer, rect);
@@ -35,25 +58,27 @@ static void draw_list_toggle(SDL_Renderer* renderer, const SDL_Rect* rect, bool 
 }
 
 void effects_panel_render_list(SDL_Renderer* renderer, const AppState* state, const EffectsPanelLayout* layout) {
+    DawThemePalette theme = {0};
     if (!renderer || !state || !layout) {
         return;
     }
+    resolve_effects_list_theme(&theme);
     const EffectsPanelState* panel = &state->effects_panel;
-    SDL_Color label_color = {210, 210, 220, 255};
-    SDL_Color text_dim = {150, 160, 180, 255};
+    SDL_Color label_color = theme.text_primary;
+    SDL_Color text_dim = theme.text_muted;
     float text_scale = FX_PANEL_LIST_TEXT_SCALE;
 
     SDL_Rect list_rect = layout->list_rect;
     SDL_Rect detail_rect = layout->detail_rect;
 
-    SDL_SetRenderDrawColor(renderer, 30, 32, 40, 255);
+    SDL_SetRenderDrawColor(renderer, theme.timeline_fill.r, theme.timeline_fill.g, theme.timeline_fill.b, theme.timeline_fill.a);
     SDL_RenderFillRect(renderer, &list_rect);
-    SDL_SetRenderDrawColor(renderer, 70, 75, 92, 255);
+    SDL_SetRenderDrawColor(renderer, theme.pane_border.r, theme.pane_border.g, theme.pane_border.b, theme.pane_border.a);
     SDL_RenderDrawRect(renderer, &list_rect);
 
-    SDL_SetRenderDrawColor(renderer, 26, 28, 34, 255);
+    SDL_SetRenderDrawColor(renderer, theme.inspector_fill.r, theme.inspector_fill.g, theme.inspector_fill.b, theme.inspector_fill.a);
     SDL_RenderFillRect(renderer, &detail_rect);
-    SDL_SetRenderDrawColor(renderer, 70, 75, 92, 255);
+    SDL_SetRenderDrawColor(renderer, theme.pane_border.r, theme.pane_border.g, theme.pane_border.b, theme.pane_border.a);
     SDL_RenderDrawRect(renderer, &detail_rect);
 
     effects_panel_render_track_snapshot(renderer, state, layout);
@@ -79,10 +104,18 @@ void effects_panel_render_list(SDL_Renderer* renderer, const AppState* state, co
         }
         bool selected = (panel->selected_slot_index == i);
         if (selected) {
-            SDL_SetRenderDrawColor(renderer, 90, 120, 170, 180);
+            SDL_SetRenderDrawColor(renderer,
+                                   theme.selection_fill.r,
+                                   theme.selection_fill.g,
+                                   theme.selection_fill.b,
+                                   theme.selection_fill.a);
             SDL_RenderFillRect(renderer, &row);
         }
-        SDL_SetRenderDrawColor(renderer, 70, 75, 92, 200);
+        SDL_SetRenderDrawColor(renderer,
+                               theme.pane_border.r,
+                               theme.pane_border.g,
+                               theme.pane_border.b,
+                               200);
         SDL_RenderDrawRect(renderer, &row);
 
         const FxSlotUIState* slot = &panel->chain[i];
@@ -91,7 +124,7 @@ void effects_panel_render_list(SDL_Renderer* renderer, const AppState* state, co
         SDL_Color text_color = slot->enabled ? label_color : text_dim;
         int text_y = row.y + (row.h - ui_font_line_height(text_scale)) / 2;
         ui_draw_text(renderer, row.x + 6, text_y, name, text_color, text_scale);
-        draw_list_toggle(renderer, &layout->list_toggle_rects[i], slot->enabled);
+        draw_list_toggle(renderer, &layout->list_toggle_rects[i], slot->enabled, &theme);
     }
 
     if (set_clip) {

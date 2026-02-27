@@ -5,9 +5,79 @@
 #include "ui/effects_panel.h"
 #include "ui/font.h"
 #include "ui/render_utils.h"
+#include "ui/shared_theme_font_adapter.h"
 
 #include <math.h>
 #include <stdio.h>
+
+typedef struct EffectsEqTheme {
+    SDL_Color label;
+    SDL_Color text_dim;
+    SDL_Color border;
+    SDL_Color fill;
+    SDL_Color graph_bg;
+    SDL_Color graph_zero;
+    SDL_Color graph_grid;
+    SDL_Color spectrum;
+    SDL_Color curve;
+    SDL_Color handle;
+    SDL_Color handle_hover;
+    SDL_Color cut;
+    SDL_Color cut_hover;
+    SDL_Color btn_on;
+    SDL_Color btn_off;
+    SDL_Color btn_disabled;
+    SDL_Color btn_border;
+    SDL_Color btn_hover;
+} EffectsEqTheme;
+
+static void resolve_eq_theme(EffectsEqTheme* out) {
+    if (!out) {
+        return;
+    }
+    DawThemePalette palette = {0};
+    if (daw_shared_theme_resolve_palette(&palette)) {
+        out->label = palette.text_primary;
+        out->text_dim = palette.text_muted;
+        out->border = palette.pane_border;
+        out->fill = palette.inspector_fill;
+        out->graph_bg = palette.timeline_fill;
+        out->graph_zero = palette.grid_major;
+        out->graph_grid = palette.grid_minor;
+        out->spectrum = palette.selection_fill;
+        out->curve = palette.control_active_fill;
+        out->handle = palette.slider_handle;
+        out->handle_hover = palette.text_primary;
+        out->cut = palette.accent_warning;
+        out->cut_hover = palette.text_primary;
+        out->btn_on = palette.selection_fill;
+        out->btn_off = palette.control_fill;
+        out->btn_disabled = palette.slider_track;
+        out->btn_border = palette.control_border;
+        out->btn_hover = palette.pane_highlight_border;
+        return;
+    }
+    *out = (EffectsEqTheme){
+        .label = {210, 210, 220, 255},
+        .text_dim = {150, 160, 180, 255},
+        .border = {90, 95, 110, 255},
+        .fill = {34, 36, 44, 255},
+        .graph_bg = {26, 28, 34, 255},
+        .graph_zero = {120, 130, 150, 255},
+        .graph_grid = {60, 65, 80, 255},
+        .spectrum = {120, 180, 220, 120},
+        .curve = {70, 160, 230, 255},
+        .handle = {110, 205, 190, 255},
+        .handle_hover = {150, 230, 215, 255},
+        .cut = {160, 180, 120, 220},
+        .cut_hover = {220, 210, 90, 220},
+        .btn_on = {80, 110, 160, 220},
+        .btn_off = {50, 55, 70, 220},
+        .btn_disabled = {35, 40, 52, 200},
+        .btn_border = {90, 95, 110, 255},
+        .btn_hover = {110, 140, 190, 240},
+    };
+}
 
 static void compute_toggle_rects(const SDL_Rect* panel,
                                  SDL_Rect* low,
@@ -93,25 +163,29 @@ static void draw_panel_background(SDL_Renderer* renderer,
 
 static void draw_graph_background(SDL_Renderer* renderer,
                                   const SDL_Rect* graph,
+                                  SDL_Color fill,
                                   SDL_Color border) {
     if (!renderer || !graph) {
         return;
     }
-    SDL_SetRenderDrawColor(renderer, 26, 28, 34, 255);
+    SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
     SDL_RenderFillRect(renderer, graph);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, graph);
 }
 
-static void draw_graph_grid(SDL_Renderer* renderer, const SDL_Rect* graph) {
+static void draw_graph_grid(SDL_Renderer* renderer,
+                            const SDL_Rect* graph,
+                            SDL_Color zero,
+                            SDL_Color grid) {
     if (!renderer || !graph) {
         return;
     }
     int zero_y = (int)lroundf(effects_eq_db_to_y(graph, 0.0f));
-    SDL_SetRenderDrawColor(renderer, 120, 130, 150, 255);
+    SDL_SetRenderDrawColor(renderer, zero.r, zero.g, zero.b, zero.a);
     SDL_RenderDrawLine(renderer, graph->x + 2, zero_y, graph->x + graph->w - 2, zero_y);
 
-    SDL_SetRenderDrawColor(renderer, 60, 65, 80, 255);
+    SDL_SetRenderDrawColor(renderer, grid.r, grid.g, grid.b, grid.a);
     int grid_freqs[] = {50, 100, 1000, 5000, 10000};
     for (int i = 0; i < 5; ++i) {
         int gx = (int)lroundf(effects_eq_freq_to_x(graph, (float)grid_freqs[i]));
@@ -275,12 +349,13 @@ static void compute_spectrum_display(const EffectsPanelEqDetailState* eq_state,
 static void draw_spectrum_line(SDL_Renderer* renderer,
                                const SDL_Rect* graph,
                                const float* spectrum,
-                               int count) {
+                               int count,
+                               SDL_Color color) {
     if (!renderer || !graph || !spectrum || count <= 1) {
         return;
     }
     ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
-    SDL_SetRenderDrawColor(renderer, 120, 180, 220, 120);
+    SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
     int prev_x = graph->x;
     float h0 = clampf(spectrum[0], 0.0f, 1.0f);
     int base_y = graph->y + graph->h - 1;
@@ -337,8 +412,8 @@ static void compute_eq_curve(const EqCurveState* curve, const SDL_Rect* graph, f
     }
 }
 
-static void draw_eq_curve(SDL_Renderer* renderer, const SDL_Rect* graph, const float* curve_db) {
-    SDL_SetRenderDrawColor(renderer, 70, 160, 230, 255);
+static void draw_eq_curve(SDL_Renderer* renderer, const SDL_Rect* graph, const float* curve_db, SDL_Color color) {
+    SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
     int prev_x = graph->x;
     int prev_y = (int)lroundf(effects_eq_db_to_y(graph, curve_db[0]));
     for (int i = 1; i < EQ_DETAIL_CURVE_SAMPLES; ++i) {
@@ -351,8 +426,12 @@ static void draw_eq_curve(SDL_Renderer* renderer, const SDL_Rect* graph, const f
     }
 }
 
-static void draw_band_handles(SDL_Renderer* renderer, const SDL_Rect* graph, const EqCurveState* curve) {
-    SDL_SetRenderDrawColor(renderer, 110, 205, 190, 255);
+static void draw_band_handles(SDL_Renderer* renderer,
+                              const SDL_Rect* graph,
+                              const EqCurveState* curve,
+                              SDL_Color handle,
+                              SDL_Color handle_hover) {
+    SDL_SetRenderDrawColor(renderer, handle.r, handle.g, handle.b, handle.a);
     for (int b = 0; b < 4; ++b) {
         if (!curve->bands[b].enabled) {
             continue;
@@ -373,11 +452,11 @@ static void draw_band_handles(SDL_Renderer* renderer, const SDL_Rect* graph, con
             6
         };
         if (hovered) {
-            SDL_SetRenderDrawColor(renderer, 150, 230, 215, 255);
+            SDL_SetRenderDrawColor(renderer, handle_hover.r, handle_hover.g, handle_hover.b, handle_hover.a);
         }
         SDL_RenderFillRect(renderer, &point);
         if (hovered) {
-            SDL_SetRenderDrawColor(renderer, 110, 205, 190, 255);
+            SDL_SetRenderDrawColor(renderer, handle.r, handle.g, handle.b, handle.a);
         }
         float left_freq = freq * powf(2.0f, -width * 0.5f);
         float right_freq = freq * powf(2.0f, width * 0.5f);
@@ -385,40 +464,38 @@ static void draw_band_handles(SDL_Renderer* renderer, const SDL_Rect* graph, con
         float x_right = effects_eq_freq_to_x(graph, right_freq);
         int y0 = (int)lroundf(y_center) - 8;
         int y1 = (int)lroundf(y_center) + 8;
-        SDL_SetRenderDrawColor(renderer, 110, 205, 190, 120);
+        SDL_SetRenderDrawColor(renderer, handle.r, handle.g, handle.b, 120);
         SDL_RenderDrawLine(renderer, (int)lroundf(x_left), (int)lroundf(y_center),
                            (int)lroundf(x_center), (int)lroundf(y_center));
         SDL_RenderDrawLine(renderer, (int)lroundf(x_center), (int)lroundf(y_center),
                            (int)lroundf(x_right), (int)lroundf(y_center));
-        SDL_SetRenderDrawColor(renderer, 110, 205, 190, 255);
+        SDL_SetRenderDrawColor(renderer, handle.r, handle.g, handle.b, handle.a);
         if (curve->hover_band == b && curve->hover_handle == EQ_CURVE_HANDLE_WIDTH) {
-            SDL_SetRenderDrawColor(renderer, 150, 230, 215, 255);
+            SDL_SetRenderDrawColor(renderer, handle_hover.r, handle_hover.g, handle_hover.b, handle_hover.a);
         }
         SDL_RenderDrawLine(renderer, (int)lroundf(x_left), y0, (int)lroundf(x_left), y1);
         SDL_RenderDrawLine(renderer, (int)lroundf(x_right), y0, (int)lroundf(x_right), y1);
         if (curve->hover_band == b && curve->hover_handle == EQ_CURVE_HANDLE_WIDTH) {
-            SDL_SetRenderDrawColor(renderer, 110, 205, 190, 255);
+            SDL_SetRenderDrawColor(renderer, handle.r, handle.g, handle.b, handle.a);
         }
     }
 }
 
-static void draw_cut_lines(SDL_Renderer* renderer, const SDL_Rect* graph, const EqCurveState* curve) {
+static void draw_cut_lines(SDL_Renderer* renderer,
+                           const SDL_Rect* graph,
+                           const EqCurveState* curve,
+                           SDL_Color cut,
+                           SDL_Color cut_hover) {
     if (curve->low_cut.enabled) {
         float x_cut = effects_eq_freq_to_x(graph, curve->low_cut.freq_hz);
-        SDL_SetRenderDrawColor(renderer,
-                               curve->hover_handle == EQ_CURVE_HANDLE_CUT_LOW ? 220 : 160,
-                               curve->hover_handle == EQ_CURVE_HANDLE_CUT_LOW ? 210 : 180,
-                               curve->hover_handle == EQ_CURVE_HANDLE_CUT_LOW ? 90 : 120,
-                               220);
+        SDL_Color color = curve->hover_handle == EQ_CURVE_HANDLE_CUT_LOW ? cut_hover : cut;
+        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
         SDL_RenderDrawLine(renderer, (int)lroundf(x_cut), graph->y + 2, (int)lroundf(x_cut), graph->y + graph->h - 2);
     }
     if (curve->high_cut.enabled) {
         float x_cut = effects_eq_freq_to_x(graph, curve->high_cut.freq_hz);
-        SDL_SetRenderDrawColor(renderer,
-                               curve->hover_handle == EQ_CURVE_HANDLE_CUT_HIGH ? 220 : 160,
-                               curve->hover_handle == EQ_CURVE_HANDLE_CUT_HIGH ? 210 : 180,
-                               curve->hover_handle == EQ_CURVE_HANDLE_CUT_HIGH ? 90 : 120,
-                               220);
+        SDL_Color color = curve->hover_handle == EQ_CURVE_HANDLE_CUT_HIGH ? cut_hover : cut;
+        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
         SDL_RenderDrawLine(renderer, (int)lroundf(x_cut), graph->y + 2, (int)lroundf(x_cut), graph->y + graph->h - 2);
     }
 }
@@ -430,13 +507,11 @@ void effects_panel_eq_detail_render(SDL_Renderer* renderer,
         return;
     }
 
-    SDL_Color label = {210, 210, 220, 255};
-    SDL_Color text_dim = {150, 160, 180, 255};
-    SDL_Color border = {90, 95, 110, 255};
-    SDL_Color fill = {34, 36, 44, 255};
+    EffectsEqTheme theme = {0};
+    resolve_eq_theme(&theme);
 
     SDL_Rect panel = layout->detail_rect;
-    draw_panel_background(renderer, &panel, fill, border);
+    draw_panel_background(renderer, &panel, theme.fill, theme.border);
 
     int pad = 18;
     SDL_Rect graph = build_graph_rect(&panel, pad);
@@ -444,23 +519,17 @@ void effects_panel_eq_detail_render(SDL_Renderer* renderer,
         return;
     }
 
-    draw_graph_background(renderer, &graph, border);
-    draw_graph_grid(renderer, &graph);
-    draw_eq_axes(renderer, &graph, text_dim);
+    draw_graph_background(renderer, &graph, theme.graph_bg, theme.border);
+    draw_graph_grid(renderer, &graph, theme.graph_zero, theme.graph_grid);
+    draw_eq_axes(renderer, &graph, theme.text_dim);
 
     EffectsPanelEqDetailState* eq_state = &((AppState*)state)->effects_panel.eq_detail;
     EqCurveState* curve = &((AppState*)state)->effects_panel.eq_curve;
-    SDL_Color btn_on = {80, 110, 160, 220};
-    SDL_Color btn_off = {50, 55, 70, 220};
-    SDL_Color btn_disabled = {35, 40, 52, 200};
-    SDL_Color btn_border = {90, 95, 110, 255};
-    SDL_Color btn_hover = {110, 140, 190, 240};
-
-    draw_band_toggles(renderer, &panel, curve, label, btn_on, btn_off, btn_border, btn_hover);
+    draw_band_toggles(renderer, &panel, curve, theme.label, theme.btn_on, theme.btn_off, theme.btn_border, theme.btn_hover);
     bool track_available = state->effects_panel.target == FX_PANEL_TARGET_TRACK &&
                            state->effects_panel.target_track_index >= 0;
     draw_mode_buttons(renderer, &panel, eq_state, track_available,
-                      label, text_dim, border, btn_on, btn_off, btn_disabled);
+                      theme.label, theme.text_dim, theme.border, theme.btn_on, theme.btn_off, theme.btn_disabled);
 
     int track_index = -1;
     bool use_track = (eq_state->view_mode == EQ_DETAIL_VIEW_TRACK) && track_available;
@@ -483,11 +552,11 @@ void effects_panel_eq_detail_render(SDL_Renderer* renderer,
 
     float spectrum_norm[ENGINE_SPECTRUM_BINS];
     compute_spectrum_display(eq_state, count, spectrum_norm);
-    draw_spectrum_line(renderer, &graph, spectrum_norm, count);
+    draw_spectrum_line(renderer, &graph, spectrum_norm, count, theme.spectrum);
 
     float curve_db[EQ_DETAIL_CURVE_SAMPLES];
     compute_eq_curve(curve, &graph, curve_db);
-    draw_eq_curve(renderer, &graph, curve_db);
-    draw_band_handles(renderer, &graph, curve);
-    draw_cut_lines(renderer, &graph, curve);
+    draw_eq_curve(renderer, &graph, curve_db, theme.curve);
+    draw_band_handles(renderer, &graph, curve, theme.handle, theme.handle_hover);
+    draw_cut_lines(renderer, &graph, curve, theme.cut, theme.cut_hover);
 }

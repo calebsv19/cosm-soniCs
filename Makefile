@@ -10,6 +10,11 @@ CORE_PACK_DIR := ../shared/core/core_pack
 CORE_TIME_DIR := ../shared/core/core_time
 CORE_THEME_DIR := ../shared/core/core_theme
 CORE_FONT_DIR := ../shared/core/core_font
+CORE_QUEUE_DIR := ../shared/core/core_queue
+CORE_SCHED_DIR := ../shared/core/core_sched
+CORE_JOBS_DIR := ../shared/core/core_jobs
+CORE_WAKE_DIR := ../shared/core/core_wake
+CORE_KERNEL_DIR := ../shared/core/core_kernel
 KIT_VIZ_DIR := ../shared/kit/kit_viz
 
 # --- Auto-discover all effect sources (non-recursive per known subdir)
@@ -32,6 +37,12 @@ EFFECTS_SRCS := $(filter-out $(SRC_DIR)/effects/effects_manager.c,$(EFFECTS_SRCS
 # --- The rest of your sources (unchanged, but with hard-coded FX removed)
 SRCS := \
 	$(SDLAPP_DIR)/sdl_app_framework.c \
+	$(SRC_DIR)/core/loop/daw_mainthread_wake.c \
+	$(SRC_DIR)/core/loop/daw_mainthread_timer.c \
+	$(SRC_DIR)/core/loop/daw_mainthread_jobs.c \
+	$(SRC_DIR)/core/loop/daw_mainthread_messages.c \
+	$(SRC_DIR)/core/loop/daw_mainthread_kernel.c \
+	$(SRC_DIR)/core/loop/daw_render_invalidation.c \
 	$(SRC_DIR)/app/main.c \
 	$(SRC_DIR)/config/config.c \
 	$(SRC_DIR)/audio/device_sdl.c \
@@ -146,7 +157,12 @@ endif
 CORE_TIME_TEST_SUPPORT_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(CORE_TIME_SRCS))
 CORE_THEME_SRCS := $(CORE_THEME_DIR)/src/core_theme.c
 CORE_FONT_SRCS := $(CORE_FONT_DIR)/src/core_font.c
-SRCS += $(CORE_BASE_SRCS) $(CORE_IO_SRCS) $(CORE_DATA_SRCS) $(CORE_PACK_SRCS) $(CORE_TIME_SRCS) $(CORE_THEME_SRCS) $(CORE_FONT_SRCS)
+CORE_QUEUE_SRCS := $(CORE_QUEUE_DIR)/src/core_queue.c
+CORE_SCHED_SRCS := $(CORE_SCHED_DIR)/src/core_sched.c
+CORE_JOBS_SRCS := $(CORE_JOBS_DIR)/src/core_jobs.c
+CORE_WAKE_SRCS := $(CORE_WAKE_DIR)/src/core_wake.c
+CORE_KERNEL_SRCS := $(CORE_KERNEL_DIR)/src/core_kernel.c
+SRCS += $(CORE_BASE_SRCS) $(CORE_IO_SRCS) $(CORE_DATA_SRCS) $(CORE_PACK_SRCS) $(CORE_TIME_SRCS) $(CORE_THEME_SRCS) $(CORE_FONT_SRCS) $(CORE_QUEUE_SRCS) $(CORE_SCHED_SRCS) $(CORE_JOBS_SRCS) $(CORE_WAKE_SRCS) $(CORE_KERNEL_SRCS)
 KIT_VIZ_SRCS := $(KIT_VIZ_DIR)/src/kit_viz.c
 SRCS += $(KIT_VIZ_SRCS)
 
@@ -224,7 +240,7 @@ else
 	endif
 endif
 
-CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) -I$(VK_RENDERER_DIR)/include -I$(TIMER_HUD_DIR)/include -I$(TIMER_HUD_DIR)/external -I$(CORE_BASE_DIR)/include -I$(CORE_IO_DIR)/include -I$(CORE_DATA_DIR)/include -I$(CORE_PACK_DIR)/include -I$(CORE_TIME_DIR)/include -I$(CORE_THEME_DIR)/include -I$(CORE_FONT_DIR)/include -I$(KIT_VIZ_DIR)/include $(SDL2_CFLAGS) $(VULKAN_CFLAGS) -DVK_RENDERER_SHADER_ROOT=\"$(abspath $(VK_RENDERER_DIR))\" -include $(VK_RENDERER_DIR)/include/vk_renderer_sdl.h
+CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) -I$(VK_RENDERER_DIR)/include -I$(TIMER_HUD_DIR)/include -I$(TIMER_HUD_DIR)/external -I$(CORE_BASE_DIR)/include -I$(CORE_IO_DIR)/include -I$(CORE_DATA_DIR)/include -I$(CORE_PACK_DIR)/include -I$(CORE_TIME_DIR)/include -I$(CORE_THEME_DIR)/include -I$(CORE_FONT_DIR)/include -I$(CORE_QUEUE_DIR)/include -I$(CORE_SCHED_DIR)/include -I$(CORE_JOBS_DIR)/include -I$(CORE_WAKE_DIR)/include -I$(CORE_KERNEL_DIR)/include -I$(KIT_VIZ_DIR)/include $(SDL2_CFLAGS) $(VULKAN_CFLAGS) -DVK_RENDERER_SHADER_ROOT=\"$(abspath $(VK_RENDERER_DIR))\" -include $(VK_RENDERER_DIR)/include/vk_renderer_sdl.h
 
 LDFLAGS := $(SDL2_LDFLAGS) $(SDL2_LIBS) $(SDL2_FRAMEWORKS) $(VULKAN_LIBS)
 ifeq ($(UNAME_S),Darwin)
@@ -311,7 +327,7 @@ SMOKE_TEST_DEPS := $(SMOKE_TEST_OBJS:.o=.d)
 ENGINE_TEST_SUPPORT_DEPS := $(ENGINE_TEST_SUPPORT_OBJS:.o=.d)
 ALL_DEPS := $(APP_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(SMOKE_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
 
-.PHONY: all clean run run-ide-theme test-session test-cache test-overlap test-smoke test-kitviz-adapter test-waveform-pack-warmstart test-kitviz-fx-preview-adapter test-kitviz-meter-adapter test-shared-theme-font-adapter
+.PHONY: all clean run run-ide-theme loop-gates loop-gates-strict test-session test-cache test-overlap test-smoke test-kitviz-adapter test-waveform-pack-warmstart test-kitviz-fx-preview-adapter test-kitviz-meter-adapter test-shared-theme-font-adapter
 
 all: $(APP_BIN)
 
@@ -331,6 +347,12 @@ run: $(APP_BIN)
 
 run-ide-theme: $(APP_BIN)
 	DAW_USE_SHARED_THEME_FONT=1 DAW_USE_SHARED_THEME=1 DAW_USE_SHARED_FONT=1 DAW_THEME_PRESET=ide_gray DAW_FONT_PRESET=ide $(APP_BIN)
+
+loop-gates: $(APP_BIN)
+	RUN_SECONDS=$${RUN_SECONDS:-8} ./tools/run_loop_gates.sh
+
+loop-gates-strict: $(APP_BIN)
+	PROFILE=strict STRICT=1 RUN_SECONDS=$${RUN_SECONDS:-8} ./tools/run_loop_gates.sh
 
 test-session: $(TEST_BIN)
 	$(TEST_BIN)
