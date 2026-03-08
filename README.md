@@ -41,11 +41,28 @@ Prerequisites:
 - SDL2 + SDL2_ttf
 - Vulkan loader/dev headers (with Metal interop on macOS)
 
+Shared runtime/modules are vendored in-repo at:
+
+- `third_party/codework_shared/`
+
 Commands:
 
 ```bash
 make
 make run
+```
+
+### Shared Subtree Update
+
+```bash
+git -C daw fetch shared-upstream main
+git -C daw subtree pull --prefix=third_party/codework_shared shared-upstream main --squash
+```
+
+Rebuild check:
+
+```bash
+make -C daw clean && make -C daw
 ```
 
 ## Tests
@@ -79,3 +96,4 @@ make test-shared-theme-font-adapter
 - `assets/`: runtime assets (no bundled public audio samples).
 - `tests/`: unit/smoke/stress test targets.
 - `docs/`: focused technical and release documentation.
+- `third_party/codework_shared/`: vendored shared core/kit/runtime modules.

@@ -2,20 +2,21 @@ APP_NAME := daw_app
 BUILD_DIR := build
 SRC_DIR := src
 SDLAPP_DIR := SDLApp
-VK_RENDERER_DIR := ../shared/vk_renderer
-CORE_BASE_DIR := ../shared/core/core_base
-CORE_IO_DIR := ../shared/core/core_io
-CORE_DATA_DIR := ../shared/core/core_data
-CORE_PACK_DIR := ../shared/core/core_pack
-CORE_TIME_DIR := ../shared/core/core_time
-CORE_THEME_DIR := ../shared/core/core_theme
-CORE_FONT_DIR := ../shared/core/core_font
-CORE_QUEUE_DIR := ../shared/core/core_queue
-CORE_SCHED_DIR := ../shared/core/core_sched
-CORE_JOBS_DIR := ../shared/core/core_jobs
-CORE_WAKE_DIR := ../shared/core/core_wake
-CORE_KERNEL_DIR := ../shared/core/core_kernel
-KIT_VIZ_DIR := ../shared/kit/kit_viz
+SHARED_ROOT ?= third_party/codework_shared
+VK_RENDERER_DIR := $(SHARED_ROOT)/vk_renderer
+CORE_BASE_DIR := $(SHARED_ROOT)/core/core_base
+CORE_IO_DIR := $(SHARED_ROOT)/core/core_io
+CORE_DATA_DIR := $(SHARED_ROOT)/core/core_data
+CORE_PACK_DIR := $(SHARED_ROOT)/core/core_pack
+CORE_TIME_DIR := $(SHARED_ROOT)/core/core_time
+CORE_THEME_DIR := $(SHARED_ROOT)/core/core_theme
+CORE_FONT_DIR := $(SHARED_ROOT)/core/core_font
+CORE_QUEUE_DIR := $(SHARED_ROOT)/core/core_queue
+CORE_SCHED_DIR := $(SHARED_ROOT)/core/core_sched
+CORE_JOBS_DIR := $(SHARED_ROOT)/core/core_jobs
+CORE_WAKE_DIR := $(SHARED_ROOT)/core/core_wake
+CORE_KERNEL_DIR := $(SHARED_ROOT)/core/core_kernel
+KIT_VIZ_DIR := $(SHARED_ROOT)/kit/kit_viz
 
 # --- Auto-discover all effect sources (non-recursive per known subdir)
 # NOTE: the quotes in compile rules already protect the & in "filter&tone".
@@ -140,7 +141,7 @@ SRCS := \
 	$(EFFECTS_SRCS)
 
 VK_RENDERER_SRCS := $(shell find $(VK_RENDERER_DIR)/src -type f -name '*.c')
-TIMER_HUD_DIR := ../shared/timer_hud
+TIMER_HUD_DIR := $(SHARED_ROOT)/timer_hud
 TIMER_HUD_SRCS := $(shell find $(TIMER_HUD_DIR)/src -type f -name '*.c')
 TIMER_HUD_EXTERNAL_SRCS := $(TIMER_HUD_DIR)/external/cJSON.c
 SRCS += $(VK_RENDERER_SRCS) $(TIMER_HUD_SRCS) $(TIMER_HUD_EXTERNAL_SRCS)
@@ -393,46 +394,46 @@ $(SMOKE_TEST_BIN): $(SMOKE_TEST_OBJS) $(ENGINE_TEST_SUPPORT_OBJS)
 test-kitviz-adapter: $(KITVIZ_ADAPTER_TEST_BIN)
 	$(KITVIZ_ADAPTER_TEST_BIN)
 
-$(KITVIZ_ADAPTER_TEST_BIN): $(KITVIZ_ADAPTER_TEST_SRCS) src/ui/kit_viz_waveform_adapter.c src/ui/timeline_waveform.c ../shared/kit/kit_viz/src/kit_viz.c
+$(KITVIZ_ADAPTER_TEST_BIN): $(KITVIZ_ADAPTER_TEST_SRCS) src/ui/kit_viz_waveform_adapter.c src/ui/timeline_waveform.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c
 	@mkdir -p "$(dir $@)"
-	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I../shared/kit/kit_viz/include -I../shared/core/core_pack/include -I../shared/core/core_io/include -I../shared/core/core_base/include \
-		tests/kit_viz_waveform_adapter_test.c src/ui/kit_viz_waveform_adapter.c src/ui/timeline_waveform.c ../shared/kit/kit_viz/src/kit_viz.c ../shared/core/core_pack/src/core_pack.c ../shared/core/core_io/src/core_io.c ../shared/core/core_base/src/core_base.c \
+	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/kit/kit_viz/include -I$(SHARED_ROOT)/core/core_pack/include -I$(SHARED_ROOT)/core/core_io/include -I$(SHARED_ROOT)/core/core_base/include \
+		tests/kit_viz_waveform_adapter_test.c src/ui/kit_viz_waveform_adapter.c src/ui/timeline_waveform.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c $(SHARED_ROOT)/core/core_pack/src/core_pack.c $(SHARED_ROOT)/core/core_io/src/core_io.c $(SHARED_ROOT)/core/core_base/src/core_base.c \
 		$(SDL2_LDFLAGS) -lSDL2 -lm -o "$@"
 
 test-waveform-pack-warmstart: $(WAVEFORM_PACK_WARMSTART_TEST_BIN)
 	$(WAVEFORM_PACK_WARMSTART_TEST_BIN)
 
-$(WAVEFORM_PACK_WARMSTART_TEST_BIN): $(WAVEFORM_PACK_WARMSTART_TEST_SRCS) src/ui/timeline_waveform.c ../shared/kit/kit_viz/src/kit_viz.c ../shared/core/core_pack/src/core_pack.c ../shared/core/core_io/src/core_io.c ../shared/core/core_base/src/core_base.c
+$(WAVEFORM_PACK_WARMSTART_TEST_BIN): $(WAVEFORM_PACK_WARMSTART_TEST_SRCS) src/ui/timeline_waveform.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c $(SHARED_ROOT)/core/core_pack/src/core_pack.c $(SHARED_ROOT)/core/core_io/src/core_io.c $(SHARED_ROOT)/core/core_base/src/core_base.c
 	@mkdir -p "$(dir $@)"
-	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I../shared/kit/kit_viz/include -I../shared/core/core_pack/include -I../shared/core/core_io/include -I../shared/core/core_base/include \
-		tests/waveform_cache_pack_warmstart_test.c src/ui/timeline_waveform.c ../shared/kit/kit_viz/src/kit_viz.c ../shared/core/core_pack/src/core_pack.c ../shared/core/core_io/src/core_io.c ../shared/core/core_base/src/core_base.c \
+	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/kit/kit_viz/include -I$(SHARED_ROOT)/core/core_pack/include -I$(SHARED_ROOT)/core/core_io/include -I$(SHARED_ROOT)/core/core_base/include \
+		tests/waveform_cache_pack_warmstart_test.c src/ui/timeline_waveform.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c $(SHARED_ROOT)/core/core_pack/src/core_pack.c $(SHARED_ROOT)/core/core_io/src/core_io.c $(SHARED_ROOT)/core/core_base/src/core_base.c \
 		$(SDL2_LDFLAGS) -lSDL2 -lm -o "$@"
 
 test-kitviz-fx-preview-adapter: $(KITVIZ_FX_PREVIEW_ADAPTER_TEST_BIN)
 	$(KITVIZ_FX_PREVIEW_ADAPTER_TEST_BIN)
 
-$(KITVIZ_FX_PREVIEW_ADAPTER_TEST_BIN): $(KITVIZ_FX_PREVIEW_ADAPTER_TEST_SRCS) src/ui/kit_viz_fx_preview_adapter.c ../shared/kit/kit_viz/src/kit_viz.c
+$(KITVIZ_FX_PREVIEW_ADAPTER_TEST_BIN): $(KITVIZ_FX_PREVIEW_ADAPTER_TEST_SRCS) src/ui/kit_viz_fx_preview_adapter.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c
 	@mkdir -p "$(dir $@)"
-	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I../shared/kit/kit_viz/include -I../shared/core/core_base/include \
-		tests/kit_viz_fx_preview_adapter_test.c src/ui/kit_viz_fx_preview_adapter.c ../shared/kit/kit_viz/src/kit_viz.c \
+	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/kit/kit_viz/include -I$(SHARED_ROOT)/core/core_base/include \
+		tests/kit_viz_fx_preview_adapter_test.c src/ui/kit_viz_fx_preview_adapter.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c \
 		$(SDL2_LDFLAGS) -lSDL2 -lm -o "$@"
 
 test-kitviz-meter-adapter: $(KITVIZ_METER_ADAPTER_TEST_BIN)
 	$(KITVIZ_METER_ADAPTER_TEST_BIN)
 
-$(KITVIZ_METER_ADAPTER_TEST_BIN): $(KITVIZ_METER_ADAPTER_TEST_SRCS) src/ui/kit_viz_meter_adapter.c ../shared/kit/kit_viz/src/kit_viz.c
+$(KITVIZ_METER_ADAPTER_TEST_BIN): $(KITVIZ_METER_ADAPTER_TEST_SRCS) src/ui/kit_viz_meter_adapter.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c
 	@mkdir -p "$(dir $@)"
-	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I../shared/kit/kit_viz/include -I../shared/core/core_base/include \
-		tests/kit_viz_meter_adapter_test.c src/ui/kit_viz_meter_adapter.c ../shared/kit/kit_viz/src/kit_viz.c \
+	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/kit/kit_viz/include -I$(SHARED_ROOT)/core/core_base/include \
+		tests/kit_viz_meter_adapter_test.c src/ui/kit_viz_meter_adapter.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c \
 		$(SDL2_LDFLAGS) -lSDL2 -lm -o "$@"
 
 test-shared-theme-font-adapter: $(SHARED_THEME_FONT_ADAPTER_TEST_BIN)
 	$(SHARED_THEME_FONT_ADAPTER_TEST_BIN)
 
-$(SHARED_THEME_FONT_ADAPTER_TEST_BIN): $(SHARED_THEME_FONT_ADAPTER_TEST_SRCS) src/ui/shared_theme_font_adapter.c ../shared/core/core_theme/src/core_theme.c ../shared/core/core_font/src/core_font.c ../shared/core/core_base/src/core_base.c
+$(SHARED_THEME_FONT_ADAPTER_TEST_BIN): $(SHARED_THEME_FONT_ADAPTER_TEST_SRCS) src/ui/shared_theme_font_adapter.c $(SHARED_ROOT)/core/core_theme/src/core_theme.c $(SHARED_ROOT)/core/core_font/src/core_font.c $(SHARED_ROOT)/core/core_base/src/core_base.c
 	@mkdir -p "$(dir $@)"
-	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I../shared/core/core_theme/include -I../shared/core/core_font/include -I../shared/core/core_base/include \
-		tests/shared_theme_font_adapter_test.c src/ui/shared_theme_font_adapter.c ../shared/core/core_theme/src/core_theme.c ../shared/core/core_font/src/core_font.c ../shared/core/core_base/src/core_base.c \
+	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/core/core_theme/include -I$(SHARED_ROOT)/core/core_font/include -I$(SHARED_ROOT)/core/core_base/include \
+		tests/shared_theme_font_adapter_test.c src/ui/shared_theme_font_adapter.c $(SHARED_ROOT)/core/core_theme/src/core_theme.c $(SHARED_ROOT)/core/core_font/src/core_font.c $(SHARED_ROOT)/core/core_base/src/core_base.c \
 		$(SDL2_LDFLAGS) -lSDL2 -o "$@"
 
 $(BUILD_DIR)/tests/%.o: tests/%.c
