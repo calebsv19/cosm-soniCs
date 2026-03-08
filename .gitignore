@@ -1,1 +1,32 @@
-build/*
+# Build outputs
+/build/
+*.o
+*.d
+*.log
+*.dSYM/
+
+# Generated runtime/cache artifacts
+/ide_files/
+/timing.json
+/timerhud/*/timing.json
+/vk_frame.ppm
+/config/library_index.json
+/config/last_session.json
+/config/projects/*.json
+/config/projects/last_project.txt
+
+# Public release excludes bundled audio samples
+/assets/audio/*
+!/assets/audio/README.md
+
+# Non-public planning/metrics artifacts
+/DAW_CURRENT_STATE_SUMMARY.md
+/code_lines_by_file.txt
+/line_history/
+/docs/old/
+
+# OS/editor noise
+.DS_Store
+**/.DS_Store
+*.swp
+*.swo

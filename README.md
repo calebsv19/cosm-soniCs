@@ -5,6 +5,7 @@ This repository hosts an in-progress, minimal C-based DAW prototype built on SDL
 ## Project Snapshot *(Phase 9 in progress)*
 - **Goal**: Multi-track DAW prototype with SDL2 front end and a lock-free, real-time-safe audio engine. Makefile builds `build/daw_app`.
 - **Architecture**: C sources under `src/` (app, engine, audio, input, UI) with matching headers in `include/`; runtime assets in `assets/`; configuration defaults in `config/`.
+- **Public release note**: `assets/audio` ships without bundled sample audio; add local media files for testing.
 - **Performance HUD**: Uses the shared TimerHUD library with a DAW adapter in `src/render/timer_hud_adapter.c` and settings in `config/timer_hud_settings.json`.
 - **Vulkan Backend**: Builds against the shared Vulkan renderer in `shared/vk_renderer`, with app setup in `SDLApp/sdl_app_framework.c`.
 - **Runtime Threads**: Real-time audio callback executes the graph; engine thread handles graph edits, transport, and command queues; background workers manage media decode.
@@ -15,6 +16,7 @@ This repository hosts an in-progress, minimal C-based DAW prototype built on SDL
   - Session schema now includes tempo/time signature maps (step changes) that drive beat-mode grid and transport labels.
 - Engine honors seek/loop commands, rebuilds track sources respecting mute/solo, and emits silence when idle (no fallback tone).
 - Session persistence auto-loads from and auto-saves to `config/last_session.json` (Phase 7 complete).
+- If user-local session files are missing, startup falls back to `config/templates/public_default_project.json`.
 - Library/decoder pipeline accepts both WAV and MP3 assets (MP3 decoded via CoreAudio on macOS).
 - Decoded audio cache reuses media buffers across clips referencing the same file/sample-rate to reduce load overhead.
 - Mixer pane shows a master effects rack when no clip is selected, with a two-layer add-effect overlay (category → effect) that includes wheel/scroll-bar navigation, plus stacked sliders that dynamically resize with the pane for live tweaks and removal buttons.
@@ -74,3 +76,8 @@ Keep this roadmap up to date as each phase completes or is re-scoped. Future cha
 - `make test-cache` — Media cache stress harness.
 - `make test-overlap` — Equal-start clip ordering regression.
 - `make test-smoke` — Engine API smoke (load clip, fades, loop/play toggles).
+
+## Release Hygiene
+- Fallback serialization behavior is documented in `docs/SERIALIZATION_FALLBACK.md`.
+- Bundled user media and runtime-generated caches are excluded from public commits.
+- Security and stability notes are tracked in `SECURITY.md` and `KNOWN_ISSUES.md`.

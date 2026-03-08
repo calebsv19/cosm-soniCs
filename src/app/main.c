@@ -831,6 +831,7 @@ int main(void) {
     const int window_width = 1280;
     const int window_height = 720;
     const char* last_session_path = "config/last_session.json";
+    const char* fallback_session_path = "config/templates/public_default_project.json";
 
     AppState state = {0};
     bool loop_wake_initialized = false;
@@ -888,6 +889,13 @@ int main(void) {
         SDL_Log("Session restored from config/last_session.json");
         loaded_session = true;
         engine_started = project_manager_post_load(&state);
+    } else if (session_load_from_file(&state, fallback_session_path)) {
+        SDL_Log("Fallback session restored from %s", fallback_session_path);
+        loaded_session = true;
+        engine_started = project_manager_post_load(&state);
+        state.project.has_name = false;
+        state.project.name[0] = '\0';
+        state.project.path[0] = '\0';
     }
 
     if (!loaded_session) {

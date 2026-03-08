@@ -1,8 +1,8 @@
 # Directory: assets/audio
 
-Purpose: Reference WAV clips available to the engine and the in-app library browser.
+Purpose: User-provided audio clips loaded by the DAW library browser.
 
-## Files
-- `sample-9s.wav`: Short stereo snippet for rapid playback tests.
-- `sample-12s.wav`: Longer clip used to debug scrolling and grid snapping on the timeline.
-- `test.wav`: Default clip loaded when the library selection is empty.
+## Public Release Policy
+- This directory intentionally ships without bundled audio content.
+- Add your own `.wav`/`.mp3` files locally for testing and composition.
+- User audio files in this folder are ignored by Git for public release hygiene.

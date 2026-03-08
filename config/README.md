@@ -11,4 +11,4 @@ Purpose: Runtime configuration and fallback assets loaded during startup.
   - `enable_engine_logs`: Enables extra SDL logging for engine operations (values: `on/off`, `true/false`, `1/0`).
   - `enable_cache_logs`: Enables verbose logging for the media cache acquire/release path.
   - `enable_timing_logs`: Reserved for detailed timing output during profiling (default disabled).
-- `test.wav`: Fallback clip the engine loads when the user presses `L` with nothing selected in the library.
+- `templates/public_default_project.json`: Public fallback serialization baseline loaded when no remembered project/session files exist.
