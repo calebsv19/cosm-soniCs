@@ -19,7 +19,11 @@ This document defines what each shared library owns so behavior does not overlap
 - `core_scene`: scene schema and scene-level object grouping/state metadata.
 - `core_space`: coordinate-space mapping, transforms, and grid/window/world conversion.
 - `core_pack`: versioned chunked interchange container (`.pack`).
+- `core_layout`: renderer-agnostic layout transaction state (runtime/authoring mode, apply/cancel, revision/rebuild flags).
+- `core_config`: lightweight typed runtime configuration table boundary.
+- `core_action`: action identity + trigger-binding registry boundary.
 - `core_trace`: trace capture/ingest/export primitives.
+- `core_pane`: renderer-agnostic pane tree layout semantics (split ratios, constraints, splitter hit/drag math).
 - `core_theme`: tokenized color + spacing presets.
 - `core_font`: font roles + font tier/size preset contracts.
 
@@ -68,3 +72,6 @@ This document defines what each shared library owns so behavior does not overlap
 - Do not place scene-schema types in app-specific UI/render modules.
 - Do not add compiler include emulation behavior to runtime core libs.
 - Do not hardcode theme/font constants in app UI where adapter lookup exists.
+- Do not place pane geometry solve or hit-testing semantics in `core_layout`.
+- Do not add persistence/file-IO behavior to `core_config`.
+- Do not couple `core_action` to platform keycode parsing or UI command widgets.

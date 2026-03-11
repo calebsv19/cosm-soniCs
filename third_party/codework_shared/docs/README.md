@@ -19,6 +19,7 @@ This directory contains public-facing shared-library documentation.
 - `ecosystem_north_star_docs/02_core_kit_workflow.md`
 - `ecosystem_north_star_docs/11_version_compat_matrix.md`
 - `ecosystem_north_star_docs/29_program_shared_lib_connection_gaps.md`
+- `ecosystem_north_star_docs/44_program_library_connective_tissue_state.md`
 
 ## Memory DB References
 - `memory_db_system/README.md`

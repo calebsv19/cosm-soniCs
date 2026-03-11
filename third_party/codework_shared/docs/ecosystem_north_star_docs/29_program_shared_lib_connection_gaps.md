@@ -1,6 +1,6 @@
 # Program Shared-Lib Connection Gaps
 
-Last updated: 2026-02-23
+Last updated: 2026-03-09
 Purpose: canonical per-program list of shared-lib connection gaps and next integrations.
 
 Use this with:
@@ -17,8 +17,10 @@ Use this with:
 ### `datalab`
 Current shared profile:
 - Strong on `core_base/core_io/core_data/core_pack` and `kit_viz`.
+- First incremental `kit_graph_timeseries` adoption is now in place (shared stride guidance for trace decimation).
 
 Gaps:
+- `Partial`: continue `kit_graph_timeseries` migration (shared view math, hover inspection, then one shared draw path).
 - `Missing`: `core_trace` trace-import/view path standardization.
 - `Missing`: `core_theme/core_font` if/when DataLab UI theming should align with app-wide presets.
 - `Partial`: normalize profile loaders so all external data lanes map through one shared parsing contract.

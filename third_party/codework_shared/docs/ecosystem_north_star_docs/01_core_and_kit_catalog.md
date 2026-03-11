@@ -99,6 +99,64 @@ This is not an implementation guide.
 
 ---
 
+### core_pane (BOOTSTRAP)
+**Role:** Shared split-pane geometry and interaction semantics.
+**Responsibilities (initial):**
+- Pane-tree split solve into leaf rectangles
+- Ratio normalization with min-size constraints
+- Splitter hit-test metadata
+- Splitter drag ratio updates without renderer coupling
+
+**Boundary:**
+- Pane semantics only
+- No renderer/UI framework dependencies
+- No app-specific pane policy or preset file parsing
+
+---
+
+### core_layout (BOOTSTRAP)
+**Role:** Shared workspace-layout transaction semantics.
+**Responsibilities (initial):**
+- Runtime/authoring mode state token
+- Draft/active revision tracking
+- Apply/cancel transaction lifecycle
+- Rebuild-intent signaling after apply
+
+**Boundary:**
+- No pane geometry solve or splitter math (`core_pane` owns that)
+- No module-host lifecycle policy
+- No rendering/UI dependencies
+
+---
+
+### core_config (BOOTSTRAP)
+**Role:** Lightweight typed runtime configuration table.
+**Responsibilities (initial):**
+- Fixed-capacity key/value storage
+- Typed scalar values (`bool`, `int64`, `double`, `string`)
+- Deterministic upsert/read semantics
+
+**Boundary:**
+- No schema graph modeling (`core_data` owns rich structures)
+- No file/persistence policy (`core_pack`/app policy own that)
+- No action routing semantics
+
+---
+
+### core_action (BOOTSTRAP)
+**Role:** Action identity and trigger-binding registry.
+**Responsibilities (initial):**
+- Register action metadata (`id`, `label`)
+- Bind trigger tokens to action IDs
+- Resolve trigger to stable action identity
+
+**Boundary:**
+- No platform keycode decoding (adapter/app layer owns that)
+- No command execution/runtime policy
+- No UI command palette rendering concerns
+
+---
+
 ### core_trace (ACTIVE)
 **Role:** Shared timeline/event instrumentation foundation.
 **Responsibilities:**
@@ -302,6 +360,13 @@ This is not an implementation guide.
 - Primary consumer of `core_theme` and `core_font` contracts.
 - Owns renderer adapters that convert theme/font tokens into backend-specific calls.
 - Current shared controls include buttons, checkboxes, sliders, scrollbars, and segmented selectors.
+
+### kit_pane (BOOTSTRAP)
+**Role:** Shared pane-shell presentation kit for `core_pane`-driven workspaces.
+**Notes:**
+- Owns pane chrome visuals (border/header/title/splitter states).
+- Owns authoring-mode structural overlay affordances.
+- Does not own pane topology solve, module lifecycle, or workspace persistence policy.
 
 ### kit_graph (ACTIVE)
 **Role:** Shared graph visualization kit.

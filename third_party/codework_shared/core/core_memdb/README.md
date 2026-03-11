@@ -41,6 +41,55 @@ Current status:
 - retrieval/read commands now support `--format text|tsv|json` for machine-readable agent parsing
 - `mem_cli` now also supports baseline `mem_link` workflows (`link-add`, `link-list`, `link-update`, `link-remove`)
 - `mem_cli` now supports bounded graph neighborhood retrieval via `neighbors`
+- nightly maintenance runner scripts now exist for manual/dry-run operations:
+  - `tools/mem_nightly_reader.sh` (read-only snapshot + summary + plan)
+  - `tools/mem_nightly_pruner.sh` (bounded apply/dry-run executor from plan)
+  - `tools/mem_nightly_run.sh` (orchestrates reader + pruner + final report)
+- Codex-driven wrappers now exist for intelligent reader/pruner passes:
+  - `tools/mem_nightly_reader_codex.sh`
+  - `tools/mem_nightly_pruner_codex.sh`
+  - `tools/mem_nightly_run_codex.sh`
+- nightly reader now emits canonical operation lanes by default:
+  - `operations.link_additions = { enabled, items: [] }`
+  - `operations.link_updates = { enabled, items: [] }`
+- nightly pruner keeps backward compatibility for legacy plan shapes:
+  - array form (`operations.link_additions[]`, `operations.link_updates[]`)
+  - object form with lane toggles (`operations.link_additions.items[]`, `operations.link_updates.items[]`)
+- pruner codex wrapper now runs strict apply-time plan validation before mutation:
+  - validates required schema and canonical lane keys for apply mode
+  - verifies budgets are non-negative and not below approved operation counts
+- nightly apply policy now refuses zero-op apply by default:
+  - override only with `--allow-empty-apply` when intentional
+- nightly pruner now supports iterative chunked rollup execution:
+  - uses `operations.rollup.chunk_max_items` for smaller rollup blocks
+  - applies scoped rollup filters from `operations.rollup.scope`
+- nightly pruner now supports post-rollup graph connection pass:
+  - uses `operations.connection_pass` to link newly created rollup blocks
+  - supports chain linking, optional anchor linking, min-degree checks, and bounded neighbor-link propagation for rollup nodes
+  - connection results are reported in `pruner_apply_report.json` under planned/applied operations
+- nightly reader now policy-gates rollup recommendation by scope pressure:
+  - requires `active_nodes_in_scope > min_active_nodes_before_rollup` (default 40)
+  - requires `stale_candidates_in_scope >= min_stale_candidates_before_rollup` (default 4)
+  - prevents forced daily compression when scope pressure is low
+  - stale candidate derivation excludes `kind=rollup` rows so plan counts match `mem_cli rollup` default scope
+- codex run orchestrator now supports locked apply and parity artifacts:
+  - `--locked-apply` to apply existing reviewed run dir without reader/review mutation
+  - emits `health_after.json` and `run_report.json`
+- codex run orchestrator now records per-run suggestion memory for diagnostics:
+  - writes one suggestion node per run to configurable bucket (`--suggestion-project`, `--suggestion-kind`)
+  - links new suggestion nodes to prior suggestions (`related`) for graph-based issue clustering
+  - emits `codex_rollup_improvement.md` only for major signals by default (or always with `--always-write-suggestion-md`)
+- one-line isolated test harness now exists for full rollup-cycle validation:
+  - `tools/mem_nightly_rollup_cycle_test.sh` (copies main DB -> test DB, dry run, auto-approve test plan, locked apply, checksum guard on main DB)
+- one-line official main-db rollup harness now exists for intentional real apply:
+  - `tools/mem_nightly_rollup_cycle_main_apply.sh` (dry pass, auto-approve scoped/chunked rollup + connection pass, locked apply on main DB)
+- rollup command now supports scoped and chunked compression:
+  - `mem_cli rollup --before <ns> [--workspace <key>] [--project <key>] [--kind <value>] [--limit <n>]`
+- rollup summary bodies are now synthesized for readability:
+  - writes one concise rollup paragraph (bounded) plus a compact per-item coverage list
+  - avoids raw full-body dumps for each merged row
+- rollup now excludes prior `kind=rollup` rows by default when `--kind` is not provided:
+  - pass `--kind rollup` explicitly only when intentional recursive rollup is desired
 - link constraints are hardened:
   - canonical link kind allowlist at CLI write surface
   - self-loop writes rejected
@@ -109,7 +158,7 @@ Current CLI surface:
 - `mem_cli event-backfill --db <path> [--session-id <id>] [--dry-run] [--format text|json]`
 - `mem_cli pin --db <path> --id <rowid> --on|--off [--session-id <id>]`
 - `mem_cli canonical --db <path> --id <rowid> --on|--off [--session-id <id>]`
-- `mem_cli rollup --db <path> --before <timestamp_ns> [--session-id <id>]`
+- `mem_cli rollup --db <path> --before <timestamp_ns> [--workspace <key>] [--project <key>] [--kind <value>] [--limit <n>] [--session-id <id>]`
 - `mem_cli link-add --db <path> --from <item_id> --to <item_id> --kind <text> [--weight <real>] [--note <text>] [--session-id <id>]`
 - `mem_cli link-list --db <path> --item-id <item_id>`
 - `mem_cli neighbors --db <path> --item-id <item_id> [--kind <text>] [--max-edges <n>] [--max-nodes <n>] [--format text|tsv|json]`

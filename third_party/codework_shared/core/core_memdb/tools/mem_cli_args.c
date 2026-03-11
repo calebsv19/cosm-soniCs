@@ -34,7 +34,7 @@ void print_usage(const char *argv0) {
     fprintf(stderr, "  event-backfill --db <path> [--session-id <id>] [--dry-run] [--format text|json]\n");
     fprintf(stderr, "  pin --db <path> --id <rowid> --on|--off [--session-id <id>]\n");
     fprintf(stderr, "  canonical --db <path> --id <rowid> --on|--off [--session-id <id>]\n");
-    fprintf(stderr, "  rollup --db <path> --before <timestamp_ns> [--session-id <id>]\n");
+    fprintf(stderr, "  rollup --db <path> --before <timestamp_ns> [--workspace <key>] [--project <key>] [--kind <value>] [--limit <n>] [--session-id <id>]\n");
     fprintf(stderr, "  link-add --db <path> --from <item_id> --to <item_id> --kind <text> [--weight <real>] [--note <text>] [--session-id <id>]\n");
     fprintf(stderr, "  link-list --db <path> --item-id <item_id>\n");
     fprintf(stderr, "  neighbors --db <path> --item-id <item_id> [--kind <text>] [--max-edges <n>] [--max-nodes <n>] [--format text|tsv|json]\n");

@@ -8,10 +8,14 @@ Modules covered:
 - `shared/core/core_io`
 - `shared/core/core_data`
 - `shared/core/core_pack`
+- `shared/core/core_layout`
+- `shared/core/core_config`
+- `shared/core/core_action`
 - `shared/core/core_scene`
 - `shared/core/core_space`
 - `shared/core/core_trace`
 - `shared/core/core_math`
+- `shared/core/core_pane`
 - `shared/core/core_time`
 - `shared/core/core_queue`
 - `shared/core/core_sched`
@@ -20,6 +24,7 @@ Modules covered:
 - `shared/core/core_wake`
 - `shared/core/core_kernel`
 - `shared/kit/kit_render`
+- `shared/kit/kit_pane`
 - `shared/kit/kit_graph_timeseries`
 - `shared/kit/kit_graph_struct`
 - `shared/kit/kit_ui`

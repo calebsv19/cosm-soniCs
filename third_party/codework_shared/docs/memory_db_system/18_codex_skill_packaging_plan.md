@@ -13,6 +13,7 @@ Checklist:
    - `query`, `show`, `add`, `batch-add`, `pin`, `canonical`, `rollup`, `health`, `audit-list`, `neighbors`, `link-add`
    - wrapper linked write: `mem_agent_flow.sh write-linked`
 2. keep outputs line-oriented and stable
+   - rollup summary shape should remain stable: concise synthesis paragraph + coverage list
 3. ensure `mem_cli` usage text documents every required flag
 4. add machine-readable output mode for retrieval/read commands
    - `--format text|tsv|json`
@@ -32,6 +33,8 @@ Checklist:
    - retrieve before write
    - bounded limits only
    - enforce write cap per session
+   - nightly rollup recommendation must remain policy-gated (`min_active_nodes_before_rollup`, `min_stale_candidates_before_rollup`)
+   - preserve canonical connection-pass shape (including neighbor-link propagation bounds) when rollup is enabled
 2. define default db path policy per project/workspace
 3. define id-follow-up flow (`query -> show -> optional add`)
 
@@ -45,7 +48,7 @@ Checklist:
 1. run:
    - `make -C shared/core/core_memdb test`
 2. reset demo DB:
-   - `./shared/showcase/mem_console/demo/reset_demo_db.sh`
+   - `./mem_console/demo/reset_demo_db.sh`
 3. run representative command flow:
    - bounded query
    - show
