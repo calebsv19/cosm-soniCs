@@ -28,7 +28,7 @@ Required commands:
   - `mem_cli pin --db <path> --id <rowid> --on|--off [--session-id <id>]`
   - `mem_cli canonical --db <path> --id <rowid> --on|--off [--session-id <id>]`
 - maintenance:
-  - `mem_cli rollup --db <path> --before <timestamp_ns> [--session-id <id>]`
+  - `mem_cli rollup --db <path> --before <timestamp_ns> [--workspace <key>] [--project <key>] [--kind <value>] [--limit <n>] [--session-id <id>]`
   - `mem_cli health --db <path> [--format text|json]`
   - `mem_cli audit-list --db <path> [--session-id <id>] [--limit <n>] [--format text|tsv|json]`
   - `mem_cli neighbors --db <path> --item-id <rowid> [--kind <value>] [--max-edges <n>] [--max-nodes <n>] [--format text|tsv|json]`
@@ -63,11 +63,23 @@ Agent write guardrails:
 When to pin/canonical:
 - pin when memory must survive rollup/TTL cleanup
 - canonical when memory should be preferred merge/retrieval target
+- rollup default excludes `kind=rollup` unless `--kind` is explicitly provided
 
 Graph link policy:
 - use canonical kinds only: `supports`, `depends_on`, `references`, `summarizes`, `implements`, `blocks`, `contradicts`, `related`
 - links are explicit only; agents must run `link-add` (or `write-linked`) for graph connectivity
 - keep neighbor retrieval bounded with explicit `--max-edges` and `--max-nodes`
+
+Nightly rollup orchestration policy (reader/pruner wrappers):
+- rollup recommendation is policy-gated, not automatic:
+  - `active_nodes_in_scope > min_active_nodes_before_rollup` (default `40`)
+  - `stale_candidates_in_scope >= min_stale_candidates_before_rollup` (default `4`)
+- keep `operations.rollup.enabled=false` until review confirms policy gate + proposal
+- use chunked rollup for readability/traceability:
+  - `operations.rollup.chunk_max_items`
+  - `operations.rollup.scope = { workspace, project, kind }`
+- preserve graph connectivity for rollup nodes through connection pass:
+  - `operations.connection_pass = { enabled, link_kind, anchor_kind, anchor_item_id, ensure_min_degree, propagate_neighbor_links, max_neighbor_links_per_rollup, neighbor_scan_max_edges, neighbor_scan_max_nodes }`
 
 ## Output Contract
 

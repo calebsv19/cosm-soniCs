@@ -33,6 +33,6 @@
 - `vk_renderer`: Vulkan renderer backend implementation.
 - `timer_hud`: shared frame timing and HUD utilities.
 
-## Showcase Apps
+## Showcase and Program Hosts
 - `showcase/kit_visual_showcase`: visual kit integration demo.
-- `showcase/mem_console`: memory DB console demo host.
+- `mem_console`: memory DB console program host.

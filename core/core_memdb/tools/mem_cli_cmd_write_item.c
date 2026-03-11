@@ -301,6 +301,106 @@ static CoreResult append_i64_text(char **buffer,
     return append_text_segment(buffer, length, capacity, text, (size_t)written);
 }
 
+static size_t build_compact_snippet(const char *text,
+                                    size_t text_len,
+                                    char *out_text,
+                                    size_t out_cap,
+                                    size_t max_chars) {
+    size_t src_index = 0u;
+    size_t out_len = 0u;
+    int in_space = 1;
+    int truncated = 0;
+
+    if (!out_text || out_cap == 0u) {
+        return 0u;
+    }
+    out_text[0] = '\0';
+
+    if (!text || text_len == 0u) {
+        return 0u;
+    }
+
+    if (max_chars == 0u || max_chars >= out_cap) {
+        max_chars = out_cap - 1u;
+    }
+
+    while (src_index < text_len) {
+        unsigned char ch = (unsigned char)text[src_index];
+        int is_space = 0;
+
+        if (ch == '\0') {
+            break;
+        }
+
+        if (ch == '\r') {
+            src_index += 1u;
+            continue;
+        }
+
+        if (ch == '\n') {
+            if (src_index + 1u < text_len && text[src_index + 1u] == '\n' && out_len >= 48u) {
+                truncated = 1;
+                break;
+            }
+            ch = ' ';
+        } else if (ch == '\t' || ch == '\f' || ch == '\v') {
+            ch = ' ';
+        }
+
+        is_space = (ch == ' ');
+        if (is_space) {
+            if (in_space || out_len == 0u) {
+                src_index += 1u;
+                continue;
+            }
+            if (out_len >= max_chars) {
+                truncated = 1;
+                break;
+            }
+            out_text[out_len++] = ' ';
+            in_space = 1;
+            src_index += 1u;
+            continue;
+        }
+
+        if (ch < 32u) {
+            src_index += 1u;
+            continue;
+        }
+
+        if (out_len >= max_chars) {
+            truncated = 1;
+            break;
+        }
+        out_text[out_len++] = (char)ch;
+        in_space = 0;
+        src_index += 1u;
+    }
+
+    while (out_len > 0u && out_text[out_len - 1u] == ' ') {
+        out_len -= 1u;
+    }
+
+    if (truncated && out_len > 0u) {
+        if (out_len + 3u >= out_cap) {
+            while (out_len > 0u && out_len + 3u >= out_cap) {
+                out_len -= 1u;
+            }
+        }
+        while (out_len > 0u && out_text[out_len - 1u] == ' ') {
+            out_len -= 1u;
+        }
+        if (out_len > 0u && out_len + 3u < out_cap) {
+            out_text[out_len++] = '.';
+            out_text[out_len++] = '.';
+            out_text[out_len++] = '.';
+        }
+    }
+
+    out_text[out_len] = '\0';
+    return out_len;
+}
+
 static CoreResult build_item_archive_event_payload_alloc(CoreMemDb *db,
                                                          int64_t item_id,
                                                          int64_t archived_ns,
@@ -1053,14 +1153,22 @@ int cmd_rollup(int argc, char **argv) {
     const char *db_path = find_flag_value(argc, argv, "--db");
     const char *before_text = find_flag_value(argc, argv, "--before");
     const char *session_id = find_flag_value(argc, argv, "--session-id");
+    const char *workspace_filter = find_flag_value(argc, argv, "--workspace");
+    const char *project_filter = find_flag_value(argc, argv, "--project");
+    const char *kind_filter = find_flag_value(argc, argv, "--kind");
+    const char *limit_text = find_flag_value(argc, argv, "--limit");
     int64_t cutoff_ns = 0;
+    int64_t rollup_limit = 0;
     int64_t now_ns = 0;
     int64_t rollup_id = 0;
     int64_t rolled_count = 0;
     int64_t archive_count = 0;
+    int64_t hidden_summary_items = 0;
     int has_row = 0;
     int tx_started = 0;
     int exit_code = 1;
+    int summary_visible_items = 0;
+    const size_t summary_char_budget = 2400u;
     char title[128];
     char fingerprint[17];
     char detail[128];
@@ -1073,14 +1181,27 @@ int cmd_rollup(int argc, char **argv) {
     size_t rolled_item_cap = 0u;
     char *event_payload = 0;
     char *summary_body = 0;
+    char *summary_paragraph = 0;
+    char *coverage_lines = 0;
     size_t summary_len = 0u;
     size_t summary_cap = 0u;
+    size_t summary_para_len = 0u;
+    size_t summary_para_cap = 0u;
+    size_t coverage_len = 0u;
+    size_t coverage_cap = 0u;
+    char query_sql[1024];
+    char sql_fragment[96];
+    int bind_index = 0;
     CoreMemDb db = {0};
     CoreMemStmt stmt = {0};
     CoreMemStmt apply_stmt = {0};
     CoreResult result;
 
     if (!db_path || !before_text || !parse_i64_arg(before_text, &cutoff_ns)) {
+        print_usage(argv[0]);
+        return 1;
+    }
+    if (limit_text && (!parse_i64_arg(limit_text, &rollup_limit) || rollup_limit <= 0)) {
         print_usage(argv[0]);
         return 1;
     }
@@ -1110,16 +1231,150 @@ int cmd_rollup(int argc, char **argv) {
         print_core_error("rollup", result);
         goto cleanup;
     }
+    if (workspace_filter && workspace_filter[0] != '\0') {
+        result = append_cstr(&summary_body, &summary_len, &summary_cap, "scope workspace: ");
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+        result = append_cstr(&summary_body, &summary_len, &summary_cap, workspace_filter);
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+        result = append_cstr(&summary_body, &summary_len, &summary_cap, "\n");
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+    }
+    if (project_filter && project_filter[0] != '\0') {
+        result = append_cstr(&summary_body, &summary_len, &summary_cap, "scope project: ");
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+        result = append_cstr(&summary_body, &summary_len, &summary_cap, project_filter);
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+        result = append_cstr(&summary_body, &summary_len, &summary_cap, "\n");
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+    }
+    if (kind_filter && kind_filter[0] != '\0') {
+        result = append_cstr(&summary_body, &summary_len, &summary_cap, "scope kind: ");
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+        result = append_cstr(&summary_body, &summary_len, &summary_cap, kind_filter);
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+        result = append_cstr(&summary_body, &summary_len, &summary_cap, "\n");
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+    } else {
+        result = append_cstr(&summary_body,
+                             &summary_len,
+                             &summary_cap,
+                             "scope kind excluded: rollup (default)\n");
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+    }
+    if (rollup_limit > 0) {
+        result = append_cstr(&summary_body, &summary_len, &summary_cap, "rollup limit: ");
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+        result = append_i64_text(&summary_body, &summary_len, &summary_cap, rollup_limit);
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+        result = append_cstr(&summary_body, &summary_len, &summary_cap, "\n");
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+    }
+    result = append_cstr(&summary_body, &summary_len, &summary_cap, "\n");
+    if (result.code != CORE_OK) {
+        print_core_error("rollup", result);
+        goto cleanup;
+    }
 
-    result = core_memdb_prepare(&db,
-                                "SELECT id, title, body "
-                                "FROM mem_item "
-                                "WHERE updated_ns < ?1 "
-                                "AND pinned = 0 "
-                                "AND canonical = 0 "
-                                "AND archived_ns IS NULL "
-                                "ORDER BY updated_ns ASC, id ASC;",
-                                &stmt);
+    query_sql[0] = '\0';
+    if (!append_sql_fragment(query_sql,
+                             sizeof(query_sql),
+                             "SELECT id, title, body "
+                             "FROM mem_item "
+                             "WHERE updated_ns < ?1 "
+                             "AND pinned = 0 "
+                             "AND canonical = 0 "
+                             "AND archived_ns IS NULL")) {
+        print_core_error("rollup", (CoreResult){ CORE_ERR_FORMAT, "rollup query buffer overflow" });
+        goto cleanup;
+    }
+    if ((!kind_filter || kind_filter[0] == '\0') &&
+        !append_sql_fragment(query_sql, sizeof(query_sql), " AND kind <> 'rollup'")) {
+        print_core_error("rollup", (CoreResult){ CORE_ERR_FORMAT, "rollup default kind exclusion overflow" });
+        goto cleanup;
+    }
+
+    bind_index = 2;
+    if (workspace_filter && workspace_filter[0] != '\0') {
+        if (snprintf(sql_fragment, sizeof(sql_fragment), " AND workspace_key = ?%d", bind_index) <= 0 ||
+            !append_sql_fragment(query_sql, sizeof(query_sql), sql_fragment)) {
+            print_core_error("rollup", (CoreResult){ CORE_ERR_FORMAT, "rollup workspace filter overflow" });
+            goto cleanup;
+        }
+        bind_index += 1;
+    }
+    if (project_filter && project_filter[0] != '\0') {
+        if (snprintf(sql_fragment, sizeof(sql_fragment), " AND project_key = ?%d", bind_index) <= 0 ||
+            !append_sql_fragment(query_sql, sizeof(query_sql), sql_fragment)) {
+            print_core_error("rollup", (CoreResult){ CORE_ERR_FORMAT, "rollup project filter overflow" });
+            goto cleanup;
+        }
+        bind_index += 1;
+    }
+    if (kind_filter && kind_filter[0] != '\0') {
+        if (snprintf(sql_fragment, sizeof(sql_fragment), " AND kind = ?%d", bind_index) <= 0 ||
+            !append_sql_fragment(query_sql, sizeof(query_sql), sql_fragment)) {
+            print_core_error("rollup", (CoreResult){ CORE_ERR_FORMAT, "rollup kind filter overflow" });
+            goto cleanup;
+        }
+        bind_index += 1;
+    }
+
+    if (!append_sql_fragment(query_sql, sizeof(query_sql), " ORDER BY updated_ns ASC, id ASC")) {
+        print_core_error("rollup", (CoreResult){ CORE_ERR_FORMAT, "rollup query overflow" });
+        goto cleanup;
+    }
+    if (rollup_limit > 0) {
+        if (snprintf(sql_fragment, sizeof(sql_fragment), " LIMIT ?%d", bind_index) <= 0 ||
+            !append_sql_fragment(query_sql, sizeof(query_sql), sql_fragment)) {
+            print_core_error("rollup", (CoreResult){ CORE_ERR_FORMAT, "rollup limit overflow" });
+            goto cleanup;
+        }
+    }
+    if (!append_sql_fragment(query_sql, sizeof(query_sql), ";")) {
+        print_core_error("rollup", (CoreResult){ CORE_ERR_FORMAT, "rollup query overflow" });
+        goto cleanup;
+    }
+
+    result = core_memdb_prepare(&db, query_sql, &stmt);
     if (result.code != CORE_OK) {
         print_core_error("rollup", result);
         goto cleanup;
@@ -1129,11 +1384,49 @@ int cmd_rollup(int argc, char **argv) {
         print_core_error("rollup", result);
         goto cleanup;
     }
+    bind_index = 2;
+    if (workspace_filter && workspace_filter[0] != '\0') {
+        result = core_memdb_stmt_bind_text(&stmt, bind_index, workspace_filter);
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+        bind_index += 1;
+    }
+    if (project_filter && project_filter[0] != '\0') {
+        result = core_memdb_stmt_bind_text(&stmt, bind_index, project_filter);
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+        bind_index += 1;
+    }
+    if (kind_filter && kind_filter[0] != '\0') {
+        result = core_memdb_stmt_bind_text(&stmt, bind_index, kind_filter);
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+        bind_index += 1;
+    }
+    if (rollup_limit > 0) {
+        result = core_memdb_stmt_bind_i64(&stmt, bind_index, rollup_limit);
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+    }
 
     for (;;) {
         int64_t item_id = 0;
         CoreStr item_title = {0};
         CoreStr item_body = {0};
+        char compact_title[112];
+        char compact_body[320];
+        char compact_body_coverage[168];
+        char clause[640];
+        int clause_written = 0;
+        size_t clause_len = 0u;
 
         result = core_memdb_stmt_step(&stmt, &has_row);
         if (result.code != CORE_OK) {
@@ -1160,45 +1453,95 @@ int cmd_rollup(int argc, char **argv) {
             goto cleanup;
         }
 
-        result = append_cstr(&summary_body, &summary_len, &summary_cap, "item ");
+        build_compact_snippet(item_title.data,
+                              item_title.len,
+                              compact_title,
+                              sizeof(compact_title),
+                              96u);
+        if (compact_title[0] == '\0') {
+            (void)snprintf(compact_title, sizeof(compact_title), "(untitled)");
+        }
+        build_compact_snippet(item_body.data,
+                              item_body.len,
+                              compact_body,
+                              sizeof(compact_body),
+                              240u);
+        if (compact_body[0] == '\0') {
+            (void)snprintf(compact_body, sizeof(compact_body), "No body text.");
+        }
+        build_compact_snippet(item_body.data,
+                              item_body.len,
+                              compact_body_coverage,
+                              sizeof(compact_body_coverage),
+                              120u);
+        if (compact_body_coverage[0] == '\0') {
+            (void)snprintf(compact_body_coverage, sizeof(compact_body_coverage), "No body text.");
+        }
+
+        clause_written = snprintf(clause,
+                                  sizeof(clause),
+                                  "[%lld] %s: %s",
+                                  (long long)item_id,
+                                  compact_title,
+                                  compact_body);
+        if (clause_written <= 0 || (size_t)clause_written >= sizeof(clause)) {
+            print_core_error("rollup", (CoreResult){ CORE_ERR_FORMAT, "failed to format rollup clause" });
+            goto cleanup;
+        }
+        clause_len = (size_t)clause_written;
+        if (summary_para_len + (summary_visible_items > 0 ? 2u : 0u) + clause_len <= summary_char_budget) {
+            if (summary_visible_items > 0) {
+                result = append_cstr(&summary_paragraph, &summary_para_len, &summary_para_cap, "; ");
+                if (result.code != CORE_OK) {
+                    print_core_error("rollup", result);
+                    goto cleanup;
+                }
+            }
+            result = append_text_segment(&summary_paragraph,
+                                         &summary_para_len,
+                                         &summary_para_cap,
+                                         clause,
+                                         clause_len);
+            if (result.code != CORE_OK) {
+                print_core_error("rollup", result);
+                goto cleanup;
+            }
+            summary_visible_items += 1;
+        } else {
+            hidden_summary_items += 1;
+        }
+
+        result = append_cstr(&coverage_lines, &coverage_len, &coverage_cap, "- item ");
         if (result.code != CORE_OK) {
             print_core_error("rollup", result);
             goto cleanup;
         }
-        result = append_i64_text(&summary_body, &summary_len, &summary_cap, item_id);
+        result = append_i64_text(&coverage_lines, &coverage_len, &coverage_cap, item_id);
         if (result.code != CORE_OK) {
             print_core_error("rollup", result);
             goto cleanup;
         }
-        result = append_cstr(&summary_body, &summary_len, &summary_cap, " | title: ");
+        result = append_cstr(&coverage_lines, &coverage_len, &coverage_cap, " | ");
         if (result.code != CORE_OK) {
             print_core_error("rollup", result);
             goto cleanup;
         }
-        result = append_text_segment(&summary_body,
-                                     &summary_len,
-                                     &summary_cap,
-                                     item_title.data,
-                                     item_title.len);
+        result = append_cstr(&coverage_lines, &coverage_len, &coverage_cap, compact_title);
         if (result.code != CORE_OK) {
             print_core_error("rollup", result);
             goto cleanup;
         }
-        result = append_cstr(&summary_body, &summary_len, &summary_cap, "\nbody: ");
+        result = append_cstr(&coverage_lines, &coverage_len, &coverage_cap, " | ");
         if (result.code != CORE_OK) {
             print_core_error("rollup", result);
             goto cleanup;
         }
-        result = append_text_segment(&summary_body,
-                                     &summary_len,
-                                     &summary_cap,
-                                     item_body.data,
-                                     item_body.len);
+        result = append_cstr(&coverage_lines, &coverage_len, &coverage_cap, compact_body_coverage);
         if (result.code != CORE_OK) {
             print_core_error("rollup", result);
             goto cleanup;
         }
-        result = append_cstr(&summary_body, &summary_len, &summary_cap, "\n\n");
+        result = append_cstr(&coverage_lines, &coverage_len, &coverage_cap, "\n");
         if (result.code != CORE_OK) {
             print_core_error("rollup", result);
             goto cleanup;
@@ -1233,6 +1576,73 @@ int cmd_rollup(int argc, char **argv) {
         goto cleanup;
     }
 
+    result = append_cstr(&summary_body, &summary_len, &summary_cap, "merged items: ");
+    if (result.code != CORE_OK) {
+        print_core_error("rollup", result);
+        goto cleanup;
+    }
+    result = append_i64_text(&summary_body, &summary_len, &summary_cap, rolled_count);
+    if (result.code != CORE_OK) {
+        print_core_error("rollup", result);
+        goto cleanup;
+    }
+    result = append_cstr(&summary_body, &summary_len, &summary_cap, "\n\nRollup summary:\n");
+    if (result.code != CORE_OK) {
+        print_core_error("rollup", result);
+        goto cleanup;
+    }
+    if (summary_paragraph && summary_para_len > 0u) {
+        result = append_text_segment(&summary_body,
+                                     &summary_len,
+                                     &summary_cap,
+                                     summary_paragraph,
+                                     summary_para_len);
+    } else {
+        result = append_cstr(&summary_body, &summary_len, &summary_cap, "No synthesized summary available.");
+    }
+    if (result.code != CORE_OK) {
+        print_core_error("rollup", result);
+        goto cleanup;
+    }
+    if (hidden_summary_items > 0) {
+        result = append_cstr(&summary_body, &summary_len, &summary_cap, "; plus ");
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+        result = append_i64_text(&summary_body, &summary_len, &summary_cap, hidden_summary_items);
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+        result = append_cstr(&summary_body,
+                             &summary_len,
+                             &summary_cap,
+                             " additional items (see coverage list).");
+        if (result.code != CORE_OK) {
+            print_core_error("rollup", result);
+            goto cleanup;
+        }
+    }
+    result = append_cstr(&summary_body, &summary_len, &summary_cap, "\n\nCoverage list:\n");
+    if (result.code != CORE_OK) {
+        print_core_error("rollup", result);
+        goto cleanup;
+    }
+    if (coverage_lines && coverage_len > 0u) {
+        result = append_text_segment(&summary_body,
+                                     &summary_len,
+                                     &summary_cap,
+                                     coverage_lines,
+                                     coverage_len);
+    } else {
+        result = append_cstr(&summary_body, &summary_len, &summary_cap, "- none\n");
+    }
+    if (result.code != CORE_OK) {
+        print_core_error("rollup", result);
+        goto cleanup;
+    }
+
     if (snprintf(title,
                  sizeof(title),
                  "Rollup before %lld (%lld items)",
@@ -1257,9 +1667,9 @@ int cmd_rollup(int argc, char **argv) {
                                             summary_body,
                                             fingerprint,
                                             0,
-                                            0,
-                                            0,
-                                            0,
+                                            (workspace_filter && workspace_filter[0] != '\0') ? workspace_filter : "",
+                                            (project_filter && project_filter[0] != '\0') ? project_filter : "",
+                                            (kind_filter && kind_filter[0] != '\0') ? kind_filter : "rollup",
                                             1,
                                             now_ns,
                                             1,
@@ -1275,9 +1685,9 @@ int cmd_rollup(int argc, char **argv) {
                                 rollup_id,
                                 0,
                                 0,
-                                "",
-                                "",
-                                "",
+                                (workspace_filter && workspace_filter[0] != '\0') ? workspace_filter : "",
+                                (project_filter && project_filter[0] != '\0') ? project_filter : "",
+                                (kind_filter && kind_filter[0] != '\0') ? kind_filter : "rollup",
                                 event_payload);
     if (result.code != CORE_OK) {
         print_core_error("rollup", result);
@@ -1477,6 +1887,8 @@ int cmd_rollup(int argc, char **argv) {
 cleanup:
     core_free(event_payload);
     core_free(rolled_item_ids);
+    core_free(summary_paragraph);
+    core_free(coverage_lines);
     (void)core_memdb_stmt_finalize(&apply_stmt);
     (void)core_memdb_stmt_finalize(&stmt);
     if (tx_started) {

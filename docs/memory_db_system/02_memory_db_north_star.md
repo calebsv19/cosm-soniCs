@@ -77,7 +77,7 @@ Non-goal:
 
 ### Layer C: Memory Console UI
 Phase 1 host:
-- `shared/showcase/mem_console/`
+- `mem_console/`
 
 Dependencies:
 - `libkit_render`

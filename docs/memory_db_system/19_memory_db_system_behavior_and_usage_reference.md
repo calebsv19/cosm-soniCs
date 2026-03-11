@@ -14,8 +14,8 @@ This is a local-first SQLite memory system with three active layers:
    - `shared/core/core_memdb/tools/mem_cli_cmd_write_item.c`
    - `shared/core/core_memdb/tools/mem_cli_cmd_write_link.c`
    - `shared/core/core_memdb/tools/mem_cli_cmd_event.c`
-3. showcase UI host:
-   - `shared/showcase/mem_console/`
+3. UI host program:
+   - `mem_console/`
 
 Primary purpose:
 - bounded memory retrieval
@@ -174,8 +174,9 @@ Operational semantics:
 - `rollup`:
   - one transaction
   - selects eligible non-pinned, non-canonical, non-archived rows before cutoff
+  - default selection excludes prior `kind=rollup` rows unless `--kind` is explicitly set
   - event-first write path: append `NodeMerged` (summary row) and per-row `NodeMetadataPatched` archive events first, then apply projection in-transaction
-  - creates summary memory
+  - creates summary memory using a concise synthesized rollup paragraph plus compact per-item coverage list (instead of raw full-body dumps)
   - archives rolled rows atomically
   - write appends audit entry (action=`rollup`)
 - `link-*`:
@@ -214,13 +215,18 @@ Mappings:
 
 Files:
 - lifecycle/event loop:
-  - `shared/showcase/mem_console/src/mem_console.c`
+  - `mem_console/src/mem_console.c`
 - state/layout/input helpers:
-  - `shared/showcase/mem_console/src/mem_console_state.c`
+  - `mem_console/src/mem_console_state.c`
 - DB access + write actions:
-  - `shared/showcase/mem_console/src/mem_console_db.c`
-- draw and interaction:
-  - `shared/showcase/mem_console/src/mem_console_ui.c`
+  - `mem_console/src/mem_console_db.c`
+- draw orchestration:
+  - `mem_console/src/mem_console_ui.c`
+- draw sections/panels:
+  - `mem_console/src/mem_console_ui_left_section.c`
+  - `mem_console/src/mem_console_ui_detail_section.c`
+  - `mem_console/src/mem_console_ui_graph_controls.c`
+  - `mem_console/src/mem_console_ui_graph_panel.c`
 
 Current UI capabilities:
 - searchable list pane with scalable windowed loading
@@ -237,6 +243,7 @@ Current UI capabilities:
   - worker-side refresh through shared runtime libs (`core_workers` + `core_queue` + `core_wake`)
   - main-thread-only state apply with stale-result guards
   - idle-loop pacing policy via runtime timeout calculation (reduces active-loop churn)
+  - redraw invalidation reason tracking (`input/layout/theme/content/background`) with render-on-demand behavior
   - in-flight refresh intent coalescing (keeps latest pending `(search,selected,offset,project-filter-set,graph-kind-filter)` intent)
   - runtime observability counters surfaced in UI for async refresh lifecycle
 - optional kernel bridge mode:
@@ -246,10 +253,42 @@ Current UI capabilities:
 
 Default DB path behavior:
 - no `--db` opens:
-  - `shared/showcase/mem_console/demo/demo_mem_console.sqlite`
+  1. `CODEWORK_MEMDB_PATH` (if set)
+  2. `~/Desktop/CodeWork/data/codework_mem_console.sqlite` (if `~/Desktop/CodeWork/data` exists)
+  3. fallback `mem_console/demo/demo_mem_console.sqlite`
 - helper to reset demo DB:
-  - `shared/showcase/mem_console/demo/reset_demo_db.sh`
+  - `mem_console/demo/reset_demo_db.sh`
   - reset script now seeds connected memories + links for immediate graph verification
+
+### 3.4 Nightly rollup orchestration behavior
+
+Scripts:
+- `shared/core/core_memdb/tools/mem_nightly_reader.sh`
+- `shared/core/core_memdb/tools/mem_nightly_pruner.sh`
+- `shared/core/core_memdb/tools/mem_nightly_run.sh`
+- Codex wrappers:
+  - `mem_nightly_reader_codex.sh`
+  - `mem_nightly_pruner_codex.sh`
+  - `mem_nightly_run_codex.sh`
+
+Current policy:
+- reader is always read-only and emits a reviewed plan with `operations.rollup.enabled=false` by default
+- reader stale-candidate derivation excludes `kind=rollup` rows so proposal counts align with default `mem_cli rollup` scope
+- rollup recommendation is gated by pressure thresholds:
+  - `active_nodes_in_scope > min_active_nodes_before_rollup` (default `40`)
+  - `stale_candidates_in_scope >= min_stale_candidates_before_rollup` (default `4`)
+- pruner enforces budgets before apply and rejects zero-op apply by default (unless explicitly overridden)
+- rollup apply is chunked/scoped by plan:
+  - `operations.rollup.chunk_max_items`
+  - `operations.rollup.scope = { workspace, project, kind }`
+- connection pass keeps rollup nodes connected after apply:
+  - anchor + chain linking
+  - optional min-degree fallback
+  - optional neighbor-link propagation with bounded scan controls:
+    - `propagate_neighbor_links`
+    - `max_neighbor_links_per_rollup`
+    - `neighbor_scan_max_edges`
+    - `neighbor_scan_max_nodes`
 
 ## 4. Anti-bloat behavior in current implementation
 
@@ -266,7 +305,9 @@ Canonical lane:
 
 Rollup:
 - archives only eligible non-pinned/non-canonical/non-archived rows
+- default rollup selection excludes `kind=rollup` rows unless explicitly requested
 - commits atomically with generated summary item
+- summary body is concise and human-readable (rollup paragraph + coverage list), not raw full-body concatenation
 
 ## 5. Build and validation reference
 
@@ -275,13 +316,13 @@ Core build/test:
 - `make -C shared/core/core_memdb test`
 
 Console build:
-- `make -C shared/showcase/mem_console clean all`
+- `make -C mem_console clean all`
 
 Demo DB reset:
-- `./shared/showcase/mem_console/demo/reset_demo_db.sh`
+- `./mem_console/demo/reset_demo_db.sh`
 
 Basic bounded retrieval check:
-- `shared/core/core_memdb/build/mem_cli query --db shared/showcase/mem_console/demo/demo_mem_console.sqlite --limit 5`
+- `shared/core/core_memdb/build/mem_cli query --db mem_console/demo/demo_mem_console.sqlite --limit 5`
 
 ## 6. Recommended agent usage flow (current)
 

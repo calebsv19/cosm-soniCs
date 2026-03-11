@@ -14,6 +14,7 @@ It separates stable reference docs and archived completed phase docs.
 | `05_data_exchange_inventory.md` | State summary | Current import/export pathways and format usage across apps. |
 | `11_version_compat_matrix.md` | Compatibility summary | Minimum supported shared-module versions per app. |
 | `29_program_shared_lib_connection_gaps.md` | Gap tracker | Canonical per-program list of missing/partial shared-lib integrations and next steps. |
+| `44_program_library_connective_tissue_state.md` | State summary | Current program-by-program shared-library integration snapshot (implemented/partial/missing + next migrations). |
 | `14_daw_pack_usage_policy.md` | Policy summary | DAW `.pack` usage policy and warm-start behavior guidance. |
 | `25_ui_theme_and_font_standardization_plan.md` | Phase plan | Execution plan for shared theme presets and font catalog standardization across apps. |
 | `28_execution_core_adoption_candidates_plan.md` | Phase plan | Safe phased adoption plan for applying execution cores to existing timing/worker/IPC/runtime paths. |
