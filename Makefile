@@ -285,6 +285,22 @@ WAVEFORM_PACK_WARMSTART_TEST_SRCS := \
 
 WAVEFORM_PACK_WARMSTART_TEST_BIN := $(BUILD_DIR)/tests/waveform_cache_pack_warmstart_test
 
+PACK_CONTRACT_TEST_SRCS := \
+	tests/daw_pack_contract_parity_test.c
+
+PACK_CONTRACT_TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(PACK_CONTRACT_TEST_SRCS))
+PACK_CONTRACT_TEST_BIN := $(BUILD_DIR)/tests/daw_pack_contract_parity_test
+
+TRACE_CONTRACT_TEST_SRCS := \
+	tests/daw_trace_export_contract_test.c
+
+TRACE_CONTRACT_TEST_BIN := $(BUILD_DIR)/tests/daw_trace_export_contract_test
+
+TRACE_ASYNC_CONTRACT_TEST_SRCS := \
+	tests/daw_trace_export_async_contract_test.c
+
+TRACE_ASYNC_CONTRACT_TEST_BIN := $(BUILD_DIR)/tests/daw_trace_export_async_contract_test
+
 KITVIZ_FX_PREVIEW_ADAPTER_TEST_SRCS := \
 	tests/kit_viz_fx_preview_adapter_test.c
 
@@ -325,10 +341,13 @@ TEST_DEPS := $(TEST_OBJS:.o=.d)
 CACHE_TEST_DEPS := $(CACHE_TEST_OBJS:.o=.d)
 OVERLAP_TEST_DEPS := $(OVERLAP_TEST_OBJS:.o=.d)
 SMOKE_TEST_DEPS := $(SMOKE_TEST_OBJS:.o=.d)
+PACK_CONTRACT_TEST_DEPS := $(PACK_CONTRACT_TEST_OBJS:.o=.d)
 ENGINE_TEST_SUPPORT_DEPS := $(ENGINE_TEST_SUPPORT_OBJS:.o=.d)
-ALL_DEPS := $(APP_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(SMOKE_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
+ALL_DEPS := $(APP_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(SMOKE_TEST_DEPS) $(PACK_CONTRACT_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
 
-.PHONY: all clean run run-ide-theme loop-gates loop-gates-strict test-session test-cache test-overlap test-smoke test-kitviz-adapter test-waveform-pack-warmstart test-kitviz-fx-preview-adapter test-kitviz-meter-adapter test-shared-theme-font-adapter
+APP_OBJS_NO_MAIN := $(filter-out $(BUILD_DIR)/src/app/main.o,$(OBJS))
+
+.PHONY: all clean run run-ide-theme loop-gates loop-gates-strict test-session test-cache test-overlap test-smoke test-kitviz-adapter test-waveform-pack-warmstart test-pack-contract test-trace-contract test-trace-async-contract test-kitviz-fx-preview-adapter test-kitviz-meter-adapter test-shared-theme-font-adapter
 
 all: $(APP_BIN)
 
@@ -408,6 +427,31 @@ $(WAVEFORM_PACK_WARMSTART_TEST_BIN): $(WAVEFORM_PACK_WARMSTART_TEST_SRCS) src/ui
 	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/kit/kit_viz/include -I$(SHARED_ROOT)/core/core_pack/include -I$(SHARED_ROOT)/core/core_io/include -I$(SHARED_ROOT)/core/core_base/include \
 		tests/waveform_cache_pack_warmstart_test.c src/ui/timeline_waveform.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c $(SHARED_ROOT)/core/core_pack/src/core_pack.c $(SHARED_ROOT)/core/core_io/src/core_io.c $(SHARED_ROOT)/core/core_base/src/core_base.c \
 		$(SDL2_LDFLAGS) -lSDL2 -lm -o "$@"
+
+test-pack-contract: $(PACK_CONTRACT_TEST_BIN)
+	$(PACK_CONTRACT_TEST_BIN)
+
+$(PACK_CONTRACT_TEST_BIN): $(PACK_CONTRACT_TEST_OBJS) $(APP_OBJS_NO_MAIN)
+	@mkdir -p "$(dir $@)"
+	$(CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
+
+test-trace-contract: $(TRACE_CONTRACT_TEST_BIN)
+	$(TRACE_CONTRACT_TEST_BIN)
+
+$(TRACE_CONTRACT_TEST_BIN): $(TRACE_CONTRACT_TEST_SRCS) src/export/daw_trace_export.c $(SHARED_ROOT)/core/core_trace/src/core_trace.c $(SHARED_ROOT)/core/core_pack/src/core_pack.c $(SHARED_ROOT)/core/core_io/src/core_io.c $(SHARED_ROOT)/core/core_base/src/core_base.c
+	@mkdir -p "$(dir $@)"
+	$(CC) -std=c11 -Wall -Wextra -Wpedantic -Iinclude -I$(SHARED_ROOT)/core/core_trace/include -I$(SHARED_ROOT)/core/core_pack/include -I$(SHARED_ROOT)/core/core_io/include -I$(SHARED_ROOT)/core/core_base/include \
+		tests/daw_trace_export_contract_test.c src/export/daw_trace_export.c $(SHARED_ROOT)/core/core_trace/src/core_trace.c $(SHARED_ROOT)/core/core_pack/src/core_pack.c $(SHARED_ROOT)/core/core_io/src/core_io.c $(SHARED_ROOT)/core/core_base/src/core_base.c \
+		-lm -o "$@"
+
+test-trace-async-contract: $(TRACE_ASYNC_CONTRACT_TEST_BIN)
+	$(TRACE_ASYNC_CONTRACT_TEST_BIN)
+
+$(TRACE_ASYNC_CONTRACT_TEST_BIN): $(TRACE_ASYNC_CONTRACT_TEST_SRCS) src/export/daw_trace_export.c src/export/daw_trace_export_async.c $(SHARED_ROOT)/core/core_workers/src/core_workers.c $(SHARED_ROOT)/core/core_trace/src/core_trace.c $(SHARED_ROOT)/core/core_queue/src/core_queue.c $(SHARED_ROOT)/core/core_pack/src/core_pack.c $(SHARED_ROOT)/core/core_io/src/core_io.c $(SHARED_ROOT)/core/core_base/src/core_base.c
+	@mkdir -p "$(dir $@)"
+	$(CC) -std=c11 -Wall -Wextra -Wpedantic -Iinclude -I$(SHARED_ROOT)/core/core_workers/include -I$(SHARED_ROOT)/core/core_trace/include -I$(SHARED_ROOT)/core/core_queue/include -I$(SHARED_ROOT)/core/core_pack/include -I$(SHARED_ROOT)/core/core_io/include -I$(SHARED_ROOT)/core/core_base/include \
+		tests/daw_trace_export_async_contract_test.c src/export/daw_trace_export.c src/export/daw_trace_export_async.c $(SHARED_ROOT)/core/core_workers/src/core_workers.c $(SHARED_ROOT)/core/core_trace/src/core_trace.c $(SHARED_ROOT)/core/core_queue/src/core_queue.c $(SHARED_ROOT)/core/core_pack/src/core_pack.c $(SHARED_ROOT)/core/core_io/src/core_io.c $(SHARED_ROOT)/core/core_base/src/core_base.c \
+		-lm -lpthread -o "$@"
 
 test-kitviz-fx-preview-adapter: $(KITVIZ_FX_PREVIEW_ADAPTER_TEST_BIN)
 	$(KITVIZ_FX_PREVIEW_ADAPTER_TEST_BIN)

@@ -3,6 +3,7 @@
 #include "app_state.h"
 #include "effects/param_utils.h"
 #include "ui/font.h"
+#include "ui/shared_theme_font_adapter.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -41,6 +42,40 @@ static const FxTypeUIInfo* find_type_info(const EffectsPanelState* panel, FxType
         }
     }
     return NULL;
+}
+
+typedef struct EffectsSpecTheme {
+    SDL_Color border;
+    SDL_Color fill;
+    SDL_Color active;
+    SDL_Color knob_ring;
+    SDL_Color knob_indicator;
+} EffectsSpecTheme;
+
+static void resolve_spec_theme(EffectsSpecTheme* out) {
+    if (!out) {
+        return;
+    }
+
+    {
+        DawThemePalette palette = {0};
+        if (daw_shared_theme_resolve_palette(&palette)) {
+            out->border = palette.control_border;
+            out->fill = palette.control_fill;
+            out->active = palette.selection_fill;
+            out->knob_ring = palette.slider_track;
+            out->knob_indicator = palette.slider_handle;
+            return;
+        }
+    }
+
+    *out = (EffectsSpecTheme){
+        .border = {80, 86, 102, 255},
+        .fill = {36, 40, 50, 255},
+        .active = {130, 170, 230, 255},
+        .knob_ring = {80, 86, 102, 255},
+        .knob_indicator = {150, 190, 240, 255},
+    };
 }
 
 static bool rect_intersects(const SDL_Rect* a, const SDL_Rect* b) {
@@ -195,7 +230,7 @@ static void effects_panel_spec_layout_compressor(const FxSlotUIState* slot,
 }
 
 // Draws a simple knob using line segments with a value indicator.
-static void draw_knob(SDL_Renderer* renderer, const SDL_Rect* rect, float t) {
+static void draw_knob(SDL_Renderer* renderer, const SDL_Rect* rect, float t, const EffectsSpecTheme* theme) {
     if (!renderer || !rect) {
         return;
     }
@@ -206,7 +241,9 @@ static void draw_knob(SDL_Renderer* renderer, const SDL_Rect* rect, float t) {
         return;
     }
     const int segments = 16;
-    SDL_SetRenderDrawColor(renderer, 80, 86, 102, 255);
+    SDL_Color ring = theme ? theme->knob_ring : (SDL_Color){80, 86, 102, 255};
+    SDL_Color indicator = theme ? theme->knob_indicator : (SDL_Color){150, 190, 240, 255};
+    SDL_SetRenderDrawColor(renderer, ring.r, ring.g, ring.b, ring.a);
     for (int i = 0; i < segments; ++i) {
         float a0 = (float)i * (2.0f * (float)M_PI / (float)segments);
         float a1 = (float)(i + 1) * (2.0f * (float)M_PI / (float)segments);
@@ -219,7 +256,7 @@ static void draw_knob(SDL_Renderer* renderer, const SDL_Rect* rect, float t) {
     float angle = (0.75f + t * 1.5f) * (float)M_PI;
     int ix = cx + (int)lroundf(cosf(angle) * (r - 2));
     int iy = cy + (int)lroundf(sinf(angle) * (r - 2));
-    SDL_SetRenderDrawColor(renderer, 150, 190, 240, 255);
+    SDL_SetRenderDrawColor(renderer, indicator.r, indicator.g, indicator.b, indicator.a);
     SDL_RenderDrawLine(renderer, cx, cy, ix, iy);
 }
 
@@ -711,9 +748,11 @@ void effects_panel_spec_render(SDL_Renderer* renderer,
     if (!info) {
         return;
     }
-    SDL_Color border = {80, 86, 102, 255};
-    SDL_Color fill = {36, 40, 50, 255};
-    SDL_Color active = {130, 170, 230, 255};
+    EffectsSpecTheme theme = {0};
+    resolve_spec_theme(&theme);
+    SDL_Color border = theme.border;
+    SDL_Color fill = theme.fill;
+    SDL_Color active = theme.active;
     SDL_Rect clip_rect = spec_body_clip_rect(&layout->body_rect);
 
     for (int g = 0; g < layout->group_count; ++g) {
@@ -765,7 +804,7 @@ void effects_panel_spec_render(SDL_Renderer* renderer,
             SDL_SetRenderDrawColor(renderer, active.r, active.g, active.b, active.a);
             SDL_RenderFillRect(renderer, &bar);
         } else if (widget->type == FX_SPEC_WIDGET_KNOB) {
-            draw_knob(renderer, &widget->control_rect, t);
+            draw_knob(renderer, &widget->control_rect, t, &theme);
         } else if (widget->type == FX_SPEC_WIDGET_TOGGLE) {
             if (display_value >= 0.5f) {
                 SDL_SetRenderDrawColor(renderer, active.r, active.g, active.b, active.a);

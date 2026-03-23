@@ -7,6 +7,7 @@
 #include "ui/effects_panel_spec.h"
 #include "ui/font.h"
 #include "ui/render_utils.h"
+#include "ui/shared_theme_font_adapter.h"
 
 #include <math.h>
 
@@ -130,13 +131,17 @@ void effects_slot_render(SDL_Renderer* renderer,
     const FxSlotUIState* slot = &panel->chain[slot_index];
     const FxTypeUIInfo* info = find_type_info(panel, slot->type_id);
 
-    SDL_Color box_bg = {32, 34, 42, 255};
-    SDL_Color box_border = {80, 85, 100, 255};
+    DawThemePalette theme = {0};
+    bool have_theme = daw_shared_theme_resolve_palette(&theme);
+    SDL_Color box_bg = have_theme ? theme.timeline_fill : (SDL_Color){32, 34, 42, 255};
+    SDL_Color box_border = have_theme ? theme.control_border : (SDL_Color){80, 85, 100, 255};
+    SDL_Color header_bg = have_theme ? theme.control_fill : (SDL_Color){44, 48, 58, 255};
+    SDL_Color selected_border = have_theme ? theme.selection_fill : (SDL_Color){120, 160, 220, 180};
     SDL_SetRenderDrawColor(renderer, box_bg.r, box_bg.g, box_bg.b, box_bg.a);
     SDL_RenderFillRect(renderer, &slot_layout->column_rect);
 
     SDL_Rect header = slot_layout->header_rect;
-    SDL_SetRenderDrawColor(renderer, 44, 48, 58, 255);
+    SDL_SetRenderDrawColor(renderer, header_bg.r, header_bg.g, header_bg.b, header_bg.a);
     SDL_RenderFillRect(renderer, &header);
     SDL_SetRenderDrawColor(renderer, box_border.r, box_border.g, box_border.b, box_border.a);
     SDL_RenderDrawRect(renderer, &header);
@@ -186,7 +191,11 @@ void effects_slot_render(SDL_Renderer* renderer,
     SDL_SetRenderDrawColor(renderer, box_border.r, box_border.g, box_border.b, box_border.a);
     SDL_RenderDrawRect(renderer, &slot_layout->column_rect);
     if (selected) {
-        SDL_SetRenderDrawColor(renderer, 120, 160, 220, 180);
+        SDL_SetRenderDrawColor(renderer,
+                               selected_border.r,
+                               selected_border.g,
+                               selected_border.b,
+                               selected_border.a);
         SDL_RenderDrawRect(renderer, &slot_layout->column_rect);
     }
 
@@ -291,9 +300,9 @@ void effects_slot_render(SDL_Renderer* renderer,
 
     const EffectsSlotRuntime* runtime = &panel->slot_runtime[slot_index];
     if (runtime->scroll_max > 0.5f && slot_layout->scrollbar_track.h > 0) {
-        SDL_Color track = {52, 56, 64, 180};
-        SDL_Color thumb = {130, 170, 230, 220};
-        SDL_Color border = {80, 85, 100, 200};
+        SDL_Color track = have_theme ? theme.slider_track : (SDL_Color){52, 56, 64, 180};
+        SDL_Color thumb = have_theme ? theme.slider_handle : (SDL_Color){130, 170, 230, 220};
+        SDL_Color border = have_theme ? theme.control_border : (SDL_Color){80, 85, 100, 200};
         SDL_SetRenderDrawColor(renderer, track.r, track.g, track.b, track.a);
         SDL_RenderFillRect(renderer, &slot_layout->scrollbar_track);
         SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);

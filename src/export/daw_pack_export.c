@@ -177,6 +177,10 @@ static cJSON* build_core_dataset_snapshot_json(const AppState* state) {
     if (r.code != CORE_OK) goto fail;
     r = core_dataset_add_metadata_string(&dataset, "dataset_schema", "daw.session_snapshot");
     if (r.code != CORE_OK) goto fail;
+    r = core_dataset_add_metadata_string(&dataset, "schema_family", "daw.session");
+    if (r.code != CORE_OK) goto fail;
+    r = core_dataset_add_metadata_string(&dataset, "schema_variant", "snapshot.v1");
+    if (r.code != CORE_OK) goto fail;
     r = core_dataset_add_metadata_i64(&dataset, "dataset_contract_version", 1);
     if (r.code != CORE_OK) goto fail;
     r = core_dataset_add_metadata_i64(&dataset, "session_document_version", doc.version);
@@ -243,6 +247,29 @@ static cJSON* build_core_dataset_snapshot_json(const AppState* state) {
         };
         r = core_dataset_add_table_typed(&dataset,
                                          "daw_timeline_v1",
+                                         cols,
+                                         types,
+                                         (uint32_t)(sizeof(cols) / sizeof(cols[0])),
+                                         1u,
+                                         data);
+        if (r.code != CORE_OK) goto fail;
+    }
+
+    {
+        const char* cols[] = {
+            "selected_track_index", "selected_clip_index", "library_selected_index"
+        };
+        CoreTableColumnType types[] = {
+            CORE_TABLE_COL_I64, CORE_TABLE_COL_I64, CORE_TABLE_COL_I64
+        };
+        int64_t selected_track_col[] = {(int64_t)doc.selected_track_index};
+        int64_t selected_clip_col[] = {(int64_t)doc.selected_clip_index};
+        int64_t library_selected_col[] = {(int64_t)doc.library.selected_index};
+        const void* data[] = {
+            selected_track_col, selected_clip_col, library_selected_col
+        };
+        r = core_dataset_add_table_typed(&dataset,
+                                         "daw_selection_v1",
                                          cols,
                                          types,
                                          (uint32_t)(sizeof(cols) / sizeof(cols[0])),

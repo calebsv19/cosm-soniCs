@@ -15,7 +15,7 @@ static void resolve_preview_shell_theme(SDL_Color* bg,
     DawThemePalette theme = {0};
     if (daw_shared_theme_resolve_palette(&theme)) {
         if (bg) {
-            *bg = theme.inspector_fill;
+            *bg = theme.control_fill;
         }
         if (plot_bg) {
             *plot_bg = theme.timeline_fill;
@@ -39,6 +39,84 @@ static void resolve_preview_shell_theme(SDL_Color* bg,
     }
     if (grid) {
         *grid = (SDL_Color){50, 54, 66, 255};
+    }
+}
+
+static void resolve_preview_line_theme(SDL_Color* line,
+                                       SDL_Color* line_alt,
+                                       SDL_Color* line_dim,
+                                       SDL_Color* axis) {
+    DawThemePalette theme = {0};
+    if (daw_shared_theme_resolve_palette(&theme)) {
+        if (line) {
+            *line = theme.slider_handle;
+            line->a = 255;
+        }
+        if (line_alt) {
+            *line_alt = theme.control_active_fill;
+            line_alt->a = 230;
+        }
+        if (line_dim) {
+            *line_dim = theme.control_border;
+            line_dim->a = 220;
+        }
+        if (axis) {
+            *axis = theme.grid_major;
+            axis->a = 200;
+        }
+        return;
+    }
+    if (line) {
+        *line = (SDL_Color){110, 190, 240, 220};
+    }
+    if (line_alt) {
+        *line_alt = (SDL_Color){130, 120, 220, 200};
+    }
+    if (line_dim) {
+        *line_dim = (SDL_Color){120, 120, 200, 180};
+    }
+    if (axis) {
+        *axis = (SDL_Color){90, 100, 120, 200};
+    }
+}
+
+static void preview_draw_line_thick(SDL_Renderer* renderer,
+                                    int x0,
+                                    int y0,
+                                    int x1,
+                                    int y1,
+                                    SDL_Color color) {
+    if (!renderer) {
+        return;
+    }
+    SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+    SDL_RenderDrawLine(renderer, x0, y0, x1, y1);
+    int dx = x1 - x0;
+    int dy = y1 - y0;
+    if (dx < 0) dx = -dx;
+    if (dy < 0) dy = -dy;
+    if (dx >= dy) {
+        SDL_RenderDrawLine(renderer, x0, y0 + 1, x1, y1 + 1);
+    } else {
+        SDL_RenderDrawLine(renderer, x0 + 1, y0, x1 + 1, y1);
+    }
+}
+
+static void preview_render_segments_thick(SDL_Renderer* renderer,
+                                          const KitVizVecSegment* segments,
+                                          size_t segment_count,
+                                          SDL_Color color) {
+    if (!renderer || !segments || segment_count == 0) {
+        return;
+    }
+    for (size_t i = 0; i < segment_count; ++i) {
+        const KitVizVecSegment* s = &segments[i];
+        preview_draw_line_thick(renderer,
+                                (int)lroundf(s->x0),
+                                (int)lroundf(s->y0),
+                                (int)lroundf(s->x1),
+                                (int)lroundf(s->y1),
+                                color);
     }
 }
 
@@ -604,9 +682,10 @@ static void effects_slot_preview_render_history(SDL_Renderer* renderer,
     SDL_Color bg = {0};
     SDL_Color plot_bg = {0};
     SDL_Color border = {0};
-    SDL_Color line = {90, 150, 210, 220};
+    SDL_Color line = {0};
     SDL_Color grid = {0};
     resolve_preview_shell_theme(&bg, &plot_bg, &border, &grid);
+    resolve_preview_line_theme(&line, NULL, NULL, NULL);
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -697,7 +776,7 @@ static void effects_slot_preview_render_history(SDL_Renderer* renderer,
                                                                    FX_PANEL_PREVIEW_HISTORY,
                                                                    &segment_count);
     if (plot_result.code == CORE_OK) {
-        daw_kit_viz_render_segments(renderer, segments, segment_count, line);
+        preview_render_segments_thick(renderer, segments, segment_count, line);
         return;
     }
 
@@ -711,8 +790,7 @@ static void effects_slot_preview_render_history(SDL_Renderer* renderer,
         if (y < min_y) y = min_y;
         if (y > max_y) y = max_y;
         if (i > 0) {
-            SDL_SetRenderDrawColor(renderer, line.r, line.g, line.b, line.a);
-            SDL_RenderDrawLine(renderer, prev_x, prev_y, x, y);
+            preview_draw_line_thick(renderer, prev_x, prev_y, x, y, line);
         }
         prev_x = x;
         prev_y = y;
@@ -731,10 +809,11 @@ static void effects_slot_preview_render_curve(SDL_Renderer* renderer,
     SDL_Color bg = {0};
     SDL_Color plot_bg = {0};
     SDL_Color border = {0};
-    SDL_Color line = {110, 190, 240, 220};
+    SDL_Color line = {0};
     SDL_Color grid = {0};
-    SDL_Color unity = {90, 100, 120, 200};
+    SDL_Color unity = {0};
     resolve_preview_shell_theme(&bg, &plot_bg, &border, &grid);
+    resolve_preview_line_theme(&line, NULL, NULL, &unity);
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -804,7 +883,7 @@ static void effects_slot_preview_render_curve(SDL_Renderer* renderer,
                                                                    (size_t)plot_rect.w,
                                                                    &segment_count);
     if (plot_result.code == CORE_OK) {
-        daw_kit_viz_render_segments(renderer, segments, segment_count, line);
+        preview_render_segments_thick(renderer, segments, segment_count, line);
         free(segments);
         free(y_samples);
         return;
@@ -818,8 +897,7 @@ static void effects_slot_preview_render_curve(SDL_Renderer* renderer,
         int px = plot_rect.x + i;
         int py = plot_rect.y + plot_rect.h - (int)lroundf((y + 1.0f) * 0.5f * (float)plot_rect.h);
         if (i > 0) {
-            SDL_SetRenderDrawColor(renderer, line.r, line.g, line.b, line.a);
-            SDL_RenderDrawLine(renderer, prev_x, prev_y, px, py);
+            preview_draw_line_thick(renderer, prev_x, prev_y, px, py, line);
         }
         prev_x = px;
         prev_y = py;
@@ -841,11 +919,12 @@ static void effects_slot_preview_render_eq(SDL_Renderer* renderer,
     SDL_Color bg = {0};
     SDL_Color plot_bg = {0};
     SDL_Color border = {0};
-    SDL_Color line = {110, 190, 240, 220};
-    SDL_Color line_alt = {130, 120, 220, 200};
+    SDL_Color line = {0};
+    SDL_Color line_alt = {0};
     SDL_Color grid = {0};
-    SDL_Color zero = {90, 100, 120, 200};
+    SDL_Color zero = {0};
     resolve_preview_shell_theme(&bg, &plot_bg, &border, &grid);
+    resolve_preview_line_theme(&line, &line_alt, NULL, &zero);
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -953,9 +1032,9 @@ static void effects_slot_preview_render_eq(SDL_Renderer* renderer,
                                                      &segment_count_alt);
     }
     if (r_main.code == CORE_OK && (!dual_curve || r_alt.code == CORE_OK)) {
-        daw_kit_viz_render_segments(renderer, segments, segment_count, line);
+        preview_render_segments_thick(renderer, segments, segment_count, line);
         if (dual_curve) {
-            daw_kit_viz_render_segments(renderer, segments_alt, segment_count_alt, line_alt);
+            preview_render_segments_thick(renderer, segments_alt, segment_count_alt, line_alt);
         }
         free(db_samples);
         free(db_samples_alt);
@@ -974,15 +1053,13 @@ static void effects_slot_preview_render_eq(SDL_Renderer* renderer,
         int py = plot_rect.y + plot_rect.h - (int)lroundf(y_norm * (float)plot_rect.h);
         int old_prev_x = prev_x;
         if (i > 0) {
-            SDL_SetRenderDrawColor(renderer, line.r, line.g, line.b, line.a);
-            SDL_RenderDrawLine(renderer, prev_x, prev_y, px, py);
+            preview_draw_line_thick(renderer, prev_x, prev_y, px, py, line);
         }
         if (dual_curve) {
             float y_alt = clampf((db_samples_alt[i] + 24.0f) / 48.0f, 0.0f, 1.0f);
             int py_alt = plot_rect.y + plot_rect.h - (int)lroundf(y_alt * (float)plot_rect.h);
             if (i > 0) {
-                SDL_SetRenderDrawColor(renderer, line_alt.r, line_alt.g, line_alt.b, line_alt.a);
-                SDL_RenderDrawLine(renderer, old_prev_x, prev_y_alt, px, py_alt);
+                preview_draw_line_thick(renderer, old_prev_x, prev_y_alt, px, py_alt, line_alt);
             }
             prev_y_alt = py_alt;
         }
@@ -1007,9 +1084,10 @@ static void effects_slot_preview_render_lfo(SDL_Renderer* renderer,
     SDL_Color bg = {0};
     SDL_Color plot_bg = {0};
     SDL_Color border = {0};
-    SDL_Color line = {110, 190, 240, 220};
+    SDL_Color line = {0};
     SDL_Color grid = {0};
     resolve_preview_shell_theme(&bg, &plot_bg, &border, &grid);
+    resolve_preview_line_theme(&line, NULL, NULL, NULL);
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -1131,7 +1209,7 @@ static void effects_slot_preview_render_lfo(SDL_Renderer* renderer,
                                                                    (size_t)plot_rect.w,
                                                                    &segment_count);
     if (plot_result.code == CORE_OK) {
-        daw_kit_viz_render_segments(renderer, segments, segment_count, line);
+        preview_render_segments_thick(renderer, segments, segment_count, line);
         free(segments);
         free(y_samples);
         return;
@@ -1144,8 +1222,7 @@ static void effects_slot_preview_render_lfo(SDL_Renderer* renderer,
         int px = plot_rect.x + i;
         int py = plot_rect.y + plot_rect.h / 2 - (int)lroundf(y_samples[i] * 0.5f * (float)plot_rect.h);
         if (i > 0) {
-            SDL_SetRenderDrawColor(renderer, line.r, line.g, line.b, line.a);
-            SDL_RenderDrawLine(renderer, prev_x, prev_y, px, py);
+            preview_draw_line_thick(renderer, prev_x, prev_y, px, py, line);
         }
         prev_x = px;
         prev_y = py;
@@ -1166,10 +1243,11 @@ static void effects_slot_preview_render_reverb(SDL_Renderer* renderer,
     SDL_Color bg = {0};
     SDL_Color plot_bg = {0};
     SDL_Color border = {0};
-    SDL_Color line = {110, 190, 240, 220};
-    SDL_Color line_dim = {120, 120, 200, 180};
+    SDL_Color line = {0};
+    SDL_Color line_dim = {0};
     SDL_Color grid = {0};
     resolve_preview_shell_theme(&bg, &plot_bg, &border, &grid);
+    resolve_preview_line_theme(&line, NULL, &line_dim, NULL);
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -1312,7 +1390,7 @@ static void effects_slot_preview_render_reverb(SDL_Renderer* renderer,
                                                                    (size_t)plot_rect.w,
                                                                    &segment_count);
     if (plot_result.code == CORE_OK) {
-        daw_kit_viz_render_segments(renderer, segments, segment_count, line);
+        preview_render_segments_thick(renderer, segments, segment_count, line);
     } else {
         // Fallback keeps previous direct draw behavior if adapter conversion fails.
         int prev_x = plot_rect.x;
@@ -1321,8 +1399,7 @@ static void effects_slot_preview_render_reverb(SDL_Renderer* renderer,
             int px = plot_rect.x + i;
             int py = base_y - (int)lroundf(y_samples[i] * (float)plot_rect.h);
             if (i > 0) {
-                SDL_SetRenderDrawColor(renderer, line.r, line.g, line.b, line.a);
-                SDL_RenderDrawLine(renderer, prev_x, prev_y, px, py);
+                preview_draw_line_thick(renderer, prev_x, prev_y, px, py, line);
             }
             prev_x = px;
             prev_y = py;
@@ -1341,8 +1418,7 @@ static void effects_slot_preview_render_reverb(SDL_Renderer* renderer,
             }
             int px = plot_rect.x + (int)lroundf((tap_time / total_time) * (float)plot_rect.w);
             int py = base_y - (int)lroundf(amp * (float)plot_rect.h);
-            SDL_SetRenderDrawColor(renderer, line_dim.r, line_dim.g, line_dim.b, line_dim.a);
-            SDL_RenderDrawLine(renderer, px, base_y, px, py);
+            preview_draw_line_thick(renderer, px, base_y, px, py, line_dim);
         }
     }
 }
@@ -1359,10 +1435,11 @@ static void effects_slot_preview_render_delay(SDL_Renderer* renderer,
     SDL_Color bg = {0};
     SDL_Color plot_bg = {0};
     SDL_Color border = {0};
-    SDL_Color line = {110, 190, 240, 220};
-    SDL_Color line_dim = {120, 120, 200, 180};
+    SDL_Color line = {0};
+    SDL_Color line_dim = {0};
     SDL_Color grid = {0};
     resolve_preview_shell_theme(&bg, &plot_bg, &border, &grid);
+    resolve_preview_line_theme(&line, NULL, &line_dim, NULL);
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -1535,8 +1612,8 @@ static void effects_slot_preview_render_delay(SDL_Renderer* renderer,
                                                                        (size_t)plot_rect.w,
                                                                        &seg_count_dim);
             if (main_r.code == CORE_OK && dim_r.code == CORE_OK) {
-                daw_kit_viz_render_segments(renderer, seg_main, seg_count_main, line);
-                daw_kit_viz_render_segments(renderer, seg_dim, seg_count_dim, line_dim);
+                preview_render_segments_thick(renderer, seg_main, seg_count_main, line);
+                preview_render_segments_thick(renderer, seg_dim, seg_count_dim, line_dim);
                 free(seg_dim);
                 free(seg_main);
                 free(max_dim);
@@ -1565,21 +1642,18 @@ static void effects_slot_preview_render_delay(SDL_Renderer* renderer,
         float x_norm = echo_time / total_time;
         int px = plot_rect.x + (int)lroundf(x_norm * (float)plot_rect.w);
         int py = base_y - (int)lroundf(amp * (float)plot_rect.h);
-        SDL_SetRenderDrawColor(renderer, line.r, line.g, line.b, line.a);
-        SDL_RenderDrawLine(renderer, px, base_y, px, py);
+        preview_draw_line_thick(renderer, px, base_y, px, py, line);
 
         if (pingpong) {
             int py_alt = base_y - (int)lroundf(amp * 0.8f * (float)plot_rect.h);
-            SDL_SetRenderDrawColor(renderer, line_dim.r, line_dim.g, line_dim.b, line_dim.a);
-            SDL_RenderDrawLine(renderer, px, base_y, px, py_alt);
+            preview_draw_line_thick(renderer, px, base_y, px, py_alt, line_dim);
         }
         if (tape && wobble_ms > 0.1f) {
             float offset = wobble_ms * 0.001f;
             float x2 = (echo_time + offset) / total_time;
             if (x2 <= 1.0f) {
                 int px2 = plot_rect.x + (int)lroundf(x2 * (float)plot_rect.w);
-                SDL_SetRenderDrawColor(renderer, line_dim.r, line_dim.g, line_dim.b, line_dim.a);
-                SDL_RenderDrawLine(renderer, px2, base_y, px2, py);
+                preview_draw_line_thick(renderer, px2, base_y, px2, py, line_dim);
             }
         }
         if (diffusion > 0.01f) {
@@ -1589,8 +1663,7 @@ static void effects_slot_preview_render_delay(SDL_Renderer* renderer,
                 if (pxs >= plot_rect.x + plot_rect.w) {
                     break;
                 }
-                SDL_SetRenderDrawColor(renderer, line_dim.r, line_dim.g, line_dim.b, line_dim.a);
-                SDL_RenderDrawLine(renderer, pxs, base_y, pxs, base_y - (py - base_y) / 2);
+                preview_draw_line_thick(renderer, pxs, base_y, pxs, base_y - (py - base_y) / 2, line_dim);
             }
         }
     }
@@ -1613,8 +1686,7 @@ static void effects_slot_preview_render_delay(SDL_Renderer* renderer,
             float amp = gains[i];
             int px = plot_rect.x + (int)lroundf((tap_time / total_time) * (float)plot_rect.w);
             int py = base_y - (int)lroundf(amp * (float)plot_rect.h);
-            SDL_SetRenderDrawColor(renderer, line_dim.r, line_dim.g, line_dim.b, line_dim.a);
-            SDL_RenderDrawLine(renderer, px, base_y, px, py);
+            preview_draw_line_thick(renderer, px, base_y, px, py, line_dim);
         }
     }
 }
@@ -1629,6 +1701,12 @@ static void effects_slot_preview_draw_toggle(SDL_Renderer* renderer,
     }
     SDL_Color bg = {40, 44, 54, 255};
     SDL_Color border = {80, 85, 100, 200};
+    DawThemePalette theme = {0};
+    if (daw_shared_theme_resolve_palette(&theme)) {
+        bg = theme.control_fill;
+        border = theme.control_border;
+        border.a = 200;
+    }
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
     SDL_RenderFillRect(renderer, rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
@@ -1716,8 +1794,18 @@ void effects_slot_preview_render(SDL_Renderer* renderer,
         SDL_Color grid = {0};
         resolve_preview_shell_theme(&bg, &plot_bg, &border, &grid);
         border.a = 200;
-        SDL_SetRenderDrawColor(renderer, plot_bg.r, plot_bg.g, plot_bg.b, plot_bg.a);
+        SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
         SDL_RenderFillRect(renderer, preview_rect);
+        SDL_Rect inset = {
+            preview_rect->x + 4,
+            preview_rect->y + 18,
+            preview_rect->w - 8,
+            preview_rect->h - 22
+        };
+        if (inset.w > 0 && inset.h > 0) {
+            SDL_SetRenderDrawColor(renderer, plot_bg.r, plot_bg.g, plot_bg.b, plot_bg.a);
+            SDL_RenderFillRect(renderer, &inset);
+        }
         SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
         SDL_RenderDrawRect(renderer, preview_rect);
         ui_draw_text(renderer,
