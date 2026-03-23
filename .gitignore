@@ -10,6 +10,7 @@
 /timing.json
 /timerhud/*/timing.json
 /vk_frame.ppm
+/config/last_trace_export.pack
 /config/library_index.json
 /config/last_session.json
 /config/projects/*.json
