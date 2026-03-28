@@ -1,5 +1,6 @@
 #include "app_state.h"
 #include "config.h"
+#include "daw/daw_app_main.h"
 #include "engine/engine.h"
 #include "session.h"
 #include "sdl_app_framework.h"
@@ -827,7 +828,7 @@ static void perform_bounce(AppContext* ctx, AppState* state) {
     }
 }
 
-int main(void) {
+int daw_app_main_legacy(void) {
     const int window_width = 1280;
     const int window_height = 720;
     const char* last_session_path = "config/last_session.json";
@@ -1092,4 +1093,9 @@ int main(void) {
         state.engine = NULL;
     }
     return 0;
+}
+
+int main(void) {
+    daw_app_set_legacy_entry(daw_app_main_legacy);
+    return daw_app_main_run();
 }

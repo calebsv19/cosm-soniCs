@@ -4,12 +4,15 @@
 *.d
 *.log
 *.dSYM/
+/tmp/
 
 # Generated runtime/cache artifacts
 /ide_files/
 /timing.json
 /timerhud/*/timing.json
 /vk_frame.ppm
+/config/runtime/
+/config/cache/
 /config/last_trace_export.pack
 /config/library_index.json
 /config/last_session.json

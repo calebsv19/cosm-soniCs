@@ -65,11 +65,23 @@ Rebuild check:
 make -C daw clean && make -C daw
 ```
 
+## Scaffold Lane Policy
+
+- `third_party/codework_shared/` is the vendored shared-subtree lane and remains the DAW dependency source of truth for shared modules.
+- `extern/` is a compatibility/include lane only; new DAW feature implementation should not silently expand this lane.
+- `SDLApp/` is a documented legacy exception lane for SDL framework glue; new app/domain logic should stay in `src/` and `include/`.
+- New app-level public entry APIs should route through `include/daw/...`.
+- Temporary files belong in `tmp/`, and runtime-generated config/cache lanes stay gitignored.
+
 ## Tests
 
 Available targets:
 
 ```bash
+make run-headless-smoke
+make visual-harness
+make test-stable
+make test-legacy
 make test-cache
 make test-overlap
 make test-smoke
@@ -80,7 +92,8 @@ make test-kitviz-meter-adapter
 make test-shared-theme-font-adapter
 ```
 
-`make test-session` is currently known to fail link in this branch and is tracked in `KNOWN_ISSUES.md`.
+`test-stable` is the current deterministic migration gate lane.
+`test-legacy` runs known stale/failing test targets to keep breakage visible while those lanes are being repaired.
 
 ## Public Release Hygiene
 
@@ -95,5 +108,5 @@ make test-shared-theme-font-adapter
 - `config/`: runtime config and public fallback template.
 - `assets/`: runtime assets (no bundled public audio samples).
 - `tests/`: unit/smoke/stress test targets.
-- `docs/`: focused technical and release documentation.
+- `docs/`: focused technical and release documentation (start at `docs/README.md`).
 - `third_party/codework_shared/`: vendored shared core/kit/runtime modules.

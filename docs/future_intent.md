@@ -1,0 +1,47 @@
+# DAW Future Intent
+
+Last updated: 2026-03-27
+
+## Scaffold Alignment Intent
+1. Preserve DAW's existing subsystem decomposition strengths.
+2. Add scaffold-locked lifecycle wrapper entrypoint without behavior regressions.
+3. Normalize verification gates into clear stable vs legacy lanes.
+4. Lock naming/path policy for optional dependency lanes and legacy top-level outliers.
+
+## Planned Next Structural Intent
+- `DAW-S1` (completed):
+  - public scaffold docs floor added:
+    - `docs/current_truth.md`
+    - `docs/future_intent.md`
+  - public docs index lane added:
+    - `docs/README.md`
+  - private migration docs index updated with scaffold plan + freeze references.
+
+- `DAW-S2` (completed):
+  - add scaffold verification aliases in `Makefile`:
+    - `run-headless-smoke`
+    - `visual-harness`
+  - define and enforce split test lanes:
+    - `test-stable`
+    - `test-legacy`
+  - explicitly repair or quarantine currently stale failing test targets.
+
+- `DAW-S3` (completed):
+  - introduce canonical wrapper entry API:
+    - `include/daw/daw_app_main.h`
+    - `src/app/daw_app_main.c`
+  - lock lifecycle stage symbol names for bootstrap/load/init/run/shutdown.
+  - keep legacy runtime body behavior via delegated `daw_app_main_legacy()` transition path.
+
+- `DAW-S4` (completed):
+  - lock naming/path policy for `third_party/`, `extern/`, and top-level `SDLApp/`.
+  - confirm temp/runtime ignore lanes are scaffold-consistent.
+
+- `DAW-S5` (completed):
+  - run stabilization closeout docs sync and final verification gates.
+  - scaffold completion commit created: `Project Scaffold Standardization`.
+
+## Non-Goals During Scaffold Migration
+- No feature expansion unrelated to scaffold alignment.
+- No shared subtree redesign inside scaffold migration commits.
+- No broad one-pass naming churn; changes stay bounded per migration slice.

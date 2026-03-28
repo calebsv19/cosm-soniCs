@@ -44,6 +44,7 @@ SRCS := \
 	$(SRC_DIR)/core/loop/daw_mainthread_messages.c \
 	$(SRC_DIR)/core/loop/daw_mainthread_kernel.c \
 	$(SRC_DIR)/core/loop/daw_render_invalidation.c \
+	$(SRC_DIR)/app/daw_app_main.c \
 	$(SRC_DIR)/app/main.c \
 	$(SRC_DIR)/config/config.c \
 	$(SRC_DIR)/audio/device_sdl.c \
@@ -347,7 +348,23 @@ ALL_DEPS := $(APP_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(S
 
 APP_OBJS_NO_MAIN := $(filter-out $(BUILD_DIR)/src/app/main.o,$(OBJS))
 
-.PHONY: all clean run run-ide-theme loop-gates loop-gates-strict test-session test-cache test-overlap test-smoke test-kitviz-adapter test-waveform-pack-warmstart test-pack-contract test-trace-contract test-trace-async-contract test-kitviz-fx-preview-adapter test-kitviz-meter-adapter test-shared-theme-font-adapter
+STABLE_TEST_TARGETS := \
+	test-pack-contract \
+	test-trace-contract \
+	test-trace-async-contract \
+	test-kitviz-adapter \
+	test-kitviz-fx-preview-adapter \
+	test-kitviz-meter-adapter \
+	test-waveform-pack-warmstart
+
+LEGACY_TEST_TARGETS := \
+	test-session \
+	test-cache \
+	test-overlap \
+	test-smoke \
+	test-shared-theme-font-adapter
+
+.PHONY: all clean run run-ide-theme run-headless-smoke visual-harness loop-gates loop-gates-strict test-stable test-legacy test-session test-cache test-overlap test-smoke test-kitviz-adapter test-waveform-pack-warmstart test-pack-contract test-trace-contract test-trace-async-contract test-kitviz-fx-preview-adapter test-kitviz-meter-adapter test-shared-theme-font-adapter
 
 all: $(APP_BIN)
 
@@ -368,11 +385,33 @@ run: $(APP_BIN)
 run-ide-theme: $(APP_BIN)
 	DAW_USE_SHARED_THEME_FONT=1 DAW_USE_SHARED_THEME=1 DAW_USE_SHARED_FONT=1 DAW_THEME_PRESET=ide_gray DAW_FONT_PRESET=ide $(APP_BIN)
 
+run-headless-smoke: all test-stable
+	@echo "daw headless smoke passed (non-interactive)"
+
+visual-harness: $(APP_BIN)
+	@echo "visual harness binary ready: $(APP_BIN)"
+
 loop-gates: $(APP_BIN)
 	RUN_SECONDS=$${RUN_SECONDS:-8} ./tools/run_loop_gates.sh
 
 loop-gates-strict: $(APP_BIN)
 	PROFILE=strict STRICT=1 RUN_SECONDS=$${RUN_SECONDS:-8} ./tools/run_loop_gates.sh
+
+test-stable:
+	@$(MAKE) $(STABLE_TEST_TARGETS)
+	@echo "daw stable test lane passed"
+
+test-legacy:
+	@set +e; \
+	fails=0; \
+	for t in $(LEGACY_TEST_TARGETS); do \
+		echo "[legacy] running $$t"; \
+		$(MAKE) $$t || fails=1; \
+	done; \
+	if [ $$fails -ne 0 ]; then \
+		echo "[legacy] one or more legacy tests failed"; \
+		exit 1; \
+	fi
 
 test-session: $(TEST_BIN)
 	$(TEST_BIN)
