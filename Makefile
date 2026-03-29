@@ -317,6 +317,12 @@ SHARED_THEME_FONT_ADAPTER_TEST_SRCS := \
 
 SHARED_THEME_FONT_ADAPTER_TEST_BIN := $(BUILD_DIR)/tests/shared_theme_font_adapter_test
 
+LAYOUT_SWEEP_TEST_SRCS := \
+	tests/layout_text_scaling_sweep_test.c
+
+LAYOUT_SWEEP_TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(LAYOUT_SWEEP_TEST_SRCS))
+LAYOUT_SWEEP_TEST_BIN := $(BUILD_DIR)/tests/layout_text_scaling_sweep_test
+
 # ---- Engine test support: keep your existing set, but replace the giant FX list
 # with the auto-discovered EFFECTS_SRCS so it always stays in sync.
 ENGINE_TEST_SUPPORT_OBJS := \
@@ -343,8 +349,9 @@ CACHE_TEST_DEPS := $(CACHE_TEST_OBJS:.o=.d)
 OVERLAP_TEST_DEPS := $(OVERLAP_TEST_OBJS:.o=.d)
 SMOKE_TEST_DEPS := $(SMOKE_TEST_OBJS:.o=.d)
 PACK_CONTRACT_TEST_DEPS := $(PACK_CONTRACT_TEST_OBJS:.o=.d)
+LAYOUT_SWEEP_TEST_DEPS := $(LAYOUT_SWEEP_TEST_OBJS:.o=.d)
 ENGINE_TEST_SUPPORT_DEPS := $(ENGINE_TEST_SUPPORT_OBJS:.o=.d)
-ALL_DEPS := $(APP_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(SMOKE_TEST_DEPS) $(PACK_CONTRACT_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
+ALL_DEPS := $(APP_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(SMOKE_TEST_DEPS) $(PACK_CONTRACT_TEST_DEPS) $(LAYOUT_SWEEP_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
 
 APP_OBJS_NO_MAIN := $(filter-out $(BUILD_DIR)/src/app/main.o,$(OBJS))
 
@@ -355,7 +362,8 @@ STABLE_TEST_TARGETS := \
 	test-kitviz-adapter \
 	test-kitviz-fx-preview-adapter \
 	test-kitviz-meter-adapter \
-	test-waveform-pack-warmstart
+	test-waveform-pack-warmstart \
+	test-layout-sweep
 
 LEGACY_TEST_TARGETS := \
 	test-session \
@@ -364,7 +372,7 @@ LEGACY_TEST_TARGETS := \
 	test-smoke \
 	test-shared-theme-font-adapter
 
-.PHONY: all clean run run-ide-theme run-headless-smoke visual-harness loop-gates loop-gates-strict test-stable test-legacy test-session test-cache test-overlap test-smoke test-kitviz-adapter test-waveform-pack-warmstart test-pack-contract test-trace-contract test-trace-async-contract test-kitviz-fx-preview-adapter test-kitviz-meter-adapter test-shared-theme-font-adapter
+.PHONY: all clean run run-ide-theme run-headless-smoke visual-harness loop-gates loop-gates-strict test-stable test-legacy test-session test-cache test-overlap test-smoke test-kitviz-adapter test-waveform-pack-warmstart test-pack-contract test-trace-contract test-trace-async-contract test-kitviz-fx-preview-adapter test-kitviz-meter-adapter test-shared-theme-font-adapter test-layout-sweep
 
 all: $(APP_BIN)
 
@@ -466,6 +474,13 @@ $(WAVEFORM_PACK_WARMSTART_TEST_BIN): $(WAVEFORM_PACK_WARMSTART_TEST_SRCS) src/ui
 	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/kit/kit_viz/include -I$(SHARED_ROOT)/core/core_pack/include -I$(SHARED_ROOT)/core/core_io/include -I$(SHARED_ROOT)/core/core_base/include \
 		tests/waveform_cache_pack_warmstart_test.c src/ui/timeline_waveform.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c $(SHARED_ROOT)/core/core_pack/src/core_pack.c $(SHARED_ROOT)/core/core_io/src/core_io.c $(SHARED_ROOT)/core/core_base/src/core_base.c \
 		$(SDL2_LDFLAGS) -lSDL2 -lm -o "$@"
+
+test-layout-sweep: $(LAYOUT_SWEEP_TEST_BIN)
+	$(LAYOUT_SWEEP_TEST_BIN)
+
+$(LAYOUT_SWEEP_TEST_BIN): $(LAYOUT_SWEEP_TEST_OBJS) $(APP_OBJS_NO_MAIN)
+	@mkdir -p "$(dir $@)"
+	$(CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
 
 test-pack-contract: $(PACK_CONTRACT_TEST_BIN)
 	$(PACK_CONTRACT_TEST_BIN)

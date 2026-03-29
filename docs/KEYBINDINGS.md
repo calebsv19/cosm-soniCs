@@ -14,6 +14,11 @@ This doc lists current keyboard shortcuts by pane or mode, with source reference
 - `F7` / `F8` / `F9` — Toggle engine / cache / timing logs. (`src/input/input_manager.c`, `handle_keyboard_shortcuts`)
 - `Ctrl/Cmd+Z` — Undo. (`src/input/input_manager.c`, `handle_keyboard_shortcuts`)
 - `Ctrl/Cmd+Shift+Z` — Redo. (`src/input/input_manager.c`, `handle_keyboard_shortcuts`)
+- `Ctrl/Cmd+=` / `Ctrl/Cmd++` — Increase UI text size. (`src/input/input_manager.c`, `handle_keyboard_shortcuts`)
+- `Ctrl/Cmd+-` — Decrease UI text size. (`src/input/input_manager.c`, `handle_keyboard_shortcuts`)
+- `Ctrl/Cmd+0` — Reset UI text size. (`src/input/input_manager.c`, `handle_keyboard_shortcuts`)
+- `Ctrl/Cmd+Shift+T` — Cycle shared theme preset forward. (`src/input/input_manager.c`, `handle_keyboard_shortcuts`)
+- `Ctrl/Cmd+Shift+Y` — Cycle shared theme preset backward. (`src/input/input_manager.c`, `handle_keyboard_shortcuts`)
 
 Notes:
 - Global shortcuts are disabled while editing tempo, library names, or track names. (`src/input/input_manager.c`, `handle_keyboard_shortcuts`)

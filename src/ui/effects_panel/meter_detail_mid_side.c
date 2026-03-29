@@ -7,6 +7,11 @@
 #include "ui/shared_theme_font_adapter.h"
 
 #include <math.h>
+#include <stdio.h>
+
+static int max_int(int a, int b) {
+    return (a > b) ? a : b;
+}
 
 static void resolve_mid_side_theme(SDL_Color* fill,
                                    SDL_Color* border,
@@ -143,11 +148,38 @@ void effects_meter_render_mid_side(SDL_Renderer* renderer,
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, rect);
 
-    const int pad = 16;
-    const int label_w = 22;
-    const int meter_w = 12;
-    const int history_gap = 0;
-    int header_h = 36;
+    const int body_h = ui_font_line_height(1.0f);
+    const int title_h = ui_font_line_height(1.2f);
+    const int pad = max_int(12, body_h / 2 + 8);
+    const int label_w = max_int(22, ui_measure_text_width("-90", 1.0f) + 8);
+    const int meter_w = max_int(10, body_h / 2);
+    const int history_gap = max_int(0, body_h / 5);
+    const int row_gap = max_int(4, body_h / 3);
+    const int section_gap = max_int(8, body_h / 2);
+    const int header_text_w = rect->w - pad * 2;
+    const int title_y = rect->y + max_int(4, pad / 3);
+    bool valid = snapshot && snapshot->valid;
+    char mid_buf[64] = {0};
+    char side_buf[64] = {0};
+    int mid_w = 0;
+    int side_w = 0;
+    int stats_rows = 1;
+    if (valid) {
+        float mid = clampf(snapshot->mid_rms, 0.0f, 1.5f);
+        float side = clampf(snapshot->side_rms, 0.0f, 1.5f);
+        snprintf(mid_buf, sizeof(mid_buf), "Mid %.1f dB", meter_db(mid));
+        snprintf(side_buf, sizeof(side_buf), "Side %.1f dB", meter_db(side));
+        mid_w = ui_measure_text_width(mid_buf, 1.0f);
+        side_w = ui_measure_text_width(side_buf, 1.0f);
+        if (mid_w + max_int(12, body_h / 2) + side_w > header_text_w) {
+            stats_rows = 2;
+        }
+    }
+    const int stats_y = title_y + title_h + row_gap;
+    int header_h = (stats_y - (rect->y + pad))
+        + stats_rows * body_h
+        + (stats_rows - 1) * row_gap
+        + section_gap;
     if (header_h > rect->h - pad * 2) {
         header_h = rect->h - pad * 2;
     }
@@ -163,8 +195,17 @@ void effects_meter_render_mid_side(SDL_Renderer* renderer,
     if (history_rect.w < 0) {
         history_rect.w = 0;
     }
+    if (meter_rect.h <= 0 || meter_rect.w <= 0) {
+        return;
+    }
 
-    ui_draw_text(renderer, rect->x + pad, rect->y + 6, "Mid/Side", label_color, 1.2f);
+    ui_draw_text_clipped(renderer,
+                         rect->x + pad,
+                         title_y,
+                         "Mid/Side",
+                         label_color,
+                         1.2f,
+                         header_text_w);
 
     SDL_SetRenderDrawColor(renderer, history_bg.r, history_bg.g, history_bg.b, history_bg.a);
     SDL_RenderFillRect(renderer, &history_rect);
@@ -176,7 +217,7 @@ void effects_meter_render_mid_side(SDL_Renderer* renderer,
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &meter_rect);
 
-    int lane_gap = 10;
+    int lane_gap = max_int(6, body_h / 2);
     int lane_h = (meter_rect.h - lane_gap) / 2;
     SDL_Rect mid_meter = {meter_rect.x, meter_rect.y, meter_rect.w, lane_h};
     SDL_Rect side_meter = {meter_rect.x, meter_rect.y + lane_h + lane_gap, meter_rect.w, lane_h};
@@ -185,16 +226,15 @@ void effects_meter_render_mid_side(SDL_Renderer* renderer,
     SDL_RenderFillRect(renderer, &mid_meter);
     SDL_RenderFillRect(renderer, &side_meter);
 
-    int hist_gap = 10;
+    int hist_gap = max_int(6, body_h / 2);
     int hist_h = (history_rect.h - hist_gap) / 2;
     SDL_Rect mid_hist = {history_rect.x, history_rect.y, history_rect.w, hist_h};
     SDL_Rect side_hist = {history_rect.x, history_rect.y + hist_h + hist_gap, history_rect.w, hist_h};
-    if (hist_h < 30) {
+    if (hist_h < max_int(24, body_h + 6)) {
         mid_hist.h = 0;
         side_hist.h = 0;
     }
 
-    bool valid = snapshot && snapshot->valid;
     if (valid) {
         float mid = clampf(snapshot->mid_rms, 0.0f, 1.5f);
         float side = clampf(snapshot->side_rms, 0.0f, 1.5f);
@@ -207,13 +247,30 @@ void effects_meter_render_mid_side(SDL_Renderer* renderer,
         SDL_SetRenderDrawColor(renderer, side_marker.r, side_marker.g, side_marker.b, side_marker.a);
         SDL_RenderDrawLine(renderer, side_meter.x - 3, side_y, side_meter.x + side_meter.w + 3, side_y);
 
-        char buf[64];
-        snprintf(buf, sizeof(buf), "Mid %.1f dB", meter_db(mid));
-        ui_draw_text(renderer, rect->x + pad, rect->y + 22, buf, dim_color, 1.0f);
-        snprintf(buf, sizeof(buf), "Side %.1f dB", meter_db(side));
-        ui_draw_text(renderer, rect->x + pad + 150, rect->y + 22, buf, dim_color, 1.0f);
+        if (stats_rows == 1) {
+            int text_x = rect->x + pad;
+            int stats_gap = max_int(12, body_h / 2);
+            int side_x = rect->x + pad + header_text_w - side_w;
+            int min_side_x = text_x + mid_w + stats_gap;
+            if (side_x < min_side_x) {
+                side_x = min_side_x;
+            }
+            int mid_max_w = side_x - text_x - stats_gap;
+            int side_max_w = rect->x + pad + header_text_w - side_x;
+            ui_draw_text_clipped(renderer, text_x, stats_y, mid_buf, dim_color, 1.0f, mid_max_w);
+            ui_draw_text_clipped(renderer, side_x, stats_y, side_buf, dim_color, 1.0f, side_max_w);
+        } else {
+            ui_draw_text_clipped(renderer, rect->x + pad, stats_y, mid_buf, dim_color, 1.0f, header_text_w);
+            ui_draw_text_clipped(renderer,
+                                 rect->x + pad,
+                                 stats_y + body_h + row_gap,
+                                 side_buf,
+                                 dim_color,
+                                 1.0f,
+                                 header_text_w);
+        }
     } else {
-        ui_draw_text(renderer, rect->x + pad, rect->y + 22, "No data", dim_color, 1.0f);
+        ui_draw_text_clipped(renderer, rect->x + pad, stats_y, "No data", dim_color, 1.0f, header_text_w);
     }
 
     if (mid_hist.h > 0 && history && history->mid_count > 1) {

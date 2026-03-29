@@ -16,6 +16,10 @@
 
 #include <stdio.h>
 
+static const float k_library_text_scale = 1.0f;
+static const int k_library_row_extra_height = 8;
+static const int k_library_content_top_padding = 8;
+
 static void resolve_library_theme(DawThemePalette* palette) {
     if (!palette) {
         return;
@@ -163,27 +167,41 @@ void library_browser_scan(LibraryBrowser* browser, MediaRegistry* registry) {
     }
 }
 
-void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* renderer, const SDL_Rect* rect, int line_height) {
+int library_browser_row_height(void) {
+    int line_h = ui_font_line_height(k_library_text_scale);
+    if (line_h < 8) {
+        line_h = 8;
+    }
+    return line_h + k_library_row_extra_height;
+}
+
+void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* renderer, const SDL_Rect* rect) {
     DawThemePalette theme = {0};
     if (!browser || !renderer || !rect) {
+        return;
+    }
+    if (rect->w <= 0 || rect->h <= 0) {
         return;
     }
     resolve_library_theme(&theme);
     SDL_Color text_color = theme.text_primary;
     SDL_Color highlight_color = theme.control_hover_fill;
     SDL_Color selected_color = theme.selection_fill;
-    int y = rect->y + 32;
-    float text_scale = 1.0f;
+    int row_h = library_browser_row_height();
+    int text_h = ui_font_line_height(k_library_text_scale);
+    int y = rect->y + k_library_content_top_padding;
     for (int i = 0; i < browser->count; ++i) {
-        if (y + line_height > rect->y + rect->h) {
+        if (y + row_h > rect->y + rect->h) {
+            break;
+        }
+        SDL_Rect row = {rect->x + 8, y, rect->w - 16, row_h};
+        if (row.w <= 0 || row.h <= 0) {
             break;
         }
         if (i == browser->selected_index) {
-            SDL_Rect row = {rect->x + 8, y - 4, rect->w - 16, line_height + 4};
             SDL_SetRenderDrawColor(renderer, selected_color.r, selected_color.g, selected_color.b, selected_color.a);
             SDL_RenderFillRect(renderer, &row);
         } else if (i == browser->hovered_index) {
-            SDL_Rect row = {rect->x + 8, y - 4, rect->w - 16, line_height + 4};
             SDL_SetRenderDrawColor(renderer, highlight_color.r, highlight_color.g, highlight_color.b, highlight_color.a);
             SDL_RenderFillRect(renderer, &row);
         }
@@ -198,7 +216,13 @@ void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* rendere
         } else {
             snprintf(label, sizeof(label), "%s", display_name);
         }
-        ui_draw_text(renderer, rect->x + 16, y, label, text_color, text_scale);
+        int text_x = rect->x + 16;
+        int text_y = y + (row_h - text_h) / 2;
+        int text_max_w = row.w - 8;
+        if (text_max_w < 1) {
+            text_max_w = 1;
+        }
+        ui_draw_text_clipped(renderer, text_x, text_y, label, text_color, k_library_text_scale, text_max_w);
 
         if (is_editing) {
             char temp[LIBRARY_NAME_MAX];
@@ -207,9 +231,9 @@ void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* rendere
             if (cursor < 0) cursor = 0;
             if (cursor > len) cursor = len;
             snprintf(temp, sizeof(temp), "%.*s", cursor, browser->edit_buffer);
-            int cursor_x = rect->x + 16 + ui_measure_text_width(temp, text_scale);
-            int cursor_y = y;
-            int cursor_h = ui_font_line_height(text_scale);
+            int cursor_x = text_x + ui_measure_text_width(temp, k_library_text_scale);
+            int cursor_y = text_y;
+            int cursor_h = text_h;
             SDL_SetRenderDrawColor(renderer,
                                    theme.text_muted.r,
                                    theme.text_muted.g,
@@ -217,25 +241,41 @@ void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* rendere
                                    theme.text_muted.a);
             SDL_RenderDrawLine(renderer, cursor_x, cursor_y, cursor_x, cursor_y + cursor_h);
         }
-        y += line_height;
+        y += row_h;
     }
     if (browser->count == 0) {
-        ui_draw_text(renderer, rect->x + 16, rect->y + 32, "(no wav files)", text_color, 1.0f);
+        int empty_x = rect->x + 16;
+        int empty_y = rect->y + k_library_content_top_padding;
+        int empty_w = rect->w - 24;
+        if (empty_w < 1) {
+            empty_w = 1;
+        }
+        ui_draw_text_clipped(renderer,
+                             empty_x,
+                             empty_y,
+                             "(no wav files)",
+                             text_color,
+                             k_library_text_scale,
+                             empty_w);
     }
 }
 
-int library_browser_hit_test(const LibraryBrowser* browser, const SDL_Rect* rect, int x, int y, int line_height) {
+int library_browser_hit_test(const LibraryBrowser* browser, const SDL_Rect* rect, int x, int y) {
     if (!browser || !rect) {
         return -1;
     }
-    int y_start = rect->y + 32;
-    if (x < rect->x || x > rect->x + rect->w) {
+    int row_h = library_browser_row_height();
+    if (row_h <= 0) {
+        return -1;
+    }
+    int y_start = rect->y + k_library_content_top_padding;
+    if (x < rect->x || x >= rect->x + rect->w) {
         return -1;
     }
     if (y < y_start) {
         return -1;
     }
-    int index = (y - y_start) / line_height;
+    int index = (y - y_start) / row_h;
     if (index < 0 || index >= browser->count) {
         return -1;
     }

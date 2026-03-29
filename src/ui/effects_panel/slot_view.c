@@ -11,6 +11,10 @@
 
 #include <math.h>
 
+static int max_int(int a, int b) {
+    return (a > b) ? a : b;
+}
+
 void effects_slot_reset_runtime(EffectsSlotRuntime* runtime) {
     if (!runtime) {
         return;
@@ -148,8 +152,13 @@ void effects_slot_render(SDL_Renderer* renderer,
     const char* fx_name = info ? info->name : "Effect";
     float title_scale = FX_PANEL_BUTTON_SCALE;
     int title_h = ui_font_line_height(title_scale);
+    int title_x = header.x + 8;
+    int title_max_w = slot_layout->toggle_rect.x - title_x - 6;
+    if (title_max_w < 0) {
+        title_max_w = 0;
+    }
     int title_y = header.y + (header.h - title_h) / 2;
-    ui_draw_text(renderer, header.x + 8, title_y, fx_name, label_color, title_scale);
+    ui_draw_text_clipped(renderer, title_x, title_y, fx_name, label_color, title_scale, title_max_w);
     if (effects_slot_preview_has_gr(slot->type_id)) {
         bool is_master = panel->target == FX_PANEL_TARGET_MASTER;
         float gr_db = 0.0f;
@@ -159,8 +168,8 @@ void effects_slot_render(SDL_Renderer* renderer,
                                                        is_master,
                                                        panel->target_track_index,
                                                        &gr_db);
-        int meter_w = 70;
-        int meter_h = header.h - 12;
+        int meter_h = max_int(10, header.h - 8);
+        int meter_w = max_int(56, ui_measure_text_width("GR -24.0 dB", 1.0f) + 14);
         SDL_Rect gr_meter = {slot_layout->toggle_rect.x - meter_w - 6,
                              header.y + (header.h - meter_h) / 2,
                              meter_w,
@@ -175,13 +184,16 @@ void effects_slot_render(SDL_Renderer* renderer,
         } else {
             snprintf(gr_label, sizeof(gr_label), "GR --");
         }
-        int gr_w = ui_measure_text_width(gr_label, 1.1f);
         int right_bound = gr_meter.x - 8;
-        int min_x = header.x + 8 + ui_measure_text_width(fx_name, title_scale) + 8;
-        int gr_x = right_bound - gr_w;
+        int min_x = title_x + 8;
         int gr_y = header.y + (header.h - ui_font_line_height(1.1f)) / 2;
-        if (gr_x >= min_x) {
-            ui_draw_text(renderer, gr_x, gr_y, gr_label, text_dim, 1.1f);
+        if (right_bound > min_x) {
+            int gr_max_w = right_bound - min_x;
+            ui_draw_text_clipped(renderer, min_x, gr_y, gr_label, text_dim, 1.1f, gr_max_w);
+        }
+        int title_space_after_meter = gr_meter.x - title_x - 10;
+        if (title_space_after_meter > 0) {
+            ui_draw_text_clipped(renderer, title_x, title_y, fx_name, label_color, title_scale, title_space_after_meter);
         }
     }
 
@@ -254,11 +266,23 @@ void effects_slot_render(SDL_Renderer* renderer,
 
                 char label_line[96];
                 snprintf(label_line, sizeof(label_line), "%s", pname);
-                ui_draw_text(renderer, label_rect.x, label_rect.y, label_line, label_color, 1.3f);
+                ui_draw_text_clipped(renderer,
+                                     label_rect.x,
+                                     label_rect.y,
+                                     label_line,
+                                     label_color,
+                                     1.3f,
+                                     label_rect.w);
 
                 char value_line[64];
                 format_value_label(spec, value, mode, value_line, sizeof(value_line));
-                ui_draw_text(renderer, value_rect.x, value_rect.y, value_line, text_dim, 1.3f);
+                ui_draw_text_clipped(renderer,
+                                     value_rect.x,
+                                     value_rect.y,
+                                     value_line,
+                                     text_dim,
+                                     1.3f,
+                                     value_rect.w);
                 SDL_Rect mode_rect = slot_layout->mode_rects[p];
                 if (tempo_syncable && mode_rect.w > 0 && mode_rect.h > 0) {
                     effects_slot_draw_mode_toggle(renderer, &mode_rect, mode);

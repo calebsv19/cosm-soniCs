@@ -52,6 +52,10 @@ typedef struct {
     SDL_Rect fade_out_track_rect;
     SDL_Rect fade_out_fill_rect;
     SDL_Rect fade_out_handle_rect;
+    SDL_Rect phase_left_rect;
+    SDL_Rect phase_right_rect;
+    SDL_Rect normalize_toggle_rect;
+    SDL_Rect reverse_toggle_rect;
     ClipInspectorRow rows[CLIP_INSPECTOR_ROW_COUNT];
 } ClipInspectorLayout;
 

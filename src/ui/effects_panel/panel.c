@@ -18,6 +18,57 @@
 #define FX_PANEL_OVERLAY_HEADER_HEIGHT 24
 #define FX_PANEL_OVERLAY_PADDING 8
 
+static int max_int(int a, int b) {
+    return (a > b) ? a : b;
+}
+
+static int min_int(int a, int b) {
+    return (a < b) ? a : b;
+}
+
+static int fx_panel_header_height(void) {
+    int title_h = ui_font_line_height(FX_PANEL_TITLE_SCALE);
+    int button_h = ui_font_line_height(FX_PANEL_BUTTON_SCALE) + FX_PANEL_HEADER_BUTTON_PAD_Y * 2;
+    int needed = max_int(title_h + 8, button_h + 6);
+    return max_int(FX_PANEL_HEADER_HEIGHT, needed);
+}
+
+static int fx_panel_button_height(void) {
+    int needed = ui_font_line_height(FX_PANEL_BUTTON_SCALE) + FX_PANEL_HEADER_BUTTON_PAD_Y * 2;
+    return max_int(FX_PANEL_HEADER_BUTTON_HEIGHT, needed);
+}
+
+static int fx_panel_button_width(const char* label, float scale) {
+    int width = ui_measure_text_width(label ? label : "", scale) + FX_PANEL_HEADER_BUTTON_PAD_X * 2;
+    int min_width = ui_measure_text_width("W", scale) + FX_PANEL_HEADER_BUTTON_PAD_X * 2 + 2;
+    return max_int(width, min_width);
+}
+
+static int fx_panel_list_row_height(void) {
+    int needed = ui_font_line_height(FX_PANEL_LIST_TEXT_SCALE) + 6;
+    return max_int(FX_PANEL_LIST_ROW_HEIGHT, needed);
+}
+
+static int fx_panel_list_row_gap(void) {
+    int row_h = fx_panel_list_row_height();
+    return max_int(FX_PANEL_LIST_ROW_GAP, row_h / 6);
+}
+
+static int fx_panel_overlay_header_height(void) {
+    int needed = ui_font_line_height(2.0f) + 8;
+    return max_int(FX_PANEL_OVERLAY_HEADER_HEIGHT, needed);
+}
+
+static int fx_panel_overlay_item_height(void) {
+    int needed = ui_font_line_height(1.5f) + 8;
+    return max_int(FX_PANEL_DROPDOWN_ITEM_HEIGHT, needed);
+}
+
+static int fx_panel_overlay_padding(void) {
+    int needed = ui_font_line_height(1.0f) / 3 + 4;
+    return max_int(FX_PANEL_OVERLAY_PADDING, needed);
+}
+
 typedef struct {
     const char* name;
     FxTypeId    id_min;
@@ -142,12 +193,15 @@ static void compute_list_layout(EffectsPanelState* panel,
                                 int content_y,
                                 int content_w,
                                 int content_h,
+                                int header_h,
+                                int list_row_h,
+                                int list_row_gap,
                                 EffectsPanelLayout* layout) {
     if (!panel || !layout) {
         return;
     }
-    int body_y = content_y + FX_PANEL_HEADER_HEIGHT;
-    int body_h = content_h - FX_PANEL_HEADER_HEIGHT;
+    int body_y = content_y + header_h;
+    int body_h = content_h - header_h;
     if (body_h <= 0) {
         return;
     }
@@ -175,7 +229,7 @@ static void compute_list_layout(EffectsPanelState* panel,
             max_name_w = w;
         }
     }
-    int toggle_size = FX_PANEL_LIST_ROW_HEIGHT - 6;
+    int toggle_size = list_row_h - 6;
     if (toggle_size < 10) toggle_size = 10;
     int min_needed = FX_PANEL_LIST_PAD * 3 + max_name_w + toggle_size + 16;
     if (min_needed > list_w) {
@@ -265,8 +319,8 @@ static void compute_list_layout(EffectsPanelState* panel,
     if (total_rows > FX_MASTER_MAX) {
         total_rows = FX_MASTER_MAX;
     }
-    int row_full_h = FX_PANEL_LIST_ROW_HEIGHT + FX_PANEL_LIST_ROW_GAP;
-    int list_content_h = total_rows > 0 ? (total_rows * row_full_h - FX_PANEL_LIST_ROW_GAP) : 0;
+    int row_full_h = list_row_h + list_row_gap;
+    int list_content_h = total_rows > 0 ? (total_rows * row_full_h - list_row_gap) : 0;
     int visible_h = layout->track_snapshot.list_rect.h;
     if (visible_h < 0) visible_h = 0;
     float max_scroll = (list_content_h > visible_h) ? (float)(list_content_h - visible_h) : 0.0f;
@@ -285,8 +339,8 @@ static void compute_list_layout(EffectsPanelState* panel,
         SDL_Rect row = {left_inner_x,
                         row_y,
                         row_w,
-                        FX_PANEL_LIST_ROW_HEIGHT};
-        int toggle_size = FX_PANEL_LIST_ROW_HEIGHT - 6;
+                        list_row_h};
+        int toggle_size = list_row_h - 6;
         if (toggle_size < 8) toggle_size = 8;
         int toggle_w = toggle_size - 3;
         if (toggle_w < 6) toggle_w = 6;
@@ -297,7 +351,7 @@ static void compute_list_layout(EffectsPanelState* panel,
         layout->list_row_rects[i] = row;
         layout->list_toggle_rects[i] = toggle_rect;
         layout->list_row_count++;
-        row_y += FX_PANEL_LIST_ROW_HEIGHT + FX_PANEL_LIST_ROW_GAP;
+        row_y += list_row_h + list_row_gap;
     }
 
     if (panel->track_snapshot.list_scroll_max > 0.0f && layout->track_snapshot.list_rect.h > 0) {
@@ -754,9 +808,15 @@ static void draw_button(SDL_Renderer* renderer,
     SDL_RenderDrawRect(renderer, rect);
     if (label) {
         int text_h = ui_font_line_height(scale);
+        int text_w = ui_measure_text_width(label, scale);
         int text_x = rect->x + FX_PANEL_HEADER_BUTTON_PAD_X;
         int text_y = rect->y + (rect->h - text_h) / 2;
-        ui_draw_text(renderer, text_x, text_y, label, text, scale);
+        int max_w = rect->w - FX_PANEL_HEADER_BUTTON_PAD_X * 2;
+        if (text_w <= max_w) {
+            ui_draw_text(renderer, text_x, text_y, label, text, scale);
+        } else if (max_w > 0) {
+            ui_draw_text_clipped(renderer, text_x, text_y, label, text, scale, max_w);
+        }
     }
 }
 
@@ -1069,48 +1129,74 @@ void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* lay
     } else {
         snprintf(target_line, sizeof(target_line), "Master FX");
     }
+    int header_h = fx_panel_header_height();
     float title_scale = FX_PANEL_TITLE_SCALE;
     int text_w = ui_measure_text_width(target_line, title_scale);
     int text_h = ui_font_line_height(title_scale);
-    int padding_x = 10;
-    int padding_y = 6;
-    int target_w = text_w + padding_x;
-    int target_h = text_h + padding_y;
-    int target_x = mixer->rect.x + mixer->rect.w - FX_PANEL_MARGIN - target_w;
-    int target_y = content_y + (FX_PANEL_HEADER_HEIGHT - target_h) / 2;
-    layout->target_label_rect = (SDL_Rect){target_x, target_y, target_w, target_h};
+    int target_pad_x = max_int(10, text_h / 2);
+    int target_pad_y = max_int(3, text_h / 4);
+    int target_w = text_w + target_pad_x * 2;
+    int target_h = text_h + target_pad_y * 2;
+    if (target_h > header_h - 2) {
+        target_h = max_int(0, header_h - 2);
+    }
 
     float button_scale = FX_PANEL_BUTTON_SCALE;
-    int button_h = FX_PANEL_HEADER_BUTTON_HEIGHT;
-    int button_y = content_y + (FX_PANEL_HEADER_HEIGHT - button_h) / 2;
-    int toggle_w_list = ui_measure_text_width("List", button_scale);
-    int toggle_w_rack = ui_measure_text_width("Rack", button_scale);
-    int toggle_w = (toggle_w_list > toggle_w_rack ? toggle_w_list : toggle_w_rack) + FX_PANEL_HEADER_BUTTON_PAD_X * 2;
+    int button_h = fx_panel_button_height();
+    int button_gap = max_int(FX_PANEL_HEADER_BUTTON_GAP, button_h / 3);
+    int button_y = content_y + (header_h - button_h) / 2;
+    int toggle_w = fx_panel_button_width("Rack", button_scale);
+    int toggle_list_w = fx_panel_button_width("List", button_scale);
+    if (toggle_list_w > toggle_w) {
+        toggle_w = toggle_list_w;
+    }
     layout->view_toggle_rect = (SDL_Rect){content_x, button_y, toggle_w, button_h};
 
     const char* spec_label = "Spec";
-    int spec_w = ui_measure_text_width(spec_label, button_scale) + FX_PANEL_HEADER_BUTTON_PAD_X * 2;
-    int spec_x = layout->view_toggle_rect.x + layout->view_toggle_rect.w + FX_PANEL_HEADER_BUTTON_GAP;
+    int spec_w = fx_panel_button_width(spec_label, button_scale);
+    int spec_x = layout->view_toggle_rect.x + layout->view_toggle_rect.w + button_gap;
     layout->spec_toggle_rect = (SDL_Rect){spec_x, button_y, spec_w, button_h};
 
     const char* add_label = "Add FX";
-    int add_w = ui_measure_text_width(add_label, button_scale) + FX_PANEL_HEADER_BUTTON_PAD_X * 2;
-    int add_x = layout->spec_toggle_rect.x + layout->spec_toggle_rect.w + FX_PANEL_HEADER_BUTTON_GAP;
+    int add_w = fx_panel_button_width(add_label, button_scale);
+    int add_x = layout->spec_toggle_rect.x + layout->spec_toggle_rect.w + button_gap;
     layout->dropdown_button_rect = (SDL_Rect){add_x, button_y, add_w, button_h};
 
     const char* preview_label = "Preview";
-    int preview_w = ui_measure_text_width(preview_label, button_scale) + FX_PANEL_HEADER_BUTTON_PAD_X * 2;
-    int preview_x = layout->dropdown_button_rect.x + layout->dropdown_button_rect.w + FX_PANEL_HEADER_BUTTON_GAP;
+    int preview_w = fx_panel_button_width(preview_label, button_scale);
+    int preview_x = layout->dropdown_button_rect.x + layout->dropdown_button_rect.w + button_gap;
     layout->preview_toggle_rect = (SDL_Rect){preview_x, button_y, preview_w, button_h};
 
-    int body_y = content_y + FX_PANEL_HEADER_HEIGHT;
-    int body_h = content_h - FX_PANEL_HEADER_HEIGHT;
+    int target_x = content_x + content_w - target_w;
+    int target_min_x = preview_x + preview_w + button_gap;
+    if (target_x < target_min_x) {
+        target_x = target_min_x;
+        target_w = content_x + content_w - target_x;
+    }
+    if (target_w < 0) {
+        target_w = 0;
+    }
+    int target_y = content_y + (header_h - target_h) / 2;
+    layout->target_label_rect = (SDL_Rect){target_x, target_y, target_w, target_h};
+
+    int body_y = content_y + header_h;
+    int body_h = content_h - header_h;
     if (body_h <= 0) {
         body_h = content_h / 2;
     }
 
+    int list_row_h = fx_panel_list_row_height();
+    int list_row_gap = fx_panel_list_row_gap();
     if (panel->view_mode == FX_PANEL_VIEW_LIST) {
-        compute_list_layout(panel_mut, content_x, content_y, content_w, content_h, layout);
+        compute_list_layout(panel_mut,
+                            content_x,
+                            content_y,
+                            content_w,
+                            content_h,
+                            header_h,
+                            list_row_h,
+                            list_row_gap,
+                            layout);
     } else {
         int column_count = panel->chain_count;
         layout->column_count = column_count;
@@ -1131,7 +1217,7 @@ void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* lay
                 effects_slot_compute_layout(panel_mut,
                                             i,
                                             &col,
-                                            FX_PANEL_HEADER_HEIGHT,
+                                            header_h,
                                             FX_PANEL_INNER_MARGIN,
                                             FX_PANEL_PARAM_GAP,
                                             &layout->slots[i]);
@@ -1151,15 +1237,65 @@ void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* lay
     }
 
     int overlay_total_items = 0;
+    bool overlay_effect_layer = false;
     if (panel->overlay_layer == FX_PANEL_OVERLAY_CATEGORIES) {
         overlay_total_items = panel->category_count;
     } else if (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS) {
+        overlay_effect_layer = true;
         if (panel->active_category_index >= 0 && panel->active_category_index < panel->category_count) {
             overlay_total_items = panel->categories[panel->active_category_index].type_count;
         }
     }
-
-    int overlay_w = FX_PANEL_OVERLAY_WIDTH;
+    int overlay_header_h = fx_panel_overlay_header_height();
+    int overlay_item_h = fx_panel_overlay_item_height();
+    int overlay_pad = fx_panel_overlay_padding();
+    int overlay_item_gap_y = max_int(2, overlay_pad / 2);
+    const int scrollbar_w = 8;
+    const char* overlay_title = "Add Effect";
+    if (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS && panel->active_category_index >= 0 &&
+        panel->active_category_index < panel->category_count) {
+        overlay_title = panel->categories[panel->active_category_index].name;
+    } else if (panel->overlay_layer == FX_PANEL_OVERLAY_CATEGORIES) {
+        overlay_title = "Select Category";
+    }
+    int title_w = ui_measure_text_width(overlay_title, 2.0f);
+    int back_w = overlay_effect_layer ? (ui_measure_text_width("<", 2.0f) + 12) : 0;
+    int header_left = overlay_pad + (overlay_effect_layer ? back_w + 6 : 0);
+    int overlay_header_min_w = header_left + title_w + overlay_pad + 6;
+    int overlay_item_text_w = 0;
+    if (panel->overlay_layer == FX_PANEL_OVERLAY_CATEGORIES) {
+        char item_label[96];
+        for (int i = 0; i < panel->category_count; ++i) {
+            const FxCategoryUIInfo* cat = &panel->categories[i];
+            snprintf(item_label, sizeof(item_label), "%s (%d)", cat->name, cat->type_count);
+            int w = ui_measure_text_width(item_label, 1.5f);
+            if (w > overlay_item_text_w) {
+                overlay_item_text_w = w;
+            }
+        }
+    } else if (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS &&
+               panel->active_category_index >= 0 &&
+               panel->active_category_index < panel->category_count) {
+        const FxCategoryUIInfo* cat = &panel->categories[panel->active_category_index];
+        for (int i = 0; i < cat->type_count; ++i) {
+            int type_index = cat->type_indices[i];
+            if (type_index >= 0 && type_index < panel->type_count) {
+                int w = ui_measure_text_width(panel->types[type_index].name, 1.5f);
+                if (w > overlay_item_text_w) {
+                    overlay_item_text_w = w;
+                }
+            }
+        }
+    }
+    int empty_msg_w = ui_measure_text_width("No effects in this category.", 1.5f) + overlay_pad * 2;
+    int overlay_min_w = overlay_pad * 2 + overlay_item_text_w + scrollbar_w + 12;
+    if (overlay_min_w < overlay_header_min_w) {
+        overlay_min_w = overlay_header_min_w;
+    }
+    if (overlay_min_w < empty_msg_w) {
+        overlay_min_w = empty_msg_w;
+    }
+    int overlay_w = max_int(FX_PANEL_OVERLAY_WIDTH, overlay_min_w);
     if (overlay_w > content_w) {
         overlay_w = content_w;
     }
@@ -1169,11 +1305,11 @@ void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* lay
     }
     int overlay_y = layout->dropdown_button_rect.y + layout->dropdown_button_rect.h + 6;
     int available_h = (mixer->rect.y + mixer->rect.h) - FX_PANEL_MARGIN - overlay_y;
-    if (available_h < FX_PANEL_OVERLAY_HEADER_HEIGHT + FX_PANEL_DROPDOWN_ITEM_HEIGHT) {
+    if (available_h < overlay_header_h + overlay_item_h + overlay_pad) {
         return;
     }
 
-    int max_visible_items = (available_h - FX_PANEL_OVERLAY_HEADER_HEIGHT) / FX_PANEL_DROPDOWN_ITEM_HEIGHT;
+    int max_visible_items = (available_h - overlay_header_h - overlay_pad) / overlay_item_h;
     if (max_visible_items <= 0) {
         return;
     }
@@ -1213,18 +1349,22 @@ void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* lay
         overlay_x,
         overlay_y,
         overlay_w,
-        FX_PANEL_OVERLAY_HEADER_HEIGHT + display_capacity * FX_PANEL_DROPDOWN_ITEM_HEIGHT + FX_PANEL_OVERLAY_PADDING
+        overlay_header_h + display_capacity * overlay_item_h + overlay_item_gap_y + overlay_pad
     };
 
     layout->overlay_visible = true;
     layout->overlay_rect = overlay_rect;
-    layout->overlay_header_rect = (SDL_Rect){overlay_rect.x, overlay_rect.y, overlay_rect.w, FX_PANEL_OVERLAY_HEADER_HEIGHT};
+    layout->overlay_header_rect = (SDL_Rect){overlay_rect.x, overlay_rect.y, overlay_rect.w, overlay_header_h};
     if (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS) {
+        int back_h = overlay_header_h - max_int(6, overlay_header_h / 4);
+        int back_min_h = ui_font_line_height(2.0f) + 2;
+        back_h = max_int(back_h, back_min_h);
+        back_h = min_int(back_h, overlay_header_h);
         layout->overlay_back_rect = (SDL_Rect){
-            overlay_rect.x + FX_PANEL_OVERLAY_PADDING,
-            overlay_rect.y + 6,
-            24,
-            FX_PANEL_OVERLAY_HEADER_HEIGHT - 12
+            overlay_rect.x + overlay_pad,
+            overlay_rect.y + (overlay_header_h - back_h) / 2,
+            back_w,
+            back_h
         };
     } else {
         layout->overlay_back_rect = (SDL_Rect){0, 0, 0, 0};
@@ -1234,19 +1374,18 @@ void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* lay
     layout->overlay_visible_count = visible_items;
     layout->overlay_item_count = visible_items;
 
-    int item_y = overlay_rect.y + FX_PANEL_OVERLAY_HEADER_HEIGHT + 4;
-    const int scrollbar_w = 8;
+    int item_y = overlay_rect.y + overlay_header_h + overlay_item_gap_y;
     bool has_scrollbar = (overlay_total_items > display_capacity);
     layout->overlay_has_scrollbar = has_scrollbar;
-    int item_width = overlay_rect.w - 2 * FX_PANEL_OVERLAY_PADDING - (has_scrollbar ? (scrollbar_w + 4) : 0);
-    if (item_width < 80) item_width = overlay_rect.w - 2 * FX_PANEL_OVERLAY_PADDING;
+    int item_width = overlay_rect.w - 2 * overlay_pad - (has_scrollbar ? (scrollbar_w + 4) : 0);
+    if (item_width < 80) item_width = overlay_rect.w - 2 * overlay_pad;
 
     for (int i = 0; i < visible_items; ++i) {
         layout->overlay_item_rects[i] = (SDL_Rect){
-            overlay_rect.x + FX_PANEL_OVERLAY_PADDING,
+            overlay_rect.x + overlay_pad,
             item_y,
             item_width,
-            FX_PANEL_DROPDOWN_ITEM_HEIGHT
+            overlay_item_h
         };
         if (panel->overlay_layer == FX_PANEL_OVERLAY_CATEGORIES) {
             int cat_index = first_index + i;
@@ -1265,18 +1404,18 @@ void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* lay
             }
             layout->overlay_item_order[i] = type_index;
         }
-        item_y += FX_PANEL_DROPDOWN_ITEM_HEIGHT;
+        item_y += overlay_item_h;
     }
 
     if (has_scrollbar) {
-        int track_x = overlay_rect.x + overlay_rect.w - FX_PANEL_OVERLAY_PADDING - scrollbar_w;
-        int track_y = overlay_rect.y + FX_PANEL_OVERLAY_HEADER_HEIGHT + 4;
-        int track_h = display_capacity * FX_PANEL_DROPDOWN_ITEM_HEIGHT;
+        int track_x = overlay_rect.x + overlay_rect.w - overlay_pad - scrollbar_w;
+        int track_y = overlay_rect.y + overlay_header_h + overlay_item_gap_y;
+        int track_h = display_capacity * overlay_item_h;
         layout->overlay_scrollbar_track = (SDL_Rect){track_x, track_y, scrollbar_w, track_h};
         float visible_ratio = (overlay_total_items > 0) ? (float)visible_items / (float)overlay_total_items : 1.0f;
         if (visible_ratio < 0.05f) visible_ratio = 0.05f;
         int thumb_h = (int)(track_h * visible_ratio);
-        if (thumb_h < 10) thumb_h = 10;
+        if (thumb_h < max_int(10, overlay_item_h / 2)) thumb_h = max_int(10, overlay_item_h / 2);
         int max_scroll_index = overlay_total_items - visible_items;
         float scroll_ratio = (max_scroll_index > 0) ? (float)scroll_index / (float)max_scroll_index : 0.0f;
         if (scroll_ratio < 0.0f) scroll_ratio = 0.0f;
@@ -1320,14 +1459,17 @@ static void render_overlay(SDL_Renderer* renderer, const AppState* state, const 
     } else if (panel->overlay_layer == FX_PANEL_OVERLAY_CATEGORIES) {
         title = "Select Category";
     }
+    int overlay_pad = fx_panel_overlay_padding();
     int header_text_y = layout->overlay_header_rect.y +
                         (layout->overlay_header_rect.h - ui_font_line_height(2.0f)) / 2;
-    ui_draw_text(renderer,
-                 layout->overlay_header_rect.x + FX_PANEL_OVERLAY_PADDING + (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS ? 32 : 8),
-                 header_text_y,
-                 title,
-                 label,
-                 2);
+    int header_text_x = layout->overlay_header_rect.x + overlay_pad;
+    if (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS && layout->overlay_back_rect.w > 0) {
+        header_text_x = layout->overlay_back_rect.x + layout->overlay_back_rect.w + 6;
+    }
+    int header_text_w = (layout->overlay_header_rect.x + layout->overlay_header_rect.w - overlay_pad) - header_text_x;
+    if (header_text_w > 0) {
+        ui_draw_text_clipped(renderer, header_text_x, header_text_y, title, label, 2.0f, header_text_w);
+    }
 
     if (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS) {
         SDL_Color back_color = theme.control_hover_fill;
@@ -1337,12 +1479,13 @@ static void render_overlay(SDL_Renderer* renderer, const AppState* state, const 
         SDL_RenderDrawRect(renderer, &layout->overlay_back_rect);
         int back_text_y = layout->overlay_back_rect.y +
                           (layout->overlay_back_rect.h - ui_font_line_height(2.0f)) / 2;
+        int back_text_x = layout->overlay_back_rect.x + (layout->overlay_back_rect.w - ui_measure_text_width("<", 2.0f)) / 2;
         ui_draw_text(renderer,
-                     layout->overlay_back_rect.x + 6,
+                     back_text_x,
                      back_text_y,
                      "<",
                      label,
-                     2);
+                     2.0f);
     }
 
     if (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS) {
@@ -1355,11 +1498,11 @@ static void render_overlay(SDL_Renderer* renderer, const AppState* state, const 
         if (invalid_cat || empty_cat || layout->overlay_item_count == 0) {
             const char* msg = "No effects in this category.";
             ui_draw_text(renderer,
-                         layout->overlay_rect.x + FX_PANEL_OVERLAY_PADDING,
-                         layout->overlay_rect.y + FX_PANEL_OVERLAY_HEADER_HEIGHT + 12,
+                         layout->overlay_rect.x + overlay_pad,
+                         layout->overlay_rect.y + layout->overlay_header_rect.h + 12,
                          msg,
                          label,
-                         2);
+                         1.5f);
             return;
         }
     }
@@ -1397,7 +1540,11 @@ static void render_overlay(SDL_Renderer* renderer, const AppState* state, const 
             }
         }
         int item_text_y = item_rect.y + (item_rect.h - ui_font_line_height(1.5f)) / 2;
-        ui_draw_text(renderer, item_rect.x + 8, item_text_y, item_label, label, 1.5f);
+        int item_text_x = item_rect.x + 8;
+        int item_text_w = item_rect.w - 16;
+        if (item_text_w > 0) {
+            ui_draw_text_clipped(renderer, item_text_x, item_text_y, item_label, label, 1.5f, item_text_w);
+        }
     }
 
     if (layout->overlay_has_scrollbar) {
@@ -1459,15 +1606,19 @@ void effects_panel_render(SDL_Renderer* renderer, const AppState* state, const E
     SDL_RenderDrawRect(renderer, &title_rect);
     int text_h = ui_font_line_height(title_scale);
     int text_y = title_rect.y + (title_rect.h - text_h) / 2;
-    ui_draw_text(renderer, title_rect.x + 6, text_y, target_line, label_color, title_scale);
+    int title_text_x = title_rect.x + 6;
+    int title_text_w = title_rect.w - 12;
+    if (title_text_w > 0) {
+        ui_draw_text_clipped(renderer, title_text_x, text_y, target_line, label_color, title_scale, title_text_w);
+    }
     if (editor && editor->editing) {
         const char* prefix = "Track FX: ";
         int prefix_w = ui_measure_text_width(prefix, title_scale);
         char temp[ENGINE_CLIP_NAME_MAX + 32];
         snprintf(temp, sizeof(temp), "%.*s", editor->cursor, editor->buffer);
-        int caret_x = title_rect.x + 6 + prefix_w + ui_measure_text_width(temp, title_scale);
-        if (caret_x > title_rect.x + title_rect.w) {
-            caret_x = title_rect.x + title_rect.w;
+        int caret_x = title_text_x + prefix_w + ui_measure_text_width(temp, title_scale);
+        if (caret_x > title_rect.x + title_rect.w - 1) {
+            caret_x = title_rect.x + title_rect.w - 1;
         }
         int caret_h = ui_font_line_height(title_scale);
         SDL_Rect caret = {caret_x, text_y, 2, caret_h};

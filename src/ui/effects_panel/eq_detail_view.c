@@ -31,6 +31,54 @@ typedef struct EffectsEqTheme {
     SDL_Color btn_hover;
 } EffectsEqTheme;
 
+static int max_int(int a, int b) {
+    return (a > b) ? a : b;
+}
+
+static int min_int(int a, int b) {
+    return (a < b) ? a : b;
+}
+
+static int eq_selector_top_offset(void) {
+    return max_int(6, EQ_DETAIL_SELECTOR_PAD - 4);
+}
+
+static int eq_selector_height(void) {
+    int needed = ui_font_line_height(1.0f) + 4;
+    return max_int(EQ_DETAIL_SELECTOR_H, needed);
+}
+
+static int eq_toggle_size(void) {
+    int needed = ui_font_line_height(1.0f) + 6;
+    return max_int(EQ_DETAIL_TOGGLE_SIZE, needed);
+}
+
+static int eq_toggle_gap(void) {
+    int size = eq_toggle_size();
+    return max_int(EQ_DETAIL_TOGGLE_GAP, size / 3);
+}
+
+static void draw_centered_label(SDL_Renderer* renderer,
+                                const SDL_Rect* rect,
+                                const char* text,
+                                SDL_Color color,
+                                float scale) {
+    if (!renderer || !rect || !text || rect->w <= 0 || rect->h <= 0) {
+        return;
+    }
+    int text_h = ui_font_line_height(scale);
+    int text_w = ui_measure_text_width(text, scale);
+    int text_x = rect->x + (rect->w - text_w) / 2;
+    int text_y = rect->y + (rect->h - text_h) / 2;
+    int max_w = rect->w - 2;
+    if (max_w > 0) {
+        if (text_x < rect->x + 1) {
+            text_x = rect->x + 1;
+        }
+        ui_draw_text_clipped(renderer, text_x, text_y, text, color, scale, max_w);
+    }
+}
+
 static void resolve_eq_theme(EffectsEqTheme* out) {
     if (!out) {
         return;
@@ -79,33 +127,48 @@ static void resolve_eq_theme(EffectsEqTheme* out) {
     };
 }
 
-static void compute_toggle_rects(const SDL_Rect* panel,
-                                 SDL_Rect* low,
-                                 SDL_Rect mids[4],
-                                 SDL_Rect* high) {
+void effects_panel_eq_detail_compute_toggle_rects(const SDL_Rect* panel,
+                                                  SDL_Rect* low,
+                                                  SDL_Rect mids[4],
+                                                  SDL_Rect* high) {
     if (!panel || !low || !mids || !high) {
         return;
     }
-    int y = panel->y + EQ_DETAIL_SELECTOR_PAD - 4;
-    int size = EQ_DETAIL_TOGGLE_SIZE;
-    int group_w = 6 * size + 5 * EQ_DETAIL_TOGGLE_GAP;
+    int y = panel->y + eq_selector_top_offset();
+    int size = eq_toggle_size();
+    int gap = eq_toggle_gap();
+    int group_w = 6 * size + 5 * gap;
     int x = panel->x + (panel->w - group_w) / 2;
+    int min_x = panel->x + EQ_DETAIL_TOGGLE_PAD;
+    int max_x = panel->x + panel->w - EQ_DETAIL_TOGGLE_PAD - group_w;
+    if (x < min_x) x = min_x;
+    if (x > max_x) x = max_x;
     *low = (SDL_Rect){x, y, size, size};
-    x += size + EQ_DETAIL_TOGGLE_GAP;
+    x += size + gap;
     for (int i = 0; i < 4; ++i) {
         mids[i] = (SDL_Rect){x, y, size, size};
-        x += size + EQ_DETAIL_TOGGLE_GAP;
+        x += size + gap;
     }
     *high = (SDL_Rect){x, y, size, size};
 }
 
-static void draw_eq_axes(SDL_Renderer* renderer, const SDL_Rect* graph_rect, SDL_Color text) {
-    if (!renderer || !graph_rect) {
+static void draw_eq_axes(SDL_Renderer* renderer, const SDL_Rect* panel_rect, const SDL_Rect* graph_rect, SDL_Color text) {
+    if (!renderer || !panel_rect || !graph_rect) {
         return;
     }
-    int label_y = graph_rect->y + graph_rect->h + 6;
-    ui_draw_text(renderer, graph_rect->x, label_y, "20", text, 1.1f);
-    ui_draw_text(renderer, graph_rect->x + graph_rect->w - 34, label_y, "20k", text, 1.1f);
+    int label_y = graph_rect->y + graph_rect->h + 4;
+    int y_axis_h = ui_font_line_height(1.0f);
+    int y_axis_right = graph_rect->x - 6;
+    int y_axis_max_w = graph_rect->x - panel_rect->x - 8;
+    if (y_axis_max_w < 0) {
+        y_axis_max_w = 0;
+    }
+    int x = graph_rect->x;
+    int w = ui_measure_text_width("20", 1.1f);
+    ui_draw_text_clipped(renderer, x, label_y, "20", text, 1.1f, max_int(1, w + 2));
+    int right_w = ui_measure_text_width("20k", 1.1f);
+    int right_x = graph_rect->x + graph_rect->w - right_w;
+    ui_draw_text_clipped(renderer, right_x, label_y, "20k", text, 1.1f, max_int(1, right_w + 2));
     int freqs[] = {50, 100, 200, 500, 1000, 2000, 5000, 10000};
     for (int i = 0; i < 8; ++i) {
         int x = (int)lroundf(effects_eq_freq_to_x(graph_rect, (float)freqs[i]));
@@ -116,21 +179,46 @@ static void draw_eq_axes(SDL_Renderer* renderer, const SDL_Rect* graph_rect, SDL
         } else {
             snprintf(text_buf, sizeof(text_buf), "%d", freqs[i]);
         }
-        ui_draw_text(renderer, x - 6, label_y, text_buf, text, 1.0f);
+        int text_w = ui_measure_text_width(text_buf, 1.0f);
+        int text_x = x - text_w / 2;
+        int max_w = min_int(text_w + 2, panel_rect->x + panel_rect->w - text_x - 2);
+        if (max_w > 0) {
+            ui_draw_text_clipped(renderer, text_x, label_y, text_buf, text, 1.0f, max_w);
+        }
     }
-    ui_draw_text(renderer, graph_rect->x - 4, graph_rect->y - 18, "0 dB", text, 1.2f);
-    ui_draw_text(renderer, graph_rect->x - 10, graph_rect->y + graph_rect->h - 10, "-30", text, 1.0f);
-    ui_draw_text(renderer, graph_rect->x - 10, graph_rect->y + 4, "+30", text, 1.0f);
+    int zero_y = (int)lroundf(effects_eq_db_to_y(graph_rect, 0.0f)) - y_axis_h / 2;
+    int plus_y = graph_rect->y + 2;
+    int minus_y = graph_rect->y + graph_rect->h - y_axis_h - 2;
+    int zero_w = ui_measure_text_width("0 dB", 1.0f);
+    int plus_w = ui_measure_text_width("+30", 1.0f);
+    int minus_w = ui_measure_text_width("-30", 1.0f);
+    int zero_x = y_axis_right - zero_w;
+    int plus_x = y_axis_right - plus_w;
+    int minus_x = y_axis_right - minus_w;
+    if (y_axis_max_w > 0) {
+        ui_draw_text_clipped(renderer, zero_x, zero_y, "0 dB", text, 1.0f, y_axis_max_w);
+        ui_draw_text_clipped(renderer, plus_x, plus_y, "+30", text, 1.0f, y_axis_max_w);
+        ui_draw_text_clipped(renderer, minus_x, minus_y, "-30", text, 1.0f, y_axis_max_w);
+    }
 }
 
-static void compute_selector_rects(const SDL_Rect* panel, SDL_Rect* master, SDL_Rect* track) {
+void effects_panel_eq_detail_compute_selector_rects(const SDL_Rect* panel, SDL_Rect* master, SDL_Rect* track) {
     if (!panel || !master || !track) {
         return;
     }
-    int x = panel->x + panel->w - EQ_DETAIL_SELECTOR_W - EQ_DETAIL_SELECTOR_PAD;
-    int y = panel->y + EQ_DETAIL_SELECTOR_PAD - 4;
-    *master = (SDL_Rect){x, y, EQ_DETAIL_SELECTOR_W / 2 - 2, EQ_DETAIL_SELECTOR_H};
-    *track = (SDL_Rect){x + EQ_DETAIL_SELECTOR_W / 2 + 2, y, EQ_DETAIL_SELECTOR_W / 2 - 2, EQ_DETAIL_SELECTOR_H};
+    int selector_h = eq_selector_height();
+    int gap = 4;
+    int master_w = max_int(EQ_DETAIL_SELECTOR_W / 2 - 2, ui_measure_text_width("Master", 1.0f) + 12);
+    int track_w = max_int(EQ_DETAIL_SELECTOR_W / 2 - 2, ui_measure_text_width("Track", 1.0f) + 12);
+    int total_w = master_w + gap + track_w;
+    int x = panel->x + panel->w - total_w - EQ_DETAIL_SELECTOR_PAD;
+    int y = panel->y + eq_selector_top_offset();
+    int min_x = panel->x + EQ_DETAIL_SELECTOR_PAD;
+    if (x < min_x) {
+        x = min_x;
+    }
+    *master = (SDL_Rect){x, y, master_w, selector_h};
+    *track = (SDL_Rect){x + master_w + gap, y, track_w, selector_h};
 }
 
 static float clampf(float v, float lo, float hi) {
@@ -139,12 +227,28 @@ static float clampf(float v, float lo, float hi) {
     return v;
 }
 
-static SDL_Rect build_graph_rect(const SDL_Rect* panel, int pad) {
+SDL_Rect effects_panel_eq_detail_compute_graph_rect(const SDL_Rect* panel) {
+    if (!panel) {
+        return (SDL_Rect){0, 0, 0, 0};
+    }
+    SDL_Rect low = {0, 0, 0, 0};
+    SDL_Rect mids[4];
+    SDL_Rect high = {0, 0, 0, 0};
+    SDL_Rect master = {0, 0, 0, 0};
+    SDL_Rect track = {0, 0, 0, 0};
+    effects_panel_eq_detail_compute_toggle_rects(panel, &low, mids, &high);
+    effects_panel_eq_detail_compute_selector_rects(panel, &master, &track);
+
+    int controls_bottom = max_int(high.y + high.h, max_int(master.y + master.h, track.y + track.h));
+    int top_gap = max_int(8, ui_font_line_height(1.0f) / 2 + 2);
+    int left_pad = max_int(28, ui_measure_text_width("+30", 1.0f) + 16);
+    int right_pad = max_int(14, ui_measure_text_width("20k", 1.1f) + 8);
+    int bottom_pad = max_int(16, ui_font_line_height(1.0f) + 10);
     SDL_Rect graph = *panel;
-    graph.x += pad;
-    graph.y += pad + 6;
-    graph.w -= pad * 2;
-    graph.h -= pad * 2 + 18;
+    graph.x += left_pad;
+    graph.y = controls_bottom + top_gap;
+    graph.w = panel->w - left_pad - right_pad;
+    graph.h = (panel->y + panel->h) - graph.y - bottom_pad;
     return graph;
 }
 
@@ -204,7 +308,7 @@ static void draw_band_toggles(SDL_Renderer* renderer,
     SDL_Rect low_rect;
     SDL_Rect mid_rects[4];
     SDL_Rect high_rect;
-    compute_toggle_rects(panel, &low_rect, mid_rects, &high_rect);
+    effects_panel_eq_detail_compute_toggle_rects(panel, &low_rect, mid_rects, &high_rect);
 
     SDL_SetRenderDrawColor(renderer,
                            curve->hover_toggle_low ? btn_hover.r : (curve->low_cut.enabled ? btn_on.r : btn_off.r),
@@ -214,7 +318,7 @@ static void draw_band_toggles(SDL_Renderer* renderer,
     SDL_RenderFillRect(renderer, &low_rect);
     SDL_SetRenderDrawColor(renderer, btn_border.r, btn_border.g, btn_border.b, btn_border.a);
     SDL_RenderDrawRect(renderer, &low_rect);
-    ui_draw_text(renderer, low_rect.x + 4, low_rect.y + 2, "L", label, 1.0f);
+    draw_centered_label(renderer, &low_rect, "L", label, 1.0f);
 
     for (int i = 0; i < 4; ++i) {
         bool enabled = curve->bands[i].enabled;
@@ -229,7 +333,7 @@ static void draw_band_toggles(SDL_Renderer* renderer,
         char label_text[2];
         label_text[0] = (char)('1' + i);
         label_text[1] = '\0';
-        ui_draw_text(renderer, mid_rects[i].x + 4, mid_rects[i].y + 2, label_text, label, 1.0f);
+        draw_centered_label(renderer, &mid_rects[i], label_text, label, 1.0f);
     }
 
     SDL_SetRenderDrawColor(renderer,
@@ -240,7 +344,7 @@ static void draw_band_toggles(SDL_Renderer* renderer,
     SDL_RenderFillRect(renderer, &high_rect);
     SDL_SetRenderDrawColor(renderer, btn_border.r, btn_border.g, btn_border.b, btn_border.a);
     SDL_RenderDrawRect(renderer, &high_rect);
-    ui_draw_text(renderer, high_rect.x + 4, high_rect.y + 2, "H", label, 1.0f);
+    draw_centered_label(renderer, &high_rect, "H", label, 1.0f);
 }
 
 static void draw_mode_buttons(SDL_Renderer* renderer,
@@ -255,7 +359,7 @@ static void draw_mode_buttons(SDL_Renderer* renderer,
                               SDL_Color btn_disabled) {
     SDL_Rect master_rect;
     SDL_Rect track_rect;
-    compute_selector_rects(panel, &master_rect, &track_rect);
+    effects_panel_eq_detail_compute_selector_rects(panel, &master_rect, &track_rect);
 
     SDL_SetRenderDrawColor(renderer,
                            eq_state->view_mode == EQ_DETAIL_VIEW_MASTER ? btn_on.r : btn_off.r,
@@ -276,9 +380,9 @@ static void draw_mode_buttons(SDL_Renderer* renderer,
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &master_rect);
     SDL_RenderDrawRect(renderer, &track_rect);
-    ui_draw_text(renderer, master_rect.x + 6, master_rect.y + 2, "Master", label, 1.0f);
+    draw_centered_label(renderer, &master_rect, "Master", label, 1.0f);
     SDL_Color track_label = track_available ? label : text_dim;
-    ui_draw_text(renderer, track_rect.x + 8, track_rect.y + 2, "Track", track_label, 1.0f);
+    draw_centered_label(renderer, &track_rect, "Track", track_label, 1.0f);
 }
 
 static int fetch_spectrum_bins(const AppState* state,
@@ -513,15 +617,14 @@ void effects_panel_eq_detail_render(SDL_Renderer* renderer,
     SDL_Rect panel = layout->detail_rect;
     draw_panel_background(renderer, &panel, theme.fill, theme.border);
 
-    int pad = 18;
-    SDL_Rect graph = build_graph_rect(&panel, pad);
+    SDL_Rect graph = effects_panel_eq_detail_compute_graph_rect(&panel);
     if (graph.w < 4 || graph.h < 4) {
         return;
     }
 
     draw_graph_background(renderer, &graph, theme.graph_bg, theme.border);
     draw_graph_grid(renderer, &graph, theme.graph_zero, theme.graph_grid);
-    draw_eq_axes(renderer, &graph, theme.text_dim);
+    draw_eq_axes(renderer, &panel, &graph, theme.text_dim);
 
     EffectsPanelEqDetailState* eq_state = &((AppState*)state)->effects_panel.eq_detail;
     EqCurveState* curve = &((AppState*)state)->effects_panel.eq_curve;

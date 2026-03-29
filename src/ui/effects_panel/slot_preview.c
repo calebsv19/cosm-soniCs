@@ -1713,7 +1713,10 @@ static void effects_slot_preview_draw_toggle(SDL_Renderer* renderer,
     SDL_RenderDrawRect(renderer, rect);
     const char* label = open ? "Hide Preview" : "Show Preview";
     int text_y = rect->y + (rect->h - ui_font_line_height(1.0f)) / 2;
-    ui_draw_text(renderer, rect->x + 6, text_y, label, label_color, 1.0f);
+    int max_w = rect->w - 12;
+    if (max_w > 0) {
+        ui_draw_text_clipped(renderer, rect->x + 6, text_y, label, label_color, 1.0f, max_w);
+    }
 }
 
 // effects_slot_preview_render draws the preview panel and toggle for a slot.
@@ -1808,12 +1811,16 @@ void effects_slot_preview_render(SDL_Renderer* renderer,
         }
         SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
         SDL_RenderDrawRect(renderer, preview_rect);
-        ui_draw_text(renderer,
-                     preview_rect->x + 6,
-                     preview_rect->y + 2,
-                     "Preview (collapsed)",
-                     text_dim,
-                     0.9f);
+        int collapsed_max_w = preview_rect->w - 12;
+        if (collapsed_max_w > 0) {
+            ui_draw_text_clipped(renderer,
+                                 preview_rect->x + 6,
+                                 preview_rect->y + 2,
+                                 "Preview (collapsed)",
+                                 text_dim,
+                                 0.9f,
+                                 collapsed_max_w);
+        }
     }
 
     effects_slot_preview_draw_toggle(renderer, toggle_rect, preview->open, label_color);

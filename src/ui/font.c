@@ -28,6 +28,8 @@ static FontCacheEntry g_cache[12];
 static int g_cache_count = 0;
 static TextCacheEntry g_text_cache[128];
 static uint32_t g_text_cache_stamp = 0;
+static SDL_Renderer* g_text_cache_renderer = NULL;
+static bool g_text_cache_clear_pending = false;
 
 static void clear_cache(void) {
     for (int i = 0; i < g_cache_count; ++i) {
@@ -100,18 +102,32 @@ bool ui_font_set(const char* path, int base_point_size) {
         g_base_point_size = base_point_size;
     }
     clear_cache();
-    text_cache_clear(NULL);
+    if (g_text_cache_renderer) {
+        text_cache_clear(g_text_cache_renderer);
+        g_text_cache_clear_pending = false;
+    } else {
+        g_text_cache_clear_pending = true;
+    }
     return true;
 }
 
 void ui_font_shutdown(void) {
     clear_cache();
-    text_cache_clear(NULL);
+    if (g_text_cache_renderer) {
+        text_cache_clear(g_text_cache_renderer);
+        g_text_cache_clear_pending = false;
+    } else {
+        g_text_cache_clear_pending = true;
+    }
 }
 
 // ui_font_invalidate_cache drops cached text textures tied to the current renderer.
 void ui_font_invalidate_cache(SDL_Renderer* renderer) {
+    if (renderer) {
+        g_text_cache_renderer = renderer;
+    }
     text_cache_clear(renderer);
+    g_text_cache_clear_pending = false;
 }
 
 static TTF_Font* get_font_for_scale(float scale) {
@@ -165,6 +181,11 @@ static bool render_text(SDL_Renderer* renderer,
 void ui_draw_text(SDL_Renderer* renderer, int x, int y, const char* text, SDL_Color color, float scale) {
     if (!renderer || !text) {
         return;
+    }
+    g_text_cache_renderer = renderer;
+    if (g_text_cache_clear_pending) {
+        text_cache_clear(renderer);
+        g_text_cache_clear_pending = false;
     }
     TTF_Font* font = get_font_for_scale(scale);
     if (!font) {
@@ -238,6 +259,11 @@ void ui_draw_text_clipped(SDL_Renderer* renderer,
                           int max_width) {
     if (!renderer || !text || max_width <= 0) {
         return;
+    }
+    g_text_cache_renderer = renderer;
+    if (g_text_cache_clear_pending) {
+        text_cache_clear(renderer);
+        g_text_cache_clear_pending = false;
     }
     TTF_Font* font = get_font_for_scale(scale);
     if (!font) {

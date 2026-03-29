@@ -18,6 +18,137 @@
 #include <string.h>
 #include <time.h>
 
+enum {
+    UI_PANE_TITLE_PAD_X = 12,
+    UI_PANE_TITLE_PAD_TOP = 12,
+    UI_PANE_TITLE_PAD_BOTTOM = 8
+};
+
+int ui_layout_pane_header_height(const Pane* pane) {
+    int line_h;
+    if (!pane || !pane->drawTitle || !pane->title || !pane->title[0]) {
+        return 0;
+    }
+    line_h = ui_font_line_height(1.0f);
+    if (line_h < 0) {
+        line_h = 0;
+    }
+    return UI_PANE_TITLE_PAD_TOP + line_h + UI_PANE_TITLE_PAD_BOTTOM;
+}
+
+SDL_Rect ui_layout_pane_content_rect(const Pane* pane) {
+    SDL_Rect content = {0, 0, 0, 0};
+    int header_h;
+    if (!pane) {
+        return content;
+    }
+    content = pane->rect;
+    header_h = ui_layout_pane_header_height(pane);
+    if (header_h > content.h) {
+        header_h = content.h;
+    }
+    content.y += header_h;
+    content.h -= header_h;
+    return content;
+}
+
+static bool layout_rect_has_positive_size(const SDL_Rect* rect) {
+    return rect && rect->w > 0 && rect->h > 0;
+}
+
+static bool layout_rect_contains_rect(const SDL_Rect* outer, const SDL_Rect* inner) {
+    if (!outer || !inner) {
+        return false;
+    }
+    return inner->x >= outer->x &&
+           inner->y >= outer->y &&
+           inner->x + inner->w <= outer->x + outer->w &&
+           inner->y + inner->h <= outer->y + outer->h;
+}
+
+static bool layout_rects_overlap_strict(const SDL_Rect* a, const SDL_Rect* b) {
+    if (!layout_rect_has_positive_size(a) || !layout_rect_has_positive_size(b)) {
+        return false;
+    }
+    return a->x < b->x + b->w &&
+           a->x + a->w > b->x &&
+           a->y < b->y + b->h &&
+           a->y + a->h > b->y;
+}
+
+bool ui_layout_debug_validate(const AppState* state) {
+    if (!state) {
+        return false;
+    }
+
+    bool ok = true;
+    SDL_Rect window_rect = {0, 0, state->window_width, state->window_height};
+    const Pane* transport_pane = ui_layout_get_pane(state, 0);
+    const Pane* library_pane = ui_layout_get_pane(state, 3);
+
+    for (int i = 0; i < state->pane_count; ++i) {
+        const Pane* pane = &state->panes[i];
+        if (!pane->visible) {
+            continue;
+        }
+        if (!layout_rect_has_positive_size(&pane->rect)) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ui_layout_debug_validate: pane %d has invalid size", i);
+            ok = false;
+            continue;
+        }
+        if (!layout_rect_contains_rect(&window_rect, &pane->rect)) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ui_layout_debug_validate: pane %d outside window bounds", i);
+            ok = false;
+        }
+    }
+
+    if (transport_pane) {
+        const TransportUI* ui = &state->transport_ui;
+        const SDL_Rect* control_rects[] = {
+            &ui->load_rect,
+            &ui->save_rect,
+            &ui->play_rect,
+            &ui->stop_rect,
+            &ui->grid_rect,
+            &ui->time_label_rect,
+            &ui->bpm_rect,
+            &ui->ts_rect,
+            &ui->seek_track_rect,
+            &ui->window_track_rect,
+            &ui->horiz_track_rect,
+            &ui->vert_track_rect,
+            &ui->fit_width_rect,
+            &ui->fit_height_rect
+        };
+        for (size_t i = 0; i < sizeof(control_rects) / sizeof(control_rects[0]); ++i) {
+            const SDL_Rect* rect = control_rects[i];
+            if (!layout_rect_has_positive_size(rect)) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ui_layout_debug_validate: transport control %zu invalid", i);
+                ok = false;
+                continue;
+            }
+            if (!layout_rect_contains_rect(&transport_pane->rect, rect)) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ui_layout_debug_validate: transport control %zu outside pane", i);
+                ok = false;
+            }
+        }
+        if (layout_rects_overlap_strict(&ui->fit_width_rect, &ui->fit_height_rect)) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ui_layout_debug_validate: transport fit buttons overlap");
+            ok = false;
+        }
+    }
+
+    if (library_pane) {
+        SDL_Rect content_rect = ui_layout_pane_content_rect(library_pane);
+        if (!layout_rect_contains_rect(&library_pane->rect, &content_rect)) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ui_layout_debug_validate: library content outside pane");
+            ok = false;
+        }
+    }
+
+    return ok;
+}
+
 static void render_single_pane(SDL_Renderer* renderer, const Pane* pane) {
     DawThemePalette theme_palette = {0};
     const bool use_shared_theme = daw_shared_theme_resolve_palette(&theme_palette);
@@ -46,9 +177,23 @@ static void render_single_pane(SDL_Renderer* renderer, const Pane* pane) {
     SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
     SDL_RenderFillRect(renderer, &pane->rect);
 
-    if (pane->drawTitle){
-	    SDL_Color title_color = daw_shared_theme_title_color();
-	    ui_draw_text(renderer, pane->rect.x + 12, pane->rect.y + 12, pane->title, title_color, 1);
+    if (pane->drawTitle && pane->title && pane->title[0]) {
+        SDL_Color title_color = daw_shared_theme_title_color();
+        SDL_Rect content_rect = ui_layout_pane_content_rect(pane);
+        ui_draw_text(renderer,
+                     pane->rect.x + UI_PANE_TITLE_PAD_X,
+                     pane->rect.y + UI_PANE_TITLE_PAD_TOP,
+                     pane->title,
+                     title_color,
+                     1.0f);
+        if (content_rect.h > 0) {
+            SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+            SDL_RenderDrawLine(renderer,
+                               pane->rect.x,
+                               content_rect.y,
+                               pane->rect.x + pane->rect.w,
+                               content_rect.y);
+        }
     }
 
     if (pane->highlighted) {
@@ -337,6 +482,11 @@ void ui_layout_panes(AppState* state, int width, int height) {
     runtime->mixer_ratio = content_height_actual > 0 ? (float)mixer_height / (float)content_height_actual : 0.0f;
 
     ui_layout_update_zones(state);
+#if !defined(NDEBUG)
+    if (!ui_layout_debug_validate(state)) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "ui_layout_panes: layout debug validation failed");
+    }
+#endif
 }
 
 bool ui_ensure_layout(AppState* state, SDL_Window* window, SDL_Renderer* renderer) {
@@ -378,7 +528,8 @@ void ui_render_panes(SDL_Renderer* renderer, const AppState* state) {
     }
     const Pane* library = ui_layout_get_pane(state, 3);
     if (library) {
-        library_browser_render(&state->library, renderer, &library->rect, 16);
+        SDL_Rect content_rect = ui_layout_pane_content_rect(library);
+        library_browser_render(&state->library, renderer, &content_rect);
     }
     render_layout_grid(renderer, state);
 }
@@ -930,7 +1081,7 @@ void ui_layout_handle_hover(AppState* state, int mouse_x, int mouse_y) {
         state->library.hovered_index = -1;
         return;
     }
-    int line_height = 16;
-    int hit = library_browser_hit_test(&state->library, &library->rect, mouse_x, mouse_y, line_height);
+    SDL_Rect content_rect = ui_layout_pane_content_rect(library);
+    int hit = library_browser_hit_test(&state->library, &content_rect, mouse_x, mouse_y);
     state->library.hovered_index = hit;
 }

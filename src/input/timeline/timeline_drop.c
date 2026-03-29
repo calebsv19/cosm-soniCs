@@ -159,7 +159,7 @@ void timeline_drop_update_hint(AppState* state) {
     if (tracks && sample_rate > 0) {
         int track_height = geom.track_height;
         int track_spacing = geom.track_spacing;
-        int track_top = timeline->rect.y + TIMELINE_CONTROLS_HEIGHT + TIMELINE_RULER_HEIGHT;
+        int track_top = geom.track_top;
         int lane_height = track_height + track_spacing;
         int last_lane_bottom = track_top + track_count * lane_height;
         if (track_count == 0) {

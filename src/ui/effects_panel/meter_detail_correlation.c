@@ -7,6 +7,11 @@
 #include "ui/shared_theme_font_adapter.h"
 
 #include <math.h>
+#include <stdio.h>
+
+static int max_int(int a, int b) {
+    return (a > b) ? a : b;
+}
 
 static void resolve_corr_theme(SDL_Color* fill,
                                SDL_Color* border,
@@ -104,11 +109,16 @@ void effects_meter_render_correlation(SDL_Renderer* renderer,
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, rect);
 
-    const int pad = 16;
-    const int label_w = 22;
-    const int meter_w = 12;
-    const int history_gap = 0;
-    int header_h = 36;
+    const int body_h = ui_font_line_height(1.0f);
+    const int title_h = ui_font_line_height(1.2f);
+    const int pad = max_int(12, body_h / 2 + 8);
+    const int label_w = max_int(22, ui_measure_text_width("-1", 1.0f) + 8);
+    const int meter_w = max_int(10, body_h / 2);
+    const int history_gap = max_int(0, body_h / 5);
+    const int header_text_w = rect->w - pad * 2;
+    const int title_y = rect->y + max_int(4, pad / 3);
+    const int value_y = title_y + title_h + max_int(4, body_h / 3);
+    int header_h = (value_y - (rect->y + pad)) + body_h + max_int(8, body_h / 2);
     if (header_h > rect->h - pad * 2) {
         header_h = rect->h - pad * 2;
     }
@@ -124,8 +134,17 @@ void effects_meter_render_correlation(SDL_Renderer* renderer,
     if (history_rect.w < 0) {
         history_rect.w = 0;
     }
+    if (meter_rect.h <= 0 || meter_rect.w <= 0) {
+        return;
+    }
 
-    ui_draw_text(renderer, rect->x + pad, rect->y + 6, "Correlation", label_color, 1.2f);
+    ui_draw_text_clipped(renderer,
+                         rect->x + pad,
+                         title_y,
+                         "Correlation",
+                         label_color,
+                         1.2f,
+                         header_text_w);
 
     SDL_SetRenderDrawColor(renderer, history_bg.r, history_bg.g, history_bg.b, history_bg.a);
     SDL_RenderFillRect(renderer, &history_rect);
@@ -150,14 +169,17 @@ void effects_meter_render_correlation(SDL_Renderer* renderer,
     if (valid) {
         char buf[64];
         snprintf(buf, sizeof(buf), "%.2f", corr);
-        ui_draw_text(renderer, rect->x + pad, rect->y + 22, buf, label_color, 1.0f);
+        ui_draw_text_clipped(renderer, rect->x + pad, value_y, buf, label_color, 1.0f, header_text_w);
     } else {
-        ui_draw_text(renderer, rect->x + pad, rect->y + 22, "No data", dim_color, 1.0f);
+        ui_draw_text_clipped(renderer, rect->x + pad, value_y, "No data", dim_color, 1.0f, header_text_w);
     }
 
-    ui_draw_text(renderer, rect->x + pad, meter_rect.y - 6, "+1", dim_color, 1.0f);
-    ui_draw_text(renderer, rect->x + pad, meter_rect.y + meter_rect.h / 2 - 6, "0", dim_color, 1.0f);
-    ui_draw_text(renderer, rect->x + pad, meter_rect.y + meter_rect.h - 10, "-1", dim_color, 1.0f);
+    int top_label_y = meter_rect.y;
+    int mid_label_y = meter_rect.y + (meter_rect.h - body_h) / 2;
+    int bot_label_y = meter_rect.y + meter_rect.h - body_h;
+    ui_draw_text_clipped(renderer, rect->x + pad, top_label_y, "+1", dim_color, 1.0f, label_w);
+    ui_draw_text_clipped(renderer, rect->x + pad, mid_label_y, "0", dim_color, 1.0f, label_w);
+    ui_draw_text_clipped(renderer, rect->x + pad, bot_label_y, "-1", dim_color, 1.0f, label_w);
 
     if (history_rect.w > 0 && history && history->corr_count > 1) {
         ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);

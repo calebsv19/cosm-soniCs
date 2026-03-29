@@ -48,6 +48,15 @@ static int track_name_cursor_from_x(const char* text, float scale, int start_x, 
     return cursor;
 }
 
+static SDL_Rect timeline_lane_clip_rect(const TimelineGeometry* geom, int lane_top, int clip_x, int clip_w) {
+    SDL_Rect rect = {0, 0, 0, 0};
+    if (!geom) {
+        return rect;
+    }
+    timeline_view_compute_lane_clip_rect(lane_top, geom->track_height, clip_x, clip_w, &rect);
+    return rect;
+}
+
 static bool clip_state_from_clip(const EngineClip* clip, int track_index, UndoClipState* out_state) {
     if (!clip || !out_state) {
         return false;
@@ -362,19 +371,19 @@ static int timeline_automation_hit_point(const EngineAutomationLane* lane,
 
 // Computes the tempo overlay rectangle anchored to the top track lane.
 static bool timeline_tempo_overlay_rect(const TimelineGeometry* geom, SDL_Rect* out_rect) {
+    SDL_Rect lane_rect = {0, 0, 0, 0};
     if (!geom || !out_rect || geom->content_width <= 0 || geom->track_height <= 0) {
         return false;
     }
-    int overlay_height = geom->track_height - 16;
-    if (overlay_height < 8) {
+    timeline_view_compute_lane_clip_rect(geom->track_top,
+                                         geom->track_height,
+                                         geom->content_left,
+                                         geom->content_width,
+                                         &lane_rect);
+    if (lane_rect.h < 8) {
         return false;
     }
-    *out_rect = (SDL_Rect){
-        geom->content_left,
-        geom->track_top + 8,
-        geom->content_width,
-        overlay_height
-    };
+    *out_rect = lane_rect;
     return true;
 }
 
@@ -826,9 +835,6 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
                     const EngineTrack* track = &tracks_all[t];
                     if (!track || track->clip_count <= 0) continue;
                     int lane_top = geom.track_top + t * (geom.track_height + geom.track_spacing);
-                    int clip_y = lane_top + 8;
-                    int clip_h = geom.track_height - 16;
-                    if (clip_h < 8) clip_h = geom.track_height;
                     for (int i = 0; i < track->clip_count; ++i) {
                         const EngineClip* clip = &track->clips[i];
                         if (!clip || !clip->sampler) continue;
@@ -840,7 +846,7 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
                         int clip_x = geom.content_left + (int)round(clip_offset * geom.pixels_per_second);
                         int clip_w = (int)round(clip_sec * geom.pixels_per_second);
                         if (clip_w < 4) clip_w = 4;
-                        SDL_Rect crect = {clip_x, clip_y, clip_w, clip_h};
+                        SDL_Rect crect = timeline_lane_clip_rect(&geom, lane_top, clip_x, clip_w);
                         if (SDL_HasIntersection(&rect, &crect)) {
                             timeline_selection_add(state, t, i);
                         }
@@ -989,30 +995,15 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
             continue;
         }
         int lane_top = geom.track_top + t * (geom.track_height + geom.track_spacing);
-        int clip_y = lane_top + 8;
-        int clip_h = geom.track_height - 16;
-        if (clip_h < 8) {
-            clip_h = geom.track_height;
-        }
 
-        SDL_Rect header_rect = {
-            timeline->rect.x + 8,
-            lane_top + 4,
-            TIMELINE_TRACK_HEADER_WIDTH - 16,
-            geom.track_height - 8
-        };
-
-        int button_w = 18;
-        int button_h = 16;
-        int button_spacing = 4;
-        int buttons_total = button_w * 2 + button_spacing;
-        int buttons_x = header_rect.x + header_rect.w - buttons_total - 8;
-        if (buttons_x < header_rect.x + 36) {
-            buttons_x = header_rect.x + 36;
-        }
-        int button_y = header_rect.y + header_rect.h - button_h - 4;
-        SDL_Rect mute_rect = {buttons_x, button_y, button_w, button_h};
-        SDL_Rect solo_rect = {buttons_x + button_w + button_spacing, button_y, button_w, button_h};
+        TimelineTrackHeaderLayout header_layout = {0};
+        timeline_view_compute_track_header_layout(&timeline->rect,
+                                                  lane_top,
+                                                  geom.track_height,
+                                                  geom.header_width,
+                                                  &header_layout);
+        SDL_Rect mute_rect = header_layout.mute_rect;
+        SDL_Rect solo_rect = header_layout.solo_rect;
 
         if (!was_down && is_down) {
             if (SDL_PointInRect(&mouse_point, &mute_rect)) {
@@ -1045,12 +1036,7 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
                 clip_w = 4;
             }
 
-            SDL_Rect rect = {
-                clip_x,
-                clip_y,
-                clip_w,
-                clip_h,
-            };
+            SDL_Rect rect = timeline_lane_clip_rect(&geom, lane_top, clip_x, clip_w);
 
             if (SDL_PointInRect(&mouse_point, &rect)) {
                 hit_track = t;
@@ -1110,10 +1096,7 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
                         int clip_w = (int)round(clip_sec * geom.pixels_per_second);
                         if (clip_w < 4) clip_w = 4;
                         int lane_top = geom.track_top + track_index * (geom.track_height + geom.track_spacing);
-                        int clip_y = lane_top + 8;
-                        int clip_h = geom.track_height - 16;
-                        if (clip_h < 8) clip_h = geom.track_height;
-                        SDL_Rect clip_rect = {clip_x, clip_y, clip_w, clip_h};
+                        SDL_Rect clip_rect = timeline_lane_clip_rect(&geom, lane_top, clip_x, clip_w);
 
                         float seconds = timeline_x_to_seconds(&geom, state->mouse_x);
                         seconds = timeline_snap_seconds_to_grid(state, seconds, geom.visible_seconds);
@@ -1178,10 +1161,7 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
                 int clip_w = (int)round(clip_sec * geom.pixels_per_second);
                 if (clip_w < 4) clip_w = 4;
                 int lane_top = geom.track_top + hit_track * (geom.track_height + geom.track_spacing);
-                int clip_y = lane_top + 8;
-                int clip_h = geom.track_height - 16;
-                if (clip_h < 8) clip_h = geom.track_height;
-                SDL_Rect clip_rect = {clip_x, clip_y, clip_w, clip_h};
+                SDL_Rect clip_rect = timeline_lane_clip_rect(&geom, lane_top, clip_x, clip_w);
 
                 automation_begin_edit(state, hit_track, hit_clip);
                 const EngineAutomationLane* lane = NULL;
@@ -1233,26 +1213,21 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
         }
         for (int t = 0; t < track_count; ++t) {
             int lane_top = geom.track_top + t * (geom.track_height + geom.track_spacing);
-            SDL_Rect header_rect = {
-                timeline->rect.x + 8,
-                lane_top + 4,
-                geom.header_width - 16,
-                geom.track_height - 8
-            };
+            TimelineTrackHeaderLayout header_layout = {0};
+            timeline_view_compute_track_header_layout(&timeline->rect,
+                                                      lane_top,
+                                                      geom.track_height,
+                                                      geom.header_width,
+                                                      &header_layout);
+            SDL_Rect header_rect = header_layout.header_rect;
             if (SDL_PointInRect(&mouse_point, &header_rect)) {
                 TrackNameEditor* editor = &state->track_name_editor;
                 if (editor->editing && editor->track_index == t) {
-                    int button_w = 18;
-                    int button_spacing = 4;
-                    int buttons_total = button_w * 2 + button_spacing;
-                    int buttons_x = header_rect.x + header_rect.w - buttons_total - 8;
-                    if (buttons_x < header_rect.x + 36) {
-                        buttons_x = header_rect.x + 36;
-                    }
-                    int text_x = header_rect.x + 6;
-                    int text_max_x = buttons_x - 4;
-                    if (text_max_x < text_x) text_max_x = text_x;
-                    editor->cursor = track_name_cursor_from_x(editor->buffer, 1.0f, text_x, text_max_x, mouse_point.x);
+                    editor->cursor = track_name_cursor_from_x(editor->buffer,
+                                                              1.0f,
+                                                              header_layout.text_x,
+                                                              header_layout.text_max_x,
+                                                              mouse_point.x);
                     return;
                 }
 
@@ -1284,17 +1259,11 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
                     track_name_editor_start(state, t);
                     TrackNameEditor* editor = &state->track_name_editor;
                     if (editor->editing) {
-                        int button_w = 18;
-                        int button_spacing = 4;
-                        int buttons_total = button_w * 2 + button_spacing;
-                        int buttons_x = header_rect.x + header_rect.w - buttons_total - 8;
-                        if (buttons_x < header_rect.x + 36) {
-                            buttons_x = header_rect.x + 36;
-                        }
-                        int text_x = header_rect.x + 6;
-                        int text_max_x = buttons_x - 4;
-                        if (text_max_x < text_x) text_max_x = text_x;
-                        editor->cursor = track_name_cursor_from_x(editor->buffer, 1.0f, text_x, text_max_x, mouse_point.x);
+                        editor->cursor = track_name_cursor_from_x(editor->buffer,
+                                                                  1.0f,
+                                                                  header_layout.text_x,
+                                                                  header_layout.text_max_x,
+                                                                  mouse_point.x);
                     }
                 }
                 return;

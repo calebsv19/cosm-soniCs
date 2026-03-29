@@ -11,7 +11,10 @@
 
 static bool g_theme_runtime_initialized = false;
 static CoreThemePresetId g_theme_runtime_preset = CORE_THEME_PRESET_DAW_DEFAULT;
+static bool g_font_zoom_runtime_initialized = false;
+static int g_font_zoom_step = 0;
 static const char* k_theme_persist_path = "config/theme_preset.txt";
+static const char* k_font_zoom_persist_path = "config/font_zoom_step.txt";
 static const CoreThemePresetId k_theme_cycle_order[] = {
     CORE_THEME_PRESET_DAW_DEFAULT,
     CORE_THEME_PRESET_MAP_FORGE_DEFAULT,
@@ -20,6 +23,43 @@ static const CoreThemePresetId k_theme_cycle_order[] = {
     CORE_THEME_PRESET_IDE_GRAY,
     CORE_THEME_PRESET_GREYSCALE
 };
+enum {
+    DAW_FONT_ZOOM_STEP_MIN = -4,
+    DAW_FONT_ZOOM_STEP_MAX = 5
+};
+
+static int clamp_int(int value, int min_value, int max_value) {
+    if (value < min_value) {
+        return min_value;
+    }
+    if (value > max_value) {
+        return max_value;
+    }
+    return value;
+}
+
+static void font_zoom_runtime_init_if_needed(void) {
+    char* end = NULL;
+    long parsed = 0;
+    const char* env = NULL;
+    if (g_font_zoom_runtime_initialized) {
+        return;
+    }
+    env = getenv("DAW_FONT_ZOOM_STEP");
+    if (env && env[0]) {
+        parsed = strtol(env, &end, 10);
+        if (end != env) {
+            g_font_zoom_step = clamp_int((int)parsed, DAW_FONT_ZOOM_STEP_MIN, DAW_FONT_ZOOM_STEP_MAX);
+        }
+    }
+    g_font_zoom_runtime_initialized = true;
+}
+
+static int font_zoom_step_percent(void) {
+    int step = daw_shared_font_zoom_step();
+    int pct = 100 + (step * 10);
+    return clamp_int(pct, 60, 180);
+}
 
 static bool parse_bool_env(const char* value, bool* out_value) {
     char lowered[16];
@@ -315,6 +355,76 @@ bool daw_shared_theme_cycle_prev(void) {
     return true;
 }
 
+int daw_shared_font_zoom_step(void) {
+    font_zoom_runtime_init_if_needed();
+    return g_font_zoom_step;
+}
+
+bool daw_shared_font_set_zoom_step(int step) {
+    int clamped = clamp_int(step, DAW_FONT_ZOOM_STEP_MIN, DAW_FONT_ZOOM_STEP_MAX);
+    font_zoom_runtime_init_if_needed();
+    if (clamped == g_font_zoom_step) {
+        return false;
+    }
+    g_font_zoom_step = clamped;
+    return true;
+}
+
+bool daw_shared_font_step_by(int delta) {
+    return daw_shared_font_set_zoom_step(daw_shared_font_zoom_step() + delta);
+}
+
+bool daw_shared_font_reset_zoom_step(void) {
+    return daw_shared_font_set_zoom_step(0);
+}
+
+bool daw_shared_font_zoom_load_persisted(void) {
+    FILE* file;
+    char value[32];
+    char* end = NULL;
+    long parsed = 0;
+    if (!stat_path_exists(k_font_zoom_persist_path, NULL)) {
+        return false;
+    }
+    file = fopen(k_font_zoom_persist_path, "rb");
+    if (!file) {
+        return false;
+    }
+    value[0] = '\0';
+    if (!fgets(value, (int)sizeof(value), file)) {
+        fclose(file);
+        return false;
+    }
+    fclose(file);
+    trim_trailing_whitespace(value);
+    if (!value[0]) {
+        return false;
+    }
+    parsed = strtol(value, &end, 10);
+    if (end == value) {
+        return false;
+    }
+    (void)daw_shared_font_set_zoom_step((int)parsed);
+    return true;
+}
+
+bool daw_shared_font_zoom_save_persisted(void) {
+    FILE* file;
+    int zoom_step = daw_shared_font_zoom_step();
+    file = fopen(k_font_zoom_persist_path, "wb");
+    if (!file) {
+        return false;
+    }
+    if (fprintf(file, "%d\n", zoom_step) < 0) {
+        fclose(file);
+        return false;
+    }
+    if (fclose(file) != 0) {
+        return false;
+    }
+    return true;
+}
+
 bool daw_shared_font_resolve_ui_regular(char* out_path, size_t out_path_size, int* out_point_size) {
     const char* preset_name;
     CoreFontPreset preset = {0};
@@ -358,6 +468,14 @@ bool daw_shared_font_resolve_ui_regular(char* out_path, size_t out_path_size, in
         *out_point_size = tier_size;
     } else {
         *out_point_size = role.point_size > 0 ? role.point_size : 9;
+    }
+    {
+        int percent = font_zoom_step_percent();
+        int scaled = ((*out_point_size * percent) + 50) / 100;
+        if (scaled < 6) {
+            scaled = 6;
+        }
+        *out_point_size = scaled;
     }
     return true;
 }

@@ -100,12 +100,35 @@ void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
     }
     ui->panel_rect = *container;
 
-    const int button_width = 56;
-    const int button_height = 20;
+    const float button_scale = 1.0f;
+    const int button_pad_x = 10;
+    const int button_pad_y = 4;
+    const int text_h = ui_font_line_height(button_scale);
+    int button_width = ui_measure_text_width("LOAD", button_scale);
+    int measured = ui_measure_text_width("SAVE", button_scale);
+    if (measured > button_width) button_width = measured;
+    measured = ui_measure_text_width("PLAY", button_scale);
+    if (measured > button_width) button_width = measured;
+    measured = ui_measure_text_width("STOP", button_scale);
+    if (measured > button_width) button_width = measured;
+    button_width += button_pad_x * 2;
+    if (button_width < 56) {
+        button_width = 56;
+    }
+    int button_height = text_h + button_pad_y * 2;
+    if (button_height < 20) {
+        button_height = 20;
+    }
     const int padding = 10;
     const int button_v_gap = 3;
-    const int label_width = 108;
-    const int bpm_height = 18;
+    int label_width = ui_measure_text_width("000:00.000", button_scale) + 20;
+    if (label_width < 108) {
+        label_width = 108;
+    }
+    int bpm_height = text_h + 6;
+    if (bpm_height < 18) {
+        bpm_height = 18;
+    }
     const int bpm_gap = 3;
     const int seek_height = 7;
     const int handle_width = 10;
@@ -121,7 +144,14 @@ void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
     ui->stop_rect = (SDL_Rect){x + button_width + padding, buttons_y + button_height + button_v_gap, button_width, button_height};
 
     const int group_spacing = padding * 2;
-    int grid_width = 80;
+    int grid_width = ui_measure_text_width("GRID:AUTO", button_scale) + button_pad_x * 2;
+    measured = ui_measure_text_width("GRID:ALL", button_scale) + button_pad_x * 2;
+    if (measured > grid_width) {
+        grid_width = measured;
+    }
+    if (grid_width < 80) {
+        grid_width = 80;
+    }
     int slider_width = 132;
     int slider_height = 7;
     int slider_y = container->y + (container->h - slider_height) / 2 - 6;
@@ -152,8 +182,23 @@ void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
     int grid_x = right_edge - grid_width;
     ui->grid_rect = (SDL_Rect){grid_x, container->y + (container->h - button_height) / 2, grid_width, button_height};
 
-    int fit_button_width = 18;
-    int fit_button_height = 14;
+    int fit_button_width = ui_measure_text_width("W", button_scale) + 8;
+    int fit_button_height = text_h + 4;
+    if (fit_button_width < 18) {
+        fit_button_width = 18;
+    }
+    if (fit_button_height < 14) {
+        fit_button_height = 14;
+    }
+    {
+        int max_fit_height = (container->h - 4) / 2;
+        if (max_fit_height < 1) {
+            max_fit_height = 1;
+        }
+        if (fit_button_height > max_fit_height) {
+            fit_button_height = max_fit_height;
+        }
+    }
     int fit_spacing = padding / 2;
 
     // Leave a little breathing room between sliders and the grid button.
@@ -213,8 +258,25 @@ void transport_ui_layout(TransportUI* ui, const SDL_Rect* container) {
     if (button_stack_x + fit_button_width > grid_x) {
         button_stack_x = grid_x - fit_button_width;
     }
-    ui->fit_width_rect = (SDL_Rect){button_stack_x, slider_y - 8, fit_button_width, fit_button_height};
-    ui->fit_height_rect = (SDL_Rect){button_stack_x, slider_y + 10, fit_button_width, fit_button_height};
+    {
+        int fit_gap = text_h / 4;
+        if (fit_gap < 2) {
+            fit_gap = 2;
+        }
+        int fit_stack_h = fit_button_height * 2 + fit_gap;
+        int fit_stack_y = container->y + (container->h - fit_stack_h) / 2;
+        if (fit_stack_y < container->y) {
+            fit_stack_y = container->y;
+        }
+        if (fit_stack_y + fit_stack_h > container->y + container->h) {
+            fit_stack_y = container->y + container->h - fit_stack_h;
+        }
+        ui->fit_width_rect = (SDL_Rect){button_stack_x, fit_stack_y, fit_button_width, fit_button_height};
+        ui->fit_height_rect = (SDL_Rect){button_stack_x,
+                                         fit_stack_y + fit_button_height + fit_gap,
+                                         fit_button_width,
+                                         fit_button_height};
+    }
 
     int vert_slider_y = slider_y + slider_row_gap;
     ui->vert_track_rect = (SDL_Rect){slider_x, vert_slider_y, slider_width, slider_height};
@@ -387,11 +449,14 @@ static void render_button(SDL_Renderer* renderer,
     SDL_RenderDrawRect(renderer, rect);
 
     const int scale = 1;
-    int text_width = ui_measure_text_width(label, scale);
+    int text_pad = 4;
     int text_height = ui_font_line_height(scale);
-    int text_x = rect->x + (rect->w - text_width) / 2;
     int text_y = rect->y + (rect->h - text_height) / 2;
-    ui_draw_text(renderer, text_x, text_y, label, text, scale);
+    int text_max_w = rect->w - text_pad * 2;
+    if (text_max_w < 1) {
+        text_max_w = 1;
+    }
+    ui_draw_text_clipped(renderer, rect->x + text_pad, text_y, label, text, (float)scale, text_max_w);
 }
 
 static void draw_time_with_decimal(SDL_Renderer* renderer, const SDL_Rect* rect, const char* text, SDL_Color color, int scale, float dot_ratio, int dot_index) {
@@ -680,10 +745,34 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         ui_draw_text(renderer, tx, ty, labels[i], theme.text_primary, scale);
     }
 
-    ui_draw_text(renderer, ui->seek_track_rect.x, ui->seek_track_rect.y - 12, "Playhead", label_zoom, 1);
-    ui_draw_text(renderer, ui->window_track_rect.x, ui->window_track_rect.y - 12, "Window", label_zoom, 1);
-    ui_draw_text(renderer, ui->horiz_track_rect.x, ui->horiz_track_rect.y - 12, "Timeline", label_zoom, 1);
-    ui_draw_text(renderer, ui->vert_track_rect.x, ui->vert_track_rect.y - 12, "Track Size", label_zoom, 1);
+    {
+        int label_h = ui_font_line_height(1.0f);
+        int label_gap = 2;
+        ui_draw_text(renderer,
+                     ui->seek_track_rect.x,
+                     ui->seek_track_rect.y - label_h - label_gap,
+                     "Playhead",
+                     label_zoom,
+                     1.0f);
+        ui_draw_text(renderer,
+                     ui->window_track_rect.x,
+                     ui->window_track_rect.y - label_h - label_gap,
+                     "Window",
+                     label_zoom,
+                     1.0f);
+        ui_draw_text(renderer,
+                     ui->horiz_track_rect.x,
+                     ui->horiz_track_rect.y - label_h - label_gap,
+                     "Timeline",
+                     label_zoom,
+                     1.0f);
+        ui_draw_text(renderer,
+                     ui->vert_track_rect.x,
+                     ui->vert_track_rect.y - label_h - label_gap,
+                     "Track Size",
+                     label_zoom,
+                     1.0f);
+    }
 }
 
 bool transport_ui_click_play(const TransportUI* ui, int mouse_x, int mouse_y) {

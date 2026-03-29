@@ -7,6 +7,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int max_int(int a, int b) {
+    return (a > b) ? a : b;
+}
+
 static void resolve_grid_theme(DawThemePalette* palette) {
     if (!palette) {
         return;
@@ -157,6 +161,11 @@ void time_grid_cache_draw(SDL_Renderer* renderer,
     SDL_Color label_color = palette.text_muted;
     SDL_Color minor_line = palette.grid_minor;
     SDL_Color major_line = palette.grid_major;
+    int label_scale = 1;
+    int label_h = ui_font_line_height(label_scale);
+    int label_y = top - label_h - max_int(2, label_h / 4);
+    int min_label_gap = max_int(4, label_h / 3);
+    int last_label_right = x0 - 4096;
 
     if (cache->show_all_lines) {
         SDL_SetRenderDrawColor(renderer, minor_line.r, minor_line.g, minor_line.b, minor_line.a);
@@ -176,6 +185,12 @@ void time_grid_cache_draw(SDL_Renderer* renderer,
         int seconds = total_seconds % 60;
         char label[16];
         snprintf(label, sizeof(label), "%02d:%02d", minutes, seconds);
-        ui_draw_text(renderer, x + 4, top - 14, label, label_color, 1);
+        int label_x = x + 4;
+        int label_w = ui_measure_text_width(label, (float)label_scale);
+        if (label_x <= last_label_right + min_label_gap) {
+            continue;
+        }
+        ui_draw_text(renderer, label_x, label_y, label, label_color, (float)label_scale);
+        last_label_right = label_x + label_w;
     }
 }

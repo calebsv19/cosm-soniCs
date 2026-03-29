@@ -875,6 +875,7 @@ int daw_app_main_legacy(void) {
     state.timing_logging_enabled = state.runtime_cfg.enable_timing_logs;
 
     daw_shared_theme_load_persisted();
+    daw_shared_font_zoom_load_persisted();
 
     ui_init_panes(&state);
     daw_render_invalidation_init();
@@ -1056,6 +1057,7 @@ int daw_app_main_legacy(void) {
     App_Run(&ctx, &callbacks);
 
     daw_shared_theme_save_persisted();
+    daw_shared_font_zoom_save_persisted();
 
     if (state.project.has_name) {
         project_manager_save(&state, state.project.name, true);

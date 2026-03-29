@@ -189,46 +189,6 @@ static bool eq_detail_hit(const EffectsPanelLayout* layout, const SDL_Point* pt)
     return SDL_PointInRect(pt, &layout->detail_rect);
 }
 
-static void compute_selector_rects(const SDL_Rect* panel, SDL_Rect* master, SDL_Rect* track) {
-    if (!panel || !master || !track) {
-        return;
-    }
-    int x = panel->x + panel->w - EQ_DETAIL_SELECTOR_W - EQ_DETAIL_SELECTOR_PAD;
-    int y = panel->y + EQ_DETAIL_SELECTOR_PAD - 4;
-    *master = (SDL_Rect){x, y, EQ_DETAIL_SELECTOR_W / 2 - 2, EQ_DETAIL_SELECTOR_H};
-    *track = (SDL_Rect){x + EQ_DETAIL_SELECTOR_W / 2 + 2, y, EQ_DETAIL_SELECTOR_W / 2 - 2, EQ_DETAIL_SELECTOR_H};
-}
-
-static void compute_toggle_rects(const SDL_Rect* panel,
-                                 SDL_Rect* low,
-                                 SDL_Rect mids[4],
-                                 SDL_Rect* high) {
-    if (!panel || !low || !mids || !high) {
-        return;
-    }
-    int y = panel->y + EQ_DETAIL_SELECTOR_PAD - 4;
-    int size = EQ_DETAIL_TOGGLE_SIZE;
-    int group_w = 6 * size + 5 * EQ_DETAIL_TOGGLE_GAP;
-    int x = panel->x + (panel->w - group_w) / 2;
-    *low = (SDL_Rect){x, y, size, size};
-    x += size + EQ_DETAIL_TOGGLE_GAP;
-    for (int i = 0; i < 4; ++i) {
-        mids[i] = (SDL_Rect){x, y, size, size};
-        x += size + EQ_DETAIL_TOGGLE_GAP;
-    }
-    *high = (SDL_Rect){x, y, size, size};
-}
-
-static SDL_Rect compute_graph_rect(const SDL_Rect* panel) {
-    int pad = 18;
-    SDL_Rect graph = *panel;
-    graph.x += pad;
-    graph.y += pad + 6;
-    graph.w -= pad * 2;
-    graph.h -= pad * 2 + 18;
-    return graph;
-}
-
 static void update_hover_state(AppState* state,
                                const SDL_Rect* panel,
                                const SDL_Rect* graph,
@@ -243,7 +203,7 @@ static void update_hover_state(AppState* state,
     SDL_Rect low_rect;
     SDL_Rect mid_rects[4];
     SDL_Rect high_rect;
-    compute_toggle_rects(panel, &low_rect, mid_rects, &high_rect);
+    effects_panel_eq_detail_compute_toggle_rects(panel, &low_rect, mid_rects, &high_rect);
     if (SDL_PointInRect(pt, &low_rect)) {
         curve->hover_toggle_low = true;
         return;
@@ -347,16 +307,16 @@ bool effects_panel_eq_detail_handle_mouse_down(AppState* state,
         state->effects_panel.eq_detail.hovered = false;
         return false;
     }
-    SDL_Rect graph = compute_graph_rect(&layout->detail_rect);
+    SDL_Rect graph = effects_panel_eq_detail_compute_graph_rect(&layout->detail_rect);
     SDL_Rect master_rect;
     SDL_Rect track_rect;
-    compute_selector_rects(&layout->detail_rect, &master_rect, &track_rect);
+    effects_panel_eq_detail_compute_selector_rects(&layout->detail_rect, &master_rect, &track_rect);
     bool track_available = state->effects_panel.target == FX_PANEL_TARGET_TRACK &&
                            state->effects_panel.target_track_index >= 0;
     SDL_Rect low_rect;
     SDL_Rect mid_rects[4];
     SDL_Rect high_rect;
-    compute_toggle_rects(&layout->detail_rect, &low_rect, mid_rects, &high_rect);
+    effects_panel_eq_detail_compute_toggle_rects(&layout->detail_rect, &low_rect, mid_rects, &high_rect);
     if (SDL_PointInRect(&pt, &master_rect)) {
         effects_panel_set_eq_detail_view(state, EQ_DETAIL_VIEW_MASTER);
         return true;
@@ -552,7 +512,7 @@ bool effects_panel_eq_detail_handle_mouse_motion(AppState* state,
     }
     SDL_Point pt = {event->motion.x, event->motion.y};
     state->effects_panel.eq_detail.hovered = eq_detail_hit(layout, &pt);
-    SDL_Rect graph = compute_graph_rect(&layout->detail_rect);
+    SDL_Rect graph = effects_panel_eq_detail_compute_graph_rect(&layout->detail_rect);
     update_hover_state(state, &layout->detail_rect, &graph, &pt);
     if (!state->effects_panel.eq_detail.dragging) {
         return state->effects_panel.eq_detail.hovered;

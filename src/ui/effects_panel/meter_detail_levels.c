@@ -33,6 +33,10 @@ static void resolve_levels_theme(SDL_Color* fill,
     if (rms_marker) *rms_marker = (SDL_Color){210, 180, 150, 255};
 }
 
+static int max_int(int a, int b) {
+    return (a > b) ? a : b;
+}
+
 // Clamps a value between bounds for stable meter rendering.
 static float clampf(float v, float lo, float hi) {
     if (v < lo) return lo;
@@ -147,13 +151,38 @@ void effects_meter_render_levels(SDL_Renderer* renderer,
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, rect);
 
-    const int pad = 16;
     const float min_db = -60.0f;
     const float max_db = 6.0f;
-    const int label_w = 22;
-    const int meter_w = 12;
-    const int history_gap = 0;
-    int header_h = 42;
+    const int body_h = ui_font_line_height(1.0f);
+    const int title_h = ui_font_line_height(1.2f);
+    const int pad = max_int(12, body_h / 2 + 8);
+    const int label_w = max_int(22, ui_measure_text_width("-60", 1.0f) + 8);
+    const int meter_w = max_int(10, body_h / 2);
+    const int history_gap = max_int(0, body_h / 5);
+    const int title_y = rect->y + max_int(4, pad / 3);
+    const int row_gap = max_int(4, body_h / 3);
+    const int section_gap = max_int(8, body_h / 2);
+    const int header_text_w = rect->w - pad * 2;
+    bool valid = snapshot && snapshot->valid;
+    char peak_buf[64] = {0};
+    char rms_buf[64] = {0};
+    int peak_w = 0;
+    int rms_w = 0;
+    int stats_rows = 1;
+    if (valid) {
+        snprintf(peak_buf, sizeof(peak_buf), "Peak %.1f dB", meter_db(snapshot->peak));
+        snprintf(rms_buf, sizeof(rms_buf), "RMS %.1f dB", meter_db(snapshot->rms));
+        peak_w = ui_measure_text_width(peak_buf, 1.0f);
+        rms_w = ui_measure_text_width(rms_buf, 1.0f);
+        if (peak_w + max_int(12, body_h / 2) + rms_w > header_text_w) {
+            stats_rows = 2;
+        }
+    }
+    const int stats_y = title_y + title_h + row_gap;
+    int header_h = (stats_y - (rect->y + pad))
+        + stats_rows * body_h
+        + (stats_rows - 1) * row_gap
+        + section_gap;
     if (header_h > rect->h - pad * 2) {
         header_h = rect->h - pad * 2;
     }
@@ -169,18 +198,36 @@ void effects_meter_render_levels(SDL_Renderer* renderer,
     if (history_rect.w < 0) {
         history_rect.w = 0;
     }
+    if (meter_rect.h <= 0 || meter_rect.w <= 0) {
+        return;
+    }
 
-    ui_draw_text(renderer, rect->x + pad, rect->y + 6, "Level Meter", label_color, 1.2f);
-
-    bool valid = snapshot && snapshot->valid;
+    ui_draw_text_clipped(renderer,
+                         rect->x + pad,
+                         title_y,
+                         "Level Meter",
+                         label_color,
+                         1.2f,
+                         header_text_w);
     if (valid) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "Peak %.1f dB", meter_db(snapshot->peak));
-        ui_draw_text(renderer, rect->x + pad, rect->y + 22, buf, dim_color, 1.0f);
-        snprintf(buf, sizeof(buf), "RMS %.1f dB", meter_db(snapshot->rms));
-        ui_draw_text(renderer, rect->x + pad + 150, rect->y + 22, buf, dim_color, 1.0f);
+        if (stats_rows == 1) {
+            int text_x = rect->x + pad;
+            int stats_gap = max_int(12, body_h / 2);
+            int rms_x = rect->x + pad + header_text_w - rms_w;
+            int min_rms_x = text_x + peak_w + stats_gap;
+            if (rms_x < min_rms_x) {
+                rms_x = min_rms_x;
+            }
+            int peak_max_w = rms_x - text_x - stats_gap;
+            int rms_max_w = rect->x + pad + header_text_w - rms_x;
+            ui_draw_text_clipped(renderer, text_x, stats_y, peak_buf, dim_color, 1.0f, peak_max_w);
+            ui_draw_text_clipped(renderer, rms_x, stats_y, rms_buf, dim_color, 1.0f, rms_max_w);
+        } else {
+            ui_draw_text_clipped(renderer, rect->x + pad, stats_y, peak_buf, dim_color, 1.0f, header_text_w);
+            ui_draw_text_clipped(renderer, rect->x + pad, stats_y + body_h + row_gap, rms_buf, dim_color, 1.0f, header_text_w);
+        }
     } else {
-        ui_draw_text(renderer, rect->x + pad, rect->y + 22, "No data", dim_color, 1.0f);
+        ui_draw_text_clipped(renderer, rect->x + pad, stats_y, "No data", dim_color, 1.0f, header_text_w);
     }
 
     SDL_SetRenderDrawColor(renderer, history_bg.r, history_bg.g, history_bg.b, history_bg.a);
@@ -208,9 +255,12 @@ void effects_meter_render_levels(SDL_Renderer* renderer,
         SDL_RenderDrawLine(renderer, meter_rect.x - 4, rms_y, meter_rect.x + meter_rect.w + 4, rms_y);
     }
 
-    ui_draw_text(renderer, rect->x + pad, meter_rect.y - 6, "+6", dim_color, 1.0f);
-    ui_draw_text(renderer, rect->x + pad, meter_rect.y + meter_rect.h / 2 - 6, "-30", dim_color, 1.0f);
-    ui_draw_text(renderer, rect->x + pad, meter_rect.y + meter_rect.h - 10, "-60", dim_color, 1.0f);
+    int top_label_y = meter_rect.y;
+    int mid_label_y = meter_rect.y + (meter_rect.h - body_h) / 2;
+    int bot_label_y = meter_rect.y + meter_rect.h - body_h;
+    ui_draw_text_clipped(renderer, rect->x + pad, top_label_y, "+6", dim_color, 1.0f, label_w);
+    ui_draw_text_clipped(renderer, rect->x + pad, mid_label_y, "-30", dim_color, 1.0f, label_w);
+    ui_draw_text_clipped(renderer, rect->x + pad, bot_label_y, "-60", dim_color, 1.0f, label_w);
 
     if (history_rect.w > 0 && history && history->level_count > 1) {
         ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);

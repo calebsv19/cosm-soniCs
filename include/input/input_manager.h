@@ -21,6 +21,9 @@ typedef struct InputManager {
     bool previous_f9;
     bool previous_theme_next;
     bool previous_theme_prev;
+    bool previous_font_zoom_in;
+    bool previous_font_zoom_out;
+    bool previous_font_zoom_reset;
     Uint32 last_click_ticks;
     int last_click_track;
     int last_click_clip;

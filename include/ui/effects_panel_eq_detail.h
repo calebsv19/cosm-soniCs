@@ -23,6 +23,20 @@ void effects_panel_eq_detail_render(SDL_Renderer* renderer,
                                     const struct AppState* state,
                                     const EffectsPanelLayout* layout);
 
+// Computes master/track selector button rectangles for the EQ detail panel.
+void effects_panel_eq_detail_compute_selector_rects(const SDL_Rect* panel,
+                                                    SDL_Rect* master,
+                                                    SDL_Rect* track);
+
+// Computes low/mid/high band toggle rectangles for the EQ detail panel.
+void effects_panel_eq_detail_compute_toggle_rects(const SDL_Rect* panel,
+                                                  SDL_Rect* low,
+                                                  SDL_Rect mids[4],
+                                                  SDL_Rect* high);
+
+// Computes the drawable EQ graph rectangle within the detail panel.
+SDL_Rect effects_panel_eq_detail_compute_graph_rect(const SDL_Rect* panel);
+
 static inline float effects_eq_x_to_freq(const SDL_Rect* rect, float x) {
     float min_hz = EQ_DETAIL_MIN_HZ;
     float max_hz = EQ_DETAIL_MAX_HZ;

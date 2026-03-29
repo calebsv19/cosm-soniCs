@@ -1,6 +1,6 @@
 # DAW Current Truth
 
-Last updated: 2026-03-27
+Last updated: 2026-03-28
 
 ## Program Identity
 - Repository directory: `daw/`
@@ -38,6 +38,7 @@ Stable test lane:
   - `test-kitviz-fx-preview-adapter`
   - `test-kitviz-meter-adapter`
   - `test-waveform-pack-warmstart`
+  - `test-layout-sweep`
 
 Legacy test lane:
 - `make -C daw test-legacy`
@@ -46,7 +47,7 @@ Legacy test lane:
   - `test-cache` (compile-time API mismatch in test call signature)
   - `test-overlap` (link-time missing engine symbols)
   - `test-smoke` (link-time missing engine symbols)
-  - `test-shared-theme-font-adapter` (runtime assertion failure)
+  - `test-shared-theme-font-adapter`
 
 ## Dependency Lane Snapshot
 - Locked lane policy:
@@ -64,11 +65,24 @@ Legacy test lane:
   - `config/cache/`
   - `config/library_index.json`
   - `config/last_session.json`
+  - `config/font_zoom_step.txt`
   - `config/projects/*.json`
 
 ## Active Scaffold Migration State
 - Private migration plan:
   - `../docs/private_program_docs/daw/2026-03-27_daw_scaffold_standardization_switchover_plan.md`
+- Active UI text/layout migration plan:
+  - `../docs/private_program_docs/daw/2026-03-28_daw_text_scaling_layout_migration_plan.md`
+  - timeline phase now includes shared measured geometry for header controls + track-header hit regions (render/input synchronized)
+  - timeline lane clip/body rect geometry is now shared between render and input hit/testing paths (removed hardcoded `+8/-16` lane body offsets)
+  - timeline ruler/grid labels now suppress overlaps at dense spacing using measured text widths
+  - clip inspector now derives row spacing and phase/normalize/reverse control rects from font metrics with shared render/input geometry
+  - effects panel header/list/overlay layout now derives row and menu metrics from measured text heights, with clipped button/menu/title labels to prevent overflow at larger zoom
+  - effects slot body/spec rendering now derives row/control/toggle sizing from measured text metrics and clips slot/spec labels/values so high zoom stays overlap-safe
+  - effects EQ detail now shares measured selector/toggle/graph geometry between render/input, and meter detail now uses measured split/toggle/info-row sizing with clipped text labels
+  - meter subtype renderers (correlation/levels/lufs/mid-side/vectorscope/spectrogram) now derive header spacing, stat-row placement, axis label placement, and meter paddings from font metrics with clipped text bounds
+  - phase 4 baseline verification now includes `test-layout-sweep` (zoom `-4..+5` x small/medium/large windows) with effects header/list/detail + EQ/meter helper rect overlap/in-bounds assertions
+  - repeated font zoom changes now use renderer-safe font cache invalidation to prevent text disappearing after many Cmd/Ctrl `+/-` cycles
 - Baseline freeze:
   - `../docs/private_program_docs/daw/2026-03-27_daw_s0_baseline_freeze_and_mapping.md`
 - Completed phases:

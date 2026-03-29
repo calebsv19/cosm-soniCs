@@ -28,5 +28,6 @@ typedef struct {
 
 void library_browser_init(LibraryBrowser* browser, const char* directory);
 void library_browser_scan(LibraryBrowser* browser, MediaRegistry* registry);
-void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* renderer, const SDL_Rect* rect, int line_height);
-int  library_browser_hit_test(const LibraryBrowser* browser, const SDL_Rect* rect, int x, int y, int line_height);
+int  library_browser_row_height(void);
+void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* renderer, const SDL_Rect* rect);
+int  library_browser_hit_test(const LibraryBrowser* browser, const SDL_Rect* rect, int x, int y);

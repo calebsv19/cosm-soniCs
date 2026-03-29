@@ -8,6 +8,10 @@
 
 #include <math.h>
 
+static int max_int(int a, int b) {
+    return (a > b) ? a : b;
+}
+
 static void resolve_vectorscope_theme(SDL_Color* fill,
                                       SDL_Color* border,
                                       SDL_Color* scope_bg,
@@ -125,12 +129,32 @@ void effects_meter_render_vectorscope(SDL_Renderer* renderer,
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, rect);
 
-    int pad = 16;
+    const int body_h = ui_font_line_height(1.0f);
+    const int title_h = ui_font_line_height(1.2f);
+    int pad = max_int(12, body_h / 2 + 8);
+    int title_y = rect->y + max_int(4, pad / 3);
+    int scope_top_gap = max_int(8, body_h / 2);
+    int header_h = (title_y - (rect->y + pad)) + title_h + scope_top_gap;
+    if (header_h > rect->h - pad * 2) {
+        header_h = rect->h - pad * 2;
+    }
+    int header_text_w = rect->w - pad * 2;
+    ui_draw_text_clipped(renderer,
+                         rect->x + pad,
+                         title_y,
+                         "Vector Scope",
+                         label_color,
+                         1.2f,
+                         header_text_w);
+
     SDL_Rect scope = *rect;
     scope.x += pad;
-    scope.y += pad + 12;
+    scope.y += pad + header_h;
     scope.w -= pad * 2;
-    scope.h -= pad * 2 + 12;
+    scope.h -= pad * 2 + header_h;
+    if (scope.w <= 0 || scope.h <= 0) {
+        return;
+    }
 
     SDL_SetRenderDrawColor(renderer, scope_bg.r, scope_bg.g, scope_bg.b, scope_bg.a);
     SDL_RenderFillRect(renderer, &scope);
@@ -147,7 +171,6 @@ void effects_meter_render_vectorscope(SDL_Renderer* renderer,
     if (valid && history && history->vec_count > 1) {
         ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
         if (render_scope_history_with_adapter(renderer, &scope, history, scope_mode)) {
-            ui_draw_text(renderer, rect->x + pad, rect->y + 6, "Vector Scope", label_color, 1.2f);
             return;
         }
         int count = history->vec_count;
@@ -197,8 +220,6 @@ void effects_meter_render_vectorscope(SDL_Renderer* renderer,
         SDL_Rect dot = {px - 3, py - 3, 6, 6};
         SDL_RenderFillRect(renderer, &dot);
     } else {
-        ui_draw_text(renderer, scope.x + 6, scope.y + 6, "No data", dim_color, 1.0f);
+        ui_draw_text_clipped(renderer, scope.x + 6, scope.y + 6, "No data", dim_color, 1.0f, scope.w - 12);
     }
-
-    ui_draw_text(renderer, rect->x + pad, rect->y + 6, "Vector Scope", label_color, 1.2f);
 }

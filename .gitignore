@@ -16,6 +16,7 @@
 /config/last_trace_export.pack
 /config/library_index.json
 /config/last_session.json
+/config/font_zoom_step.txt
 /config/projects/*.json
 /config/projects/last_project.txt
 

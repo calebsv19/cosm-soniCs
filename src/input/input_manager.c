@@ -14,6 +14,7 @@
 #include "ui/effects_panel.h"
 #include "ui/panes.h"
 #include "ui/transport.h"
+#include "ui/font.h"
 #include "ui/shared_theme_font_adapter.h"
 #include "session/project_manager.h"
 #include "undo/undo_manager.h"
@@ -277,6 +278,23 @@ static void seek_to_seconds(AppState* state, float seconds, bool resume_playback
     }
 }
 
+static void apply_shared_ui_font(AppState* state) {
+    char font_path[256];
+    int font_point_size = 9;
+    const uint32_t reason_bits =
+        DAW_RENDER_INVALIDATION_LAYOUT | DAW_RENDER_INVALIDATION_CONTENT | DAW_RENDER_INVALIDATION_BACKGROUND;
+    if (!state) {
+        return;
+    }
+    if (daw_shared_font_resolve_ui_regular(font_path, sizeof(font_path), &font_point_size)) {
+        ui_font_set(font_path, font_point_size);
+    } else {
+        ui_font_set("include/fonts/Montserrat/Montserrat-Regular.ttf", 9);
+    }
+    daw_invalidate_all(state->panes, state->pane_count, reason_bits);
+    daw_request_full_redraw(reason_bits);
+}
+
 static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
     if (!manager || !state || !state->engine) {
         return;
@@ -327,6 +345,29 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
             }
         }
         manager->previous_theme_prev = theme_prev_now;
+    }
+
+    {
+        bool font_zoom_in_now = ctrl_or_cmd && (keys[SDL_SCANCODE_EQUALS] || keys[SDL_SCANCODE_KP_PLUS]);
+        bool font_zoom_out_now = ctrl_or_cmd && (keys[SDL_SCANCODE_MINUS] || keys[SDL_SCANCODE_KP_MINUS]);
+        bool font_zoom_reset_now = ctrl_or_cmd && (keys[SDL_SCANCODE_0] || keys[SDL_SCANCODE_KP_0]);
+        bool font_zoom_changed = false;
+        if (font_zoom_in_now && !manager->previous_font_zoom_in) {
+            font_zoom_changed = daw_shared_font_step_by(1) || font_zoom_changed;
+        }
+        if (font_zoom_out_now && !manager->previous_font_zoom_out) {
+            font_zoom_changed = daw_shared_font_step_by(-1) || font_zoom_changed;
+        }
+        if (font_zoom_reset_now && !manager->previous_font_zoom_reset) {
+            font_zoom_changed = daw_shared_font_reset_zoom_step() || font_zoom_changed;
+        }
+        if (font_zoom_changed) {
+            daw_shared_font_zoom_save_persisted();
+            apply_shared_ui_font(state);
+        }
+        manager->previous_font_zoom_in = font_zoom_in_now;
+        manager->previous_font_zoom_out = font_zoom_out_now;
+        manager->previous_font_zoom_reset = font_zoom_reset_now;
     }
 
     bool space_now = keys[SDL_SCANCODE_SPACE] != 0;
@@ -463,6 +504,9 @@ void input_manager_init(InputManager* manager) {
     manager->previous_f9 = false;
     manager->previous_theme_next = false;
     manager->previous_theme_prev = false;
+    manager->previous_font_zoom_in = false;
+    manager->previous_font_zoom_out = false;
+    manager->previous_font_zoom_reset = false;
     manager->last_click_ticks = 0;
     manager->last_click_track = -1;
     manager->last_click_clip = -1;

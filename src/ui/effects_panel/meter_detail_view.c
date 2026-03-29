@@ -9,6 +9,68 @@
 #include <math.h>
 #include <stdio.h>
 
+static int max_int(int a, int b) {
+    return (a > b) ? a : b;
+}
+
+static int meter_detail_pad(void) {
+    int needed = ui_font_line_height(1.0f) / 2 + 8;
+    return max_int(12, needed);
+}
+
+static int meter_detail_gap(void) {
+    return max_int(12, ui_font_line_height(1.0f) / 2 + 6);
+}
+
+static int meter_detail_button_height(void) {
+    return max_int(14, ui_font_line_height(1.0f) + 4);
+}
+
+static int meter_detail_button_gap(void) {
+    int h = meter_detail_button_height();
+    return max_int(6, h / 3);
+}
+
+static int meter_detail_button_width(const char* label, int min_w) {
+    int needed = ui_measure_text_width(label ? label : "", 1.0f) + 12;
+    if (needed < min_w) {
+        needed = min_w;
+    }
+    return needed;
+}
+
+static void meter_detail_compute_split_rects(const SDL_Rect* detail_rect,
+                                             SDL_Rect* out_left_rect,
+                                             SDL_Rect* out_right_rect) {
+    if (!detail_rect || !out_left_rect || !out_right_rect || detail_rect->w <= 0 || detail_rect->h <= 0) {
+        if (out_left_rect) *out_left_rect = (SDL_Rect){0, 0, 0, 0};
+        if (out_right_rect) *out_right_rect = (SDL_Rect){0, 0, 0, 0};
+        return;
+    }
+    int pad = meter_detail_pad();
+    int gap = meter_detail_gap();
+    int min_left_w = max_int(140, ui_measure_text_width("Meter Detail", 1.3f) + 24);
+    int left_w = (int)lroundf(detail_rect->w * 0.20f);
+    if (left_w < min_left_w) {
+        left_w = min_left_w;
+    }
+    if (left_w > detail_rect->w - 120) {
+        left_w = detail_rect->w - 120;
+    }
+
+    SDL_Rect left_rect = {detail_rect->x + pad, detail_rect->y + pad, left_w - pad, detail_rect->h - pad * 2};
+    SDL_Rect right_rect = {left_rect.x + left_rect.w + gap,
+                           detail_rect->y + pad,
+                           detail_rect->w - (left_rect.w + gap + pad * 2),
+                           detail_rect->h - pad * 2};
+    if (left_rect.w < 0) left_rect.w = 0;
+    if (left_rect.h < 0) left_rect.h = 0;
+    if (right_rect.w < 0) right_rect.w = 0;
+    if (right_rect.h < 0) right_rect.h = 0;
+    *out_left_rect = left_rect;
+    *out_right_rect = right_rect;
+}
+
 static void resolve_meter_detail_theme(SDL_Color* border,
                                        SDL_Color* fill,
                                        SDL_Color* left_fill,
@@ -67,18 +129,37 @@ static const FxTypeUIInfo* find_type_info(const EffectsPanelState* panel, FxType
 static void draw_info_row(SDL_Renderer* renderer,
                           int x,
                           int y,
+                          int max_w,
                           const char* label,
                           const char* value,
                           SDL_Color label_color,
                           SDL_Color value_color) {
-    ui_draw_text(renderer, x, y, label, label_color, 1.0f);
+    int label_w = ui_measure_text_width(label ? label : "", 1.0f);
+    int safe_w = max_w > 0 ? max_w : label_w + 4;
+    ui_draw_text_clipped(renderer, x, y, label, label_color, 1.0f, safe_w);
     if (value) {
-        ui_draw_text(renderer, x + 50, y, value, value_color, 1.0f);
+        int value_x = x + label_w + 8;
+        int value_w = max_w - (value_x - x);
+        if (value_w > 0) {
+            ui_draw_text_clipped(renderer, value_x, y, value, value_color, 1.0f, value_w);
+        }
     }
 }
 
 static bool panel_targets_track(const EffectsPanelState* panel) {
     return panel && panel->target == FX_PANEL_TARGET_TRACK && panel->target_track_index >= 0;
+}
+
+static void draw_centered_toggle_text(SDL_Renderer* renderer,
+                                      const SDL_Rect* rect,
+                                      const char* label,
+                                      SDL_Color color) {
+    if (!renderer || !rect || !label || rect->w <= 0 || rect->h <= 0) {
+        return;
+    }
+    int text_h = ui_font_line_height(1.0f);
+    int text_y = rect->y + (rect->h - text_h) / 2;
+    ui_draw_text_clipped(renderer, rect->x + 2, text_y, label, color, 1.0f, rect->w - 4);
 }
 
 void effects_panel_meter_detail_compute_toggle_rects(const SDL_Rect* detail_rect,
@@ -93,22 +174,14 @@ void effects_panel_meter_detail_compute_toggle_rects(const SDL_Rect* detail_rect
     if (!detail_rect || detail_rect->w <= 0 || detail_rect->h <= 0) {
         return;
     }
-    const int pad = 12;
-    int left_w = (int)lroundf(detail_rect->w * 0.20f);
-    if (left_w < 140) left_w = 140;
-    if (left_w > detail_rect->w - 120) left_w = detail_rect->w - 120;
-    int gap = 12;
+    SDL_Rect left_rect = {0, 0, 0, 0};
+    SDL_Rect right_rect = {0, 0, 0, 0};
+    meter_detail_compute_split_rects(detail_rect, &left_rect, &right_rect);
 
-    SDL_Rect left_rect = {detail_rect->x + pad, detail_rect->y + pad, left_w - pad, detail_rect->h - pad * 2};
-    SDL_Rect right_rect = {left_rect.x + left_rect.w + gap,
-                            detail_rect->y + pad,
-                            detail_rect->w - (left_rect.w + gap + pad * 2),
-                            detail_rect->h - pad * 2};
-
-    int btn_w = 36;
-    int btn_h = 14;
-    int btn_gap = 6;
-    int btn_y = right_rect.y + 6;
+    int btn_w = meter_detail_button_width("MS", 36);
+    int btn_h = meter_detail_button_height();
+    int btn_gap = meter_detail_button_gap();
+    int btn_y = right_rect.y + max_int(6, btn_h / 3);
     int right_edge = right_rect.x + right_rect.w;
     if (out_left_right) {
         *out_left_right = (SDL_Rect){right_edge - btn_w, btn_y, btn_w, btn_h};
@@ -135,22 +208,14 @@ void effects_panel_meter_detail_compute_lufs_toggle_rects(const SDL_Rect* detail
     if (!detail_rect || detail_rect->w <= 0 || detail_rect->h <= 0) {
         return;
     }
-    const int pad = 12;
-    int left_w = (int)lroundf(detail_rect->w * 0.20f);
-    if (left_w < 140) left_w = 140;
-    if (left_w > detail_rect->w - 120) left_w = detail_rect->w - 120;
-    int gap = 12;
+    SDL_Rect left_rect = {0, 0, 0, 0};
+    SDL_Rect right_rect = {0, 0, 0, 0};
+    meter_detail_compute_split_rects(detail_rect, &left_rect, &right_rect);
 
-    SDL_Rect left_rect = {detail_rect->x + pad, detail_rect->y + pad, left_w - pad, detail_rect->h - pad * 2};
-    SDL_Rect right_rect = {left_rect.x + left_rect.w + gap,
-                            detail_rect->y + pad,
-                            detail_rect->w - (left_rect.w + gap + pad * 2),
-                            detail_rect->h - pad * 2};
-
-    int btn_w = 46;
-    int btn_h = 14;
-    int btn_gap = 6;
-    int btn_y = right_rect.y + right_rect.h - btn_h - 8;
+    int btn_w = meter_detail_button_width("INT", 46);
+    int btn_h = meter_detail_button_height();
+    int btn_gap = meter_detail_button_gap();
+    int btn_y = right_rect.y + right_rect.h - btn_h - max_int(8, btn_h / 2);
     int right_edge = right_rect.x + right_rect.w;
     if (out_momentary) {
         *out_momentary = (SDL_Rect){right_edge - btn_w, btn_y, btn_w, btn_h};
@@ -180,22 +245,14 @@ void effects_panel_meter_detail_compute_spectrogram_toggle_rects(const SDL_Rect*
     if (!detail_rect || detail_rect->w <= 0 || detail_rect->h <= 0) {
         return;
     }
-    const int pad = 12;
-    int left_w = (int)lroundf(detail_rect->w * 0.20f);
-    if (left_w < 140) left_w = 140;
-    if (left_w > detail_rect->w - 120) left_w = detail_rect->w - 120;
-    int gap = 12;
+    SDL_Rect left_rect = {0, 0, 0, 0};
+    SDL_Rect right_rect = {0, 0, 0, 0};
+    meter_detail_compute_split_rects(detail_rect, &left_rect, &right_rect);
 
-    SDL_Rect left_rect = {detail_rect->x + pad, detail_rect->y + pad, left_w - pad, detail_rect->h - pad * 2};
-    SDL_Rect right_rect = {left_rect.x + left_rect.w + gap,
-                            detail_rect->y + pad,
-                            detail_rect->w - (left_rect.w + gap + pad * 2),
-                            detail_rect->h - pad * 2};
-
-    int btn_w = 44;
-    int btn_h = 14;
-    int btn_gap = 6;
-    int btn_y = right_rect.y + 6;
+    int btn_w = meter_detail_button_width("Heat", 44);
+    int btn_h = meter_detail_button_height();
+    int btn_gap = meter_detail_button_gap();
+    int btn_y = right_rect.y + max_int(6, btn_h / 3);
     int total_w = btn_w * 3 + btn_gap * 2;
     int btn_x = right_rect.x + right_rect.w - total_w - 6;
     if (out_white_black) {
@@ -385,18 +442,9 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &rect);
 
-    const int pad = 12;
-    int left_w = (int)lroundf(rect.w * 0.20f);
-    if (left_w < 140) left_w = 140;
-    if (left_w > rect.w - 120) left_w = rect.w - 120;
-    int gap = 12;
-
-    SDL_Rect left_rect = {rect.x + pad, rect.y + pad, left_w - pad, rect.h - pad * 2};
-    SDL_Rect right_rect = {left_rect.x + left_rect.w + gap, rect.y + pad,
-                            rect.w - (left_rect.w + gap + pad * 2), rect.h - pad * 2};
-    if (right_rect.w < 0) {
-        right_rect.w = 0;
-    }
+    SDL_Rect left_rect = {0, 0, 0, 0};
+    SDL_Rect right_rect = {0, 0, 0, 0};
+    meter_detail_compute_split_rects(&rect, &left_rect, &right_rect);
 
     SDL_SetRenderDrawColor(renderer, left_fill.r, left_fill.g, left_fill.b, left_fill.a);
     SDL_RenderFillRect(renderer, &left_rect);
@@ -486,57 +534,64 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
                          have_snapshot ? &snapshot : NULL);
 
     int text_x = left_rect.x + 10;
-    int text_y = left_rect.y + 10;
-    ui_draw_text(renderer, text_x, text_y, "Meter Detail", label_color, 1.3f);
-    text_y += 22;
+    int text_y = left_rect.y + max_int(8, ui_font_line_height(1.0f) / 2);
+    int left_text_w = left_rect.w - 20;
+    ui_draw_text_clipped(renderer, text_x, text_y, "Meter Detail", label_color, 1.3f, left_text_w);
+    text_y += ui_font_line_height(1.3f) + 8;
 
     char value_buf[64];
-    draw_info_row(renderer, text_x, text_y, "Type", type_info ? type_info->name : "Meter", label_color, dim_color);
-    text_y += 16;
+    draw_info_row(renderer, text_x, text_y, left_text_w, "Type", type_info ? type_info->name : "Meter", label_color, dim_color);
+    text_y += ui_font_line_height(1.0f) + 4;
 
     snprintf(value_buf, sizeof(value_buf), "%u", slot ? (unsigned)slot->id : 0u);
-    draw_info_row(renderer, text_x, text_y, "Instance", value_buf, label_color, dim_color);
-    text_y += 16;
+    draw_info_row(renderer, text_x, text_y, left_text_w, "Instance", value_buf, label_color, dim_color);
+    text_y += ui_font_line_height(1.0f) + 4;
 
     const char* target_label = panel_targets_track(panel) ? "Track" : "Master";
-    draw_info_row(renderer, text_x, text_y, "Target", target_label, label_color, dim_color);
-    text_y += 16;
+    draw_info_row(renderer, text_x, text_y, left_text_w, "Target", target_label, label_color, dim_color);
+    text_y += ui_font_line_height(1.0f) + 4;
 
     if (have_snapshot) {
         snprintf(value_buf, sizeof(value_buf), "%.1f dB", linear_to_db(clampf(snapshot.peak, 0.0f, 1.5f)));
-        draw_info_row(renderer, text_x, text_y, "Peak", value_buf, label_color, dim_color);
-        text_y += 16;
+        draw_info_row(renderer, text_x, text_y, left_text_w, "Peak", value_buf, label_color, dim_color);
+        text_y += ui_font_line_height(1.0f) + 4;
         snprintf(value_buf, sizeof(value_buf), "%.1f dB", linear_to_db(clampf(snapshot.rms, 0.0f, 1.5f)));
-        draw_info_row(renderer, text_x, text_y, "RMS", value_buf, label_color, dim_color);
-        text_y += 16;
+        draw_info_row(renderer, text_x, text_y, left_text_w, "RMS", value_buf, label_color, dim_color);
+        text_y += ui_font_line_height(1.0f) + 4;
         if (type_id == 104u) {
             snprintf(value_buf, sizeof(value_buf), "%.1f LUFS", snapshot.lufs_integrated);
-            draw_info_row(renderer, text_x, text_y, "LUFS I", value_buf, label_color, dim_color);
-            text_y += 16;
+            draw_info_row(renderer, text_x, text_y, left_text_w, "LUFS I", value_buf, label_color, dim_color);
+            text_y += ui_font_line_height(1.0f) + 4;
             snprintf(value_buf, sizeof(value_buf), "%.1f LUFS", snapshot.lufs_short_term);
-            draw_info_row(renderer, text_x, text_y, "LUFS S", value_buf, label_color, dim_color);
-            text_y += 16;
+            draw_info_row(renderer, text_x, text_y, left_text_w, "LUFS S", value_buf, label_color, dim_color);
+            text_y += ui_font_line_height(1.0f) + 4;
             snprintf(value_buf, sizeof(value_buf), "%.1f LUFS", snapshot.lufs_momentary);
-            draw_info_row(renderer, text_x, text_y, "LUFS M", value_buf, label_color, dim_color);
-            text_y += 16;
+            draw_info_row(renderer, text_x, text_y, left_text_w, "LUFS M", value_buf, label_color, dim_color);
+            text_y += ui_font_line_height(1.0f) + 4;
         }
         snprintf(value_buf, sizeof(value_buf), "%.2f", snapshot.corr);
-        draw_info_row(renderer, text_x, text_y, "Corr", value_buf, label_color, dim_color);
-        text_y += 16;
+        draw_info_row(renderer, text_x, text_y, left_text_w, "Corr", value_buf, label_color, dim_color);
+        text_y += ui_font_line_height(1.0f) + 4;
         snprintf(value_buf, sizeof(value_buf), "%.1f dB", linear_to_db(snapshot.mid_rms));
-        draw_info_row(renderer, text_x, text_y, "Mid", value_buf, label_color, dim_color);
-        text_y += 16;
+        draw_info_row(renderer, text_x, text_y, left_text_w, "Mid", value_buf, label_color, dim_color);
+        text_y += ui_font_line_height(1.0f) + 4;
         snprintf(value_buf, sizeof(value_buf), "%.1f dB", linear_to_db(snapshot.side_rms));
-        draw_info_row(renderer, text_x, text_y, "Side", value_buf, label_color, dim_color);
-        text_y += 16;
+        draw_info_row(renderer, text_x, text_y, left_text_w, "Side", value_buf, label_color, dim_color);
+        text_y += ui_font_line_height(1.0f) + 4;
         snprintf(value_buf, sizeof(value_buf), "%.2f, %.2f", snapshot.vec_x, snapshot.vec_y);
-        draw_info_row(renderer, text_x, text_y, "Vector", value_buf, label_color, dim_color);
+        draw_info_row(renderer, text_x, text_y, left_text_w, "Vector", value_buf, label_color, dim_color);
     } else {
-        draw_info_row(renderer, text_x, text_y, "Status", "Waiting", label_color, dim_color);
+        draw_info_row(renderer, text_x, text_y, left_text_w, "Status", "Waiting", label_color, dim_color);
     }
 
     if (!slot) {
-        ui_draw_text(renderer, right_rect.x + 12, right_rect.y + 12, "No meter selected.", dim_color, 1.1f);
+        ui_draw_text_clipped(renderer,
+                             right_rect.x + 12,
+                             right_rect.y + 12,
+                             "No meter selected.",
+                             dim_color,
+                             1.1f,
+                             right_rect.w - 24);
         return;
     }
 
@@ -598,7 +653,13 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
                                          label_color,
                                          dim_color);
     } else {
-        ui_draw_text(renderer, right_rect.x + 12, right_rect.y + 12, "Unsupported meter view.", dim_color, 1.1f);
+        ui_draw_text_clipped(renderer,
+                             right_rect.x + 12,
+                             right_rect.y + 12,
+                             "Unsupported meter view.",
+                             dim_color,
+                             1.1f,
+                             right_rect.w - 24);
     }
 
     if (show_ms_toggle) {
@@ -616,8 +677,8 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
         SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
         SDL_RenderDrawRect(renderer, &toggle_lr);
 
-        ui_draw_text(renderer, toggle_ms.x + 8, toggle_ms.y + 1, "MS", label_color, 1.0f);
-        ui_draw_text(renderer, toggle_lr.x + 8, toggle_lr.y + 1, "LR", label_color, 1.0f);
+        draw_centered_toggle_text(renderer, &toggle_ms, "MS", label_color);
+        draw_centered_toggle_text(renderer, &toggle_lr, "LR", label_color);
     }
 
     if (show_lufs_toggle) {
@@ -642,9 +703,9 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
         SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
         SDL_RenderDrawRect(renderer, &toggle_momentary);
 
-        ui_draw_text(renderer, toggle_int.x + 6, toggle_int.y + 1, "INT", label_color, 1.0f);
-        ui_draw_text(renderer, toggle_short.x + 6, toggle_short.y + 1, "ST", label_color, 1.0f);
-        ui_draw_text(renderer, toggle_momentary.x + 6, toggle_momentary.y + 1, "M", label_color, 1.0f);
+        draw_centered_toggle_text(renderer, &toggle_int, "INT", label_color);
+        draw_centered_toggle_text(renderer, &toggle_short, "ST", label_color);
+        draw_centered_toggle_text(renderer, &toggle_momentary, "M", label_color);
     }
 
     if (show_spectrogram_toggle) {
@@ -669,8 +730,8 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
         SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
         SDL_RenderDrawRect(renderer, &toggle_heat);
 
-        ui_draw_text(renderer, toggle_wb.x + 8, toggle_wb.y + 1, "W/B", label_color, 1.0f);
-        ui_draw_text(renderer, toggle_bw.x + 8, toggle_bw.y + 1, "B/W", label_color, 1.0f);
-        ui_draw_text(renderer, toggle_heat.x + 6, toggle_heat.y + 1, "Heat", label_color, 1.0f);
+        draw_centered_toggle_text(renderer, &toggle_wb, "W/B", label_color);
+        draw_centered_toggle_text(renderer, &toggle_bw, "B/W", label_color);
+        draw_centered_toggle_text(renderer, &toggle_heat, "Heat", label_color);
     }
 }

@@ -9,6 +9,10 @@
 #include <math.h>
 #include <stdio.h>
 
+static int max_int(int a, int b) {
+    return (a > b) ? a : b;
+}
+
 static void resolve_lufs_theme(SDL_Color* fill,
                                SDL_Color* border,
                                SDL_Color* history_bg,
@@ -117,14 +121,48 @@ void effects_meter_render_lufs(SDL_Renderer* renderer,
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, rect);
 
-    const int pad = 16;
     const float min_db = -60.0f;
     const float max_db = 0.0f;
-    const int label_w = 22;
-    const int meter_w = 12;
-    const int history_gap = 0;
-    int header_h = 54;
-    int footer_h = 26;
+    const int body_h = ui_font_line_height(1.0f);
+    const int title_h = ui_font_line_height(1.2f);
+    const int pad = max_int(12, body_h / 2 + 8);
+    const int label_w = max_int(22, ui_measure_text_width("-60", 1.0f) + 8);
+    const int meter_w = max_int(10, body_h / 2);
+    const int history_gap = max_int(0, body_h / 5);
+    const int row_gap = max_int(4, body_h / 3);
+    const int section_gap = max_int(8, body_h / 2);
+    const int header_text_w = rect->w - pad * 2;
+    const int title_y = rect->y + max_int(4, pad / 3);
+    bool valid = snapshot && snapshot->valid;
+    char lufs_i_buf[64] = {0};
+    char lufs_s_buf[64] = {0};
+    char lufs_m_buf[64] = {0};
+    int lufs_i_w = 0;
+    int lufs_s_w = 0;
+    int lufs_m_w = 0;
+    int stats_cols = 1;
+    int stats_rows = 1;
+    int stat_gap = max_int(12, body_h / 2);
+    if (valid) {
+        snprintf(lufs_i_buf, sizeof(lufs_i_buf), "I %.1f", snapshot->lufs_integrated);
+        snprintf(lufs_s_buf, sizeof(lufs_s_buf), "S %.1f", snapshot->lufs_short_term);
+        snprintf(lufs_m_buf, sizeof(lufs_m_buf), "M %.1f", snapshot->lufs_momentary);
+        lufs_i_w = ui_measure_text_width(lufs_i_buf, 1.0f);
+        lufs_s_w = ui_measure_text_width(lufs_s_buf, 1.0f);
+        lufs_m_w = ui_measure_text_width(lufs_m_buf, 1.0f);
+        if (lufs_i_w + stat_gap + lufs_s_w + stat_gap + lufs_m_w <= header_text_w) {
+            stats_cols = 3;
+        } else if (lufs_i_w + stat_gap + lufs_s_w <= header_text_w) {
+            stats_cols = 2;
+        }
+        stats_rows = (3 + stats_cols - 1) / stats_cols;
+    }
+    const int stats_y = title_y + title_h + row_gap;
+    int header_h = (stats_y - (rect->y + pad))
+        + stats_rows * body_h
+        + (stats_rows - 1) * row_gap
+        + section_gap;
+    int footer_h = max_int(26, body_h + 10);
     if (header_h > rect->h - pad * 2) {
         header_h = rect->h - pad * 2;
     }
@@ -140,20 +178,61 @@ void effects_meter_render_lufs(SDL_Renderer* renderer,
     if (history_rect.w < 0) {
         history_rect.w = 0;
     }
+    if (meter_rect.h <= 0 || meter_rect.w <= 0) {
+        return;
+    }
 
-    ui_draw_text(renderer, rect->x + pad, rect->y + 6, "LUFS Meter", label_color, 1.2f);
+    ui_draw_text_clipped(renderer,
+                         rect->x + pad,
+                         title_y,
+                         "LUFS Meter",
+                         label_color,
+                         1.2f,
+                         header_text_w);
 
-    bool valid = snapshot && snapshot->valid;
     if (valid) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "I %.1f", snapshot->lufs_integrated);
-        ui_draw_text(renderer, rect->x + pad, rect->y + 22, buf, dim_color, 1.0f);
-        snprintf(buf, sizeof(buf), "S %.1f", snapshot->lufs_short_term);
-        ui_draw_text(renderer, rect->x + pad + 70, rect->y + 22, buf, dim_color, 1.0f);
-        snprintf(buf, sizeof(buf), "M %.1f", snapshot->lufs_momentary);
-        ui_draw_text(renderer, rect->x + pad + 140, rect->y + 22, buf, dim_color, 1.0f);
+        if (stats_cols == 3) {
+            int x = rect->x + pad;
+            int w_left = header_text_w;
+            ui_draw_text_clipped(renderer, x, stats_y, lufs_i_buf, dim_color, 1.0f, w_left);
+            x += lufs_i_w + stat_gap;
+            w_left = rect->x + pad + header_text_w - x;
+            ui_draw_text_clipped(renderer, x, stats_y, lufs_s_buf, dim_color, 1.0f, w_left);
+            x += lufs_s_w + stat_gap;
+            w_left = rect->x + pad + header_text_w - x;
+            ui_draw_text_clipped(renderer, x, stats_y, lufs_m_buf, dim_color, 1.0f, w_left);
+        } else if (stats_cols == 2) {
+            int x = rect->x + pad;
+            int second_x = x + lufs_i_w + stat_gap;
+            int second_w = rect->x + pad + header_text_w - second_x;
+            ui_draw_text_clipped(renderer, x, stats_y, lufs_i_buf, dim_color, 1.0f, header_text_w);
+            ui_draw_text_clipped(renderer, second_x, stats_y, lufs_s_buf, dim_color, 1.0f, second_w);
+            ui_draw_text_clipped(renderer,
+                                 rect->x + pad,
+                                 stats_y + body_h + row_gap,
+                                 lufs_m_buf,
+                                 dim_color,
+                                 1.0f,
+                                 header_text_w);
+        } else {
+            ui_draw_text_clipped(renderer, rect->x + pad, stats_y, lufs_i_buf, dim_color, 1.0f, header_text_w);
+            ui_draw_text_clipped(renderer,
+                                 rect->x + pad,
+                                 stats_y + (body_h + row_gap),
+                                 lufs_s_buf,
+                                 dim_color,
+                                 1.0f,
+                                 header_text_w);
+            ui_draw_text_clipped(renderer,
+                                 rect->x + pad,
+                                 stats_y + (body_h + row_gap) * 2,
+                                 lufs_m_buf,
+                                 dim_color,
+                                 1.0f,
+                                 header_text_w);
+        }
     } else {
-        ui_draw_text(renderer, rect->x + pad, rect->y + 22, "No data", dim_color, 1.0f);
+        ui_draw_text_clipped(renderer, rect->x + pad, stats_y, "No data", dim_color, 1.0f, header_text_w);
     }
 
     SDL_SetRenderDrawColor(renderer, history_bg.r, history_bg.g, history_bg.b, history_bg.a);
@@ -180,9 +259,12 @@ void effects_meter_render_lufs(SDL_Renderer* renderer,
         SDL_RenderDrawLine(renderer, meter_rect.x - 4, marker_y, meter_rect.x + meter_rect.w + 4, marker_y);
     }
 
-    ui_draw_text(renderer, rect->x + pad, meter_rect.y - 6, "0", dim_color, 1.0f);
-    ui_draw_text(renderer, rect->x + pad, meter_rect.y + meter_rect.h / 2 - 6, "-30", dim_color, 1.0f);
-    ui_draw_text(renderer, rect->x + pad, meter_rect.y + meter_rect.h - 10, "-60", dim_color, 1.0f);
+    int top_label_y = meter_rect.y;
+    int mid_label_y = meter_rect.y + (meter_rect.h - body_h) / 2;
+    int bot_label_y = meter_rect.y + meter_rect.h - body_h;
+    ui_draw_text_clipped(renderer, rect->x + pad, top_label_y, "0", dim_color, 1.0f, label_w);
+    ui_draw_text_clipped(renderer, rect->x + pad, mid_label_y, "-30", dim_color, 1.0f, label_w);
+    ui_draw_text_clipped(renderer, rect->x + pad, bot_label_y, "-60", dim_color, 1.0f, label_w);
 
     if (history_rect.w > 0 && history && history->lufs_count > 1) {
         ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);

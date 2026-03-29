@@ -819,38 +819,25 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                     return;
                 }
 
-                if (layout.rows[CLIP_INSPECTOR_ROW_PHASE].value_rect.w > 0) {
-                    SDL_Rect phase_rect = layout.rows[CLIP_INSPECTOR_ROW_PHASE].value_rect;
-                    int button_w = (phase_rect.w - 6) / 2;
-                    int button_h = phase_rect.h - 4;
-                    if (button_w < 0) button_w = 0;
-                    SDL_Rect left_btn = {phase_rect.x, phase_rect.y + 2, button_w, button_h};
-                    SDL_Rect right_btn = {phase_rect.x + button_w + 6, phase_rect.y + 2, button_w, button_h};
-                    if (SDL_PointInRect(&p, &left_btn)) {
+                if (layout.phase_left_rect.w > 0 && layout.phase_left_rect.h > 0 &&
+                    layout.phase_right_rect.w > 0 && layout.phase_right_rect.h > 0) {
+                    if (SDL_PointInRect(&p, &layout.phase_left_rect)) {
                         state->inspector.phase_invert_l = !state->inspector.phase_invert_l;
                         return;
                     }
-                    if (SDL_PointInRect(&p, &right_btn)) {
+                    if (SDL_PointInRect(&p, &layout.phase_right_rect)) {
                         state->inspector.phase_invert_r = !state->inspector.phase_invert_r;
                         return;
                     }
                 }
-                if (layout.rows[CLIP_INSPECTOR_ROW_NORMALIZE].value_rect.w > 0) {
-                    SDL_Rect toggle_rect = layout.rows[CLIP_INSPECTOR_ROW_NORMALIZE].value_rect;
-                    toggle_rect.h -= 4;
-                    toggle_rect.y += 2;
-                    toggle_rect.w = 52;
-                    if (SDL_PointInRect(&p, &toggle_rect)) {
+                if (layout.normalize_toggle_rect.w > 0 && layout.normalize_toggle_rect.h > 0) {
+                    if (SDL_PointInRect(&p, &layout.normalize_toggle_rect)) {
                         state->inspector.normalize = !state->inspector.normalize;
                         return;
                     }
                 }
-                if (layout.rows[CLIP_INSPECTOR_ROW_REVERSE].value_rect.w > 0) {
-                    SDL_Rect toggle_rect = layout.rows[CLIP_INSPECTOR_ROW_REVERSE].value_rect;
-                    toggle_rect.h -= 4;
-                    toggle_rect.y += 2;
-                    toggle_rect.w = 52;
-                    if (SDL_PointInRect(&p, &toggle_rect)) {
+                if (layout.reverse_toggle_rect.w > 0 && layout.reverse_toggle_rect.h > 0) {
+                    if (SDL_PointInRect(&p, &layout.reverse_toggle_rect)) {
                         state->inspector.reverse = !state->inspector.reverse;
                         return;
                     }

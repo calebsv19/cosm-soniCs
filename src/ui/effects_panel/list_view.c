@@ -96,7 +96,7 @@ void effects_panel_render_list(SDL_Renderer* renderer, const AppState* state, co
     int clip_bottom = clip_top + layout->track_snapshot.list_clip_rect.h;
     for (int i = 0; i < layout->list_row_count && i < panel->chain_count; ++i) {
         SDL_Rect row = layout->list_row_rects[i];
-        if (row.y + FX_PANEL_LIST_ROW_HEIGHT >= clip_bottom) {
+        if (row.y + row.h >= clip_bottom) {
             break;
         }
         if (row.y + row.h <= clip_top) {
@@ -123,7 +123,12 @@ void effects_panel_render_list(SDL_Renderer* renderer, const AppState* state, co
         const char* name = info ? info->name : "Effect";
         SDL_Color text_color = slot->enabled ? label_color : text_dim;
         int text_y = row.y + (row.h - ui_font_line_height(text_scale)) / 2;
-        ui_draw_text(renderer, row.x + 6, text_y, name, text_color, text_scale);
+        int text_x = row.x + 6;
+        int text_max_w = row.w - 12;
+        if (layout->list_toggle_rects[i].w > 0) {
+            text_max_w = layout->list_toggle_rects[i].x - text_x - 6;
+        }
+        ui_draw_text_clipped(renderer, text_x, text_y, name, text_color, text_scale, text_max_w);
         draw_list_toggle(renderer, &layout->list_toggle_rects[i], slot->enabled, &theme);
     }
 

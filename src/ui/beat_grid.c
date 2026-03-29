@@ -7,6 +7,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+static int max_int(int a, int b) {
+    return (a > b) ? a : b;
+}
+
 static void resolve_grid_theme(DawThemePalette* palette) {
     if (!palette) {
         return;
@@ -286,6 +290,11 @@ void beat_grid_cache_draw(SDL_Renderer* renderer,
     SDL_Color sub_line = palette.grid_sub;
     SDL_Color major_line = palette.grid_major;
     SDL_Color downbeat_line = palette.grid_downbeat;
+    int label_scale = 1;
+    int label_h = ui_font_line_height(label_scale);
+    int label_y = top - label_h - max_int(2, label_h / 4);
+    int min_label_gap = max_int(4, label_h / 3);
+    int last_label_right = x0 - 4096;
 
     if (cache->show_all_lines) {
         SDL_SetRenderDrawColor(renderer, minor_line.r, minor_line.g, minor_line.b, minor_line.a);
@@ -312,16 +321,17 @@ void beat_grid_cache_draw(SDL_Renderer* renderer,
 
             char label[24];
             snprintf(label, sizeof(label), "%d.%d", bar, beat);
-            int label_scale = 1;
-            int base_h = ui_font_line_height(1);
-            int scaled_h = ui_font_line_height(label_scale);
-            int extra = (scaled_h - base_h) / 2;
-            int label_y = top - 10 - extra;
+            int label_x = x + 4;
+            int label_w = ui_measure_text_width(label, (float)label_scale);
+            if (label_x <= last_label_right + min_label_gap) {
+                continue;
+            }
             SDL_Color c = label_color;
             if (downbeat) {
                 c = palette.text_primary;
             }
-            ui_draw_text(renderer, x + 4, label_y, label, c, label_scale);
+            ui_draw_text(renderer, label_x, label_y, label, c, (float)label_scale);
+            last_label_right = label_x + label_w;
         }
         return;
     }
@@ -334,11 +344,12 @@ void beat_grid_cache_draw(SDL_Renderer* renderer,
 
         char label[24];
         snprintf(label, sizeof(label), "%d", bar);
-        int label_scale = 1;
-        int base_h = ui_font_line_height(1);
-        int scaled_h = ui_font_line_height(label_scale);
-        int extra = (scaled_h - base_h) / 2;
-        int label_y = top - 10 - extra;
-        ui_draw_text(renderer, x + 4, label_y, label, label_color, label_scale);
+        int label_x = x + 4;
+        int label_w = ui_measure_text_width(label, (float)label_scale);
+        if (label_x <= last_label_right + min_label_gap) {
+            continue;
+        }
+        ui_draw_text(renderer, label_x, label_y, label, label_color, (float)label_scale);
+        last_label_right = label_x + label_w;
     }
 }

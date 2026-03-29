@@ -32,6 +32,10 @@
 #define FX_SPEC_LEFT_COL_MIN 64
 #define FX_SPEC_RIGHT_COL_MIN 28
 
+static int max_int(int a, int b) {
+    return (a > b) ? a : b;
+}
+
 static const FxTypeUIInfo* find_type_info(const EffectsPanelState* panel, FxTypeId type_id) {
     if (!panel) {
         return NULL;
@@ -150,7 +154,8 @@ static int spec_widget_height_for_rows(int row_count,
                                        int available_h,
                                        int label_h,
                                        int value_h) {
-    int min_height = label_h + value_h + FX_SPEC_CONTROL_HEIGHT + FX_SPEC_CONTROL_PAD * 2 + 4;
+    int control_h = max_int(FX_SPEC_CONTROL_HEIGHT, ui_font_line_height(1.0f) + 2);
+    int min_height = label_h + value_h + control_h + FX_SPEC_CONTROL_PAD * 2 + 4;
     if (min_height < FX_SPEC_WIDGET_MIN_HEIGHT) {
         min_height = FX_SPEC_WIDGET_MIN_HEIGHT;
     }
@@ -631,26 +636,45 @@ void effects_panel_spec_compute_layout(const AppState* state,
         }
         widget->type = type;
 
+        int text_h = ui_font_line_height(1.0f);
+        int control_h_base = max_int(FX_SPEC_CONTROL_HEIGHT, text_h + 2);
+        int toggle_h = max_int(FX_SPEC_TOGGLE_H, text_h + 4);
+        int dropdown_h = max_int(FX_SPEC_DROPDOWN_H, text_h + 4);
+        int mode_size_base = max_int(FX_SPEC_MODE_TOGGLE_SIZE, ui_font_line_height(0.9f) + 2);
+        int mode_gap_base = max_int(FX_SPEC_MODE_TOGGLE_GAP, mode_size_base / 4);
         int control_w = FX_SPEC_RIGHT_COL_MIN;
-        int control_h = FX_SPEC_CONTROL_HEIGHT;
+        int control_h = control_h_base;
         if (type == FX_SPEC_WIDGET_KNOB) {
-            control_w = FX_SPEC_KNOB_SIZE;
+            control_w = max_int(FX_SPEC_KNOB_SIZE, text_h + 10);
             if (control_w > widget->rect.w) {
                 control_w = widget->rect.w;
             }
             control_h = control_w;
         } else if (type == FX_SPEC_WIDGET_TOGGLE) {
             control_w = FX_SPEC_TOGGLE_W;
-            control_h = FX_SPEC_TOGGLE_H;
+            control_h = toggle_h;
         } else if (type == FX_SPEC_WIDGET_DROPDOWN) {
-            control_w = 80;
-            control_h = FX_SPEC_DROPDOWN_H;
+            int dropdown_w = 80;
+            if (spec->enum_count > 0) {
+                for (uint32_t e = 0; e < spec->enum_count; ++e) {
+                    const char* opt = spec->enum_labels[e];
+                    if (!opt) {
+                        continue;
+                    }
+                    int w = ui_measure_text_width(opt, 1.0f) + 10;
+                    if (w > dropdown_w) {
+                        dropdown_w = w;
+                    }
+                }
+            }
+            control_w = dropdown_w;
+            control_h = dropdown_h;
         } else {
             control_w = widget->rect.w - FX_SPEC_LEFT_COL_MIN - FX_SPEC_CONTROL_PAD;
             if (control_w < FX_SPEC_RIGHT_COL_MIN) {
                 control_w = FX_SPEC_RIGHT_COL_MIN;
             }
-            control_h = FX_SPEC_CONTROL_HEIGHT;
+            control_h = control_h_base;
         }
 
         if (type != FX_SPEC_WIDGET_KNOB && control_h > available_control_h) {
@@ -675,14 +699,14 @@ void effects_panel_spec_compute_layout(const AppState* state,
         int mode_size = 0;
         int mode_gap = 0;
         if (fx_param_spec_is_syncable(spec)) {
-            mode_size = FX_SPEC_MODE_TOGGLE_SIZE;
+            mode_size = mode_size_base;
             if (mode_size > control_h) {
                 mode_size = control_h;
             }
             if (mode_size < 0) {
                 mode_size = 0;
             }
-            mode_gap = FX_SPEC_MODE_TOGGLE_GAP;
+            mode_gap = mode_gap_base;
         }
         int right_extra = mode_size > 0 ? (mode_size + mode_gap) : 0;
         int max_control_w = widget->rect.w - FX_SPEC_CONTROL_PAD - right_extra;
@@ -761,7 +785,7 @@ void effects_panel_spec_render(SDL_Renderer* renderer,
         if (!rect_intersects(&rect, &clip_rect)) {
             continue;
         }
-        ui_draw_text(renderer, rect.x, rect.y, label, label_color, 1.1f);
+        ui_draw_text_clipped(renderer, rect.x, rect.y, label, label_color, 1.1f, rect.w);
     }
 
     for (int i = 0; i < layout->widget_count; ++i) {
@@ -816,34 +840,59 @@ void effects_panel_spec_render(SDL_Renderer* renderer,
                 if (idx < 0) idx = 0;
                 if (idx >= (int)spec->enum_count) idx = (int)spec->enum_count - 1;
                 const char* opt = spec->enum_labels[idx];
-                ui_draw_text(renderer,
-                             widget->control_rect.x + 4,
-                             widget->control_rect.y + 2,
-                             opt ? opt : "",
-                             label_color,
-                             1.0f);
+                int opt_x = widget->control_rect.x + 4;
+                int opt_y = widget->control_rect.y + (widget->control_rect.h - ui_font_line_height(1.0f)) / 2;
+                int opt_w = widget->control_rect.w - 8;
+                if (opt_w > 0) {
+                    ui_draw_text_clipped(renderer,
+                                         opt_x,
+                                         opt_y,
+                                         opt ? opt : "",
+                                         label_color,
+                                         1.0f,
+                                         opt_w);
+                }
             }
         }
 
-        ui_draw_text(renderer, widget->rect.x + 2, widget->rect.y + 2, label, label_color, 1.1f);
+        int label_x = widget->label_rect.x + 2;
+        int label_w = widget->label_rect.w - 4;
+        if (label_w > 0) {
+            ui_draw_text_clipped(renderer,
+                                 label_x,
+                                 widget->label_rect.y,
+                                 label,
+                                 label_color,
+                                 1.1f,
+                                 label_w);
+        }
 
         if (widget->mode_rect.w > 0 && widget->mode_rect.h > 0) {
             SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
             SDL_RenderDrawRect(renderer, &widget->mode_rect);
             const char* mode_label = slot->param_mode[widget->param_index] == FX_PARAM_MODE_NATIVE ? "" : "B";
             if (mode_label[0]) {
-                ui_draw_text(renderer,
-                             widget->mode_rect.x + 2,
-                             widget->mode_rect.y + 1,
-                             mode_label,
-                             label_color,
-                             0.9f);
+                int mode_scale_h = ui_font_line_height(0.9f);
+                int mode_y = widget->mode_rect.y + (widget->mode_rect.h - mode_scale_h) / 2;
+                ui_draw_text_clipped(renderer,
+                                     widget->mode_rect.x + 1,
+                                     mode_y,
+                                     mode_label,
+                                     label_color,
+                                     0.9f,
+                                     widget->mode_rect.w - 2);
             }
         }
 
         char value_line[64];
         format_value_label(spec, display_value, slot->param_mode[widget->param_index], value_line, sizeof(value_line));
-        ui_draw_text(renderer, widget->value_rect.x, widget->value_rect.y, value_line, value_color, 1.0f);
+        ui_draw_text_clipped(renderer,
+                             widget->value_rect.x,
+                             widget->value_rect.y,
+                             value_line,
+                             value_color,
+                             1.0f,
+                             widget->value_rect.w);
     }
 }
 

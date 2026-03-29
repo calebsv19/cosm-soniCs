@@ -118,8 +118,9 @@ void library_input_start_edit(AppState* state, const Pane* library_pane, int mou
     lib->edit_index = lib->hovered_index;
     strncpy(lib->edit_buffer, lib->items[lib->edit_index].name, sizeof(lib->edit_buffer) - 1);
     lib->edit_buffer[sizeof(lib->edit_buffer) - 1] = '\0';
-    int start_x = library_pane->rect.x + 16;
-    lib->edit_cursor = library_cursor_from_x(lib->edit_buffer, 1.5f, start_x, mouse_x);
+    SDL_Rect content_rect = ui_layout_pane_content_rect(library_pane);
+    int start_x = content_rect.x + 16;
+    lib->edit_cursor = library_cursor_from_x(lib->edit_buffer, 1.0f, start_x, mouse_x);
     SDL_StartTextInput();
 }
 
@@ -188,11 +189,11 @@ bool library_input_handle_event(InputManager* manager, AppState* state, const SD
     case SDL_MOUSEBUTTONDOWN: {
         const Pane* library_pane = ui_layout_get_pane(state, 3);
         if (!library_pane) break;
-        int line_height = 20;
-        int hit = library_browser_hit_test(lib, &library_pane->rect, event->button.x, event->button.y, line_height);
+        SDL_Rect content_rect = ui_layout_pane_content_rect(library_pane);
+        int hit = library_browser_hit_test(lib, &content_rect, event->button.x, event->button.y);
         if (hit == lib->edit_index && event->button.button == SDL_BUTTON_LEFT) {
-            int start_x = library_pane->rect.x + 16;
-            lib->edit_cursor = library_cursor_from_x(lib->edit_buffer, 1.5f, start_x, event->button.x);
+            int start_x = content_rect.x + 16;
+            lib->edit_cursor = library_cursor_from_x(lib->edit_buffer, 1.0f, start_x, event->button.x);
             return true;
         } else if (event->button.button == SDL_BUTTON_LEFT) {
             library_edit_stop(lib);

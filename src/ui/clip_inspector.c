@@ -31,6 +31,14 @@
 #define INSPECTOR_WAVE_SECTION_GAP 10
 #define INSPECTOR_WAVE_HEIGHT 140
 
+static int max_int(int a, int b) {
+    return (a > b) ? a : b;
+}
+
+static int min_int(int a, int b) {
+    return (a < b) ? a : b;
+}
+
 static void resolve_inspector_theme(DawThemePalette* palette) {
     if (!palette) {
         return;
@@ -167,9 +175,15 @@ static void draw_button(SDL_Renderer* renderer,
     float scale = 1.0f;
     int text_w = ui_measure_text_width(label, scale);
     int text_h = ui_font_line_height(scale);
+    int text_pad = 4;
     int text_x = rect->x + (rect->w - text_w) / 2;
     int text_y = rect->y + (rect->h - text_h) / 2;
-    ui_draw_text(renderer, text_x, text_y, label, text, scale);
+    int max_text_w = rect->w - text_pad * 2;
+    if (text_w <= max_text_w) {
+        ui_draw_text(renderer, text_x, text_y, label, text, scale);
+    } else if (max_text_w > 0) {
+        ui_draw_text_clipped(renderer, rect->x + text_pad, text_y, label, text, scale, max_text_w);
+    }
 }
 
 static void clip_inspector_draw_edit_box(SDL_Renderer* renderer,
@@ -543,12 +557,22 @@ void clip_inspector_compute_layout(const AppState* state, ClipInspectorLayout* l
     layout->panel_rect = mixer->rect;
 
     // ---------- Metrics / constants ----------
-    const int M = INSPECTOR_MARGIN;
-    const int col_gap = INSPECTOR_COL_GAP;
-    const int row_h = INSPECTOR_ROW_HEIGHT;
-    const int row_gap = INSPECTOR_ROW_GAP;
-    const int section_gap = INSPECTOR_SECTION_GAP;
-    const int slider_h = INSPECTOR_SLIDER_HEIGHT;
+    const int label_line_h = ui_font_line_height(INSPECTOR_LABEL_SCALE);
+    const int value_line_h = ui_font_line_height(INSPECTOR_VALUE_SCALE);
+    const int text_line_h = max_int(label_line_h, value_line_h);
+    const int text_pad_y = max_int(2, text_line_h / 3);
+    const int M = max_int(INSPECTOR_MARGIN, text_line_h / 2 + 4);
+    const int col_gap = max_int(INSPECTOR_COL_GAP, text_line_h / 2 + 8);
+    const int row_h = max_int(INSPECTOR_ROW_HEIGHT, text_line_h + text_pad_y * 2);
+    const int row_gap = max_int(INSPECTOR_ROW_GAP, text_line_h / 2);
+    const int section_gap = max_int(INSPECTOR_SECTION_GAP, text_line_h / 2 + 2);
+    const int slider_h = min_int(row_h - 2, max_int(INSPECTOR_SLIDER_HEIGHT, text_line_h / 2));
+    const int value_gap = max_int(8, text_line_h / 3);
+    const int right_pad = max_int(INSPECTOR_WAVE_HEADER_PAD, text_line_h / 2);
+    const int wave_section_gap = max_int(INSPECTOR_WAVE_SECTION_GAP, text_line_h / 2 + 2);
+    const int header_h = max_int(INSPECTOR_WAVE_HEADER_HEIGHT, text_line_h + text_pad_y * 2);
+    const int wave_h = max_int(INSPECTOR_WAVE_HEIGHT, text_line_h * 7);
+    const int preset_gap = max_int(INSPECTOR_PRESET_GAP, text_line_h / 3 + 2);
     const int content_x = mixer->rect.x + M;
     const int content_y = mixer->rect.y + M;
     const int content_w = mixer->rect.w - 2 * M;
@@ -557,10 +581,18 @@ void clip_inspector_compute_layout(const AppState* state, ClipInspectorLayout* l
         return;
     }
 
+    int mode_label_source_w = ui_measure_text_width("Source", 1.0f);
+    int mode_label_clip_w = ui_measure_text_width("Clip", 1.0f);
+    int mode_w = max_int(mode_label_source_w, mode_label_clip_w) + 14;
+    int header_min_w = ui_measure_text_width("Source View", 1.0f) + (mode_w * 2) + preset_gap + right_pad * 2 + 12;
+
     int left_w = (int)(content_w * 0.25f);
     int right_w = content_w - left_w - col_gap;
-    const int min_left = 220;
-    const int min_right = 220;
+    const int min_left = max_int(220,
+                                 ui_measure_text_width("Timeline Length", INSPECTOR_LABEL_SCALE) +
+                                     ui_measure_text_width("00:00.000", INSPECTOR_VALUE_SCALE) +
+                                     value_gap + 24);
+    const int min_right = max_int(220, header_min_w);
     if (left_w < min_left) left_w = min_left;
     right_w = content_w - left_w - col_gap;
     if (right_w < min_right) {
@@ -572,31 +604,85 @@ void clip_inspector_compute_layout(const AppState* state, ClipInspectorLayout* l
     layout->left_rect = (SDL_Rect){content_x, content_y, left_w, content_h};
     layout->right_rect = (SDL_Rect){content_x + left_w + col_gap, content_y, right_w, content_h};
 
-    int right_inner_x = layout->right_rect.x + INSPECTOR_WAVE_HEADER_PAD;
-    int right_inner_w = layout->right_rect.w - INSPECTOR_WAVE_HEADER_PAD * 2;
+    int right_inner_x = layout->right_rect.x + right_pad;
+    int right_inner_w = layout->right_rect.w - right_pad * 2;
+    int right_inner_h = layout->right_rect.h - right_pad * 2;
     if (right_inner_w < 0) right_inner_w = 0;
-    int right_y = layout->right_rect.y + INSPECTOR_WAVE_HEADER_PAD;
-    layout->right_header_rect = (SDL_Rect){right_inner_x, right_y, right_inner_w, INSPECTOR_WAVE_HEADER_HEIGHT};
-    right_y += INSPECTOR_WAVE_HEADER_HEIGHT + INSPECTOR_WAVE_SECTION_GAP;
-    layout->right_waveform_rect = (SDL_Rect){right_inner_x, right_y, right_inner_w, INSPECTOR_WAVE_HEIGHT};
-    right_y += INSPECTOR_WAVE_HEIGHT + INSPECTOR_WAVE_SECTION_GAP;
-    int detail_h = layout->right_rect.y + layout->right_rect.h - INSPECTOR_WAVE_HEADER_PAD - right_y;
+    if (right_inner_h < 0) right_inner_h = 0;
+    int right_header_h = header_h;
+    if (right_header_h > right_inner_h) {
+        right_header_h = right_inner_h;
+    }
+    int available_wave_detail_h = right_inner_h - right_header_h - wave_section_gap * 2;
+    if (available_wave_detail_h < 0) {
+        available_wave_detail_h = 0;
+    }
+    int min_detail_h = max_int(row_h * 3, text_line_h * 4);
+    if (min_detail_h > available_wave_detail_h) {
+        min_detail_h = available_wave_detail_h;
+    }
+    int right_wave_h = wave_h;
+    int max_wave_h = available_wave_detail_h - min_detail_h;
+    if (max_wave_h < 0) {
+        max_wave_h = 0;
+    }
+    if (right_wave_h > max_wave_h) {
+        right_wave_h = max_wave_h;
+    }
+    int right_y = layout->right_rect.y + right_pad;
+    layout->right_header_rect = (SDL_Rect){right_inner_x, right_y, right_inner_w, right_header_h};
+    right_y += right_header_h + wave_section_gap;
+    layout->right_waveform_rect = (SDL_Rect){right_inner_x, right_y, right_inner_w, right_wave_h};
+    right_y += right_wave_h + wave_section_gap;
+    int detail_h = layout->right_rect.y + layout->right_rect.h - right_pad - right_y;
     if (detail_h < 0) detail_h = 0;
     layout->right_detail_rect = (SDL_Rect){right_inner_x, right_y, right_inner_w, detail_h};
 
-    int mode_w = 72;
-    int mode_h = INSPECTOR_WAVE_HEADER_HEIGHT - 6;
+    int mode_h = header_h - max_int(2, text_pad_y - 1) * 2;
+    if (mode_h < text_line_h + 4) mode_h = text_line_h + 4;
+    if (mode_h > header_h) mode_h = header_h;
+    int max_mode_w = (layout->right_header_rect.w - preset_gap) / 2;
+    if (mode_w > max_mode_w) mode_w = max_mode_w;
+    if (mode_w < 0) mode_w = 0;
     int mode_y = layout->right_header_rect.y + (layout->right_header_rect.h - mode_h) / 2;
-    int mode_x = layout->right_header_rect.x + layout->right_header_rect.w - mode_w * 2 - INSPECTOR_PRESET_GAP;
+    int mode_x = layout->right_header_rect.x + layout->right_header_rect.w - mode_w * 2 - preset_gap;
     if (mode_x < layout->right_header_rect.x) mode_x = layout->right_header_rect.x;
     layout->right_mode_source_rect = (SDL_Rect){mode_x, mode_y, mode_w, mode_h};
-    layout->right_mode_clip_rect = (SDL_Rect){mode_x + mode_w + INSPECTOR_PRESET_GAP, mode_y, mode_w, mode_h};
+    layout->right_mode_clip_rect = (SDL_Rect){mode_x + mode_w + preset_gap, mode_y, mode_w, mode_h};
 
-    int label_w = (int)(left_w * 0.38f);
-    if (label_w < 80) label_w = 80;
+    static const char* k_row_labels[] = {
+        "Timeline Start", "Timeline End", "Timeline Length", "Source Start",
+        "Source End", "Playback Rate", "Phase Invert", "Normalize", "Reverse"
+    };
+    int label_min_w = 0;
+    for (size_t i = 0; i < sizeof(k_row_labels) / sizeof(k_row_labels[0]); ++i) {
+        int w = ui_measure_text_width(k_row_labels[i], INSPECTOR_LABEL_SCALE);
+        if (w > label_min_w) {
+            label_min_w = w;
+        }
+    }
+    int min_value_w = max_int(ui_measure_text_width("00:00.000", INSPECTOR_VALUE_SCALE) + 18,
+                              ui_measure_text_width("100.0%", INSPECTOR_VALUE_SCALE) + 18);
+    int label_w = max_int((int)(left_w * 0.38f), label_min_w + 12);
+    int max_label_w = left_w - value_gap - min_value_w;
+    if (max_label_w < 0) {
+        max_label_w = 0;
+    }
+    if (label_w > max_label_w) {
+        label_w = max_label_w;
+    }
+    {
+        int preferred_min_label_w = 80;
+        if (preferred_min_label_w > max_label_w) {
+            preferred_min_label_w = max_label_w;
+        }
+        if (label_w < preferred_min_label_w) {
+            label_w = preferred_min_label_w;
+        }
+    }
     int label_x = layout->left_rect.x;
-    int value_x = label_x + label_w + 8;
-    int value_w = left_w - label_w - 8;
+    int value_x = label_x + label_w + value_gap;
+    int value_w = left_w - label_w - value_gap;
     if (value_w < 0) value_w = 0;
 
     int y = layout->left_rect.y;
@@ -650,6 +736,40 @@ void clip_inspector_compute_layout(const AppState* state, ClipInspectorLayout* l
     layout->fade_out_fill_rect = layout->fade_out_track_rect;
     layout->fade_out_handle_rect = layout->fade_out_track_rect;
 
+    int control_inset_y = max_int(2, text_pad_y / 2);
+    int control_h = row_h - control_inset_y * 2;
+    if (control_h < text_line_h + 2) {
+        control_h = text_line_h + 2;
+    }
+    if (control_h > row_h) {
+        control_h = row_h;
+    }
+
+    SDL_Rect phase_row = layout->rows[CLIP_INSPECTOR_ROW_PHASE].value_rect;
+    int phase_button_w = (phase_row.w - preset_gap) / 2;
+    if (phase_button_w < 0) phase_button_w = 0;
+    layout->phase_left_rect = (SDL_Rect){phase_row.x, phase_row.y + control_inset_y, phase_button_w, control_h};
+    layout->phase_right_rect = (SDL_Rect){phase_row.x + phase_button_w + preset_gap,
+                                          phase_row.y + control_inset_y,
+                                          phase_button_w,
+                                          control_h};
+
+    int toggle_min_w = max_int(ui_measure_text_width("On", 1.0f),
+                               ui_measure_text_width("Off", 1.0f)) + 14;
+    SDL_Rect normalize_row = layout->rows[CLIP_INSPECTOR_ROW_NORMALIZE].value_rect;
+    int normalize_w = min_int(normalize_row.w, max_int(52, toggle_min_w));
+    if (normalize_w < 0) normalize_w = 0;
+    layout->normalize_toggle_rect = (SDL_Rect){normalize_row.x,
+                                               normalize_row.y + control_inset_y,
+                                               normalize_w,
+                                               control_h};
+    SDL_Rect reverse_row = layout->rows[CLIP_INSPECTOR_ROW_REVERSE].value_rect;
+    int reverse_w = min_int(reverse_row.w, max_int(52, toggle_min_w));
+    if (reverse_w < 0) reverse_w = 0;
+    layout->reverse_toggle_rect = (SDL_Rect){reverse_row.x,
+                                             reverse_row.y + control_inset_y,
+                                             reverse_w,
+                                             control_h};
 }
 
 // Draws a label/value row with clipped text.
@@ -993,29 +1113,24 @@ void clip_inspector_render(SDL_Renderer* renderer, AppState* state, const ClipIn
     draw_slider(renderer, &layout->fade_in_track_rect, fade_in_ratio, &theme);
     draw_slider(renderer, &layout->fade_out_track_rect, fade_out_ratio, &theme);
 
-    if (layout->rows[CLIP_INSPECTOR_ROW_PHASE].value_rect.w > 0) {
-        SDL_Rect phase_rect = layout->rows[CLIP_INSPECTOR_ROW_PHASE].value_rect;
-        int button_w = (phase_rect.w - INSPECTOR_PRESET_GAP) / 2;
-        int button_h = phase_rect.h - 4;
-        if (button_w < 0) button_w = 0;
-        SDL_Rect left_btn = {phase_rect.x, phase_rect.y + 2, button_w, button_h};
-        SDL_Rect right_btn = {phase_rect.x + button_w + INSPECTOR_PRESET_GAP, phase_rect.y + 2, button_w, button_h};
-        draw_button(renderer, &left_btn, "L", state->inspector.phase_invert_l, &theme);
-        draw_button(renderer, &right_btn, "R", state->inspector.phase_invert_r, &theme);
+    if (layout->phase_left_rect.w > 0 && layout->phase_left_rect.h > 0 &&
+        layout->phase_right_rect.w > 0 && layout->phase_right_rect.h > 0) {
+        draw_button(renderer, &layout->phase_left_rect, "L", state->inspector.phase_invert_l, &theme);
+        draw_button(renderer, &layout->phase_right_rect, "R", state->inspector.phase_invert_r, &theme);
     }
-    if (layout->rows[CLIP_INSPECTOR_ROW_NORMALIZE].value_rect.w > 0) {
-        SDL_Rect toggle_rect = layout->rows[CLIP_INSPECTOR_ROW_NORMALIZE].value_rect;
-        toggle_rect.h -= 4;
-        toggle_rect.y += 2;
-        toggle_rect.w = 52;
-        draw_button(renderer, &toggle_rect, state->inspector.normalize ? "On" : "Off", state->inspector.normalize, &theme);
+    if (layout->normalize_toggle_rect.w > 0 && layout->normalize_toggle_rect.h > 0) {
+        draw_button(renderer,
+                    &layout->normalize_toggle_rect,
+                    state->inspector.normalize ? "On" : "Off",
+                    state->inspector.normalize,
+                    &theme);
     }
-    if (layout->rows[CLIP_INSPECTOR_ROW_REVERSE].value_rect.w > 0) {
-        SDL_Rect toggle_rect = layout->rows[CLIP_INSPECTOR_ROW_REVERSE].value_rect;
-        toggle_rect.h -= 4;
-        toggle_rect.y += 2;
-        toggle_rect.w = 52;
-        draw_button(renderer, &toggle_rect, state->inspector.reverse ? "On" : "Off", state->inspector.reverse, &theme);
+    if (layout->reverse_toggle_rect.w > 0 && layout->reverse_toggle_rect.h > 0) {
+        draw_button(renderer,
+                    &layout->reverse_toggle_rect,
+                    state->inspector.reverse ? "On" : "Off",
+                    state->inspector.reverse,
+                    &theme);
     }
 
     if (layout->right_rect.w > 0 && layout->right_rect.h > 0) {
@@ -1031,12 +1146,19 @@ void clip_inspector_render(SDL_Renderer* renderer, AppState* state, const ClipIn
             SDL_SetRenderDrawColor(renderer, box_bg.r, box_bg.g, box_bg.b, box_bg.a);
             SDL_RenderFillRect(renderer, &header_bg);
             bool view_source = state->inspector.waveform.view_source;
-            ui_draw_text(renderer,
-                         layout->right_header_rect.x,
-                         layout->right_header_rect.y + 4,
-                         view_source ? "Source View" : "Clip View",
-                         label,
-                         1.0f);
+            int header_text_h = ui_font_line_height(1.0f);
+            int header_text_y = layout->right_header_rect.y + (layout->right_header_rect.h - header_text_h) / 2;
+            int header_text_w = layout->right_mode_source_rect.x - layout->right_header_rect.x - 8;
+            if (header_text_w < 0) {
+                header_text_w = layout->right_header_rect.w;
+            }
+            ui_draw_text_clipped(renderer,
+                                 layout->right_header_rect.x,
+                                 header_text_y,
+                                 view_source ? "Source View" : "Clip View",
+                                 label,
+                                 1.0f,
+                                 header_text_w);
             draw_button(renderer, &layout->right_mode_source_rect, "Source", view_source, &theme);
             draw_button(renderer, &layout->right_mode_clip_rect, "Clip", !view_source, &theme);
         }

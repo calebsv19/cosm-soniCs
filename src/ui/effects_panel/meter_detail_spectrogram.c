@@ -13,6 +13,10 @@ enum {
     METER_SPECTROGRAM_RGBA_CAPACITY = ENGINE_SPECTROGRAM_HISTORY * ENGINE_SPECTROGRAM_BINS * 4
 };
 
+static int max_int(int a, int b) {
+    return (a > b) ? a : b;
+}
+
 // Reused render-thread scratch to avoid per-frame heap allocation.
 static uint8_t g_meter_spectrogram_rgba[METER_SPECTROGRAM_RGBA_CAPACITY];
 // Reused SDL surface wrapper over the static RGBA staging buffer.
@@ -184,11 +188,18 @@ void effects_meter_render_spectrogram(SDL_Renderer* renderer,
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, rect);
 
-    const int pad = 16;
-    const int label_w = 22;
-    const int meter_w = 10;
-    const int history_gap = 0;
-    int header_h = 36;
+    const int body_h = ui_font_line_height(1.0f);
+    const int title_h = ui_font_line_height(1.2f);
+    const int pad = max_int(12, body_h / 2 + 8);
+    const int label_w = max_int(22, ui_measure_text_width("20k", 1.0f) + 8);
+    const int meter_w = max_int(10, body_h / 2);
+    const int history_gap = max_int(0, body_h / 5);
+    const int row_gap = max_int(4, body_h / 3);
+    const int section_gap = max_int(8, body_h / 2);
+    const int header_text_w = rect->w - pad * 2;
+    const int title_y = rect->y + max_int(4, pad / 3);
+    const int subtitle_y = title_y + title_h + row_gap;
+    int header_h = (subtitle_y - (rect->y + pad)) + body_h + section_gap;
     if (header_h > rect->h - pad * 2) {
         header_h = rect->h - pad * 2;
     }
@@ -204,9 +215,24 @@ void effects_meter_render_spectrogram(SDL_Renderer* renderer,
     if (history_rect.w < 0) {
         history_rect.w = 0;
     }
+    if (meter_rect.h <= 0 || meter_rect.w <= 0) {
+        return;
+    }
 
-    ui_draw_text(renderer, rect->x + pad, rect->y + 6, "Spectrogram", label_color, 1.2f);
-    ui_draw_text(renderer, rect->x + pad, rect->y + 22, "Track Output", dim_color, 1.0f);
+    ui_draw_text_clipped(renderer,
+                         rect->x + pad,
+                         title_y,
+                         "Spectrogram",
+                         label_color,
+                         1.2f,
+                         header_text_w);
+    ui_draw_text_clipped(renderer,
+                         rect->x + pad,
+                         subtitle_y,
+                         "Track Output",
+                         dim_color,
+                         1.0f,
+                         header_text_w);
 
     SDL_SetRenderDrawColor(renderer, history_bg.r, history_bg.g, history_bg.b, history_bg.a);
     SDL_RenderFillRect(renderer, &history_rect);
@@ -226,15 +252,24 @@ void effects_meter_render_spectrogram(SDL_Renderer* renderer,
     float min_hz = ENGINE_SPECTROGRAM_MIN_HZ;
     float max_hz = ENGINE_SPECTROGRAM_MAX_HZ;
     float mid_hz = sqrtf(min_hz * max_hz);
+    int top_label_y = meter_rect.y;
+    int mid_label_y = meter_rect.y + (meter_rect.h - body_h) / 2;
+    int bot_label_y = meter_rect.y + meter_rect.h - body_h;
     format_hz_label(max_hz, freq_buf, sizeof(freq_buf));
-    ui_draw_text(renderer, rect->x + pad, meter_rect.y - 6, freq_buf, dim_color, 1.0f);
+    ui_draw_text_clipped(renderer, rect->x + pad, top_label_y, freq_buf, dim_color, 1.0f, label_w);
     format_hz_label(mid_hz, freq_buf, sizeof(freq_buf));
-    ui_draw_text(renderer, rect->x + pad, meter_rect.y + meter_rect.h / 2 - 6, freq_buf, dim_color, 1.0f);
+    ui_draw_text_clipped(renderer, rect->x + pad, mid_label_y, freq_buf, dim_color, 1.0f, label_w);
     format_hz_label(min_hz, freq_buf, sizeof(freq_buf));
-    ui_draw_text(renderer, rect->x + pad, meter_rect.y + meter_rect.h - 10, freq_buf, dim_color, 1.0f);
+    ui_draw_text_clipped(renderer, rect->x + pad, bot_label_y, freq_buf, dim_color, 1.0f, label_w);
 
     if (!spectrogram || !frames || spectrogram->frames <= 0 || spectrogram->bins <= 0 || history_rect.h <= 0) {
-        ui_draw_text(renderer, rect->x + pad, rect->y + 40, "No data", dim_color, 1.0f);
+        ui_draw_text_clipped(renderer,
+                             history_rect.x + max_int(6, pad / 3),
+                             history_rect.y + max_int(6, pad / 3),
+                             "No data",
+                             dim_color,
+                             1.0f,
+                             history_rect.w - max_int(12, pad / 2));
         return;
     }
 
