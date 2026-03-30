@@ -1,6 +1,6 @@
 # DAW Current Truth
 
-Last updated: 2026-03-28
+Last updated: 2026-03-30
 
 ## Program Identity
 - Repository directory: `daw/`
@@ -83,6 +83,8 @@ Legacy test lane:
   - meter subtype renderers (correlation/levels/lufs/mid-side/vectorscope/spectrogram) now derive header spacing, stat-row placement, axis label placement, and meter paddings from font metrics with clipped text bounds
   - phase 4 baseline verification now includes `test-layout-sweep` (zoom `-4..+5` x small/medium/large windows) with effects header/list/detail + EQ/meter helper rect overlap/in-bounds assertions
   - repeated font zoom changes now use renderer-safe font cache invalidation to prevent text disappearing after many Cmd/Ctrl `+/-` cycles
+  - post-scaffold font-size standardization lane is treated as complete; standardized closeout title is:
+    - `Post-Scaffold Font Size Standardization`
 - Baseline freeze:
   - `../docs/private_program_docs/daw/2026-03-27_daw_s0_baseline_freeze_and_mapping.md`
 - Completed phases:

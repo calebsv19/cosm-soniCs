@@ -1,6 +1,6 @@
 # DAW Future Intent
 
-Last updated: 2026-03-27
+Last updated: 2026-03-30
 
 ## Scaffold Alignment Intent
 1. Preserve DAW's existing subsystem decomposition strengths.
@@ -40,6 +40,15 @@ Last updated: 2026-03-27
 - `DAW-S5` (completed):
   - run stabilization closeout docs sync and final verification gates.
   - scaffold completion commit created: `Project Scaffold Standardization`.
+
+## Post-Scaffold Font Pass
+- text scaling and layout-safety migration lane is complete for current DAW scope.
+- standardized closeout commit title for this lane:
+  - `Post-Scaffold Font Size Standardization`
+- runtime expectations kept by this lane:
+  - Cmd/Ctrl `+`, `-`, `0` controls remain active.
+  - font growth/shrink reflows pane geometry and list/header spacing from measured metrics.
+  - repeated zoom commands preserve text visibility via renderer-safe cache invalidation.
 
 ## Non-Goals During Scaffold Migration
 - No feature expansion unrelated to scaffold alignment.
