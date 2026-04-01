@@ -12,6 +12,7 @@ Start here for DAW public documentation.
   - `make -C daw test-legacy`
 
 ## Existing Public Docs
+- `docs/desktop_packaging.md`
 - `docs/DAW_ARCH_EFFECTS_AUDIT.md`
 - `docs/DAW_EFFECTS_PANEL_STATUS.md`
 - `docs/DAW_WAKE_IDLE_LOOP_MIGRATION_PLAN.md`

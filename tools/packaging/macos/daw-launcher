@@ -1,0 +1,42 @@
+#!/bin/sh
+set -eu
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+APP_CONTENTS_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+RES_DIR="$APP_CONTENTS_DIR/Resources"
+LOG_DIR="${HOME}/Library/Logs/DAW"
+LOG_FILE="$LOG_DIR/launcher.log"
+
+mkdir -p "$LOG_DIR" 2>/dev/null || true
+if ! touch "$LOG_FILE" 2>/dev/null; then
+    LOG_FILE="${TMPDIR:-/tmp}/daw-launcher.log"
+    touch "$LOG_FILE" 2>/dev/null || true
+fi
+
+export VK_RENDERER_SHADER_ROOT="${VK_RENDERER_SHADER_ROOT:-$RES_DIR}"
+
+if [ "${1:-}" = "--print-config" ]; then
+    echo "APP_CONTENTS_DIR=$APP_CONTENTS_DIR"
+    echo "RES_DIR=$RES_DIR"
+    echo "LOG_FILE=$LOG_FILE"
+    echo "VK_RENDERER_SHADER_ROOT=$VK_RENDERER_SHADER_ROOT"
+    exit 0
+fi
+
+if [ "${1:-}" = "--self-test" ]; then
+    [ -x "$SCRIPT_DIR/daw-bin" ] || { echo "missing: daw-bin" >&2; exit 1; }
+    [ -f "$APP_CONTENTS_DIR/Info.plist" ] || { echo "missing: Info.plist" >&2; exit 1; }
+    [ -f "$RES_DIR/config/engine.cfg" ] || { echo "missing: config/engine.cfg" >&2; exit 1; }
+    [ -f "$RES_DIR/assets/audio/README.md" ] || { echo "missing: bundled audio readme" >&2; exit 1; }
+    [ -f "$RES_DIR/include/fonts/Montserrat/Montserrat-Regular.ttf" ] || { echo "missing: bundled Montserrat" >&2; exit 1; }
+    [ -f "$RES_DIR/vk_renderer/shaders/textured.vert.spv" ] || { echo "missing: bundled vk renderer shader" >&2; exit 1; }
+    [ -f "$RES_DIR/shaders/textured.vert.spv" ] || { echo "missing: bundled runtime shader" >&2; exit 1; }
+    echo "self-test: ok"
+    echo "LOG_FILE=$LOG_FILE"
+    echo "VK_RENDERER_SHADER_ROOT=$VK_RENDERER_SHADER_ROOT"
+    exit 0
+fi
+
+cd "$RES_DIR"
+printf '%s launch begin pid=%s cwd=%s shader_root=%s args=%s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$$" "$RES_DIR" "$VK_RENDERER_SHADER_ROOT" "$*" >>"$LOG_FILE" 2>/dev/null || true
+exec "$SCRIPT_DIR/daw-bin" "$@" >>"$LOG_FILE" 2>&1

@@ -1,6 +1,6 @@
 # DAW Current Truth
 
-Last updated: 2026-03-30
+Last updated: 2026-04-01
 
 ## Program Identity
 - Repository directory: `daw/`
@@ -27,6 +27,12 @@ Last updated: 2026-03-30
   - `make -C daw run-headless-smoke`
 - Visual harness build gate:
   - `make -C daw visual-harness`
+- Packaging gates:
+  - `make -C daw package-desktop`
+  - `make -C daw package-desktop-smoke`
+  - `make -C daw package-desktop-self-test`
+  - `make -C daw package-desktop-refresh`
+  - `/Users/<user>/Desktop/DAW.app/Contents/MacOS/daw-launcher --print-config`
 
 Stable test lane:
 - `make -C daw test-stable`
@@ -91,3 +97,20 @@ Legacy test lane:
   - `DAW-S0`, `DAW-S1`, `DAW-S2`, `DAW-S3`, `DAW-S4`, `DAW-S5`
 - Next phase:
   - scaffold migration complete; next work is normal feature/fix flow with `test-stable` as baseline gate
+
+## App Packaging Status (Current)
+- DAW packaging baseline is complete with standardized target set:
+  - `package-desktop`
+  - `package-desktop-smoke`
+  - `package-desktop-self-test`
+  - `package-desktop-copy-desktop`
+  - `package-desktop-sync`
+  - `package-desktop-open`
+  - `package-desktop-remove`
+  - `package-desktop-refresh`
+- packaging assets/launcher:
+  - `tools/packaging/macos/Info.plist`
+  - `tools/packaging/macos/daw-launcher`
+- launcher diagnostics:
+  - `--print-config`
+  - startup logs at `~/Library/Logs/DAW/launcher.log` (tmp fallback)

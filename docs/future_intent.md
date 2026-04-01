@@ -1,6 +1,6 @@
 # DAW Future Intent
 
-Last updated: 2026-03-30
+Last updated: 2026-04-01
 
 ## Scaffold Alignment Intent
 1. Preserve DAW's existing subsystem decomposition strengths.
@@ -49,6 +49,14 @@ Last updated: 2026-03-30
   - Cmd/Ctrl `+`, `-`, `0` controls remain active.
   - font growth/shrink reflows pane geometry and list/header spacing from measured metrics.
   - repeated zoom commands preserve text visibility via renderer-safe cache invalidation.
+
+## App Packaging Intent
+- DAW packaging baseline is now complete for current scaffold contract:
+  - standardized `package-desktop*` target set is landed
+  - launcher diagnostics lane is active (`--self-test`, `--print-config`, startup logs)
+- next packaging posture:
+  - maintenance-only parity with scaffold packaging contract updates
+  - keep Desktop/Finder launch verification in closeout gates for packaging-affecting changes
 
 ## Non-Goals During Scaffold Migration
 - No feature expansion unrelated to scaffold alignment.
