@@ -38,6 +38,17 @@
 static void handle_render(AppContext* ctx);
 static void perform_bounce(AppContext* ctx, AppState* state);
 
+typedef struct DawUpdateDerivation {
+    bool layout_changed;
+    uint32_t invalidation_reason_bits;
+} DawUpdateDerivation;
+
+typedef struct DawRenderDerivation {
+    bool should_render_now;
+    bool request_redraw;
+    uint32_t redraw_reason_bits;
+} DawRenderDerivation;
+
 // Stores DAW wake-loop runtime policy loaded from env or defaults.
 typedef struct DawLoopRuntimePolicy {
     uint32_t max_wait_ms;
@@ -471,42 +482,72 @@ static void handle_update(AppContext* ctx) {
     if (state->bounce_active) {
         return;
     }
-    if (ui_ensure_layout(state, ctx->window, ctx->renderer)) {
-        const uint32_t reason_bits = DAW_RENDER_INVALIDATION_LAYOUT | DAW_RENDER_INVALIDATION_RESIZE;
-        daw_invalidate_all(state->panes, state->pane_count, reason_bits);
-        daw_request_full_redraw(reason_bits);
+    DawUpdateDerivation update_derivation = {
+        .layout_changed = ui_ensure_layout(state, ctx->window, ctx->renderer),
+        .invalidation_reason_bits = DAW_RENDER_INVALIDATION_LAYOUT | DAW_RENDER_INVALIDATION_RESIZE
+    };
+    if (update_derivation.layout_changed) {
+        daw_invalidate_all(state->panes, state->pane_count, update_derivation.invalidation_reason_bits);
+        daw_request_full_redraw(update_derivation.invalidation_reason_bits);
     }
     input_manager_update(&state->input_manager, state);
 }
 
+// Derives render intent from runtime state without mutating render invalidation state.
+static DawRenderDerivation daw_derive_render_plan(const AppContext* ctx, const AppState* state, uint64_t now_ns) {
+    (void)now_ns;
+    DawRenderDerivation out = {
+        .should_render_now = false,
+        .request_redraw = false,
+        .redraw_reason_bits = DAW_RENDER_INVALIDATION_NONE
+    };
+
+    if (!ctx || !state) {
+        return out;
+    }
+
+    if (state->engine && engine_transport_is_playing(state->engine)) {
+        if (ctx->renderMode == RENDER_ALWAYS || ctx->timeSinceLastRender >= ctx->renderThreshold) {
+            out.should_render_now = true;
+        }
+        return out;
+    }
+
+    if (daw_has_frame_invalidation()) {
+        out.should_render_now = true;
+        return out;
+    }
+
+    const uint64_t now_ms = SDL_GetTicks64();
+    if (g_last_render_present_ms == 0) {
+        out.should_render_now = true;
+        out.request_redraw = true;
+        out.redraw_reason_bits = DAW_RENDER_INVALIDATION_BACKGROUND;
+        return out;
+    }
+    if (now_ms - g_last_render_present_ms >= g_loop_policy.heartbeat_ms) {
+        out.should_render_now = true;
+        out.request_redraw = true;
+        out.redraw_reason_bits = DAW_RENDER_INVALIDATION_BACKGROUND;
+    }
+    return out;
+}
+
 // Returns true when a render should occur now.
 static bool daw_loop_should_render_now(AppContext* ctx, uint64_t now_ns) {
-    (void)now_ns;
+    AppState* state = NULL;
+    DawRenderDerivation render_derivation;
+
     if (!ctx) {
         return false;
     }
-    AppState* state = (AppState*)ctx->userData;
-    if (!state) {
-        return false;
+    state = (AppState*)ctx->userData;
+    render_derivation = daw_derive_render_plan(ctx, state, now_ns);
+    if (render_derivation.request_redraw &&
+        render_derivation.redraw_reason_bits != DAW_RENDER_INVALIDATION_NONE) {
+        daw_request_full_redraw(render_derivation.redraw_reason_bits);
     }
-    if (state->engine && engine_transport_is_playing(state->engine)) {
-        if (ctx->renderMode == RENDER_ALWAYS) {
-            return true;
-        }
-        return ctx->timeSinceLastRender >= ctx->renderThreshold;
-    }
-    if (daw_has_frame_invalidation()) {
-        return true;
-    }
-    const uint64_t now_ms = SDL_GetTicks64();
-    if (g_last_render_present_ms == 0) {
-        g_last_render_present_ms = now_ms;
-    }
-    if (now_ms - g_last_render_present_ms >= g_loop_policy.heartbeat_ms) {
-        daw_request_full_redraw(DAW_RENDER_INVALIDATION_BACKGROUND);
-        return true;
-    }
-    return false;
+    return render_derivation.should_render_now;
 }
 
 // Logs loop diagnostics once per diagnostics period.

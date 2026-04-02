@@ -96,7 +96,18 @@ Legacy test lane:
 - Completed phases:
   - `DAW-S0`, `DAW-S1`, `DAW-S2`, `DAW-S3`, `DAW-S4`, `DAW-S5`
 - Next phase:
-  - scaffold migration complete; next work is normal feature/fix flow with `test-stable` as baseline gate
+  - scaffold migration complete; connection-pass baseline closeout is complete
+  - `DAW-CP0` through `DAW-CP5` are complete (routing map refresh + context/stage hardening + runtime dispatch seam extraction + update/render separation + deterministic wrapper teardown hardening + verification/docs/memory closeout)
+  - optional future lane: `CP6+` deeper legacy-runtime extraction when prioritized
+
+## Connection Pass Status (Current)
+- top-level wrapper now owns explicit lifecycle stage state via `DawAppStage` and `DawAppMainContext`.
+- deterministic stage transitions are guarded in `src/app/daw_app_main.c`.
+- runtime handoff is routed through explicit dispatch seam (`daw_app_dispatch_runtime(...)`) before legacy runtime delegation.
+- update-driven invalidation effects and render-decision derivation are now separated with explicit `DawUpdateDerivation` / `DawRenderDerivation` contracts in `src/app/main.c`.
+- wrapper-owned lifecycle teardown now releases ownership flags in deterministic reverse order through centralized shutdown helpers in `src/app/daw_app_main.c`.
+- DAW CP baseline closeout is complete for the current connection-pass contract.
+- legacy runtime behavior remains intentionally centralized in `daw_app_main_legacy()` for parity; deeper extraction remains optional future work.
 
 ## App Packaging Status (Current)
 - DAW packaging baseline is complete with standardized target set:

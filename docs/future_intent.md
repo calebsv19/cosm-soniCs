@@ -58,6 +58,17 @@ Last updated: 2026-04-01
   - maintenance-only parity with scaffold packaging contract updates
   - keep Desktop/Finder launch verification in closeout gates for packaging-affecting changes
 
+## Connection Pass Intent
+- completed:
+  - `DAW-CP0` baseline routing map refresh
+  - `DAW-CP1` top-level context + stage ownership hardening in `src/app/daw_app_main.c`
+  - `DAW-CP2` explicit runtime dispatch seam extraction (`daw_app_dispatch_runtime(...)`)
+  - `DAW-CP3` update/render separation via explicit derivation contracts in `src/app/main.c`
+  - `DAW-CP4` deterministic wrapper-owned lifetime release + reverse-order teardown hardening in `src/app/daw_app_main.c`
+  - `DAW-CP5` verification/docs/memory closeout
+- next:
+  - optional `CP6+`: deeper migration of legacy runtime ownership into wrapper-managed subsystems
+
 ## Non-Goals During Scaffold Migration
 - No feature expansion unrelated to scaffold alignment.
 - No shared subtree redesign inside scaffold migration commits.
