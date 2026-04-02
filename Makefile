@@ -252,7 +252,7 @@ endif
 
 APP_BIN := $(BUILD_DIR)/$(APP_NAME)
 DIST_DIR := dist
-PACKAGE_APP_NAME := DAW.app
+PACKAGE_APP_NAME := soniCs.app
 PACKAGE_APP_DIR := $(DIST_DIR)/$(PACKAGE_APP_NAME)
 PACKAGE_CONTENTS_DIR := $(PACKAGE_APP_DIR)/Contents
 PACKAGE_MACOS_DIR := $(PACKAGE_CONTENTS_DIR)/MacOS
@@ -332,25 +332,9 @@ LAYOUT_SWEEP_TEST_SRCS := \
 LAYOUT_SWEEP_TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(LAYOUT_SWEEP_TEST_SRCS))
 LAYOUT_SWEEP_TEST_BIN := $(BUILD_DIR)/tests/layout_text_scaling_sweep_test
 
-# ---- Engine test support: keep your existing set, but replace the giant FX list
-# with the auto-discovered EFFECTS_SRCS so it always stays in sync.
-ENGINE_TEST_SUPPORT_OBJS := \
-	$(BUILD_DIR)/src/engine/engine_core.o \
-	$(BUILD_DIR)/src/engine/audio_source.o \
-	$(BUILD_DIR)/src/engine/graph.o \
-	$(BUILD_DIR)/src/engine/buffer_pool.o \
-	$(BUILD_DIR)/src/engine/source_tone.o \
-	$(BUILD_DIR)/src/engine/sampler.o \
-	$(BUILD_DIR)/src/effects/effects_manager.o \
-	$(patsubst %.c,$(BUILD_DIR)/%.o,$(EFFECTS_SRCS)) \
-	$(BUILD_DIR)/src/audio/media_cache.o \
-	$(BUILD_DIR)/src/audio/media_clip.o \
-	$(BUILD_DIR)/src/audio/audio_queue.o \
-	$(BUILD_DIR)/src/audio/ringbuf.o \
-	$(BUILD_DIR)/src/audio/device_sdl.o \
-	$(BUILD_DIR)/src/config/config.o \
-	$(CORE_TIME_TEST_SUPPORT_OBJS) \
-	$(BUILD_DIR)/src/input/timeline/timeline_drag.o
+# Keep legacy app tests wired to the full non-main app object set so link coverage
+# stays in lock-step with engine/runtime refactors.
+ENGINE_TEST_SUPPORT_OBJS = $(APP_OBJS_NO_MAIN)
 
 APP_DEPS := $(OBJS:.o=.d)
 TEST_DEPS := $(TEST_OBJS:.o=.d)
