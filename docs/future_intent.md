@@ -1,6 +1,6 @@
 # DAW Future Intent
 
-Last updated: 2026-04-01
+Last updated: 2026-04-02
 
 ## Scaffold Alignment Intent
 1. Preserve DAW's existing subsystem decomposition strengths.
@@ -68,6 +68,13 @@ Last updated: 2026-04-01
   - `DAW-CP5` verification/docs/memory closeout
 - next:
   - optional `CP6+`: deeper migration of legacy runtime ownership into wrapper-managed subsystems
+
+## Cross-Program Wrapper Initiative
+- `W0` complete (canonical wrapper contract frozen)
+- `W1` complete for `daw` (typed context/stage/dispatch wrapper shape aligned)
+- `W2` complete for `daw` (structured wrapper diagnostics normalization + wrapper exit summary logging)
+- execution note:
+  - `../docs/private_program_docs/daw/2026-04-02_daw_w1_w2_wrapper_hardening.md`
 
 ## Non-Goals During Scaffold Migration
 - No feature expansion unrelated to scaffold alignment.

@@ -1,6 +1,6 @@
 # DAW Current Truth
 
-Last updated: 2026-04-01
+Last updated: 2026-04-02
 
 ## Program Identity
 - Repository directory: `daw/`
@@ -108,6 +108,19 @@ Legacy test lane:
 - wrapper-owned lifecycle teardown now releases ownership flags in deterministic reverse order through centralized shutdown helpers in `src/app/daw_app_main.c`.
 - DAW CP baseline closeout is complete for the current connection-pass contract.
 - legacy runtime behavior remains intentionally centralized in `daw_app_main_legacy()` for parity; deeper extraction remains optional future work.
+
+## Wrapper Contract State
+- cross-program wrapper initiative status:
+  - `W0` complete
+  - `W1` complete for `daw`
+  - `W2` complete for `daw`
+- wrapper diagnostics normalization (`W2`) now includes:
+  - function-context stage transition violation logging with expected/actual/next stage values
+  - explicit wrapper error taxonomy logging at lifecycle boundary failures
+  - dispatch summary exit tracking (`dispatch_succeeded`, `last_dispatch_exit_code`)
+  - final wrapper exit summary line (`stage`, `exit_code`, dispatch summary, wrapper error code)
+- execution note:
+  - `../docs/private_program_docs/daw/2026-04-02_daw_w1_w2_wrapper_hardening.md`
 
 ## App Packaging Status (Current)
 - DAW packaging baseline is complete with standardized target set:
