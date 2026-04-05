@@ -1,6 +1,6 @@
 # DAW Current Truth
 
-Last updated: 2026-04-02
+Last updated: 2026-04-04
 
 ## Program Identity
 - Repository directory: `daw/`
@@ -32,7 +32,12 @@ Last updated: 2026-04-02
   - `make -C daw package-desktop-smoke`
   - `make -C daw package-desktop-self-test`
   - `make -C daw package-desktop-refresh`
-  - `/Users/<user>/Desktop/DAW.app/Contents/MacOS/daw-launcher --print-config`
+  - `/Users/<user>/Desktop/soniCs.app/Contents/MacOS/daw-launcher --print-config`
+- Release readiness gates:
+  - `make -C daw release-contract`
+  - `make -C daw release-bundle-audit`
+  - `make -C daw release-verify APPLE_SIGN_IDENTITY="Developer ID Application: <Name> (<TEAMID>)"`
+  - `make -C daw release-distribute APPLE_SIGN_IDENTITY="Developer ID Application: <Name> (<TEAMID>)" APPLE_NOTARY_PROFILE="cosm-notary"`
 
 Stable test lane:
 - `make -C daw test-stable`
@@ -123,7 +128,7 @@ Legacy test lane:
   - `../docs/private_program_docs/daw/2026-04-02_daw_w1_w2_wrapper_hardening.md`
 
 ## App Packaging Status (Current)
-- DAW packaging baseline is complete with standardized target set:
+- DAW packaging + release-readiness lane is complete with standardized target set:
   - `package-desktop`
   - `package-desktop-smoke`
   - `package-desktop-self-test`
@@ -132,9 +137,27 @@ Legacy test lane:
   - `package-desktop-open`
   - `package-desktop-remove`
   - `package-desktop-refresh`
+  - `release-contract`
+  - `release-clean`
+  - `release-build`
+  - `release-bundle-audit`
+  - `release-sign`
+  - `release-verify`
+  - `release-verify-signed`
+  - `release-notarize`
+  - `release-staple`
+  - `release-verify-notarized`
+  - `release-artifact`
+  - `release-distribute`
+  - `release-desktop-refresh`
 - packaging assets/launcher:
   - `tools/packaging/macos/Info.plist`
   - `tools/packaging/macos/daw-launcher`
+  - `tools/packaging/macos/bundle-dylibs.sh`
 - launcher diagnostics:
   - `--print-config`
   - startup logs at `~/Library/Logs/DAW/launcher.log` (tmp fallback)
+- release identity:
+  - product app name: `soniCs.app`
+  - bundle id: `com.cosm.sonics`
+  - notarized artifact lane: `build/release/soniCs-<version>-macOS-stable.zip`

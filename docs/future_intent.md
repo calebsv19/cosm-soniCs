@@ -1,6 +1,6 @@
 # DAW Future Intent
 
-Last updated: 2026-04-02
+Last updated: 2026-04-04
 
 ## Scaffold Alignment Intent
 1. Preserve DAW's existing subsystem decomposition strengths.
@@ -51,12 +51,13 @@ Last updated: 2026-04-02
   - repeated zoom commands preserve text visibility via renderer-safe cache invalidation.
 
 ## App Packaging Intent
-- DAW packaging baseline is now complete for current scaffold contract:
-  - standardized `package-desktop*` target set is landed
-  - launcher diagnostics lane is active (`--self-test`, `--print-config`, startup logs)
+- DAW release-readiness lane is now complete (`DAW-RL0` through `DAW-RL5`):
+  - standardized `package-desktop*` + `release-*` targets are landed
+  - notarization/staple/verification lane is integrated in Makefile
+  - launcher runtime model is hardened for writable runtime + Vulkan ICD exports
 - next packaging posture:
-  - maintenance-only parity with scaffold packaging contract updates
-  - keep Desktop/Finder launch verification in closeout gates for packaging-affecting changes
+  - maintenance-only parity with ecosystem release contract updates
+  - keep Desktop/Finder launch + `release-verify-notarized` evidence in packaging-affecting closeout gates
 
 ## Connection Pass Intent
 - completed:
