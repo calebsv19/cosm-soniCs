@@ -1,5 +1,6 @@
 #include "session.h"
 #include "app_state.h"
+#include "daw/data_paths.h"
 #include "engine/engine.h"
 #include "ui/effects_panel.h"
 #include "ui/library_browser.h"
@@ -25,6 +26,33 @@ static void safe_copy_string(char* dst, size_t dst_len, const char* src) {
     size_t len = strnlen(src, dst_len - 1);
     memmove(dst, src, len);
     dst[len] = '\0';
+}
+
+static void session_apply_data_paths(AppState* state, const SessionDocument* doc) {
+    if (!state || !doc) {
+        return;
+    }
+    if (!daw_data_paths_valid(&state->data_paths)) {
+        daw_data_paths_set_defaults(&state->data_paths);
+    }
+    if (doc->version >= 17) {
+        if (doc->data_paths.input_root[0] != '\0') {
+            safe_copy_string(state->data_paths.input_root,
+                             sizeof(state->data_paths.input_root),
+                             doc->data_paths.input_root);
+        }
+        if (doc->data_paths.output_root[0] != '\0') {
+            safe_copy_string(state->data_paths.output_root,
+                             sizeof(state->data_paths.output_root),
+                             doc->data_paths.output_root);
+        }
+        if (doc->data_paths.library_copy_root[0] != '\0') {
+            safe_copy_string(state->data_paths.library_copy_root,
+                             sizeof(state->data_paths.library_copy_root),
+                             doc->data_paths.library_copy_root);
+        }
+    }
+    daw_data_paths_apply_runtime_policy(&state->data_paths);
 }
 
 static float clamp_ratio(float value) {
@@ -251,7 +279,11 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
         engine_transport_set_loop(state->engine, state->loop_enabled, state->loop_start_frame, state->loop_end_frame);
     }
 
-    library_browser_init(&state->library, doc->library.directory[0] ? doc->library.directory : "assets/audio");
+    session_apply_data_paths(state, doc);
+    const char* library_root = doc->library.directory[0]
+                                   ? doc->library.directory
+                                   : daw_data_paths_library_root(&state->data_paths);
+    library_browser_init(&state->library, library_root);
     library_browser_scan(&state->library, &state->media_registry);
     if (doc->library.selected_index >= 0 && doc->library.selected_index < state->library.count) {
         state->library.selected_index = doc->library.selected_index;

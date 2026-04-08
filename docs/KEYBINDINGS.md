@@ -9,7 +9,8 @@ This doc lists current keyboard shortcuts by pane or mode, with source reference
 - `Shift+Enter` — Jump to project start (frame 0). (`src/input/input_manager.c`, `handle_keyboard_shortcuts`)
 - `L` — Toggle loop; auto-fills loop end if empty. (`src/input/input_manager.c`, `handle_keyboard_shortcuts`)
 - `B` — Bounce (loop range if loop enabled, else entire project). (`src/input/input_manager.c`, `handle_keyboard_shortcuts`)
-- `S` — Save session to `config/last_session.json`. (`src/input/input_manager.c`, `handle_keyboard_shortcuts`)
+- `Ctrl/Cmd+B` — Open native folder chooser and set DAW library input root, then rescan. (`src/input/input_manager.c`, `handle_keyboard_shortcuts`; `src/input/library_input.c`)
+- `S` — Save session to `<output_root>/last_session.json` (legacy fallback: `config/last_session.json`). (`src/input/input_manager.c`, `handle_keyboard_shortcuts`; `src/session/project_manager.c`)
 - `Delete`/`Backspace` — Delete selected clip(s) (when not editing text). (`src/input/input_manager.c`, `handle_keyboard_shortcuts`)
 - `F7` / `F8` / `F9` — Toggle engine / cache / timing logs. (`src/input/input_manager.c`, `handle_keyboard_shortcuts`)
 - `Ctrl/Cmd+Z` — Undo. (`src/input/input_manager.c`, `handle_keyboard_shortcuts`)
@@ -78,6 +79,9 @@ Notes:
 - `Shift+Arrow` — Move selected slot to start/end of chain. (`src/input/effects_panel_input.c`, `effects_panel_input_handle_event`)
 
 ## Library browser (rename mode)
+- Mouse:
+  - Top-right header buttons toggle library mode: `SOURCE` vs `IN PROJECT`. (`src/ui/library_browser.c`, `library_browser_render`; `src/input/library_input.c`, `library_input_handle_primary_click`)
+  - Drag/drop `.wav` or `.mp3` files from Finder onto the library pane to import (copy) into DAW library copy root with collision-safe naming. (`src/input/input_manager.c`, `input_manager_handle_event`; `src/input/library_input.c`, `library_input_handle_drop_file`)
 - `Left` / `Right` — Move cursor. (`src/input/library_input.c`, `library_input_handle_event`)
 - `Backspace` / `Delete` — Delete character. (`src/input/library_input.c`, `library_input_handle_event`)
 - `Enter` — Commit rename on disk. (`src/input/library_input.c`, `library_input_handle_event`)

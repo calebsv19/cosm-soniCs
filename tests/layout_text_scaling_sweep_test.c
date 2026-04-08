@@ -424,6 +424,8 @@ static void validate_library_layout(const AppState* state) {
     int x = 0;
     int y0 = 0;
     int y1 = 0;
+    int scan_y = 0;
+    bool found_first_row = false;
     expect(pane != NULL, "library pane missing");
 
     header_h = ui_layout_pane_header_height(pane);
@@ -441,12 +443,19 @@ static void validate_library_layout(const AppState* state) {
     if (x < content.x) {
         x = content.x;
     }
-    y0 = content.y + 8 + row_h / 2;
+    for (scan_y = content.y; scan_y < content.y + content.h; ++scan_y) {
+        if (library_browser_hit_test(&browser, &content, x, scan_y) == 0) {
+            y0 = scan_y;
+            found_first_row = true;
+            break;
+        }
+    }
+    expect(found_first_row, "library first-row hit not found");
     y1 = y0 + row_h;
     expect(library_browser_hit_test(&browser, &content, x, y0) == 0, "library hit row 0 failed");
     expect(library_browser_hit_test(&browser, &content, x, y1) == 1, "library hit row 1 failed");
     expect(library_browser_hit_test(&browser, &content, content.x - 1, y0) == -1, "library x-outside hit expected -1");
-    expect(library_browser_hit_test(&browser, &content, x, content.y + 7) == -1, "library pre-content hit expected -1");
+    expect(library_browser_hit_test(&browser, &content, x, y0 - 2) == -1, "library pre-list hit expected -1");
     expect(library_browser_hit_test(&browser, &content, x, y0 + row_h * 4) == -1, "library out-of-range row hit expected -1");
 }
 

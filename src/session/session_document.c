@@ -2,6 +2,7 @@
 
 #include "engine/audio_source.h"
 #include "app_state.h"
+#include "daw/data_paths.h"
 #include "engine/engine.h"
 #include "time/tempo.h"
 
@@ -140,6 +141,15 @@ void session_document_init(SessionDocument* doc) {
     doc->clip_inspector.view_source = true;
     doc->clip_inspector.zoom = 1.0f;
     doc->clip_inspector.scroll = 0.0f;
+    copy_string(doc->data_paths.input_root,
+                sizeof(doc->data_paths.input_root),
+                DAW_DATA_PATH_DEFAULT_INPUT_ROOT);
+    copy_string(doc->data_paths.output_root,
+                sizeof(doc->data_paths.output_root),
+                DAW_DATA_PATH_DEFAULT_OUTPUT_ROOT);
+    copy_string(doc->data_paths.library_copy_root,
+                sizeof(doc->data_paths.library_copy_root),
+                DAW_DATA_PATH_DEFAULT_LIBRARY_COPY_ROOT);
     doc->master_fx = NULL;
     doc->master_fx_count = 0;
 }
@@ -361,6 +371,15 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
 
     copy_string(out_doc->library.directory, sizeof(out_doc->library.directory), state->library.directory);
     out_doc->library.selected_index = state->library.selected_index;
+    copy_string(out_doc->data_paths.input_root,
+                sizeof(out_doc->data_paths.input_root),
+                state->data_paths.input_root);
+    copy_string(out_doc->data_paths.output_root,
+                sizeof(out_doc->data_paths.output_root),
+                state->data_paths.output_root);
+    copy_string(out_doc->data_paths.library_copy_root,
+                sizeof(out_doc->data_paths.library_copy_root),
+                state->data_paths.library_copy_root);
 
     int engine_track_count = state->engine ? engine_get_track_count(state->engine) : 0;
     const EngineTrack* engine_tracks = state->engine ? engine_get_tracks(state->engine) : NULL;

@@ -405,6 +405,23 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     fprintf(file, "},\n");
 
     json_write_indent(file, 1);
+    fprintf(file, "\"data_paths\": {\n");
+    json_write_indent(file, 2);
+    fprintf(file, "\"input_root\": ");
+    json_write_string(file, doc->data_paths.input_root);
+    fprintf(file, ",\n");
+    json_write_indent(file, 2);
+    fprintf(file, "\"output_root\": ");
+    json_write_string(file, doc->data_paths.output_root);
+    fprintf(file, ",\n");
+    json_write_indent(file, 2);
+    fprintf(file, "\"library_copy_root\": ");
+    json_write_string(file, doc->data_paths.library_copy_root);
+    fprintf(file, "\n");
+    json_write_indent(file, 1);
+    fprintf(file, "},\n");
+
+    json_write_indent(file, 1);
     fprintf(file, "\"master_fx\": [\n");
     for (int i = 0; i < doc->master_fx_count; ++i) {
         const SessionFxInstance* fx = &doc->master_fx[i];

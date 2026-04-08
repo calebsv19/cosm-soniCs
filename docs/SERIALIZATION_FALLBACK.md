@@ -6,8 +6,8 @@ This DAW build includes a public-safe fallback session template so startup remai
 
 On launch, the app attempts session restore in this order:
 
-1. last remembered project path (`config/projects/last_project.txt`)
-2. last autosave (`config/last_session.json`)
+1. last remembered project path (`<output_root>/projects/last_project.txt`; legacy fallback: `config/projects/last_project.txt`)
+2. last autosave (`<output_root>/last_session.json`; legacy fallback: `config/last_session.json`)
 3. public fallback template (`config/templates/public_default_project.json`)
 4. in-memory fresh state bootstrap (final fallback)
 
@@ -20,4 +20,3 @@ On launch, the app attempts session restore in this order:
 ## Updating the Template
 
 If UI/session schema evolves, update `config/templates/public_default_project.json` to keep first-run behavior stable and compatible.
-

@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 #include "config.h"
+#include "daw/data_paths.h"
 #include "session.h"
 #include "engine/engine.h"
 #include "effects/param_utils.h"
@@ -512,6 +513,7 @@ struct AppState {
     int mouse_x;
     int mouse_y;
     EngineRuntimeConfig runtime_cfg;
+    DawDataPaths data_paths;
     Engine* engine;
     TransportUI transport_ui;
     UILayoutRuntime layout_runtime;

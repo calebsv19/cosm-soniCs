@@ -528,6 +528,14 @@ void ui_render_panes(SDL_Renderer* renderer, const AppState* state) {
     }
     const Pane* library = ui_layout_get_pane(state, 3);
     if (library) {
+        int header_h = ui_layout_pane_header_height(library);
+        if (header_h > 0) {
+            SDL_Rect header_rect = library->rect;
+            if (header_h < header_rect.h) {
+                header_rect.h = header_h;
+            }
+            library_browser_render_header_controls(&state->library, renderer, &header_rect);
+        }
         SDL_Rect content_rect = ui_layout_pane_content_rect(library);
         library_browser_render(&state->library, renderer, &content_rect);
     }
@@ -1083,5 +1091,11 @@ void ui_layout_handle_hover(AppState* state, int mouse_x, int mouse_y) {
     }
     SDL_Rect content_rect = ui_layout_pane_content_rect(library);
     int hit = library_browser_hit_test(&state->library, &content_rect, mouse_x, mouse_y);
-    state->library.hovered_index = hit;
+    if (state->library.panel_mode == LIBRARY_PANEL_MODE_IN_PROJECT) {
+        state->library.hovered_project_index = hit;
+        state->library.hovered_index = -1;
+    } else {
+        state->library.hovered_index = hit;
+        state->library.hovered_project_index = -1;
+    }
 }

@@ -12,3 +12,6 @@ Purpose: Runtime configuration and fallback assets loaded during startup.
   - `enable_cache_logs`: Enables verbose logging for the media cache acquire/release path.
   - `enable_timing_logs`: Reserved for detailed timing output during profiling (default disabled).
 - `templates/public_default_project.json`: Public fallback serialization baseline loaded when no remembered project/session files exist.
+
+Runtime-generated lane:
+- `runtime/data_paths.cfg`: persisted DAW data-root contract file (`input_root`, `output_root`, `library_copy_root`) used by P3 data-path onboarding.

@@ -496,7 +496,10 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
                     state->project_load.last_click_index = -1;
                     state->project_load.last_click_ticks = 0;
                     int count = 0;
-                    project_manager_list(state->project_load.entries, (int)(sizeof(state->project_load.entries) / sizeof(state->project_load.entries[0])), &count);
+                    project_manager_list(state,
+                                         state->project_load.entries,
+                                         (int)(sizeof(state->project_load.entries) / sizeof(state->project_load.entries[0])),
+                                         &count);
                     state->project_load.count = count;
                     if (count > 0) {
                         int match = -1;
@@ -509,7 +512,7 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
                         }
                         state->project_load.selected_index = match >= 0 ? match : 0;
                     } else {
-                        SDL_Log("No project to load (config/projects)");
+                        SDL_Log("No project to load in output-root project lanes");
                     }
                 }
                 transport_ui_sync(transport, state);

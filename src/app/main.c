@@ -1,6 +1,7 @@
 #include "app_state.h"
 #include "config.h"
 #include "daw/daw_app_main.h"
+#include "daw/data_paths.h"
 #include "engine/engine.h"
 #include "session.h"
 #include "sdl_app_framework.h"
@@ -872,10 +873,19 @@ static void perform_bounce(AppContext* ctx, AppState* state) {
 int daw_app_main_legacy(void) {
     const int window_width = 1280;
     const int window_height = 720;
-    const char* last_session_path = "config/last_session.json";
+    const char* legacy_last_session_path = "config/last_session.json";
     const char* fallback_session_path = "config/templates/public_default_project.json";
 
     AppState state = {0};
+    char last_session_path[SESSION_PATH_MAX];
+    daw_data_paths_set_defaults(&state.data_paths);
+    if (daw_data_paths_load_runtime(&state.data_paths)) {
+        SDL_Log("data_paths: loaded runtime roots from %s",
+                DAW_DATA_PATH_RUNTIME_CONFIG_PATH);
+    } else {
+        SDL_Log("data_paths: using default/runtime-fallback roots (no saved config at %s)",
+                DAW_DATA_PATH_RUNTIME_CONFIG_PATH);
+    }
     bool loop_wake_initialized = false;
     bool loop_timer_initialized = false;
     bool loop_messages_initialized = false;
@@ -920,7 +930,8 @@ int daw_app_main_legacy(void) {
 
     ui_init_panes(&state);
     daw_render_invalidation_init();
-    project_manager_init();
+    project_manager_init(&state);
+    project_manager_last_session_path(&state, last_session_path, sizeof(last_session_path));
 
     bool loaded_session = false;
     bool engine_started = false;
@@ -928,8 +939,13 @@ int daw_app_main_legacy(void) {
         SDL_Log("Project restored from last saved project");
         loaded_session = true;
         engine_started = project_manager_post_load(&state);
-    } else if (session_load_from_file(&state, "config/last_session.json")) {
-        SDL_Log("Session restored from config/last_session.json");
+    } else if (session_load_from_file(&state, last_session_path)) {
+        SDL_Log("Session restored from %s", last_session_path);
+        loaded_session = true;
+        engine_started = project_manager_post_load(&state);
+    } else if (strcmp(last_session_path, legacy_last_session_path) != 0 &&
+               session_load_from_file(&state, legacy_last_session_path)) {
+        SDL_Log("Session restored from legacy fallback %s", legacy_last_session_path);
         loaded_session = true;
         engine_started = project_manager_post_load(&state);
     } else if (session_load_from_file(&state, fallback_session_path)) {
@@ -947,7 +963,7 @@ int daw_app_main_legacy(void) {
         if (!state.engine) {
             SDL_Log("Failed to create audio engine");
         }
-        library_browser_init(&state.library, "assets/audio");
+        library_browser_init(&state.library, daw_data_paths_library_root(&state.data_paths));
         library_browser_scan(&state.library, &state.media_registry);
         state.timeline_visible_seconds = TIMELINE_DEFAULT_VISIBLE_SECONDS;
         state.timeline_window_start_seconds = 0.0f;
@@ -1104,6 +1120,10 @@ int daw_app_main_legacy(void) {
         project_manager_save(&state, state.project.name, true);
     } else if (!session_save_to_file(&state, last_session_path)) {
         SDL_Log("Failed to save session to %s", last_session_path);
+    }
+    if (!daw_data_paths_save_runtime(&state.data_paths)) {
+        SDL_Log("data_paths: failed to persist runtime roots to %s",
+                DAW_DATA_PATH_RUNTIME_CONFIG_PATH);
     }
 
     ui_font_shutdown();

@@ -47,6 +47,7 @@ SRCS := \
 	$(SRC_DIR)/app/daw_app_main.c \
 	$(SRC_DIR)/app/main.c \
 	$(SRC_DIR)/config/config.c \
+	$(SRC_DIR)/config/data_paths.c \
 	$(SRC_DIR)/audio/device_sdl.c \
 	$(SRC_DIR)/audio/audio_queue.c \
 	$(SRC_DIR)/audio/ringbuf.c \
@@ -354,6 +355,12 @@ LAYOUT_SWEEP_TEST_SRCS := \
 LAYOUT_SWEEP_TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(LAYOUT_SWEEP_TEST_SRCS))
 LAYOUT_SWEEP_TEST_BIN := $(BUILD_DIR)/tests/layout_text_scaling_sweep_test
 
+DATA_PATH_CONTRACT_TEST_SRCS := \
+	tests/daw_data_path_contract_test.c
+
+DATA_PATH_CONTRACT_TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(DATA_PATH_CONTRACT_TEST_SRCS))
+DATA_PATH_CONTRACT_TEST_BIN := $(BUILD_DIR)/tests/daw_data_path_contract_test
+
 # Keep legacy app tests wired to the full non-main app object set so link coverage
 # stays in lock-step with engine/runtime refactors.
 ENGINE_TEST_SUPPORT_OBJS = $(APP_OBJS_NO_MAIN)
@@ -365,8 +372,9 @@ OVERLAP_TEST_DEPS := $(OVERLAP_TEST_OBJS:.o=.d)
 SMOKE_TEST_DEPS := $(SMOKE_TEST_OBJS:.o=.d)
 PACK_CONTRACT_TEST_DEPS := $(PACK_CONTRACT_TEST_OBJS:.o=.d)
 LAYOUT_SWEEP_TEST_DEPS := $(LAYOUT_SWEEP_TEST_OBJS:.o=.d)
+DATA_PATH_CONTRACT_TEST_DEPS := $(DATA_PATH_CONTRACT_TEST_OBJS:.o=.d)
 ENGINE_TEST_SUPPORT_DEPS := $(ENGINE_TEST_SUPPORT_OBJS:.o=.d)
-ALL_DEPS := $(APP_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(SMOKE_TEST_DEPS) $(PACK_CONTRACT_TEST_DEPS) $(LAYOUT_SWEEP_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
+ALL_DEPS := $(APP_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(SMOKE_TEST_DEPS) $(PACK_CONTRACT_TEST_DEPS) $(LAYOUT_SWEEP_TEST_DEPS) $(DATA_PATH_CONTRACT_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
 
 APP_OBJS_NO_MAIN := $(filter-out $(BUILD_DIR)/src/app/main.o,$(OBJS))
 
@@ -378,7 +386,9 @@ STABLE_TEST_TARGETS := \
 	test-kitviz-fx-preview-adapter \
 	test-kitviz-meter-adapter \
 	test-waveform-pack-warmstart \
-	test-layout-sweep
+	test-layout-sweep \
+	test-data-path-contract \
+	test-library-copy-vs-reference-contract
 
 LEGACY_TEST_TARGETS := \
 	test-session \
@@ -387,7 +397,7 @@ LEGACY_TEST_TARGETS := \
 	test-smoke \
 	test-shared-theme-font-adapter
 
-.PHONY: all clean run run-ide-theme run-headless-smoke visual-harness package-desktop package-desktop-smoke package-desktop-self-test package-desktop-copy-desktop package-desktop-sync package-desktop-open package-desktop-remove package-desktop-refresh release-contract release-clean release-build release-bundle-audit release-sign release-verify release-verify-signed release-notarize release-staple release-verify-notarized release-artifact release-distribute release-desktop-refresh loop-gates loop-gates-strict test-stable test-legacy test-session test-cache test-overlap test-smoke test-kitviz-adapter test-waveform-pack-warmstart test-pack-contract test-trace-contract test-trace-async-contract test-kitviz-fx-preview-adapter test-kitviz-meter-adapter test-shared-theme-font-adapter test-layout-sweep
+.PHONY: all clean run run-ide-theme run-headless-smoke visual-harness package-desktop package-desktop-smoke package-desktop-self-test package-desktop-copy-desktop package-desktop-sync package-desktop-open package-desktop-remove package-desktop-refresh release-contract release-clean release-build release-bundle-audit release-sign release-verify release-verify-signed release-notarize release-staple release-verify-notarized release-artifact release-distribute release-desktop-refresh loop-gates loop-gates-strict test-stable test-legacy test-session test-cache test-overlap test-smoke test-kitviz-adapter test-waveform-pack-warmstart test-pack-contract test-trace-contract test-trace-async-contract test-kitviz-fx-preview-adapter test-kitviz-meter-adapter test-shared-theme-font-adapter test-layout-sweep test-data-path-contract test-library-copy-vs-reference-contract
 
 all: $(APP_BIN)
 
@@ -430,6 +440,14 @@ package-desktop: all
 	@cp -R "$(SHARED_ROOT)/assets/fonts" "$(PACKAGE_RESOURCES_DIR)/shared/assets/"
 	@cp -R "$(VK_RENDERER_DIR)/shaders" "$(PACKAGE_RESOURCES_DIR)/vk_renderer/"
 	@cp -R "$(VK_RENDERER_DIR)/shaders/." "$(PACKAGE_RESOURCES_DIR)/shaders/"
+	@for dylib in "$(PACKAGE_FRAMEWORKS_DIR)"/*.dylib; do \
+		[ -f "$$dylib" ] || continue; \
+		codesign --force --sign "$(PACKAGE_ADHOC_SIGN_IDENTITY)" "$$dylib"; \
+	done
+	@codesign --force --sign "$(PACKAGE_ADHOC_SIGN_IDENTITY)" "$(PACKAGE_MACOS_DIR)/daw-bin"
+	@codesign --force --sign "$(PACKAGE_ADHOC_SIGN_IDENTITY)" "$(PACKAGE_MACOS_DIR)/daw-launcher"
+	@codesign --force --sign "$(PACKAGE_ADHOC_SIGN_IDENTITY)" "$(PACKAGE_APP_DIR)"
+	@codesign --verify --deep --strict "$(PACKAGE_APP_DIR)"
 	@echo "Desktop package ready: $(PACKAGE_APP_DIR)"
 
 package-desktop-smoke: package-desktop
@@ -668,6 +686,16 @@ test-layout-sweep: $(LAYOUT_SWEEP_TEST_BIN)
 	$(LAYOUT_SWEEP_TEST_BIN)
 
 $(LAYOUT_SWEEP_TEST_BIN): $(LAYOUT_SWEEP_TEST_OBJS) $(APP_OBJS_NO_MAIN)
+	@mkdir -p "$(dir $@)"
+	$(CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
+
+test-data-path-contract: $(DATA_PATH_CONTRACT_TEST_BIN)
+	$(DATA_PATH_CONTRACT_TEST_BIN)
+
+test-library-copy-vs-reference-contract: test-data-path-contract
+	@echo "test-library-copy-vs-reference-contract: success"
+
+$(DATA_PATH_CONTRACT_TEST_BIN): $(DATA_PATH_CONTRACT_TEST_OBJS) $(APP_OBJS_NO_MAIN)
 	@mkdir -p "$(dir $@)"
 	$(CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
 

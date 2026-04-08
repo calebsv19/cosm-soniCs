@@ -245,7 +245,10 @@ void timeline_drop_handle_library_drag(InputManager* manager, AppState* state, b
         return;
     }
     if (!was_down && is_down && !state->layout_runtime.drag.active) {
-        if (lib->hovered_index >= 0) {
+        if (library_input_handle_primary_click(state, state->mouse_x, state->mouse_y)) {
+            return;
+        }
+        if (lib->panel_mode == LIBRARY_PANEL_MODE_SOURCE && lib->hovered_index >= 0) {
             Uint32 now = SDL_GetTicks();
             bool is_double = false;
             if (manager->last_library_click_index == lib->hovered_index &&

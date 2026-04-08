@@ -9,7 +9,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SESSION_DOCUMENT_VERSION 16
+#define SESSION_DOCUMENT_VERSION 17
 #define SESSION_PATH_MAX 512
 #define SESSION_NAME_MAX 128
 #define SESSION_FX_NAME_MAX 64
@@ -110,6 +110,12 @@ typedef struct {
 } SessionLibraryState;
 
 typedef struct {
+    char input_root[SESSION_PATH_MAX];
+    char output_root[SESSION_PATH_MAX];
+    char library_copy_root[SESSION_PATH_MAX];
+} SessionDataPathState;
+
+typedef struct {
     bool enabled;
     float freq_hz;
     float slope;
@@ -192,6 +198,7 @@ typedef struct {
     SessionClipInspectorState clip_inspector;
     SessionLayoutState layout;
     SessionLibraryState library;
+    SessionDataPathState data_paths;
     bool transport_playing;
     uint64_t transport_frame;
     SessionTrack* tracks;

@@ -1,6 +1,7 @@
 #include "session/project_manager.h"
 
 #include "app_state.h"
+#include "daw/data_paths.h"
 #include "session.h"
 #include "ui/timeline_view.h"
 #include "ui/effects_panel.h"
@@ -15,8 +16,55 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-static const char* kProjectsDir = "config/projects";
-static const char* kLastPathFile = "config/projects/last_project.txt";
+static const char* kLegacyProjectsDir = "config/projects";
+static const char* kLegacyLastPathFile = "config/projects/last_project.txt";
+static const char* kSessionFileName = "last_session.json";
+
+static void path_copy(char* dst, size_t dst_len, const char* src) {
+    if (!dst || dst_len == 0) {
+        return;
+    }
+    if (!src) {
+        dst[0] = '\0';
+        return;
+    }
+    size_t n = strnlen(src, dst_len - 1);
+    memmove(dst, src, n);
+    dst[n] = '\0';
+}
+
+static void resolve_projects_dir(const AppState* state, char* out_path, size_t out_len) {
+    if (!out_path || out_len == 0) {
+        return;
+    }
+    if (state && state->data_paths.output_root[0]) {
+        if (snprintf(out_path, out_len, "%s/projects", state->data_paths.output_root) < (int)out_len) {
+            return;
+        }
+    }
+    path_copy(out_path, out_len, kLegacyProjectsDir);
+}
+
+static void resolve_last_path_file(const AppState* state, char* out_path, size_t out_len) {
+    char projects_dir[SESSION_PATH_MAX];
+    resolve_projects_dir(state, projects_dir, sizeof(projects_dir));
+    if (snprintf(out_path, out_len, "%s/last_project.txt", projects_dir) >= (int)out_len) {
+        path_copy(out_path, out_len, kLegacyLastPathFile);
+    }
+}
+
+bool project_manager_last_session_path(const AppState* state, char* out_path, size_t out_len) {
+    if (!out_path || out_len == 0) {
+        return false;
+    }
+    if (state && state->data_paths.output_root[0]) {
+        if (snprintf(out_path, out_len, "%s/%s", state->data_paths.output_root, kSessionFileName) < (int)out_len) {
+            return true;
+        }
+    }
+    path_copy(out_path, out_len, "config/last_session.json");
+    return true;
+}
 
 static bool ensure_dir_exists(const char* path) {
     if (!path || !path[0]) {
@@ -76,32 +124,46 @@ static void append_extension(char* path, size_t len) {
     strcat(path, ext);
 }
 
-bool project_manager_init(void) {
-    return ensure_dir_exists(kProjectsDir);
+bool project_manager_init(AppState* state) {
+    char projects_dir[SESSION_PATH_MAX];
+    resolve_projects_dir(state, projects_dir, sizeof(projects_dir));
+    return ensure_dir_exists(projects_dir);
 }
 
-bool project_manager_remember_last(const char* path) {
+bool project_manager_remember_last(AppState* state, const char* path) {
     if (!path || !path[0]) {
         return false;
     }
-    if (!ensure_dir_exists(kProjectsDir)) {
+    char projects_dir[SESSION_PATH_MAX];
+    char last_path_file[SESSION_PATH_MAX];
+    char legacy_projects_dir[SESSION_PATH_MAX];
+
+    resolve_projects_dir(state, projects_dir, sizeof(projects_dir));
+    resolve_last_path_file(state, last_path_file, sizeof(last_path_file));
+    path_copy(legacy_projects_dir, sizeof(legacy_projects_dir), kLegacyProjectsDir);
+
+    if (!ensure_dir_exists(projects_dir)) {
         return false;
     }
-    FILE* f = fopen(kLastPathFile, "wb");
+    FILE* f = fopen(last_path_file, "wb");
     if (!f) {
-        SDL_Log("project_manager: failed to write %s: %s", kLastPathFile, strerror(errno));
+        SDL_Log("project_manager: failed to write %s: %s", last_path_file, strerror(errno));
         return false;
     }
     fputs(path, f);
     fclose(f);
+    if (strcmp(projects_dir, legacy_projects_dir) != 0 && ensure_dir_exists(legacy_projects_dir)) {
+        FILE* legacy = fopen(kLegacyLastPathFile, "wb");
+        if (legacy) {
+            fputs(path, legacy);
+            fclose(legacy);
+        }
+    }
     return true;
 }
 
-static bool read_last_path(char* out, size_t out_len) {
-    if (!out || out_len == 0) {
-        return false;
-    }
-    FILE* f = fopen(kLastPathFile, "rb");
+static bool read_last_path_file(const char* path, char* out, size_t out_len) {
+    FILE* f = fopen(path, "rb");
     if (!f) {
         return false;
     }
@@ -112,7 +174,6 @@ static bool read_last_path(char* out, size_t out_len) {
         return false;
     }
     out[read] = '\0';
-    // Trim trailing whitespace/newlines.
     for (size_t i = read; i > 0; --i) {
         if (out[i - 1] == '\n' || out[i - 1] == '\r' || out[i - 1] == ' ' || out[i - 1] == '\t') {
             out[i - 1] = '\0';
@@ -121,6 +182,25 @@ static bool read_last_path(char* out, size_t out_len) {
         }
     }
     return out[0] != '\0';
+}
+
+static bool read_last_path(const AppState* state, char* out, size_t out_len) {
+    if (!out || out_len == 0) {
+        return false;
+    }
+    char preferred_path[SESSION_PATH_MAX];
+    char legacy_path[SESSION_PATH_MAX];
+
+    resolve_last_path_file(state, preferred_path, sizeof(preferred_path));
+    path_copy(legacy_path, sizeof(legacy_path), kLegacyLastPathFile);
+
+    if (read_last_path_file(preferred_path, out, out_len)) {
+        return true;
+    }
+    if (strcmp(preferred_path, legacy_path) != 0) {
+        return read_last_path_file(legacy_path, out, out_len);
+    }
+    return false;
 }
 
 bool project_manager_post_load(AppState* state) {
@@ -144,7 +224,7 @@ bool project_manager_save(AppState* state, const char* name_override, bool overw
     if (!state) {
         return false;
     }
-    if (!project_manager_init()) {
+    if (!project_manager_init(state)) {
         return false;
     }
 
@@ -158,7 +238,9 @@ bool project_manager_save(AppState* state, const char* name_override, bool overw
     }
 
     char path[SESSION_PATH_MAX];
-    snprintf(path, sizeof(path), "%s/%s", kProjectsDir, name_buf);
+    char projects_dir[SESSION_PATH_MAX];
+    resolve_projects_dir(state, projects_dir, sizeof(projects_dir));
+    snprintf(path, sizeof(path), "%s/%s", projects_dir, name_buf);
     append_extension(path, sizeof(path));
 
     if (!overwrite_current && state->project.has_name && strcmp(state->project.path, path) != 0) {
@@ -178,7 +260,7 @@ bool project_manager_save(AppState* state, const char* name_override, bool overw
     state->project.path[sizeof(state->project.path) - 1] = '\0';
     state->project.has_name = true;
 
-    project_manager_remember_last(path);
+    project_manager_remember_last(state, path);
     SDL_Log("Project saved: %s", path);
     return true;
 }
@@ -192,7 +274,7 @@ bool project_manager_load(AppState* state, const char* path_optional) {
         strncpy(path, path_optional, sizeof(path) - 1);
         path[sizeof(path) - 1] = '\0';
     } else {
-        if (!read_last_path(path, sizeof(path))) {
+        if (!read_last_path(state, path, sizeof(path))) {
             SDL_Log("project_manager: no last project path");
             return false;
         }
@@ -215,7 +297,7 @@ bool project_manager_load(AppState* state, const char* path_optional) {
     strncpy(state->project.path, path, sizeof(state->project.path) - 1);
     state->project.path[sizeof(state->project.path) - 1] = '\0';
     state->project.has_name = true;
-    project_manager_remember_last(path);
+    project_manager_remember_last(state, path);
     SDL_Log("Project loaded: %s", path);
     return true;
 }
@@ -322,21 +404,31 @@ bool project_manager_get_info(const char* path, ProjectInfo* out_info) {
     return true;
 }
 
-bool project_manager_list(ProjectInfo* out_items, int max_items, int* out_count) {
-    if (!out_items || max_items <= 0) {
-        return false;
+static bool path_already_listed(const ProjectInfo* out_items, int count, const char* path) {
+    for (int i = 0; i < count; ++i) {
+        if (strcmp(out_items[i].path, path) == 0) {
+            return true;
+        }
     }
-    if (!project_manager_init()) {
-        return false;
-    }
-    DIR* dir = opendir(kProjectsDir);
-    if (!dir) {
-        SDL_Log("project_manager: failed to open %s", kProjectsDir);
-        return false;
-    }
+    return false;
+}
+
+static void project_manager_collect_from_dir(const char* dir_path,
+                                             ProjectInfo* out_items,
+                                             int max_items,
+                                             int* io_count) {
+    DIR* dir;
     struct dirent* entry;
-    int count = 0;
     char path[SESSION_PATH_MAX];
+    int count;
+    if (!dir_path || !out_items || !io_count || max_items <= 0) {
+        return;
+    }
+    count = *io_count;
+    dir = opendir(dir_path);
+    if (!dir) {
+        return;
+    }
     while ((entry = readdir(dir)) != NULL && count < max_items) {
         if (entry->d_name[0] == '.') {
             continue;
@@ -346,12 +438,37 @@ bool project_manager_list(ProjectInfo* out_items, int max_items, int* out_count)
         if (!dot || strcmp(dot, ".json") != 0) {
             continue;
         }
-        snprintf(path, sizeof(path), "%s/%s", kProjectsDir, name);
+        if (snprintf(path, sizeof(path), "%s/%s", dir_path, name) >= (int)sizeof(path)) {
+            continue;
+        }
+        if (path_already_listed(out_items, count, path)) {
+            continue;
+        }
         if (project_manager_get_info(path, &out_items[count])) {
             count++;
         }
     }
     closedir(dir);
+    *io_count = count;
+}
+
+bool project_manager_list(AppState* state, ProjectInfo* out_items, int max_items, int* out_count) {
+    if (!out_items || max_items <= 0) {
+        return false;
+    }
+    if (!project_manager_init(state)) {
+        return false;
+    }
+    char preferred_dir[SESSION_PATH_MAX];
+    char legacy_dir[SESSION_PATH_MAX];
+    int count = 0;
+    resolve_projects_dir(state, preferred_dir, sizeof(preferred_dir));
+    path_copy(legacy_dir, sizeof(legacy_dir), kLegacyProjectsDir);
+
+    project_manager_collect_from_dir(preferred_dir, out_items, max_items, &count);
+    if (strcmp(preferred_dir, legacy_dir) != 0) {
+        project_manager_collect_from_dir(legacy_dir, out_items, max_items, &count);
+    }
     if (out_count) {
         *out_count = count;
     }

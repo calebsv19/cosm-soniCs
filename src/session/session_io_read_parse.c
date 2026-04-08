@@ -2048,6 +2048,53 @@ bool parse_session_document(JsonReader* r, SessionDocument* doc) {
                 }
                 return false;
             }
+        } else if (strcmp(key, "data_paths") == 0) {
+            if (!json_expect(r, '{')) {
+                return false;
+            }
+            while (true) {
+                json_skip_whitespace(r);
+                if (r->pos < r->length && r->data[r->pos] == '}') {
+                    ++r->pos;
+                    break;
+                }
+                char paths_key[64];
+                if (!json_parse_string(r, paths_key, sizeof(paths_key))) {
+                    return false;
+                }
+                if (!json_expect(r, ':')) {
+                    return false;
+                }
+                if (strcmp(paths_key, "input_root") == 0) {
+                    if (!json_parse_string(r, doc->data_paths.input_root, sizeof(doc->data_paths.input_root))) {
+                        return false;
+                    }
+                } else if (strcmp(paths_key, "output_root") == 0) {
+                    if (!json_parse_string(r, doc->data_paths.output_root, sizeof(doc->data_paths.output_root))) {
+                        return false;
+                    }
+                } else if (strcmp(paths_key, "library_copy_root") == 0) {
+                    if (!json_parse_string(r,
+                                           doc->data_paths.library_copy_root,
+                                           sizeof(doc->data_paths.library_copy_root))) {
+                        return false;
+                    }
+                } else {
+                    if (!json_skip_value(r)) {
+                        return false;
+                    }
+                }
+                json_skip_whitespace(r);
+                if (r->pos < r->length && r->data[r->pos] == ',') {
+                    ++r->pos;
+                    continue;
+                }
+                if (r->pos < r->length && r->data[r->pos] == '}') {
+                    ++r->pos;
+                    break;
+                }
+                return false;
+            }
         } else if (strcmp(key, "master_fx") == 0) {
             if (!parse_master_fx(r, doc)) {
                 return false;

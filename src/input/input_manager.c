@@ -436,14 +436,19 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
     manager->previous_enter = enter_now;
 
     bool b_now = keys[SDL_SCANCODE_B] != 0;
-    if (b_now && !manager->previous_b) {
+    bool folder_b_now = ctrl_or_cmd && b_now;
+    if (folder_b_now && !manager->previous_folder_b) {
+        (void)library_input_open_folder_dialog(state);
+    } else if (b_now && !manager->previous_b) {
         state->bounce_requested = true;
     }
+    manager->previous_folder_b = folder_b_now;
     manager->previous_b = b_now;
 
     bool s_now = keys[SDL_SCANCODE_S] != 0;
     if (s_now && !manager->previous_s) {
-        const char* session_path = "config/last_session.json";
+        char session_path[SESSION_PATH_MAX];
+        project_manager_last_session_path(state, session_path, sizeof(session_path));
         if (!session_save_to_file(state, session_path)) {
             SDL_Log("Save failed to %s", session_path);
         } else {
@@ -498,6 +503,7 @@ void input_manager_init(InputManager* manager) {
     manager->previous_enter = false;
     manager->previous_c = false;
     manager->previous_b = false;
+    manager->previous_folder_b = false;
     manager->previous_s = false;
     manager->previous_f7 = false;
     manager->previous_f8 = false;
@@ -524,6 +530,19 @@ void input_manager_init(InputManager* manager) {
 
 void input_manager_handle_event(InputManager* manager, AppState* state, const SDL_Event* event) {
     if (!manager || !state || !event) {
+        return;
+    }
+    if (event->type == SDL_DROPFILE) {
+        if (event->drop.file) {
+            (void)library_input_handle_drop_file(state, event->drop.file, state->mouse_x, state->mouse_y);
+            SDL_free(event->drop.file);
+        }
+        return;
+    }
+    if (event->type == SDL_DROPTEXT) {
+        if (event->drop.file) {
+            SDL_free(event->drop.file);
+        }
         return;
     }
 
@@ -596,6 +615,7 @@ void input_manager_update(InputManager* manager, AppState* state) {
     transport_input_follow_playhead(manager, state);
     timeline_input_update(manager, state, left_was_down, left_is_down);
     effects_panel_input_update(manager, state, left_was_down, left_is_down);
+    library_browser_refresh_project_usage(&state->library, state->engine);
 
     handle_transport_controls(state, left_was_down, left_is_down);
     handle_keyboard_shortcuts(manager, state);

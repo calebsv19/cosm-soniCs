@@ -74,10 +74,15 @@ Legacy test lane:
 - runtime/generated lanes are gitignored:
   - `config/runtime/`
   - `config/cache/`
+  - legacy compatibility lanes:
   - `config/library_index.json`
   - `config/last_session.json`
   - `config/font_zoom_step.txt`
   - `config/projects/*.json`
+
+## Data Path Contract Finalization
+- DAW data-path contract upgrades (`P3`) close with a standardized lane commit title:
+  - `DAW Data Path Contract Foundations`
 
 ## Active Scaffold Migration State
 - Private migration plan:
