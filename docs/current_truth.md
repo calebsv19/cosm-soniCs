@@ -1,6 +1,6 @@
 # DAW Current Truth
 
-Last updated: 2026-04-04
+Last updated: 2026-04-10
 
 ## Program Identity
 - Repository directory: `daw/`
@@ -50,6 +50,8 @@ Stable test lane:
   - `test-kitviz-meter-adapter`
   - `test-waveform-pack-warmstart`
   - `test-layout-sweep`
+  - `test-data-path-contract`
+  - `test-library-copy-vs-reference-contract`
 
 Legacy test lane:
 - `make -C daw test-legacy`
@@ -83,12 +85,23 @@ Legacy test lane:
 ## Data Path Contract Finalization
 - DAW data-path contract upgrades (`P3`) close with a standardized lane commit title:
   - `DAW Data Path Contract Foundations`
+- `P3-S0` through `P3-S5` are complete:
+  - explicit runtime contract fields are active:
+    - `input_root`
+    - `output_root`
+    - `library_copy_root`
+  - runtime path persistence uses:
+    - `config/runtime/data_paths.cfg`
+  - ingest-mode matrix is now explicit:
+    - library-pane external file ingest => `copy` into `library_copy_root`
+    - timeline drop ingest => `reference` (no implicit duplicate copy)
+  - output-root migration is active for project/session lanes with compatibility fallback to legacy `config/*`.
 
 ## Active Scaffold Migration State
 - Private migration plan:
-  - `../docs/private_program_docs/daw/2026-03-27_daw_scaffold_standardization_switchover_plan.md`
+  - `../../docs/private_program_docs/daw/2026-03-27_daw_scaffold_standardization_switchover_plan.md`
 - Active UI text/layout migration plan:
-  - `../docs/private_program_docs/daw/2026-03-28_daw_text_scaling_layout_migration_plan.md`
+  - `../../docs/private_program_docs/daw/2026-03-28_daw_text_scaling_layout_migration_plan.md`
   - timeline phase now includes shared measured geometry for header controls + track-header hit regions (render/input synchronized)
   - timeline lane clip/body rect geometry is now shared between render and input hit/testing paths (removed hardcoded `+8/-16` lane body offsets)
   - timeline ruler/grid labels now suppress overlaps at dense spacing using measured text widths
@@ -102,7 +115,7 @@ Legacy test lane:
   - post-scaffold font-size standardization lane is treated as complete; standardized closeout title is:
     - `Post-Scaffold Font Size Standardization`
 - Baseline freeze:
-  - `../docs/private_program_docs/daw/2026-03-27_daw_s0_baseline_freeze_and_mapping.md`
+  - `../../docs/private_program_docs/daw/2026-03-27_daw_s0_baseline_freeze_and_mapping.md`
 - Completed phases:
   - `DAW-S0`, `DAW-S1`, `DAW-S2`, `DAW-S3`, `DAW-S4`, `DAW-S5`
 - Next phase:
@@ -130,7 +143,7 @@ Legacy test lane:
   - dispatch summary exit tracking (`dispatch_succeeded`, `last_dispatch_exit_code`)
   - final wrapper exit summary line (`stage`, `exit_code`, dispatch summary, wrapper error code)
 - execution note:
-  - `../docs/private_program_docs/daw/2026-04-02_daw_w1_w2_wrapper_hardening.md`
+  - `../../docs/private_program_docs/daw/2026-04-02_daw_w1_w2_wrapper_hardening.md`
 
 ## App Packaging Status (Current)
 - DAW packaging + release-readiness lane is complete with standardized target set:

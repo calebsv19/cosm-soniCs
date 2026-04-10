@@ -1,6 +1,6 @@
 # DAW Future Intent
 
-Last updated: 2026-04-04
+Last updated: 2026-04-10
 
 ## Scaffold Alignment Intent
 1. Preserve DAW's existing subsystem decomposition strengths.
@@ -59,6 +59,12 @@ Last updated: 2026-04-04
   - maintenance-only parity with ecosystem release contract updates
   - keep Desktop/Finder launch + `release-verify-notarized` evidence in packaging-affecting closeout gates
 
+## Data Path Contract Intent
+- DAW data-path contract lane is complete (`P3-S0` through `P3-S5`).
+- next posture:
+  - maintenance-only updates for explicit root handling and ingest-mode matrix (`copy` in library pane, `reference` in timeline drop).
+  - keep `test-data-path-contract` and `test-library-copy-vs-reference-contract` in stable verification lane.
+
 ## Connection Pass Intent
 - completed:
   - `DAW-CP0` baseline routing map refresh
@@ -75,7 +81,7 @@ Last updated: 2026-04-04
 - `W1` complete for `daw` (typed context/stage/dispatch wrapper shape aligned)
 - `W2` complete for `daw` (structured wrapper diagnostics normalization + wrapper exit summary logging)
 - execution note:
-  - `../docs/private_program_docs/daw/2026-04-02_daw_w1_w2_wrapper_hardening.md`
+  - `../../docs/private_program_docs/daw/2026-04-02_daw_w1_w2_wrapper_hardening.md`
 
 ## Non-Goals During Scaffold Migration
 - No feature expansion unrelated to scaffold alignment.

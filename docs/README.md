@@ -23,4 +23,4 @@ Start here for DAW public documentation.
 
 ## Private Planning Docs
 - Private DAW migration docs live at:
-  - `../docs/private_program_docs/daw/`
+  - `../../docs/private_program_docs/daw/`
