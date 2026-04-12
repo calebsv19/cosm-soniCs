@@ -45,6 +45,7 @@ SRCS := \
 	$(SRC_DIR)/core/loop/daw_mainthread_kernel.c \
 	$(SRC_DIR)/core/loop/daw_render_invalidation.c \
 	$(SRC_DIR)/app/daw_app_main.c \
+	$(SRC_DIR)/app/main_bounce.c \
 	$(SRC_DIR)/app/main.c \
 	$(SRC_DIR)/config/config.c \
 	$(SRC_DIR)/config/data_paths.c \
@@ -63,6 +64,8 @@ SRCS := \
 	$(SRC_DIR)/engine/engine_transport.c \
 	$(SRC_DIR)/engine/engine_tracks.c \
 	$(SRC_DIR)/engine/engine_clips.c \
+	$(SRC_DIR)/engine/engine_clips_automation.c \
+	$(SRC_DIR)/engine/engine_clips_no_overlap.c \
 	$(SRC_DIR)/engine/engine_audio.c \
 	$(SRC_DIR)/engine/engine_meter.c \
 	$(SRC_DIR)/engine/engine_scope_host.c \
@@ -82,11 +85,18 @@ SRCS := \
 	$(SRC_DIR)/session/session_io_read.c \
 	$(SRC_DIR)/session/session_io_json.c \
 	$(SRC_DIR)/session/session_io_read_parse.c \
+	$(SRC_DIR)/session/session_io_read_parse_engine.c \
+	$(SRC_DIR)/session/session_io_read_parse_effects_panel.c \
+	$(SRC_DIR)/session/session_io_read_parse_master_fx.c \
+	$(SRC_DIR)/session/session_io_read_parse_track_clips.c \
+	$(SRC_DIR)/session/session_io_read_parse_track_fx.c \
 	$(SRC_DIR)/session/session_apply.c \
 	$(SRC_DIR)/session/project_manager.c \
 	$(SRC_DIR)/undo/undo_manager.c \
+	$(SRC_DIR)/undo/undo_manager_stack.c \
 	$(SRC_DIR)/ui/panes.c \
 	$(SRC_DIR)/ui/layout.c \
+	$(SRC_DIR)/ui/layout_modal_overlays.c \
 	$(SRC_DIR)/ui/layout_config.c \
 	$(SRC_DIR)/ui/library_browser.c \
 	$(SRC_DIR)/ui/timeline_waveform.c \
@@ -97,16 +107,30 @@ SRCS := \
 	$(SRC_DIR)/ui/beat_grid.c \
 	$(SRC_DIR)/ui/time_grid.c \
 	$(SRC_DIR)/ui/timeline_view.c \
+	$(SRC_DIR)/ui/timeline_view_overlays.c \
+	$(SRC_DIR)/ui/timeline_view_clip_pass.c \
+	$(SRC_DIR)/ui/timeline_view_grid.c \
+	$(SRC_DIR)/ui/timeline_view_controls.c \
+	$(SRC_DIR)/ui/timeline_view_runtime_overlays.c \
 	$(SRC_DIR)/ui/font.c \
 	$(SRC_DIR)/ui/shared_theme_font_adapter.c \
 	$(SRC_DIR)/ui/transport.c \
 	$(SRC_DIR)/ui/clip_inspector.c \
+	$(SRC_DIR)/ui/clip_inspector_controls.c \
+	$(SRC_DIR)/ui/clip_inspector_waveform.c \
 	$(SRC_DIR)/ui/effects_panel/panel.c \
+	$(SRC_DIR)/ui/effects_panel/sync.c \
+	$(SRC_DIR)/ui/effects_panel/overlay.c \
+	$(SRC_DIR)/ui/effects_panel/state_helpers.c \
 	$(SRC_DIR)/ui/effects_panel/slot_view.c \
 	$(SRC_DIR)/ui/effects_panel/slot_preview.c \
+	$(SRC_DIR)/ui/effects_panel/slot_preview_delay.c \
+	$(SRC_DIR)/ui/effects_panel/slot_preview_time_domain.c \
+	$(SRC_DIR)/ui/effects_panel/slot_preview_eq_curve.c \
 	$(SRC_DIR)/ui/effects_panel/slot_layout.c \
 	$(SRC_DIR)/ui/effects_panel/slot_widgets.c \
 	$(SRC_DIR)/ui/effects_panel/spec_panel.c \
+	$(SRC_DIR)/ui/effects_panel/spec_panel_render.c \
 	$(SRC_DIR)/ui/effects_panel/list_view.c \
 	$(SRC_DIR)/ui/effects_panel/eq_detail_view.c \
 	$(SRC_DIR)/ui/effects_panel/meter_detail_view.c \
@@ -126,6 +150,8 @@ SRCS := \
 	$(SRC_DIR)/input/timeline/timeline_input_keyboard.c \
 	$(SRC_DIR)/input/timeline/timeline_input_mouse.c \
 	$(SRC_DIR)/input/timeline/timeline_input_mouse_click.c \
+	$(SRC_DIR)/input/timeline/timeline_input_mouse_clip_press.c \
+	$(SRC_DIR)/input/timeline/timeline_input_mouse_tempo_overlay.c \
 	$(SRC_DIR)/input/timeline/timeline_input_mouse_drag.c \
 	$(SRC_DIR)/input/timeline/timeline_input_mouse_scroll.c \
 	$(SRC_DIR)/input/timeline/timeline_snap.c \
@@ -134,9 +160,11 @@ SRCS := \
 	$(SRC_DIR)/input/automation_input.c \
 	$(SRC_DIR)/input/tempo_overlay_input.c \
 	$(SRC_DIR)/input/inspector_input.c \
+	$(SRC_DIR)/input/inspector_input_numeric_edit.c \
 	$(SRC_DIR)/input/inspector_fade_input.c \
 	$(SRC_DIR)/input/transport_input.c \
 	$(SRC_DIR)/input/effects_panel_input.c \
+	$(SRC_DIR)/input/effects_panel_input_helpers.c \
 	$(SRC_DIR)/input/effects_panel_eq_detail_input.c \
 	$(SRC_DIR)/input/effects_panel_track_snapshot.c \
 	$(SRC_DIR)/render/timer_hud_adapter.c \
@@ -638,6 +666,11 @@ $(TEST_BIN): $(TEST_OBJS) \
 	$(BUILD_DIR)/src/session/session_io_read.o \
 	$(BUILD_DIR)/src/session/session_io_json.o \
 	$(BUILD_DIR)/src/session/session_io_read_parse.o \
+	$(BUILD_DIR)/src/session/session_io_read_parse_engine.o \
+	$(BUILD_DIR)/src/session/session_io_read_parse_effects_panel.o \
+	$(BUILD_DIR)/src/session/session_io_read_parse_master_fx.o \
+	$(BUILD_DIR)/src/session/session_io_read_parse_track_clips.o \
+	$(BUILD_DIR)/src/session/session_io_read_parse_track_fx.o \
 	$(BUILD_DIR)/src/session/session_apply.o \
 	$(BUILD_DIR)/src/config/config.o
 	@mkdir -p "$(dir $@)"

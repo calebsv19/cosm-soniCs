@@ -8,7 +8,9 @@
 #include "input/inspector_input.h"
 #include "input/timeline_drag.h"
 #include "input/timeline/timeline_geometry.h"
+#include "input/timeline/timeline_input_mouse_clip_press.h"
 #include "input/timeline/timeline_input_mouse_drag.h"
+#include "input/timeline/timeline_input_mouse_tempo_overlay.h"
 #include "input/timeline_snap.h"
 #include "input/timeline_selection.h"
 #include "input/timeline_input.h"
@@ -19,13 +21,9 @@
 #include "ui/effects_panel.h"
 #include "ui/timeline_view.h"
 #include "ui/font.h"
-#include "time/tempo.h"
 #include <SDL2/SDL.h>
 #include <math.h>
 #include <string.h>
-
-#define TEMPO_OVERLAY_MIN_BPM 20.0
-#define TEMPO_OVERLAY_MAX_BPM 200.0
 
 static int track_name_cursor_from_x(const char* text, float scale, int start_x, int end_x, int mouse_x) {
     if (!text) return 0;
@@ -55,145 +53,6 @@ static SDL_Rect timeline_lane_clip_rect(const TimelineGeometry* geom, int lane_t
     }
     timeline_view_compute_lane_clip_rect(lane_top, geom->track_height, clip_x, clip_w, &rect);
     return rect;
-}
-
-static bool clip_state_from_clip(const EngineClip* clip, int track_index, UndoClipState* out_state) {
-    if (!clip || !out_state) {
-        return false;
-    }
-    out_state->sampler = clip->sampler;
-    out_state->track_index = track_index;
-    out_state->start_frame = clip->timeline_start_frames;
-    out_state->offset_frames = clip->offset_frames;
-    out_state->duration_frames = clip->duration_frames;
-    out_state->fade_in_frames = clip->fade_in_frames;
-    out_state->fade_out_frames = clip->fade_out_frames;
-    out_state->gain = clip->gain;
-    if (out_state->duration_frames == 0 && clip->sampler) {
-        out_state->duration_frames = engine_sampler_get_frame_count(clip->sampler);
-    }
-    return true;
-}
-
-static void timeline_drag_begin_undo(AppState* state,
-                                     const EngineTrack* track,
-                                     int track_index,
-                                     int clip_index,
-                                     bool multi_move) {
-    if (!state || !track || clip_index < 0 || clip_index >= track->clip_count) {
-        return;
-    }
-    if (!multi_move) {
-        UndoCommand cmd = {0};
-        cmd.type = UNDO_CMD_CLIP_TRANSFORM;
-        if (!clip_state_from_clip(&track->clips[clip_index], track_index, &cmd.data.clip_transform.before)) {
-            return;
-        }
-        cmd.data.clip_transform.after = cmd.data.clip_transform.before;
-        undo_manager_begin_drag(&state->undo, &cmd);
-        return;
-    }
-    int count = state->selection_count;
-    if (count <= 0) {
-        return;
-    }
-    UndoClipState before[TIMELINE_MAX_SELECTION];
-    UndoClipState after[TIMELINE_MAX_SELECTION];
-    int filled = 0;
-    const EngineTrack* tracks = engine_get_tracks(state->engine);
-    int track_count = engine_get_track_count(state->engine);
-    for (int i = 0; i < count && filled < TIMELINE_MAX_SELECTION; ++i) {
-        TimelineSelectionEntry entry = state->selection[i];
-        if (!tracks || entry.track_index < 0 || entry.track_index >= track_count) {
-            continue;
-        }
-        const EngineTrack* sel_track = &tracks[entry.track_index];
-        if (!sel_track || entry.clip_index < 0 || entry.clip_index >= sel_track->clip_count) {
-            continue;
-        }
-        if (clip_state_from_clip(&sel_track->clips[entry.clip_index], entry.track_index, &before[filled])) {
-            after[filled] = before[filled];
-            filled++;
-        }
-    }
-    if (filled <= 0) {
-        return;
-    }
-    UndoCommand cmd = {0};
-    cmd.type = UNDO_CMD_MULTI_CLIP_TRANSFORM;
-    cmd.data.multi_clip_transform.count = filled;
-    cmd.data.multi_clip_transform.before = before;
-    cmd.data.multi_clip_transform.after = after;
-    undo_manager_begin_drag(&state->undo, &cmd);
-}
-
-// Captures a ripple drag undo state for the anchor and downstream target clips.
-static void timeline_drag_begin_ripple_undo(AppState* state,
-                                            int track_index,
-                                            int anchor_clip_index,
-                                            const TimelineDragState* drag) {
-    if (!state || !state->engine || !drag || track_index < 0 || anchor_clip_index < 0) {
-        return;
-    }
-    const EngineTrack* tracks = engine_get_tracks(state->engine);
-    int track_count = engine_get_track_count(state->engine);
-    if (!tracks || track_index >= track_count) {
-        return;
-    }
-    const EngineTrack* track = &tracks[track_index];
-    if (!track || anchor_clip_index >= track->clip_count) {
-        return;
-    }
-    int total = 1 + drag->ripple_target_count;
-    if (total <= 0) {
-        return;
-    }
-    UndoClipState* before = (UndoClipState*)SDL_calloc((size_t)total, sizeof(UndoClipState));
-    UndoClipState* after = (UndoClipState*)SDL_calloc((size_t)total, sizeof(UndoClipState));
-    if (!before || !after) {
-        SDL_free(before);
-        SDL_free(after);
-        return;
-    }
-    int filled = 0;
-    if (clip_state_from_clip(&track->clips[anchor_clip_index], track_index, &before[filled])) {
-        after[filled] = before[filled];
-        filled++;
-    }
-    for (int i = 0; i < drag->ripple_target_count && filled < total; ++i) {
-        EngineSamplerSource* sampler = drag->ripple_targets[i];
-        if (!sampler) {
-            continue;
-        }
-        int clip_track = -1;
-        int clip_index = -1;
-        if (!timeline_find_clip_by_sampler(state, sampler, &clip_track, &clip_index)) {
-            continue;
-        }
-        if (clip_track != track_index) {
-            continue;
-        }
-        if (clip_index < 0 || clip_index >= track->clip_count) {
-            continue;
-        }
-        if (clip_state_from_clip(&track->clips[clip_index], track_index, &before[filled])) {
-            after[filled] = before[filled];
-            filled++;
-        }
-    }
-    if (filled <= 0) {
-        SDL_free(before);
-        SDL_free(after);
-        return;
-    }
-    UndoCommand cmd = {0};
-    cmd.type = UNDO_CMD_MULTI_CLIP_TRANSFORM;
-    cmd.data.multi_clip_transform.count = filled;
-    cmd.data.multi_clip_transform.before = before;
-    cmd.data.multi_clip_transform.after = after;
-    undo_manager_begin_drag(&state->undo, &cmd);
-    SDL_free(before);
-    SDL_free(after);
 }
 
 static void session_track_free(SessionTrack* track) {
@@ -362,128 +221,6 @@ static int timeline_automation_hit_point(const EngineAutomationLane* lane,
         double point_seconds = clip_start_seconds + (double)frame / (double)sample_rate;
         int px = timeline_seconds_to_x(geom, (float)point_seconds);
         int py = baseline - (int)llround((double)lane->points[i].value * (double)range);
-        if (abs(px - x) <= radius && abs(py - y) <= radius) {
-            return i;
-        }
-    }
-    return -1;
-}
-
-// Computes the tempo overlay rectangle anchored to the top track lane.
-static bool timeline_tempo_overlay_rect(const TimelineGeometry* geom, SDL_Rect* out_rect) {
-    SDL_Rect lane_rect = {0, 0, 0, 0};
-    if (!geom || !out_rect || geom->content_width <= 0 || geom->track_height <= 0) {
-        return false;
-    }
-    timeline_view_compute_lane_clip_rect(geom->track_top,
-                                         geom->track_height,
-                                         geom->content_left,
-                                         geom->content_width,
-                                         &lane_rect);
-    if (lane_rect.h < 8) {
-        return false;
-    }
-    *out_rect = lane_rect;
-    return true;
-}
-
-// Determines the BPM range for the tempo overlay based on map events.
-static void timeline_tempo_overlay_bpm_range(const TempoMap* map,
-                                             double fallback_bpm,
-                                             double* out_min,
-                                             double* out_max) {
-    (void)map;
-    (void)fallback_bpm;
-    if (out_min) *out_min = TEMPO_OVERLAY_MIN_BPM;
-    if (out_max) *out_max = TEMPO_OVERLAY_MAX_BPM;
-}
-
-// Converts a BPM value into a y position within the overlay rect.
-static int timeline_tempo_overlay_bpm_to_y(const SDL_Rect* rect,
-                                           double bpm,
-                                           double min_bpm,
-                                           double max_bpm) {
-    if (!rect || rect->h <= 0) {
-        return 0;
-    }
-    double range = max_bpm - min_bpm;
-    if (range <= 0.0) {
-        range = 1.0;
-    }
-    double t = (bpm - min_bpm) / range;
-    if (t < 0.0) t = 0.0;
-    if (t > 1.0) t = 1.0;
-    return rect->y + rect->h - (int)llround(t * (double)rect->h);
-}
-
-// Converts a y position into a BPM value within the overlay rect.
-static double timeline_tempo_overlay_bpm_from_y(const SDL_Rect* rect,
-                                                int y,
-                                                double min_bpm,
-                                                double max_bpm) {
-    if (!rect || rect->h <= 0) {
-        return min_bpm;
-    }
-    double range = max_bpm - min_bpm;
-    if (range <= 0.0) {
-        range = 1.0;
-    }
-    int clamped_y = y;
-    if (clamped_y < rect->y) clamped_y = rect->y;
-    if (clamped_y > rect->y + rect->h) clamped_y = rect->y + rect->h;
-    double t = (double)(rect->y + rect->h - clamped_y) / (double)rect->h;
-    if (t < 0.0) t = 0.0;
-    if (t > 1.0) t = 1.0;
-    return min_bpm + t * range;
-}
-
-// Snaps tempo changes to 10 BPM increments unless free placement is requested.
-static double timeline_tempo_overlay_snap_bpm(double bpm, bool free_snap) {
-    if (free_snap) {
-        return bpm;
-    }
-    return round(bpm / 10.0) * 10.0;
-}
-
-// Finds the nearest tempo event index based on a beat value.
-static int timeline_tempo_overlay_find_event(const TempoMap* map, double beat) {
-    if (!map || map->event_count <= 0) {
-        return -1;
-    }
-    int best = 0;
-    double best_delta = fabs(map->events[0].beat - beat);
-    for (int i = 1; i < map->event_count; ++i) {
-        double delta = fabs(map->events[i].beat - beat);
-        if (delta < best_delta) {
-            best_delta = delta;
-            best = i;
-        }
-    }
-    return best;
-}
-
-// Locates a tempo event near a mouse position.
-static int timeline_tempo_overlay_hit_event(const TempoMap* map,
-                                            const SDL_Rect* rect,
-                                            float window_start_seconds,
-                                            float window_end_seconds,
-                                            int content_left,
-                                            float pixels_per_second,
-                                            double min_bpm,
-                                            double max_bpm,
-                                            int x,
-                                            int y) {
-    if (!map || !rect || rect->w <= 0 || rect->h <= 0 || map->event_count <= 0) {
-        return -1;
-    }
-    const int radius = 6;
-    for (int i = 0; i < map->event_count; ++i) {
-        double sec = tempo_map_beats_to_seconds(map, map->events[i].beat);
-        if (sec < window_start_seconds || sec > window_end_seconds) {
-            continue;
-        }
-        int px = content_left + (int)llround((sec - window_start_seconds) * pixels_per_second);
-        int py = timeline_tempo_overlay_bpm_to_y(rect, map->events[i].bpm, min_bpm, max_bpm);
         if (abs(px - x) <= radius && abs(py - y) <= radius) {
             return i;
         }
@@ -815,8 +552,6 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
         return;
     }
 
-    TimelineDragState* drag = &state->timeline_drag;
-
     if (state->timeline_marquee_active) {
         if (is_down) {
             state->timeline_marquee_rect.w = state->mouse_x - state->timeline_marquee_start_x;
@@ -858,80 +593,8 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
         return;
     }
 
-    SDL_Rect tempo_rect = {0, 0, 0, 0};
-    bool tempo_rect_valid = false;
-    if (state->timeline_tempo_overlay_enabled) {
-        tempo_rect_valid = timeline_tempo_overlay_rect(&geom, &tempo_rect);
-    }
-
-    if (state->timeline_tempo_overlay_enabled && tempo_rect_valid && state->tempo_overlay_ui.dragging) {
-        if (!is_down) {
-            state->tempo_overlay_ui.dragging = false;
-            tempo_overlay_commit_edit(state);
-            return;
-        }
-        double min_bpm = 0.0;
-        double max_bpm = 0.0;
-        timeline_tempo_overlay_bpm_range(&state->tempo_map, state->tempo.bpm, &min_bpm, &max_bpm);
-        SDL_Keymod mods = SDL_GetModState();
-        bool free_snap = (mods & KMOD_ALT) != 0;
-        float seconds = timeline_x_to_seconds(&geom, state->mouse_x);
-        float window_min = geom.window_start_seconds;
-        float window_max = geom.window_start_seconds + geom.visible_seconds;
-        if (window_min < 0.0f) window_min = 0.0f;
-        if (seconds < window_min) seconds = window_min;
-        if (seconds > window_max) seconds = window_max;
-        seconds = timeline_snap_seconds_to_grid(state, seconds, geom.visible_seconds);
-        double beat = tempo_map_seconds_to_beats(&state->tempo_map, (double)seconds);
-        double bpm = timeline_tempo_overlay_bpm_from_y(&tempo_rect, state->mouse_y, min_bpm, max_bpm);
-        bpm = timeline_tempo_overlay_snap_bpm(bpm, free_snap);
-        if (bpm < min_bpm) bpm = min_bpm;
-        if (bpm > max_bpm) bpm = max_bpm;
-        if (tempo_map_update_event(&state->tempo_map, state->tempo_overlay_ui.event_index, beat, bpm)) {
-            state->tempo_overlay_ui.event_index = timeline_tempo_overlay_find_event(&state->tempo_map, beat);
-        }
+    if (timeline_input_mouse_handle_tempo_overlay(state, &geom, sample_rate, was_down, is_down)) {
         return;
-    }
-
-    if (!was_down && is_down && state->timeline_tempo_overlay_enabled && tempo_rect_valid) {
-        SDL_Point tempo_point = {state->mouse_x, state->mouse_y};
-        if (SDL_PointInRect(&tempo_point, &tempo_rect)) {
-            tempo_overlay_begin_edit(state);
-            double min_bpm = 0.0;
-            double max_bpm = 0.0;
-            timeline_tempo_overlay_bpm_range(&state->tempo_map, state->tempo.bpm, &min_bpm, &max_bpm);
-            SDL_Keymod mods = SDL_GetModState();
-            bool free_snap = (mods & KMOD_ALT) != 0;
-            int hit = timeline_tempo_overlay_hit_event(&state->tempo_map,
-                                                       &tempo_rect,
-                                                       geom.window_start_seconds,
-                                                       geom.window_start_seconds + geom.visible_seconds,
-                                                       geom.content_left,
-                                                       geom.pixels_per_second,
-                                                       min_bpm,
-                                                       max_bpm,
-                                                       state->mouse_x,
-                                                       state->mouse_y);
-            float seconds = timeline_x_to_seconds(&geom, state->mouse_x);
-            float window_min = geom.window_start_seconds;
-            float window_max = geom.window_start_seconds + geom.visible_seconds;
-            if (window_min < 0.0f) window_min = 0.0f;
-            if (seconds < window_min) seconds = window_min;
-            if (seconds > window_max) seconds = window_max;
-            seconds = timeline_snap_seconds_to_grid(state, seconds, geom.visible_seconds);
-            double beat = tempo_map_seconds_to_beats(&state->tempo_map, (double)seconds);
-            double bpm = timeline_tempo_overlay_bpm_from_y(&tempo_rect, state->mouse_y, min_bpm, max_bpm);
-            bpm = timeline_tempo_overlay_snap_bpm(bpm, free_snap);
-            if (bpm < min_bpm) bpm = min_bpm;
-            if (bpm > max_bpm) bpm = max_bpm;
-            if (hit >= 0) {
-                state->tempo_overlay_ui.event_index = hit;
-            } else if (tempo_map_upsert_event(&state->tempo_map, beat, bpm)) {
-                state->tempo_overlay_ui.event_index = timeline_tempo_overlay_find_event(&state->tempo_map, beat);
-            }
-            state->tempo_overlay_ui.dragging = true;
-            return;
-        }
     }
 
     SDL_Point mouse_point = {state->mouse_x, state->mouse_y};
@@ -1270,196 +933,18 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
             }
         }
 
-        if (hit_clip >= 0 && hit_track >= 0) {
-            track_name_editor_stop(state, true);
-
-            const EngineTrack* refreshed_tracks = engine_get_tracks(state->engine);
-            int refreshed_track_count = engine_get_track_count(state->engine);
-            const EngineTrack* track = NULL;
-            if (refreshed_tracks && hit_track < refreshed_track_count) {
-                track = &refreshed_tracks[hit_track];
-            }
-
-            bool already_selected = timeline_selection_contains(state, hit_track, hit_clip, NULL);
-            bool shift_click = shift_held;
-            if (shift_click) {
-                drag->pending_shift_select = true;
-                drag->pending_shift_track = hit_track;
-                drag->pending_shift_clip = hit_clip;
-                drag->pending_shift_remove = already_selected;
-            } else if (!already_selected) {
-                timeline_selection_set_single(state, hit_track, hit_clip);
-            }
-
-            if (state->selection_count == 1 && track && hit_clip < track->clip_count) {
-                const TimelineSelectionEntry selected = state->selection[0];
-                const EngineTrack* sel_track = NULL;
-                const EngineTrack* all_tracks = refreshed_tracks;
-                if (!all_tracks) {
-                    all_tracks = engine_get_tracks(state->engine);
-                }
-                int total_tracks = engine_get_track_count(state->engine);
-                if (all_tracks && selected.track_index >= 0 && selected.track_index < total_tracks) {
-                    sel_track = &all_tracks[selected.track_index];
-                }
-                if (sel_track && selected.clip_index >= 0 && selected.clip_index < sel_track->clip_count) {
-                    inspector_input_show(state, selected.track_index, selected.clip_index, &sel_track->clips[selected.clip_index]);
-                }
-            } else {
-                inspector_input_init(state);
-            }
-            effects_panel_sync_from_engine(state);
-
-            Uint32 now = SDL_GetTicks();
-            bool double_click = false;
-            if (manager->last_click_clip == hit_clip && manager->last_click_track == hit_track) {
-                Uint32 delta = now - manager->last_click_ticks;
-                if (delta <= 350) {
-                    double_click = true;
-                }
-            }
-            manager->last_click_ticks = now;
-            manager->last_click_clip = hit_clip;
-            manager->last_click_track = hit_track;
-
-            drag->active = false;
-            drag->trimming_left = false;
-            drag->trimming_right = false;
-
-            if (!track || hit_clip < 0 || hit_clip >= track->clip_count) {
-                timeline_input_mouse_drag_end(state);
-                return;
-            }
-
-            const EngineClip* clip = &track->clips[hit_clip];
-
-            drag->destination_track_index = hit_track;
-            uint64_t clip_frames_init = clip->duration_frames;
-            if (clip_frames_init == 0 && clip->sampler) {
-                clip_frames_init = engine_sampler_get_frame_count(clip->sampler);
-            }
-            drag->current_start_seconds = (float)clip->timeline_start_frames / (float)sample_rate;
-            drag->current_duration_seconds = clip_frames_init > 0 ? (float)clip_frames_init / (float)sample_rate : 0.0f;
-
-            if (double_click) {
-                inspector_input_show(state, hit_track, hit_clip, clip);
-                inspector_input_begin_rename(state);
-                manager->last_click_clip = -1;
-                manager->last_click_track = -1;
-                manager->last_click_ticks = 0;
-                return;
-            }
-
-            drag->multi_move = (state->selection_count > 1 && timeline_selection_contains(state, hit_track, hit_clip, NULL));
-
-            drag->active = true;
-            bool fade_left = hit_left && !hit_right && alt_held;
-            bool fade_right = hit_right && !hit_left && alt_held;
-            drag->trimming_left = hit_left && !hit_right && !alt_held;
-            drag->trimming_right = hit_right && !hit_left && !alt_held;
-            drag->adjusting_fade_in = fade_left;
-            drag->adjusting_fade_out = fade_right;
-            drag->mode = TIMELINE_DRAG_MODE_SLIDE;
-            if (drag->trimming_left) {
-                drag->mode = TIMELINE_DRAG_MODE_TRIM_LEFT;
-            } else if (drag->trimming_right) {
-                drag->mode = TIMELINE_DRAG_MODE_TRIM_RIGHT;
-            } else if (fade_left) {
-                drag->mode = TIMELINE_DRAG_MODE_FADE_IN;
-            } else if (fade_right) {
-                drag->mode = TIMELINE_DRAG_MODE_FADE_OUT;
-            } else if (shift_held) {
-                drag->mode = TIMELINE_DRAG_MODE_SLIP;
-            } else if (alt_held) {
-                drag->mode = TIMELINE_DRAG_MODE_RIPPLE;
-            }
-            drag->track_index = hit_track;
-            drag->clip_index = hit_clip;
-            drag->start_mouse_x = state->mouse_x;
-            drag->start_mouse_seconds = timeline_x_to_seconds(&geom, state->mouse_x);
-            drag->initial_start_frames = clip->timeline_start_frames;
-            drag->initial_offset_frames = clip->offset_frames;
-            drag->initial_duration_frames = clip->duration_frames;
-            drag->started_moving = false;
-            if (drag->initial_duration_frames == 0) {
-                drag->initial_duration_frames = engine_sampler_get_frame_count(clip->sampler);
-            }
-            drag->clip_total_frames = engine_clip_get_total_frames(state->engine, hit_track, hit_clip);
-            if (drag->clip_total_frames == 0) {
-                drag->clip_total_frames = drag->initial_offset_frames + drag->initial_duration_frames;
-            }
-            drag->initial_fade_in_frames = clip->fade_in_frames;
-            drag->initial_fade_out_frames = clip->fade_out_frames;
-            float start_sec = (float)drag->initial_start_frames / (float)sample_rate;
-            drag->start_right_seconds = start_sec + (float)drag->initial_duration_frames / (float)sample_rate;
-            inspector_input_commit_if_editing(state);
-            state->inspector.adjusting_gain = false;
-            if (fade_left || fade_right) {
-                state->inspector.adjusting_fade_in = fade_left;
-                state->inspector.adjusting_fade_out = fade_right;
-            }
-            if (drag->multi_move) {
-                drag->multi_clip_count = state->selection_count;
-                for (int s = 0; s < state->selection_count && s < TIMELINE_MAX_SELECTION; ++s) {
-                    TimelineSelectionEntry entry = state->selection[s];
-                    EngineSamplerSource* sampler = NULL;
-                    uint64_t start_frames = 0;
-                    uint64_t offset_frames = 0;
-                    int track_idx = entry.track_index;
-                    if (refreshed_tracks && track_idx >= 0 && track_idx < refreshed_track_count) {
-                        const EngineTrack* sel_track = &refreshed_tracks[track_idx];
-                        if (sel_track && entry.clip_index >= 0 && entry.clip_index < sel_track->clip_count) {
-                            const EngineClip* sel_clip = &sel_track->clips[entry.clip_index];
-                            sampler = sel_clip->sampler;
-                            start_frames = sel_clip->timeline_start_frames;
-                            offset_frames = sel_clip->offset_frames;
-                        }
-                    }
-                    drag->multi_samplers[s] = sampler;
-                    drag->multi_initial_track[s] = track_idx;
-                    drag->multi_initial_start[s] = start_frames;
-                    drag->multi_initial_offset[s] = sampler ? offset_frames : 0;
-                }
-            } else {
-                drag->multi_clip_count = 0;
-            }
-            if (drag->mode == TIMELINE_DRAG_MODE_RIPPLE) {
-                drag->multi_move = false;
-                drag->multi_clip_count = 0;
-                if (drag->ripple_targets) {
-                    SDL_free(drag->ripple_targets);
-                    drag->ripple_targets = NULL;
-                }
-                drag->ripple_target_count = 0;
-                drag->ripple_last_delta_frames = 0;
-                int ripple_capacity = track ? track->clip_count : 0;
-                if (ripple_capacity > 0) {
-                    drag->ripple_targets = (EngineSamplerSource**)SDL_calloc((size_t)ripple_capacity,
-                                                                             sizeof(EngineSamplerSource*));
-                }
-                if (drag->ripple_targets) {
-                    for (int i = 0; i < track->clip_count; ++i) {
-                        const EngineClip* ripple_clip = &track->clips[i];
-                        if (!ripple_clip || !ripple_clip->sampler || ripple_clip->sampler == clip->sampler) {
-                            continue;
-                        }
-                        if (ripple_clip->timeline_start_frames >= drag->initial_start_frames) {
-                            drag->ripple_targets[drag->ripple_target_count++] = ripple_clip->sampler;
-                        }
-                    }
-                }
-            }
-            if (drag->mode == TIMELINE_DRAG_MODE_RIPPLE) {
-                timeline_drag_begin_ripple_undo(state, hit_track, hit_clip, drag);
-            } else {
-                timeline_drag_begin_undo(state, track, hit_track, hit_clip, drag->multi_move);
-            }
-        } else if (!hit_left && !hit_right && over_timeline) {
-            if (state->layout_runtime.drag.active) {
-                return;
-            }
-            timeline_clear_selection(state);
-            timeline_input_mouse_drag_end(state);
+        if (timeline_input_mouse_handle_clip_press(manager,
+                                                   state,
+                                                   &geom,
+                                                   sample_rate,
+                                                   hit_track,
+                                                   hit_clip,
+                                                   hit_left,
+                                                   hit_right,
+                                                   shift_held,
+                                                   alt_held,
+                                                   over_timeline)) {
+            return;
         }
 
         if (hit_clip < 0 && hit_track < 0 && over_timeline) {

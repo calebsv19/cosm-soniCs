@@ -2,11 +2,11 @@
 
 #include "app_state.h"
 #include "engine/engine.h"
-#include "engine/audio_source.h"
 #include "engine/sampler.h"
 #include "input/automation_input.h"
 #include "input/input_manager.h"
 #include "input/inspector_fade_input.h"
+#include "input/inspector_input_numeric_edit.h"
 #include "input/timeline_snap.h"
 #include "ui/clip_inspector.h"
 #include "ui/font.h"
@@ -20,20 +20,6 @@
 
 #define INSPECTOR_GAIN_MIN 0.0f
 #define INSPECTOR_GAIN_MAX 4.0f
-
-static const EngineRuntimeConfig* inspector_get_runtime_cfg(const AppState* state) {
-    if (!state) {
-        return NULL;
-    }
-    if (state->engine) {
-        const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
-        if (cfg) {
-            return cfg;
-        }
-    }
-    return &state->runtime_cfg;
-}
-
 
 static EngineClip* inspector_get_clip_mutable(AppState* state) {
     if (!state || !state->engine) {
@@ -222,106 +208,6 @@ static void inspector_update_name_scroll(AppState* state) {
     state->inspector.name_scroll = start;
 }
 
-static void inspector_clear_numeric_edit(AppState* state) {
-    if (!state) {
-        return;
-    }
-    state->inspector.edit.editing_timeline_start = false;
-    state->inspector.edit.editing_timeline_end = false;
-    state->inspector.edit.editing_timeline_length = false;
-    state->inspector.edit.editing_source_start = false;
-    state->inspector.edit.editing_source_end = false;
-    state->inspector.edit.editing_playback_rate = false;
-    state->inspector.edit.cursor = 0;
-}
-
-static bool inspector_is_numeric_editing(const ClipInspectorEditState* edit) {
-    if (!edit) {
-        return false;
-    }
-    return edit->editing_timeline_start || edit->editing_timeline_end || edit->editing_timeline_length ||
-           edit->editing_source_start || edit->editing_source_end || edit->editing_playback_rate;
-}
-
-static char* inspector_active_numeric_buffer(ClipInspectorEditState* edit) {
-    if (!edit) {
-        return NULL;
-    }
-    if (edit->editing_timeline_start) return edit->timeline_start;
-    if (edit->editing_timeline_end) return edit->timeline_end;
-    if (edit->editing_timeline_length) return edit->timeline_length;
-    if (edit->editing_source_start) return edit->source_start;
-    if (edit->editing_source_end) return edit->source_end;
-    if (edit->editing_playback_rate) return edit->playback_rate;
-    return NULL;
-}
-
-static bool inspector_parse_number(const char* text, double* out_value) {
-    if (!text || !out_value) {
-        return false;
-    }
-    while (isspace((unsigned char)*text)) {
-        text++;
-    }
-    if (*text == '\0') {
-        return false;
-    }
-    char* end = NULL;
-    double value = strtod(text, &end);
-    if (end == text) {
-        return false;
-    }
-    while (end && isspace((unsigned char)*end)) {
-        end++;
-    }
-    if (end && *end != '\0') {
-        return false;
-    }
-    *out_value = value;
-    return true;
-}
-
-static double inspector_clip_sample_rate(const AppState* state, const EngineClip* clip) {
-    if (clip && clip->media && clip->media->sample_rate > 0) {
-        return (double)clip->media->sample_rate;
-    }
-    if (clip && clip->source && clip->source->sample_rate > 0) {
-        return (double)clip->source->sample_rate;
-    }
-    const EngineRuntimeConfig* cfg = inspector_get_runtime_cfg(state);
-    if (cfg && cfg->sample_rate > 0) {
-        return (double)cfg->sample_rate;
-    }
-    return 48000.0;
-}
-
-static uint64_t inspector_clip_total_frames(const AppState* state, const EngineClip* clip) {
-    if (!clip) {
-        return 0;
-    }
-    if (clip->media && clip->media->frame_count > 0) {
-        return clip->media->frame_count;
-    }
-    if (state && state->engine) {
-        return engine_clip_get_total_frames(state->engine, state->inspector.track_index, state->inspector.clip_index);
-    }
-    return 0;
-}
-
-static uint64_t inspector_clip_duration_frames(const AppState* state, const EngineClip* clip) {
-    if (!clip) {
-        return 0;
-    }
-    uint64_t frames = clip->duration_frames;
-    uint64_t total = inspector_clip_total_frames(state, clip);
-    if (frames == 0 && total > clip->offset_frames) {
-        frames = total - clip->offset_frames;
-    }
-    if (frames == 0 && clip->sampler) {
-        frames = engine_sampler_get_frame_count(clip->sampler);
-    }
-    return frames;
-}
 
 // Converts a mouse y position into an automation value in -1..1.
 static float inspector_automation_value_from_y(const SDL_Rect* rect, int y) {
@@ -375,144 +261,6 @@ static int inspector_automation_hit_point(const EngineAutomationLane* lane,
     return -1;
 }
 
-static void inspector_format_numeric_field(const AppState* state,
-                                           const EngineClip* clip,
-                                           ClipInspectorEditState* edit) {
-    if (!state || !clip || !edit) {
-        return;
-    }
-    double sr = inspector_clip_sample_rate(state, clip);
-    uint64_t clip_frames = inspector_clip_duration_frames(state, clip);
-    if (clip_frames == 0) {
-        clip_frames = 1;
-    }
-    double timeline_start_sec = (double)clip->timeline_start_frames / sr;
-    double timeline_length_sec = (double)clip_frames / sr;
-    double timeline_end_sec = timeline_start_sec + timeline_length_sec;
-    double source_start_sec = (double)clip->offset_frames / sr;
-    double source_end_sec = source_start_sec + timeline_length_sec;
-    uint64_t total_frames = inspector_clip_total_frames(state, clip);
-    if (total_frames > 0) {
-        double total_sec = (double)total_frames / sr;
-        if (source_end_sec > total_sec) {
-            source_end_sec = total_sec;
-        }
-    }
-
-    snprintf(edit->timeline_start, sizeof(edit->timeline_start), "%.3f", timeline_start_sec);
-    snprintf(edit->timeline_end, sizeof(edit->timeline_end), "%.3f", timeline_end_sec);
-    snprintf(edit->timeline_length, sizeof(edit->timeline_length), "%.3f", timeline_length_sec);
-    snprintf(edit->source_start, sizeof(edit->source_start), "%.3f", source_start_sec);
-    snprintf(edit->source_end, sizeof(edit->source_end), "%.3f", source_end_sec);
-    snprintf(edit->playback_rate, sizeof(edit->playback_rate), "%.2f",
-             state->inspector.playback_rate > 0.0f ? state->inspector.playback_rate : 1.0f);
-}
-
-static void inspector_begin_numeric_edit(AppState* state, const EngineClip* clip, bool* flag) {
-    if (!state || !clip || !flag) {
-        return;
-    }
-    inspector_clear_numeric_edit(state);
-    *flag = true;
-    inspector_format_numeric_field(state, clip, &state->inspector.edit);
-    char* buffer = inspector_active_numeric_buffer(&state->inspector.edit);
-    if (buffer) {
-        state->inspector.edit.cursor = (int)strlen(buffer);
-    }
-    SDL_StartTextInput();
-}
-
-static bool inspector_commit_numeric_edit(AppState* state) {
-    if (!state || !state->engine) {
-        return false;
-    }
-    if (!inspector_is_numeric_editing(&state->inspector.edit)) {
-        return false;
-    }
-    EngineClip* clip = inspector_get_clip_mutable(state);
-    if (!clip) {
-        inspector_clear_numeric_edit(state);
-        SDL_StopTextInput();
-        return false;
-    }
-
-    char* buffer = inspector_active_numeric_buffer(&state->inspector.edit);
-    double value = 0.0;
-    if (!buffer || !inspector_parse_number(buffer, &value)) {
-        inspector_format_numeric_field(state, clip, &state->inspector.edit);
-        inspector_clear_numeric_edit(state);
-        SDL_StopTextInput();
-        return false;
-    }
-
-    double sr = inspector_clip_sample_rate(state, clip);
-    uint64_t clip_frames = inspector_clip_duration_frames(state, clip);
-    if (clip_frames == 0) {
-        clip_frames = 1;
-    }
-
-    bool ok = false;
-    if (state->inspector.edit.editing_timeline_start) {
-        if (value < 0.0) value = 0.0;
-        uint64_t frames = (uint64_t)llround(value * sr);
-        ok = engine_clip_set_timeline_start(state->engine,
-                                            state->inspector.track_index,
-                                            state->inspector.clip_index,
-                                            frames,
-                                            NULL);
-    } else if (state->inspector.edit.editing_timeline_end) {
-        double start_sec = (double)clip->timeline_start_frames / sr;
-        double length_sec = value - start_sec;
-        if (length_sec > 0.0) {
-            uint64_t duration_frames = (uint64_t)llround(length_sec * sr);
-            ok = engine_clip_set_region(state->engine,
-                                        state->inspector.track_index,
-                                        state->inspector.clip_index,
-                                        clip->offset_frames,
-                                        duration_frames);
-        }
-    } else if (state->inspector.edit.editing_timeline_length) {
-        if (value > 0.0) {
-            uint64_t duration_frames = (uint64_t)llround(value * sr);
-            ok = engine_clip_set_region(state->engine,
-                                        state->inspector.track_index,
-                                        state->inspector.clip_index,
-                                        clip->offset_frames,
-                                        duration_frames);
-        }
-    } else if (state->inspector.edit.editing_source_start) {
-        if (value < 0.0) value = 0.0;
-        uint64_t offset_frames = (uint64_t)llround(value * sr);
-        ok = engine_clip_set_region(state->engine,
-                                    state->inspector.track_index,
-                                    state->inspector.clip_index,
-                                    offset_frames,
-                                    clip_frames);
-    } else if (state->inspector.edit.editing_source_end) {
-        double source_start_sec = (double)clip->offset_frames / sr;
-        double length_sec = value - source_start_sec;
-        if (length_sec > 0.0) {
-            uint64_t duration_frames = (uint64_t)llround(length_sec * sr);
-            ok = engine_clip_set_region(state->engine,
-                                        state->inspector.track_index,
-                                        state->inspector.clip_index,
-                                        clip->offset_frames,
-                                        duration_frames);
-        }
-    } else if (state->inspector.edit.editing_playback_rate) {
-        if (value > 0.01) {
-            state->inspector.playback_rate = (float)value;
-            ok = true;
-        }
-    }
-
-    inspector_clear_numeric_edit(state);
-    SDL_StopTextInput();
-    if (ok) {
-        inspector_input_set_clip(state, state->inspector.track_index, state->inspector.clip_index);
-    }
-    return ok;
-}
 
 static void inspector_update_gain(AppState* state, float new_gain) {
     if (!state || !state->engine) {
@@ -623,7 +371,7 @@ void inspector_input_begin_rename(AppState* state) {
     if (!clip) {
         return;
     }
-    inspector_clear_numeric_edit(state);
+    inspector_numeric_clear_edit(state);
     strncpy(state->inspector.name, clip->name, sizeof(state->inspector.name) - 1);
     state->inspector.name[sizeof(state->inspector.name) - 1] = '\0';
     state->inspector.name_cursor = (int)strlen(state->inspector.name);
@@ -657,8 +405,8 @@ void inspector_input_commit_if_editing(AppState* state) {
         }
         inspector_stop_text_input(state);
     }
-    if (inspector_is_numeric_editing(&state->inspector.edit)) {
-        inspector_commit_numeric_edit(state);
+    if (inspector_numeric_is_editing(&state->inspector.edit)) {
+        inspector_numeric_commit_edit(state);
     }
 }
 
@@ -693,7 +441,7 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                 if (state->timeline_automation_mode && SDL_PointInRect(&p, &layout.right_waveform_rect)) {
                     const EngineClip* clip = inspector_get_clip_const(state);
                     if (clip) {
-                        uint64_t clip_frames = inspector_clip_duration_frames(state, clip);
+                        uint64_t clip_frames = inspector_numeric_clip_duration_frames(state, clip);
                         if (clip_frames == 0) {
                             clip_frames = 1;
                         }
@@ -708,7 +456,7 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                             if (t < 0.0) t = 0.0;
                             if (t > 1.0) t = 1.0;
                             uint64_t frame_at = view_start + (uint64_t)llround(t * (double)view_frames);
-                            double sr = inspector_clip_sample_rate(state, clip);
+                            double sr = inspector_numeric_clip_sample_rate(state, clip);
                             float seconds = (float)((double)frame_at / sr);
                             seconds = timeline_snap_seconds_to_grid(state, seconds, state->timeline_visible_seconds);
                             frame_at = (uint64_t)llround((double)seconds * sr);
@@ -774,7 +522,7 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                     const EngineClip* clip = inspector_get_clip_const(state);
                     if (clip) {
                         inspector_stop_text_input(state);
-                        inspector_begin_numeric_edit(state, clip, &state->inspector.edit.editing_timeline_start);
+                        inspector_numeric_begin_edit(state, clip, &state->inspector.edit.editing_timeline_start);
                     }
                     return;
                 }
@@ -782,7 +530,7 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                     const EngineClip* clip = inspector_get_clip_const(state);
                     if (clip) {
                         inspector_stop_text_input(state);
-                        inspector_begin_numeric_edit(state, clip, &state->inspector.edit.editing_timeline_end);
+                        inspector_numeric_begin_edit(state, clip, &state->inspector.edit.editing_timeline_end);
                     }
                     return;
                 }
@@ -790,7 +538,7 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                     const EngineClip* clip = inspector_get_clip_const(state);
                     if (clip) {
                         inspector_stop_text_input(state);
-                        inspector_begin_numeric_edit(state, clip, &state->inspector.edit.editing_timeline_length);
+                        inspector_numeric_begin_edit(state, clip, &state->inspector.edit.editing_timeline_length);
                     }
                     return;
                 }
@@ -798,7 +546,7 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                     const EngineClip* clip = inspector_get_clip_const(state);
                     if (clip) {
                         inspector_stop_text_input(state);
-                        inspector_begin_numeric_edit(state, clip, &state->inspector.edit.editing_source_start);
+                        inspector_numeric_begin_edit(state, clip, &state->inspector.edit.editing_source_start);
                     }
                     return;
                 }
@@ -806,7 +554,7 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                     const EngineClip* clip = inspector_get_clip_const(state);
                     if (clip) {
                         inspector_stop_text_input(state);
-                        inspector_begin_numeric_edit(state, clip, &state->inspector.edit.editing_source_end);
+                        inspector_numeric_begin_edit(state, clip, &state->inspector.edit.editing_source_end);
                     }
                     return;
                 }
@@ -814,7 +562,7 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                     const EngineClip* clip = inspector_get_clip_const(state);
                     if (clip) {
                         inspector_stop_text_input(state);
-                        inspector_begin_numeric_edit(state, clip, &state->inspector.edit.editing_playback_rate);
+                        inspector_numeric_begin_edit(state, clip, &state->inspector.edit.editing_playback_rate);
                     }
                     return;
                 }
@@ -895,7 +643,7 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
         if (state->automation_ui.dragging && state->automation_ui.dragging_from_inspector) {
             const EngineClip* clip = inspector_get_clip_const(state);
             if (clip) {
-                uint64_t clip_frames = inspector_clip_duration_frames(state, clip);
+                uint64_t clip_frames = inspector_numeric_clip_duration_frames(state, clip);
                 if (clip_frames == 0) {
                     clip_frames = 1;
                 }
@@ -912,7 +660,7 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                     if (t < 0.0) t = 0.0;
                     if (t > 1.0) t = 1.0;
                     uint64_t frame_at = view_start + (uint64_t)llround(t * (double)view_frames);
-                    double sr = inspector_clip_sample_rate(state, clip);
+                    double sr = inspector_numeric_clip_sample_rate(state, clip);
                     float seconds = (float)((double)frame_at / sr);
                     seconds = timeline_snap_seconds_to_grid(state, seconds, state->timeline_visible_seconds);
                     frame_at = (uint64_t)llround((double)seconds * sr);
@@ -962,8 +710,8 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                 state->inspector.name_cursor = cursor + (int)copy;
                 inspector_update_name_scroll(state);
             }
-        } else if (inspector_is_numeric_editing(&state->inspector.edit)) {
-            char* buffer = inspector_active_numeric_buffer(&state->inspector.edit);
+        } else if (inspector_numeric_is_editing(&state->inspector.edit)) {
+            char* buffer = inspector_numeric_active_buffer(&state->inspector.edit);
             if (buffer) {
                 size_t current_len = strlen(buffer);
                 size_t incoming = strlen(event->text.text);
@@ -1040,15 +788,15 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                     inspector_update_name_scroll(state);
                 }
             }
-        } else if (inspector_is_numeric_editing(&state->inspector.edit)) {
+        } else if (inspector_numeric_is_editing(&state->inspector.edit)) {
             SDL_Keycode key = event->key.keysym.sym;
             if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
-                inspector_commit_numeric_edit(state);
+                inspector_numeric_commit_edit(state);
             } else if (key == SDLK_ESCAPE) {
-                inspector_clear_numeric_edit(state);
+                inspector_numeric_clear_edit(state);
                 SDL_StopTextInput();
             } else if (key == SDLK_BACKSPACE || key == SDLK_DELETE) {
-                char* buffer = inspector_active_numeric_buffer(&state->inspector.edit);
+                char* buffer = inspector_numeric_active_buffer(&state->inspector.edit);
                 if (buffer) {
                     size_t len = strlen(buffer);
                     if (len > 0) {
@@ -1090,8 +838,8 @@ void inspector_input_sync(AppState* state) {
     }
     if (!state->inspector.visible) {
         inspector_stop_text_input(state);
-        if (inspector_is_numeric_editing(&state->inspector.edit)) {
-            inspector_clear_numeric_edit(state);
+        if (inspector_numeric_is_editing(&state->inspector.edit)) {
+            inspector_numeric_clear_edit(state);
             SDL_StopTextInput();
         }
         state->inspector.adjusting_gain = false;
@@ -1122,7 +870,7 @@ bool inspector_input_has_text_focus(const AppState* state) {
     if (state->inspector.editing_name) {
         return true;
     }
-    return inspector_is_numeric_editing(&state->inspector.edit);
+    return inspector_numeric_is_editing(&state->inspector.edit);
 }
 
 bool inspector_input_has_focus(const AppState* state) {

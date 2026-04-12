@@ -14,9 +14,6 @@ on:
 jobs:
   loop-gates:
     runs-on: macos-latest
-    defaults:
-      run:
-        working-directory: daw
     steps:
       - name: Checkout
         uses: actions/checkout@v4

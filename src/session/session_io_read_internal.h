@@ -21,5 +21,9 @@ bool json_parse_number(JsonReader* r, double* out_value);
 bool json_skip_value(JsonReader* r);
 
 bool parse_master_fx(JsonReader* r, SessionDocument* doc);
+bool parse_session_document_engine(JsonReader* r, SessionDocument* doc);
+bool parse_session_document_effects_panel(JsonReader* r, SessionDocument* doc);
+bool parse_session_track_clips(JsonReader* r, SessionTrack* track);
+bool parse_session_track_fx(JsonReader* r, SessionTrack* track);
 bool parse_session_tracks(JsonReader* r, SessionDocument* doc);
 bool parse_session_document(JsonReader* r, SessionDocument* doc);
