@@ -1,6 +1,6 @@
 # DAW Current Truth
 
-Last updated: 2026-04-10
+Last updated: 2026-04-11
 
 ## Program Identity
 - Repository directory: `daw/`
@@ -19,6 +19,21 @@ Last updated: 2026-04-10
 - Header strategy:
   - include-dominant (`include/*`) with one local private header in `src/`:
     - `src/session/session_io_read_internal.h`
+
+## Seam Decomposition Snapshot (2026-04-11)
+- Internal seam split wave landed across `app`, `engine`, `input`, `session`, `ui`, and `undo` lanes without changing DAW public behavior contracts.
+- Main runtime decomposition highlights:
+  - app: `src/app/main_bounce.c` extracted from `src/app/main.c`
+  - engine clip lane: `src/engine/engine_clips_automation.c`, `src/engine/engine_clips_no_overlap.c`
+  - input helpers: `src/input/effects_panel_input_helpers.c`, `src/input/inspector_input_numeric_edit.c`, timeline mouse split helpers
+  - session parse split: `src/session/session_io_read_parse_engine.c`, `src/session/session_io_read_parse_effects_panel.c`, `src/session/session_io_read_parse_track_clips.c`, `src/session/session_io_read_parse_track_fx.c`, `src/session/session_io_read_parse_master_fx.c`
+  - UI split seams: `src/ui/clip_inspector_controls.c`, `src/ui/clip_inspector_waveform.c`, `src/ui/timeline_view_clip_pass.c`, `src/ui/timeline_view_grid.c`, `src/ui/timeline_view_controls.c`, `src/ui/effects_panel/spec_panel_render.c`
+  - undo split: `src/undo/undo_manager_stack.c`
+- Current worktree path normalization (staged, behavior-preserving):
+  - `src/ui/overlay/layout_modal_overlays.c`
+  - `src/ui/overlay/timeline_view_overlays.c`
+  - `src/ui/overlay/timeline_view_runtime_overlays.c`
+  - `src/render/adapters/timer_hud_adapter.c`
 
 ## Runtime/Verification Contract (Current)
 - Build:

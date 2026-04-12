@@ -1,6 +1,6 @@
 # DAW Future Intent
 
-Last updated: 2026-04-10
+Last updated: 2026-04-11
 
 ## Scaffold Alignment Intent
 1. Preserve DAW's existing subsystem decomposition strengths.
@@ -75,6 +75,16 @@ Last updated: 2026-04-10
   - `DAW-CP5` verification/docs/memory closeout
 - next:
   - optional `CP6+`: deeper migration of legacy runtime ownership into wrapper-managed subsystems
+
+## Seam Split Intent (Post-Refactor)
+- current state:
+  - abstract seam split wave is landed across `app`, `engine`, `input`, `session`, `ui`, and `undo` lanes (`1c05136`).
+  - live worktree path normalization is active for overlay/adapters files under:
+    - `src/ui/overlay/*`
+    - `src/render/adapters/*`
+- next posture:
+  - maintenance-only seam refinements with behavior parity as default.
+  - keep documentation and source paths aligned whenever overlay/adapter files are moved between directories.
 
 ## Cross-Program Wrapper Initiative
 - `W0` complete (canonical wrapper contract frozen)

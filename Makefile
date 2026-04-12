@@ -96,7 +96,7 @@ SRCS := \
 	$(SRC_DIR)/undo/undo_manager_stack.c \
 	$(SRC_DIR)/ui/panes.c \
 	$(SRC_DIR)/ui/layout.c \
-	$(SRC_DIR)/ui/layout_modal_overlays.c \
+	$(SRC_DIR)/ui/overlay/layout_modal_overlays.c \
 	$(SRC_DIR)/ui/layout_config.c \
 	$(SRC_DIR)/ui/library_browser.c \
 	$(SRC_DIR)/ui/timeline_waveform.c \
@@ -107,11 +107,11 @@ SRCS := \
 	$(SRC_DIR)/ui/beat_grid.c \
 	$(SRC_DIR)/ui/time_grid.c \
 	$(SRC_DIR)/ui/timeline_view.c \
-	$(SRC_DIR)/ui/timeline_view_overlays.c \
+	$(SRC_DIR)/ui/overlay/timeline_view_overlays.c \
 	$(SRC_DIR)/ui/timeline_view_clip_pass.c \
 	$(SRC_DIR)/ui/timeline_view_grid.c \
 	$(SRC_DIR)/ui/timeline_view_controls.c \
-	$(SRC_DIR)/ui/timeline_view_runtime_overlays.c \
+	$(SRC_DIR)/ui/overlay/timeline_view_runtime_overlays.c \
 	$(SRC_DIR)/ui/font.c \
 	$(SRC_DIR)/ui/shared_theme_font_adapter.c \
 	$(SRC_DIR)/ui/transport.c \
@@ -167,7 +167,7 @@ SRCS := \
 	$(SRC_DIR)/input/effects_panel_input_helpers.c \
 	$(SRC_DIR)/input/effects_panel_eq_detail_input.c \
 	$(SRC_DIR)/input/effects_panel_track_snapshot.c \
-	$(SRC_DIR)/render/timer_hud_adapter.c \
+	$(SRC_DIR)/render/adapters/timer_hud_adapter.c \
 	$(EFFECTS_SRCS)
 
 VK_RENDERER_SRCS := $(shell find $(VK_RENDERER_DIR)/src -type f -name '*.c')

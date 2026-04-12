@@ -281,7 +281,7 @@ You are analyzing an existing DAW codebase. For every answer:
 - Time-series visualization approach:
   - `EffectsMeterHistory` is updated by `meter_history_update` in `src/ui/effects_panel/meter_detail_view.c:447` and used by meter views.
 - Reusable for effect visualization streams:
-  - Ring buffer infrastructure (`src/audio/ringbuf.c`), spectrum/spectrogram threads (`src/engine/engine_spectrum.c`, `src/engine/engine_spectrogram.c`), FX meter tap callback (`src/engine/engine_meter.c:389-449`), meter history UI (`src/ui/effects_panel/meter_detail_view.c`), and timer HUD framework (`src/render/timer_hud_adapter.c`, `timer_hud/time_scope.h` not analyzed in depth).
+  - Ring buffer infrastructure (`src/audio/ringbuf.c`), spectrum/spectrogram threads (`src/engine/engine_spectrum.c`, `src/engine/engine_spectrogram.c`), FX meter tap callback (`src/engine/engine_meter.c:389-449`), meter history UI (`src/ui/effects_panel/meter_detail_view.c`), and timer HUD framework (`src/render/adapters/timer_hud_adapter.c`, `timer_hud/time_scope.h` not analyzed in depth).
 
 ## G) Real-time safety audit (audio callback + render path)
 
