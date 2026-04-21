@@ -18,6 +18,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install Build Dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew list pkg-config >/dev/null 2>&1 || brew install pkg-config
+          brew list sdl2 >/dev/null 2>&1 || brew install sdl2
+          brew list sdl2_ttf >/dev/null 2>&1 || brew install sdl2_ttf
+          brew list vulkan-loader >/dev/null 2>&1 || brew install vulkan-loader
+
       - name: Build DAW
         run: make
 
@@ -26,7 +35,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          RUN_SECONDS=6 ./tools/run_loop_gates.sh
+          RUN_SECONDS=6 HEADLESS=1 ./tools/run_loop_gates.sh
           gate_exit=$?
           echo "gate_exit=$gate_exit" >> "$GITHUB_OUTPUT"
           set -e

@@ -58,6 +58,7 @@ typedef struct DawLoopRuntimePolicy {
     uint64_t jobs_budget_ms;
     int message_drain_budget;
     bool diagnostics;
+    bool diagnostics_json;
 } DawLoopRuntimePolicy;
 
 typedef enum DawGateScenario {
@@ -80,7 +81,8 @@ static DawLoopRuntimePolicy g_loop_policy = {
     .heartbeat_ms = 250,
     .jobs_budget_ms = 2,
     .message_drain_budget = 32,
-    .diagnostics = false
+    .diagnostics = false,
+    .diagnostics_json = false
 };
 static DawLoopGatePolicy g_gate_policy = {
     .enabled = false,
@@ -179,11 +181,20 @@ static DawGateScenario env_gate_scenario(void) {
 
 // Loads DAW loop runtime policy from env knobs.
 static void daw_load_loop_policy_from_env(void) {
+    const char* loop_diag_format = NULL;
     g_loop_policy.max_wait_ms = env_u32_or_default("DAW_LOOP_MAX_WAIT_MS", 16, 1, 250);
     g_loop_policy.heartbeat_ms = env_u32_or_default("DAW_LOOP_HEARTBEAT_MS", 250, 16, 2000);
     g_loop_policy.jobs_budget_ms = env_u32_or_default("DAW_LOOP_JOBS_BUDGET_MS", 2, 1, 50);
     g_loop_policy.message_drain_budget = (int)env_u32_or_default("DAW_LOOP_MESSAGE_BUDGET", 32, 1, 256);
     g_loop_policy.diagnostics = env_bool_or_default("DAW_LOOP_DIAG_LOG", false);
+    g_loop_policy.diagnostics_json = env_bool_or_default("DAW_LOOP_DIAG_JSON", false);
+    loop_diag_format = getenv("DAW_LOOP_DIAG_FORMAT");
+    if (loop_diag_format && loop_diag_format[0] && strcmp(loop_diag_format, "json") == 0) {
+        g_loop_policy.diagnostics_json = true;
+    }
+    if (g_loop_policy.diagnostics_json) {
+        g_loop_policy.diagnostics = true;
+    }
     g_gate_policy.enabled = env_bool_or_default("DAW_LOOP_GATE_EVAL", false);
     g_gate_policy.scenario = env_gate_scenario();
     g_gate_policy.min_waits_playback = env_u32_or_default("DAW_GATE_MIN_WAITS_PLAYBACK", 1, 0, 1000);
@@ -584,6 +595,10 @@ static void daw_loop_on_diagnostics(AppContext* ctx, const AppLoopDiagnostics* d
     const double total_ms = active_ms + blocked_ms;
     const double active_pct = total_ms > 0.0 ? (active_ms / total_ms) * 100.0 : 0.0;
     const double blocked_pct = total_ms > 0.0 ? (blocked_ms / total_ms) * 100.0 : 0.0;
+    const uint64_t period_ms = (uint64_t)(core_time_ns_to_seconds(
+                                               core_time_diff_ns(diag->period_end_ns, diag->period_start_ns)) * 1000.0);
+    const uint64_t blocked_ms_u64 = (uint64_t)blocked_ms;
+    const uint64_t active_ms_u64 = (uint64_t)active_ms;
     const uint32_t wake_received_delta = wake_stats.received - g_prev_wake_stats.received;
     const uint32_t timers_fired_delta = timer_stats.fired_count - g_prev_timer_stats.fired_count;
     const uint64_t msg_popped_delta = msg_stats.popped - g_prev_msg_stats.popped;
@@ -601,32 +616,63 @@ static void daw_loop_on_diagnostics(AppContext* ctx, const AppLoopDiagnostics* d
     AppState* state = (AppState*)ctx->userData;
     g_last_dirty_pane_count = state ? pane_manager_count_dirty(&state->pane_manager) : 0;
 
-    SDL_Log("[LoopDiag] ticks=%u waits=%u renders=%u internal=%u active=%.2fms blocked=%.2fms active_pct=%.1f "
-            "wake_rcv=%u timers=%u jobs=%" PRIu64 " msgs=%" PRIu64 " msg_depth=%u msg_peak=%u kernel_work=%" PRIu64
-            " render_wait_ms=%u dirty_panes=%d msg_wake=%" PRIu64 " msg_wake_skip=%" PRIu64 " msg_wake_fail=%" PRIu64
-            " msg_coalesced=%" PRIu64 " msg_avg_latency=%.3fms msg_max_latency=%.3fms",
-            diag->loop_ticks,
-            diag->waits_called,
-            diag->renders,
-            diag->internal_events,
-            active_ms,
-            blocked_ms,
-            active_pct,
-            wake_received_delta,
-            timers_fired_delta,
-            jobs_executed_delta,
-            msg_popped_delta,
-            msg_stats.depth,
-            msg_stats.high_watermark,
-            kernel_stats.last_tick_work_units,
-            g_last_render_cadence_wait_ms,
-            g_last_dirty_pane_count,
-            msg_wake_push_delta,
-            msg_wake_skip_delta,
-            msg_wake_fail_delta,
-            msg_coalesced_delta,
-            msg_avg_latency_ms,
-            msg_max_latency_ms);
+    if (g_loop_policy.diagnostics_json) {
+        printf("{\"tag\":\"LoopDiag\",\"schema\":1,\"period_ms\":%llu,\"frames\":%u,"
+               "\"wait_calls\":%u,\"blocked_ms\":%llu,\"blocked_pct\":%.1f,"
+               "\"active_ms\":%llu,\"active_pct\":%.1f,\"wakes\":%u,\"timers\":%u,"
+               "\"results_queue\":{\"last\":%u,\"peak\":%u},"
+               "\"jobs\":{\"scheduled\":0,\"coalesced\":%llu},"
+               "\"results\":{\"applied\":%llu,\"stale_dropped\":%llu},"
+               "\"edit_txn\":{\"starts\":0,\"commits\":0,\"debounce_commits\":0,\"boundary_commits\":0},"
+               "\"events\":{\"queue_last\":%u,\"queue_peak\":%u,\"enqueued\":0,\"processed\":%llu,\"deferred\":0,\"dropped\":0,"
+               "\"emit\":{\"symbols\":0,\"diagnostics\":0,\"analysis_progress\":0,\"analysis_status\":0,\"library_index\":0,\"analysis_finished\":0},"
+               "\"dispatch\":{\"symbols\":0,\"diagnostics\":0,\"analysis_progress\":0,\"analysis_status\":0,\"library_index\":0,\"analysis_finished\":0}},"
+               "\"stale_by_kind\":{\"symbols\":0,\"diagnostics\":0,\"analysis_progress\":0,\"analysis_status\":0,\"analysis_finished\":0}}\n",
+               (unsigned long long)period_ms,
+               diag->loop_ticks,
+               diag->waits_called,
+               (unsigned long long)blocked_ms_u64,
+               blocked_pct,
+               (unsigned long long)active_ms_u64,
+               active_pct,
+               wake_received_delta,
+               timers_fired_delta,
+               msg_stats.depth,
+               msg_stats.high_watermark,
+               (unsigned long long)msg_coalesced_delta,
+               (unsigned long long)jobs_executed_delta,
+               (unsigned long long)msg_coalesced_delta,
+               msg_stats.depth,
+               msg_stats.high_watermark,
+               (unsigned long long)msg_popped_delta);
+    } else {
+        SDL_Log("[LoopDiag] ticks=%u waits=%u renders=%u internal=%u active=%.2fms blocked=%.2fms active_pct=%.1f "
+                "wake_rcv=%u timers=%u jobs=%" PRIu64 " msgs=%" PRIu64 " msg_depth=%u msg_peak=%u kernel_work=%" PRIu64
+                " render_wait_ms=%u dirty_panes=%d msg_wake=%" PRIu64 " msg_wake_skip=%" PRIu64 " msg_wake_fail=%" PRIu64
+                " msg_coalesced=%" PRIu64 " msg_avg_latency=%.3fms msg_max_latency=%.3fms",
+                diag->loop_ticks,
+                diag->waits_called,
+                diag->renders,
+                diag->internal_events,
+                active_ms,
+                blocked_ms,
+                active_pct,
+                wake_received_delta,
+                timers_fired_delta,
+                jobs_executed_delta,
+                msg_popped_delta,
+                msg_stats.depth,
+                msg_stats.high_watermark,
+                kernel_stats.last_tick_work_units,
+                g_last_render_cadence_wait_ms,
+                g_last_dirty_pane_count,
+                msg_wake_push_delta,
+                msg_wake_skip_delta,
+                msg_wake_fail_delta,
+                msg_coalesced_delta,
+                msg_avg_latency_ms,
+                msg_max_latency_ms);
+    }
 
     if (g_gate_policy.enabled) {
         const char* scenario_name = "idle";

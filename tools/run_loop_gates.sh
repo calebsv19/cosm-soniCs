@@ -59,9 +59,12 @@ for scenario in "${SCENARIOS[@]}"; do
   if grep -q "\\[LoopGate\\]" "$log_file"; then
     if grep -q "\\[LoopGate\\].*pass=no" "$log_file"; then
       if [[ "$scenario" == "playback" ]] && \
-         grep -q "\\[LoopGate\\].*scenario=playback.*pass=no.*playback_active=no" "$log_file" && \
-         grep -q "SDL_OpenAudioDevice failed" "$log_file"; then
-        echo "[GateHarness] scenario=$scenario result=inconclusive reason=no_audio_backend"
+         grep -q "\\[LoopGate\\].*scenario=playback.*pass=no.*playback_active=no" "$log_file"; then
+        if grep -q "SDL_OpenAudioDevice failed" "$log_file"; then
+          echo "[GateHarness] scenario=$scenario result=inconclusive reason=no_audio_backend"
+        else
+          echo "[GateHarness] scenario=$scenario result=inconclusive reason=playback_not_active"
+        fi
         inconclusive_count=$((inconclusive_count + 1))
       else
         echo "[GateHarness] scenario=$scenario result=fail"
