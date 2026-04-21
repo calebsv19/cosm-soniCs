@@ -36,6 +36,17 @@ CoreResult daw_kit_viz_meter_plot_line_from_y_samples(const float* samples,
                                                       size_t max_segments,
                                                       size_t* out_segment_count);
 
+// daw_kit_viz_meter_plot_line_from_y_samples_fixed_slots maps sample indices against
+// a fixed slot domain so partially-filled histories do not stretch to full width.
+CoreResult daw_kit_viz_meter_plot_line_from_y_samples_fixed_slots(const float* samples,
+                                                                  uint32_t sample_count,
+                                                                  uint32_t total_slots,
+                                                                  const SDL_Rect* rect,
+                                                                  DawKitVizMeterPlotRange range,
+                                                                  KitVizVecSegment* out_segments,
+                                                                  size_t max_segments,
+                                                                  size_t* out_segment_count);
+
 // daw_kit_viz_meter_plot_scope_segments converts XY scope points into line segments.
 CoreResult daw_kit_viz_meter_plot_scope_segments(const float* xs,
                                                  const float* ys,

@@ -1,4 +1,5 @@
 #include "sdl_app_framework.h"
+#include "ui/effects_panel_meter_history_cache.h"
 #include "ui/font.h"
 #include "core_time.h"
 #include <SDL2/SDL.h>
@@ -65,6 +66,7 @@ static bool app_recover_device_lost(AppContext* ctx, int width, int height) {
         return false;
     }
     if (ctx->renderer) {
+        effects_meter_history_cache_invalidate(ctx->renderer);
         ui_font_invalidate_cache(ctx->renderer);
         vk_renderer_shutdown(ctx->renderer);
     }

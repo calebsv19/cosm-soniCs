@@ -134,6 +134,8 @@ SRCS := \
 	$(SRC_DIR)/ui/effects_panel/list_view.c \
 	$(SRC_DIR)/ui/effects_panel/eq_detail_view.c \
 	$(SRC_DIR)/ui/effects_panel/meter_detail_view.c \
+	$(SRC_DIR)/ui/effects_panel/meter_detail_history_grid.c \
+	$(SRC_DIR)/ui/effects_panel/meter_detail_history_cache.c \
 	$(SRC_DIR)/ui/effects_panel/meter_detail_correlation.c \
 	$(SRC_DIR)/ui/effects_panel/meter_detail_levels.c \
 	$(SRC_DIR)/ui/effects_panel/meter_detail_lufs.c \

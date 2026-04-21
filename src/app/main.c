@@ -15,6 +15,7 @@
 #include "ui/library_browser.h"
 #include "ui/transport.h"
 #include "ui/effects_panel.h"
+#include "ui/effects_panel_meter_history_cache.h"
 #include "ui/font.h"
 #include "ui/shared_theme_font_adapter.h"
 #include "session/project_manager.h"
@@ -953,6 +954,7 @@ int daw_app_main_legacy(void) {
                 DAW_DATA_PATH_RUNTIME_CONFIG_PATH);
     }
 
+    effects_meter_history_cache_shutdown(ctx.renderer);
     ui_font_shutdown();
     ts_shutdown();
     waveform_cache_shutdown(&state.waveform_cache);

@@ -4,9 +4,109 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <unistd.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <errno.h>
 #if defined(__APPLE__)
 #include <AudioToolbox/AudioToolbox.h>
 #endif
+
+extern char **environ;
+
+static bool run_mp3_ffmpeg_decode_to_wav(const char* input_path, int target_sample_rate, const char* output_path) {
+    if (!input_path || !output_path) {
+        return false;
+    }
+
+    const char* ffmpeg_candidates[] = {
+        "/opt/homebrew/bin/ffmpeg",
+        "/usr/local/bin/ffmpeg",
+        "/usr/bin/ffmpeg",
+        "ffmpeg"
+    };
+
+    char rate_text[32];
+    int desired_rate = target_sample_rate > 0 ? target_sample_rate : 44100;
+    if (desired_rate <= 0) {
+        desired_rate = 44100;
+    }
+    (void)snprintf(rate_text, sizeof(rate_text), "%d", desired_rate);
+
+    const char* argv_common[] = {
+        "-v", "error",
+        "-nostdin",
+        "-y",
+        "-i", input_path,
+        "-f", "wav",
+        "-acodec", "pcm_s16le",
+        "-ar", rate_text,
+        output_path,
+        NULL
+    };
+
+    for (size_t i = 0; i < (sizeof(ffmpeg_candidates) / sizeof(ffmpeg_candidates[0])); ++i) {
+        const char* ffmpeg = ffmpeg_candidates[i];
+        if (!ffmpeg || ffmpeg[0] == '\0') {
+            continue;
+        }
+        if (ffmpeg[0] == '/' && access(ffmpeg, X_OK) != 0) {
+            continue;
+        }
+
+        const char* argv[32];
+        size_t n = 0;
+        argv[n++] = ffmpeg;
+        for (size_t j = 0; argv_common[j] != NULL; ++j) {
+            argv[n++] = argv_common[j];
+        }
+        argv[n] = NULL;
+
+        pid_t pid = -1;
+        int spawn_rc = (ffmpeg[0] == '/')
+                           ? posix_spawn(&pid, ffmpeg, NULL, NULL, (char* const*)argv, environ)
+                           : posix_spawnp(&pid, ffmpeg, NULL, NULL, (char* const*)argv, environ);
+        if (spawn_rc != 0) {
+            continue;
+        }
+
+        int status = 0;
+        if (waitpid(pid, &status, 0) < 0) {
+            continue;
+        }
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool audio_media_clip_load_mp3_ffmpeg_fallback(const char* path,
+                                                      int target_sample_rate,
+                                                      AudioMediaClip* out_clip) {
+    if (!path || !out_clip) {
+        return false;
+    }
+
+    char temp_path[] = "/tmp/daw_mp3_fallback_XXXXXX";
+    int fd = mkstemp(temp_path);
+    if (fd < 0) {
+        return false;
+    }
+    close(fd);
+    unlink(temp_path);
+
+    bool decoded = run_mp3_ffmpeg_decode_to_wav(path, target_sample_rate, temp_path);
+    if (!decoded) {
+        unlink(temp_path);
+        return false;
+    }
+
+    bool loaded = audio_media_clip_load_wav(temp_path, target_sample_rate, out_clip);
+    unlink(temp_path);
+    return loaded;
+}
 
 static bool read_u32_le(FILE* file, uint32_t* out) {
     unsigned char bytes[4];
@@ -256,7 +356,7 @@ static bool audio_media_clip_load_mp3(const char* path, int target_sample_rate, 
     OSStatus status = ExtAudioFileOpenURL(url, &file);
     CFRelease(url);
     if (status != noErr || !file) {
-        return false;
+        return audio_media_clip_load_mp3_ffmpeg_fallback(path, target_sample_rate, out_clip);
     }
 
     AudioStreamBasicDescription fileFormat = {0};
@@ -264,7 +364,7 @@ static bool audio_media_clip_load_mp3(const char* path, int target_sample_rate, 
     status = ExtAudioFileGetProperty(file, kExtAudioFileProperty_FileDataFormat, &formatSize, &fileFormat);
     if (status != noErr || fileFormat.mChannelsPerFrame <= 0) {
         ExtAudioFileDispose(file);
-        return false;
+        return audio_media_clip_load_mp3_ffmpeg_fallback(path, target_sample_rate, out_clip);
     }
 
     SInt64 frameCount = 0;
@@ -272,7 +372,7 @@ static bool audio_media_clip_load_mp3(const char* path, int target_sample_rate, 
     status = ExtAudioFileGetProperty(file, kExtAudioFileProperty_FileLengthFrames, &frameCountSize, &frameCount);
     if (status != noErr || frameCount < 0) {
         ExtAudioFileDispose(file);
-        return false;
+        return audio_media_clip_load_mp3_ffmpeg_fallback(path, target_sample_rate, out_clip);
     }
 
     int channels = (int)fileFormat.mChannelsPerFrame;
@@ -295,7 +395,7 @@ static bool audio_media_clip_load_mp3(const char* path, int target_sample_rate, 
     status = ExtAudioFileSetProperty(file, kExtAudioFileProperty_ClientDataFormat, (UInt32)sizeof(clientFormat), &clientFormat);
     if (status != noErr) {
         ExtAudioFileDispose(file);
-        return false;
+        return audio_media_clip_load_mp3_ffmpeg_fallback(path, target_sample_rate, out_clip);
     }
 
     uint64_t total_frames = (frameCount > 0) ? (uint64_t)frameCount : 0;
@@ -306,7 +406,7 @@ static bool audio_media_clip_load_mp3(const char* path, int target_sample_rate, 
     float* samples = (float*)malloc((size_t)total_frames * (size_t)channels * sizeof(float));
     if (!samples) {
         ExtAudioFileDispose(file);
-        return false;
+        return audio_media_clip_load_mp3_ffmpeg_fallback(path, target_sample_rate, out_clip);
     }
 
     uint64_t frames_read_total = 0;
@@ -326,7 +426,7 @@ static bool audio_media_clip_load_mp3(const char* path, int target_sample_rate, 
         if (status != noErr) {
             free(samples);
             ExtAudioFileDispose(file);
-            return false;
+            return audio_media_clip_load_mp3_ffmpeg_fallback(path, target_sample_rate, out_clip);
         }
         if (frames_to_read == 0) {
             break;
@@ -338,7 +438,7 @@ static bool audio_media_clip_load_mp3(const char* path, int target_sample_rate, 
             if (!resized) {
                 free(samples);
                 ExtAudioFileDispose(file);
-                return false;
+                return audio_media_clip_load_mp3_ffmpeg_fallback(path, target_sample_rate, out_clip);
             }
             samples = resized;
             total_frames = frames_read_total + 4096;
@@ -355,17 +455,14 @@ static bool audio_media_clip_load_mp3(const char* path, int target_sample_rate, 
 
     if (frames_read_total == 0) {
         free(samples);
-        return false;
+        return audio_media_clip_load_mp3_ffmpeg_fallback(path, target_sample_rate, out_clip);
     }
 
     return finalize_clip(samples, frames_read_total, channels, (int)desiredRate, target_sample_rate, out_clip);
 }
 #else
 static bool audio_media_clip_load_mp3(const char* path, int target_sample_rate, AudioMediaClip* out_clip) {
-    (void)path;
-    (void)target_sample_rate;
-    (void)out_clip;
-    return false;
+    return audio_media_clip_load_mp3_ffmpeg_fallback(path, target_sample_rate, out_clip);
 }
 #endif
 

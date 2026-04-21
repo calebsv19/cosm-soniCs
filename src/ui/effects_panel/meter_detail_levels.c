@@ -1,6 +1,7 @@
 #include "ui/effects_panel_meter_views.h"
 
 #include "app_state.h"
+#include "ui/effects_panel_meter_history_cache.h"
 #include "ui/font.h"
 #include "ui/kit_viz_meter_adapter.h"
 #include "ui/render_utils.h"
@@ -98,20 +99,22 @@ static bool render_level_history_with_adapter(SDL_Renderer* renderer,
     KitVizVecSegment rms_segments[FX_METER_LEVEL_HISTORY_POINTS];
     size_t peak_segment_count = 0;
     size_t rms_segment_count = 0;
-    CoreResult peak_r = daw_kit_viz_meter_plot_line_from_y_samples(peak_samples,
-                                                                    (uint32_t)count,
-                                                                    history_rect,
-                                                                    (DawKitVizMeterPlotRange){min_db, max_db},
-                                                                    peak_segments,
-                                                                    FX_METER_LEVEL_HISTORY_POINTS,
-                                                                    &peak_segment_count);
-    CoreResult rms_r = daw_kit_viz_meter_plot_line_from_y_samples(rms_samples,
-                                                                   (uint32_t)count,
-                                                                   history_rect,
-                                                                   (DawKitVizMeterPlotRange){min_db, max_db},
-                                                                   rms_segments,
-                                                                   FX_METER_LEVEL_HISTORY_POINTS,
-                                                                   &rms_segment_count);
+    CoreResult peak_r = daw_kit_viz_meter_plot_line_from_y_samples_fixed_slots(peak_samples,
+                                                                                (uint32_t)count,
+                                                                                FX_METER_LEVEL_HISTORY_POINTS,
+                                                                                history_rect,
+                                                                                (DawKitVizMeterPlotRange){min_db, max_db},
+                                                                                peak_segments,
+                                                                                FX_METER_LEVEL_HISTORY_POINTS,
+                                                                                &peak_segment_count);
+    CoreResult rms_r = daw_kit_viz_meter_plot_line_from_y_samples_fixed_slots(rms_samples,
+                                                                               (uint32_t)count,
+                                                                               FX_METER_LEVEL_HISTORY_POINTS,
+                                                                               history_rect,
+                                                                               (DawKitVizMeterPlotRange){min_db, max_db},
+                                                                               rms_segments,
+                                                                               FX_METER_LEVEL_HISTORY_POINTS,
+                                                                               &rms_segment_count);
     if (peak_r.code != CORE_OK || rms_r.code != CORE_OK || peak_segment_count == 0 || rms_segment_count == 0) {
         return false;
     }
@@ -134,6 +137,7 @@ void effects_meter_render_levels(SDL_Renderer* renderer,
                                  const SDL_Rect* rect,
                                  const EngineFxMeterSnapshot* snapshot,
                                  const EffectsMeterHistory* history,
+                                 const EffectsMeterHistoryGridContext* history_grid,
                                  SDL_Color label_color,
                                  SDL_Color dim_color) {
     if (!renderer || !rect || rect->w <= 0 || rect->h <= 0) {
@@ -234,6 +238,7 @@ void effects_meter_render_levels(SDL_Renderer* renderer,
     SDL_RenderFillRect(renderer, &history_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &history_rect);
+    effects_meter_history_grid_draw(renderer, &history_rect, history_grid);
 
     SDL_SetRenderDrawColor(renderer, meter_bg.r, meter_bg.g, meter_bg.b, meter_bg.a);
     SDL_RenderFillRect(renderer, &meter_rect);
@@ -264,6 +269,15 @@ void effects_meter_render_levels(SDL_Renderer* renderer,
 
     if (history_rect.w > 0 && history && history->level_count > 1) {
         ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
+        if (effects_meter_history_cache_render_levels(renderer,
+                                                      &history_rect,
+                                                      history,
+                                                      min_db,
+                                                      max_db,
+                                                      peak_marker,
+                                                      rms_marker)) {
+            return;
+        }
         if (render_level_history_with_adapter(renderer, &history_rect, history, min_db, max_db)) {
             return;
         }

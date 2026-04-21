@@ -67,6 +67,30 @@ static void test_line_plot_invalid_inputs(void) {
     assert(nan_sample.code == CORE_ERR_INVALID_ARG);
 }
 
+static void test_line_plot_fixed_slots_mapping(void) {
+    const float samples[] = {0.0f, 0.5f, 1.0f};
+    SDL_Rect rect = {10, 20, 100, 50};
+    DawKitVizMeterPlotRange range = {0.0f, 1.0f};
+    KitVizVecSegment segments[8];
+    size_t segment_count = 0;
+
+    CoreResult r = daw_kit_viz_meter_plot_line_from_y_samples_fixed_slots(samples,
+                                                                           3,
+                                                                           5,
+                                                                           &rect,
+                                                                           range,
+                                                                           segments,
+                                                                           8,
+                                                                           &segment_count);
+    assert(r.code == CORE_OK);
+    assert(segment_count == 2);
+    assert(nearly_equal(segments[0].x0, 10.0f));
+    assert(nearly_equal(segments[0].x1, 34.75f));
+    assert(nearly_equal(segments[1].x1, 59.5f));
+    assert(nearly_equal(segments[0].y0, 69.0f));
+    assert(nearly_equal(segments[1].y1, 20.0f));
+}
+
 static void test_scope_plot_deterministic(void) {
     const float xs[] = {-1.0f, 0.0f, 1.0f};
     const float ys[] = {-1.0f, 0.0f, 1.0f};
@@ -180,6 +204,7 @@ static void test_spectrogram_age_fade(void) {
 int main(void) {
     test_line_plot_deterministic();
     test_line_plot_invalid_inputs();
+    test_line_plot_fixed_slots_mapping();
     test_scope_plot_deterministic();
     test_scope_mid_side_transform();
     test_spectrogram_palette_and_range();

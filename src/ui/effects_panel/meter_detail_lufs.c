@@ -1,6 +1,7 @@
 #include "ui/effects_panel_meter_views.h"
 
 #include "app_state.h"
+#include "ui/effects_panel_meter_history_cache.h"
 #include "ui/font.h"
 #include "ui/kit_viz_meter_adapter.h"
 #include "ui/render_utils.h"
@@ -79,13 +80,14 @@ static bool render_lufs_history_with_adapter(SDL_Renderer* renderer,
 
     KitVizVecSegment segments[FX_METER_LUFS_HISTORY_POINTS];
     size_t segment_count = 0;
-    CoreResult r = daw_kit_viz_meter_plot_line_from_y_samples(lufs_samples,
-                                                               (uint32_t)count,
-                                                               history_rect,
-                                                               (DawKitVizMeterPlotRange){min_db, max_db},
-                                                               segments,
-                                                               FX_METER_LUFS_HISTORY_POINTS,
-                                                               &segment_count);
+    CoreResult r = daw_kit_viz_meter_plot_line_from_y_samples_fixed_slots(lufs_samples,
+                                                                           (uint32_t)count,
+                                                                           FX_METER_LUFS_HISTORY_POINTS,
+                                                                           history_rect,
+                                                                           (DawKitVizMeterPlotRange){min_db, max_db},
+                                                                           segments,
+                                                                           FX_METER_LUFS_HISTORY_POINTS,
+                                                                           &segment_count);
     if (r.code != CORE_OK || segment_count == 0) {
         return false;
     }
@@ -103,6 +105,7 @@ void effects_meter_render_lufs(SDL_Renderer* renderer,
                                const SDL_Rect* rect,
                                const EngineFxMeterSnapshot* snapshot,
                                const EffectsMeterHistory* history,
+                               const EffectsMeterHistoryGridContext* history_grid,
                                int lufs_mode,
                                SDL_Color label_color,
                                SDL_Color dim_color) {
@@ -239,6 +242,7 @@ void effects_meter_render_lufs(SDL_Renderer* renderer,
     SDL_RenderFillRect(renderer, &history_rect);
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, &history_rect);
+    effects_meter_history_grid_draw(renderer, &history_rect, history_grid);
 
     SDL_SetRenderDrawColor(renderer, meter_bg.r, meter_bg.g, meter_bg.b, meter_bg.a);
     SDL_RenderFillRect(renderer, &meter_rect);
@@ -268,6 +272,15 @@ void effects_meter_render_lufs(SDL_Renderer* renderer,
 
     if (history_rect.w > 0 && history && history->lufs_count > 1) {
         ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
+        if (effects_meter_history_cache_render_lufs(renderer,
+                                                    &history_rect,
+                                                    history,
+                                                    lufs_mode,
+                                                    min_db,
+                                                    max_db,
+                                                    trace)) {
+            return;
+        }
         if (render_lufs_history_with_adapter(renderer, &history_rect, history, lufs_mode, min_db, max_db)) {
             return;
         }

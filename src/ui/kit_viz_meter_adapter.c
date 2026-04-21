@@ -100,6 +100,48 @@ CoreResult daw_kit_viz_meter_plot_line_from_y_samples(const float* samples,
     return core_result_ok();
 }
 
+CoreResult daw_kit_viz_meter_plot_line_from_y_samples_fixed_slots(const float* samples,
+                                                                  uint32_t sample_count,
+                                                                  uint32_t total_slots,
+                                                                  const SDL_Rect* rect,
+                                                                  DawKitVizMeterPlotRange range,
+                                                                  KitVizVecSegment* out_segments,
+                                                                  size_t max_segments,
+                                                                  size_t* out_segment_count) {
+    if (!samples || sample_count < 2 || total_slots < 2 || sample_count > total_slots ||
+        !rect || rect->w <= 0 || rect->h <= 0 || !out_segments || !out_segment_count) {
+        return error_result(CORE_ERR_INVALID_ARG, "invalid fixed-slot meter line request");
+    }
+    if (max_segments < (size_t)(sample_count - 1u)) {
+        return error_result(CORE_ERR_INVALID_ARG, "segment buffer too small");
+    }
+    if (!isfinite(range.min_value) || !isfinite(range.max_value)) {
+        return error_result(CORE_ERR_INVALID_ARG, "invalid plot range");
+    }
+
+    float width = (float)(rect->w - 1);
+    float height = (float)(rect->h - 1);
+    float prev_x = 0.0f;
+    float prev_y = 0.0f;
+    for (uint32_t i = 0; i < sample_count; ++i) {
+        if (!isfinite(samples[i])) {
+            return error_result(CORE_ERR_INVALID_ARG, "non-finite sample");
+        }
+        float t = (float)i / (float)(total_slots - 1u);
+        float n = normalize_value(samples[i], range);
+        float x = (float)rect->x + t * width;
+        float y = (float)rect->y + (1.0f - n) * height;
+        if (i > 0) {
+            out_segments[i - 1u] = (KitVizVecSegment){prev_x, prev_y, x, y};
+        }
+        prev_x = x;
+        prev_y = y;
+    }
+
+    *out_segment_count = (size_t)(sample_count - 1u);
+    return core_result_ok();
+}
+
 CoreResult daw_kit_viz_meter_plot_scope_segments(const float* xs,
                                                  const float* ys,
                                                  uint32_t point_count,

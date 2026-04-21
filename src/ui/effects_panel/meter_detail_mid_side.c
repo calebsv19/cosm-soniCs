@@ -1,6 +1,7 @@
 #include "ui/effects_panel_meter_views.h"
 
 #include "app_state.h"
+#include "ui/effects_panel_meter_history_cache.h"
 #include "ui/font.h"
 #include "ui/kit_viz_meter_adapter.h"
 #include "ui/render_utils.h"
@@ -94,20 +95,22 @@ static bool render_mid_side_history_with_adapter(SDL_Renderer* renderer,
     KitVizVecSegment side_segments[FX_METER_MID_SIDE_HISTORY_POINTS];
     size_t mid_segment_count = 0;
     size_t side_segment_count = 0;
-    CoreResult mid_r = daw_kit_viz_meter_plot_line_from_y_samples(mid_samples,
-                                                                   (uint32_t)count,
-                                                                   mid_hist,
-                                                                   (DawKitVizMeterPlotRange){0.0f, 1.0f},
-                                                                   mid_segments,
-                                                                   FX_METER_MID_SIDE_HISTORY_POINTS,
-                                                                   &mid_segment_count);
-    CoreResult side_r = daw_kit_viz_meter_plot_line_from_y_samples(side_samples,
-                                                                    (uint32_t)count,
-                                                                    side_hist,
-                                                                    (DawKitVizMeterPlotRange){0.0f, 1.0f},
-                                                                    side_segments,
-                                                                    FX_METER_MID_SIDE_HISTORY_POINTS,
-                                                                    &side_segment_count);
+    CoreResult mid_r = daw_kit_viz_meter_plot_line_from_y_samples_fixed_slots(mid_samples,
+                                                                               (uint32_t)count,
+                                                                               FX_METER_MID_SIDE_HISTORY_POINTS,
+                                                                               mid_hist,
+                                                                               (DawKitVizMeterPlotRange){0.0f, 1.0f},
+                                                                               mid_segments,
+                                                                               FX_METER_MID_SIDE_HISTORY_POINTS,
+                                                                               &mid_segment_count);
+    CoreResult side_r = daw_kit_viz_meter_plot_line_from_y_samples_fixed_slots(side_samples,
+                                                                                (uint32_t)count,
+                                                                                FX_METER_MID_SIDE_HISTORY_POINTS,
+                                                                                side_hist,
+                                                                                (DawKitVizMeterPlotRange){0.0f, 1.0f},
+                                                                                side_segments,
+                                                                                FX_METER_MID_SIDE_HISTORY_POINTS,
+                                                                                &side_segment_count);
     if (mid_r.code != CORE_OK || side_r.code != CORE_OK || mid_segment_count == 0 || side_segment_count == 0) {
         return false;
     }
@@ -130,6 +133,7 @@ void effects_meter_render_mid_side(SDL_Renderer* renderer,
                                    const SDL_Rect* rect,
                                    const EngineFxMeterSnapshot* snapshot,
                                    const EffectsMeterHistory* history,
+                                   const EffectsMeterHistoryGridContext* history_grid,
                                    SDL_Color label_color,
                                    SDL_Color dim_color) {
     if (!renderer || !rect || rect->w <= 0 || rect->h <= 0) {
@@ -234,6 +238,10 @@ void effects_meter_render_mid_side(SDL_Renderer* renderer,
         mid_hist.h = 0;
         side_hist.h = 0;
     }
+    if (mid_hist.h > 0) {
+        effects_meter_history_grid_draw(renderer, &mid_hist, history_grid);
+        effects_meter_history_grid_draw(renderer, &side_hist, history_grid);
+    }
 
     if (valid) {
         float mid = clampf(snapshot->mid_rms, 0.0f, 1.5f);
@@ -275,6 +283,14 @@ void effects_meter_render_mid_side(SDL_Renderer* renderer,
 
     if (mid_hist.h > 0 && history && history->mid_count > 1) {
         ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
+        if (effects_meter_history_cache_render_mid_side(renderer,
+                                                        &mid_hist,
+                                                        &side_hist,
+                                                        history,
+                                                        mid_marker,
+                                                        side_marker)) {
+            return;
+        }
         if (render_mid_side_history_with_adapter(renderer, &mid_hist, &side_hist, history)) {
             return;
         }

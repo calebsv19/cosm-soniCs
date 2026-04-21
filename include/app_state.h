@@ -242,6 +242,9 @@ typedef struct EffectsMeterHistory {
     FxInstId active_id;
     FxTypeId active_type;
     Uint32 last_sample_ticks;
+    uint64_t last_transport_frame;
+    bool last_transport_frame_valid;
+    double sample_carry_seconds;
     float corr_values[FX_METER_CORR_HISTORY_POINTS];
     int corr_head;
     int corr_count;

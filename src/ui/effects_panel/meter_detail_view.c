@@ -9,6 +9,10 @@
 #include <math.h>
 #include <stdio.h>
 
+enum {
+    METER_SPECTROGRAM_UPDATE_INTERVAL_BLOCKS = 4
+};
+
 static int max_int(int a, int b) {
     return (a > b) ? a : b;
 }
@@ -277,6 +281,12 @@ static void meter_history_reset(EffectsMeterHistory* history, FxInstId id, FxTyp
     history->active_type = type;
 }
 
+typedef struct EffectsMeterHistoryProfile {
+    int capacity;
+    double bucket_seconds;
+    double bucket_beats;
+} EffectsMeterHistoryProfile;
+
 static void meter_history_push(float* values, int capacity, int* head, int* count, float value) {
     if (!values || !head || !count) {
         return;
@@ -328,90 +338,259 @@ static void meter_history_push_triple(float* a_values,
     }
 }
 
+static EffectsMeterHistoryProfile meter_history_profile_for_type(FxTypeId type, const AppState* state) {
+    EffectsMeterHistoryProfile profile = {0};
+    switch (type) {
+        case 100u:
+            profile.capacity = FX_METER_CORR_HISTORY_POINTS;
+            profile.bucket_seconds = 0.050;
+            profile.bucket_beats = 0.25;
+            return profile;
+        case 101u:
+            profile.capacity = FX_METER_MID_SIDE_HISTORY_POINTS;
+            profile.bucket_seconds = 0.050;
+            profile.bucket_beats = 0.25;
+            return profile;
+        case 102u:
+            profile.capacity = FX_METER_VECTOR_HISTORY_POINTS;
+            profile.bucket_seconds = 0.050;
+            profile.bucket_beats = 0.25;
+            return profile;
+        case 103u:
+            profile.capacity = FX_METER_LEVEL_HISTORY_POINTS;
+            profile.bucket_seconds = 0.050;
+            profile.bucket_beats = 0.25;
+            return profile;
+        case 104u:
+            profile.capacity = FX_METER_LUFS_HISTORY_POINTS;
+            profile.bucket_seconds = 0.050;
+            profile.bucket_beats = 0.25;
+            return profile;
+        case 105u: {
+            profile.capacity = ENGINE_SPECTROGRAM_HISTORY;
+            int sample_rate = state ? state->runtime_cfg.sample_rate : 0;
+            int block_size = state ? state->runtime_cfg.block_size : 0;
+            if (sample_rate <= 0 || block_size <= 0) {
+                profile.bucket_seconds = 0.050;
+            } else {
+                profile.bucket_seconds = ((double)block_size / (double)sample_rate) *
+                                         (double)METER_SPECTROGRAM_UPDATE_INTERVAL_BLOCKS;
+            }
+            profile.bucket_beats = 0.0;
+            return profile;
+        }
+        default:
+            return profile;
+    }
+}
+
+static double meter_history_sample_rate(const AppState* state) {
+    if (!state) {
+        return 0.0;
+    }
+    if (state->runtime_cfg.sample_rate > 0) {
+        return (double)state->runtime_cfg.sample_rate;
+    }
+    if (state->tempo.sample_rate > 0.0) {
+        return state->tempo.sample_rate;
+    }
+    return 0.0;
+}
+
+static double meter_history_bucket_seconds_for_mode(const AppState* state,
+                                                    const EffectsMeterHistoryProfile* profile,
+                                                    double transport_seconds) {
+    if (!state || !profile) {
+        return 0.0;
+    }
+    if (!state->timeline_view_in_beats || profile->bucket_beats <= 0.0) {
+        return profile->bucket_seconds;
+    }
+
+    if (state->tempo_map.event_count > 0) {
+        double beat = tempo_map_seconds_to_beats(&state->tempo_map, transport_seconds);
+        double sec0 = tempo_map_beats_to_seconds(&state->tempo_map, beat);
+        double sec1 = tempo_map_beats_to_seconds(&state->tempo_map, beat + profile->bucket_beats);
+        double delta = fabs(sec1 - sec0);
+        if (delta > 1e-6) {
+            return delta;
+        }
+    }
+
+    if (state->tempo.bpm > 1e-6) {
+        return profile->bucket_beats * (60.0 / state->tempo.bpm);
+    }
+    return profile->bucket_seconds;
+}
+
+static void meter_history_push_snapshot(EffectsMeterHistory* history,
+                                        FxTypeId type,
+                                        const EngineFxMeterSnapshot* snapshot) {
+    if (!history || !snapshot) {
+        return;
+    }
+    switch (type) {
+        case 100u:
+            meter_history_push(history->corr_values,
+                               FX_METER_CORR_HISTORY_POINTS,
+                               &history->corr_head,
+                               &history->corr_count,
+                               snapshot->corr);
+            break;
+        case 101u:
+            meter_history_push_pair(history->mid_values,
+                                    history->side_values,
+                                    FX_METER_MID_SIDE_HISTORY_POINTS,
+                                    &history->mid_head,
+                                    &history->mid_count,
+                                    snapshot->mid_rms,
+                                    snapshot->side_rms);
+            break;
+        case 102u:
+            if (snapshot->vec_point_count > 0) {
+                for (int i = 0; i < snapshot->vec_point_count; ++i) {
+                    meter_history_push_pair(history->vec_x,
+                                            history->vec_y,
+                                            FX_METER_VECTOR_HISTORY_POINTS,
+                                            &history->vec_head,
+                                            &history->vec_count,
+                                            snapshot->vec_points_x[i],
+                                            snapshot->vec_points_y[i]);
+                }
+            } else {
+                meter_history_push_pair(history->vec_x,
+                                        history->vec_y,
+                                        FX_METER_VECTOR_HISTORY_POINTS,
+                                        &history->vec_head,
+                                        &history->vec_count,
+                                        snapshot->vec_x,
+                                        snapshot->vec_y);
+            }
+            break;
+        case 103u:
+            meter_history_push_pair(history->peak_values,
+                                    history->rms_values,
+                                    FX_METER_LEVEL_HISTORY_POINTS,
+                                    &history->level_head,
+                                    &history->level_count,
+                                    snapshot->peak,
+                                    snapshot->rms);
+            break;
+        case 104u:
+            meter_history_push_triple(history->lufs_i_values,
+                                      history->lufs_s_values,
+                                      history->lufs_m_values,
+                                      FX_METER_LUFS_HISTORY_POINTS,
+                                      &history->lufs_head,
+                                      &history->lufs_count,
+                                      snapshot->lufs_integrated,
+                                      snapshot->lufs_short_term,
+                                      snapshot->lufs_momentary);
+            break;
+        default:
+            break;
+    }
+}
+
 static void meter_history_update(EffectsMeterHistory* history,
                                  FxInstId id,
                                  FxTypeId type,
-                                 const EngineFxMeterSnapshot* snapshot) {
-    if (!history || !snapshot || !snapshot->valid) {
+                                 const EngineFxMeterSnapshot* snapshot,
+                                 const AppState* state) {
+    if (!history || !snapshot || !snapshot->valid || !state || !state->engine) {
         return;
     }
     if (history->active_id != id || history->active_type != type) {
         meter_history_reset(history, id, type);
     }
-    Uint32 now = SDL_GetTicks();
-    Uint32 sample_interval_ms = 20;
-    if (type == 101u) {
-        sample_interval_ms = 8;
-    } else if (type == 102u) {
-        sample_interval_ms = 4;
-    } else if (type == 104u) {
-        sample_interval_ms = 100;
-    }
-    if (history->last_sample_ticks != 0 && now - history->last_sample_ticks < sample_interval_ms) {
+    EffectsMeterHistoryProfile profile = meter_history_profile_for_type(type, state);
+    if (profile.capacity <= 1) {
         return;
     }
-    history->last_sample_ticks = now;
-    meter_history_push(history->corr_values,
-                       FX_METER_CORR_HISTORY_POINTS,
-                       &history->corr_head,
-                       &history->corr_count,
-                       snapshot->corr);
-    if (type == 101u) {
-        meter_history_push_pair(history->mid_values,
-                                history->side_values,
-                                FX_METER_MID_SIDE_HISTORY_POINTS,
-                                &history->mid_head,
-                                &history->mid_count,
-                                snapshot->mid_rms,
-                                snapshot->side_rms);
+
+    double sample_rate = meter_history_sample_rate(state);
+    if (sample_rate <= 0.0) {
+        return;
     }
-    if (type == 103u) {
-        meter_history_push_pair(history->peak_values,
-                                history->rms_values,
-                                FX_METER_LEVEL_HISTORY_POINTS,
-                                &history->level_head,
-                                &history->level_count,
-                                snapshot->peak,
-                                snapshot->rms);
+
+    uint64_t frame = engine_get_transport_frame(state->engine);
+    if (!history->last_transport_frame_valid) {
+        history->last_transport_frame = frame;
+        history->last_transport_frame_valid = true;
     }
-    if (type == 104u) {
-        meter_history_push_triple(history->lufs_i_values,
-                                  history->lufs_s_values,
-                                  history->lufs_m_values,
-                                  FX_METER_LUFS_HISTORY_POINTS,
-                                  &history->lufs_head,
-                                  &history->lufs_count,
-                                  snapshot->lufs_integrated,
-                                  snapshot->lufs_short_term,
-                                  snapshot->lufs_momentary);
+
+    if (!engine_transport_is_playing(state->engine)) {
+        history->last_transport_frame = frame;
+        history->sample_carry_seconds = 0.0;
+        return;
     }
-    if (type == 102u) {
-        if (snapshot->vec_point_count > 0) {
-            for (int i = 0; i < snapshot->vec_point_count; ++i) {
-                meter_history_push(history->vec_x,
-                                   FX_METER_VECTOR_HISTORY_POINTS,
-                                   &history->vec_head,
-                                   &history->vec_count,
-                                   snapshot->vec_points_x[i]);
-                meter_history_push(history->vec_y,
-                                   FX_METER_VECTOR_HISTORY_POINTS,
-                                   &history->vec_head,
-                                   &history->vec_count,
-                                   snapshot->vec_points_y[i]);
-            }
-        } else {
-            meter_history_push(history->vec_x,
-                               FX_METER_VECTOR_HISTORY_POINTS,
-                               &history->vec_head,
-                               &history->vec_count,
-                               snapshot->vec_x);
-            meter_history_push(history->vec_y,
-                               FX_METER_VECTOR_HISTORY_POINTS,
-                               &history->vec_head,
-                               &history->vec_count,
-                               snapshot->vec_y);
-        }
+
+    if (frame < history->last_transport_frame) {
+        history->last_transport_frame = frame;
+        history->sample_carry_seconds = 0.0;
+        return;
     }
+
+    uint64_t delta_frames = frame - history->last_transport_frame;
+    history->last_transport_frame = frame;
+    if (delta_frames == 0) {
+        return;
+    }
+
+    double delta_seconds = (double)delta_frames / sample_rate;
+    double transport_seconds = (double)frame / sample_rate;
+    double bucket_seconds = meter_history_bucket_seconds_for_mode(state, &profile, transport_seconds);
+    if (bucket_seconds <= 1e-6) {
+        return;
+    }
+
+    history->sample_carry_seconds += delta_seconds;
+    int pushes = (int)floor(history->sample_carry_seconds / bucket_seconds);
+    if (pushes <= 0) {
+        return;
+    }
+    if (pushes > profile.capacity) {
+        pushes = profile.capacity;
+    }
+    history->sample_carry_seconds -= (double)pushes * bucket_seconds;
+    for (int i = 0; i < pushes; ++i) {
+        meter_history_push_snapshot(history, type, snapshot);
+    }
+}
+
+static EffectsMeterHistoryGridContext meter_history_grid_context_for_type(const AppState* state, FxTypeId type_id) {
+    EffectsMeterHistoryGridContext grid = {0};
+    if (!state) {
+        return grid;
+    }
+
+    EffectsMeterHistoryProfile profile = meter_history_profile_for_type(type_id, state);
+    if (profile.capacity <= 1) {
+        return grid;
+    }
+
+    double sample_rate = meter_history_sample_rate(state);
+    if (sample_rate <= 0.0) {
+        return grid;
+    }
+
+    double end_seconds = 0.0;
+    if (state->engine && sample_rate > 0.0) {
+        uint64_t frame = engine_get_transport_frame(state->engine);
+        end_seconds = (double)frame / sample_rate;
+    }
+    double bucket_seconds = meter_history_bucket_seconds_for_mode(state, &profile, end_seconds);
+    if (bucket_seconds <= 1e-6) {
+        return grid;
+    }
+
+    grid.enabled = true;
+    grid.beat_mode = state->timeline_view_in_beats;
+    grid.history_end_seconds = end_seconds;
+    grid.history_span_seconds = bucket_seconds * (double)(profile.capacity - 1);
+    grid.tempo_map = &state->tempo_map;
+    grid.signature_map = &state->time_signature_map;
+    return grid;
 }
 
 // effects_panel_meter_detail_render draws a two-column meter detail view.
@@ -531,7 +710,8 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
     meter_history_update(&((AppState*)state)->effects_panel.meter_history,
                          slot ? slot->id : 0,
                          slot ? slot->type_id : 0,
-                         have_snapshot ? &snapshot : NULL);
+                         have_snapshot ? &snapshot : NULL,
+                         state);
 
     int text_x = left_rect.x + 10;
     int text_y = left_rect.y + max_int(8, ui_font_line_height(1.0f) / 2);
@@ -596,12 +776,14 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
     }
 
     SDL_Rect meter_rect = right_rect;
+    EffectsMeterHistoryGridContext history_grid = meter_history_grid_context_for_type(state, type_id);
 
     if (type_id == 100u) {
         effects_meter_render_correlation(renderer,
                                          &meter_rect,
                                          have_snapshot ? &snapshot : NULL,
                                          &panel->meter_history,
+                                         &history_grid,
                                          label_color,
                                          dim_color);
     } else if (type_id == 103u) {
@@ -609,6 +791,7 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
                                     &meter_rect,
                                     have_snapshot ? &snapshot : NULL,
                                     &panel->meter_history,
+                                    &history_grid,
                                     label_color,
                                     dim_color);
     } else if (type_id == 104u) {
@@ -616,6 +799,7 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
                                   &meter_rect,
                                   have_snapshot ? &snapshot : NULL,
                                   &panel->meter_history,
+                                  &history_grid,
                                   panel->meter_lufs_mode,
                                   label_color,
                                   dim_color);
@@ -624,6 +808,7 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
                                       &meter_rect,
                                       have_snapshot ? &snapshot : NULL,
                                       &panel->meter_history,
+                                      &history_grid,
                                       label_color,
                                       dim_color);
     } else if (type_id == 102u) {
@@ -650,6 +835,7 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
                                          have_spectrogram ? &spectrogram : NULL,
                                          have_spectrogram ? frames : NULL,
                                          panel->meter_spectrogram_mode,
+                                         &history_grid,
                                          label_color,
                                          dim_color);
     } else {

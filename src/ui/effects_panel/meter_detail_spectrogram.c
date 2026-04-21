@@ -172,6 +172,7 @@ void effects_meter_render_spectrogram(SDL_Renderer* renderer,
                                       const EngineSpectrogramSnapshot* spectrogram,
                                       const float* frames,
                                       int palette_mode,
+                                      const EffectsMeterHistoryGridContext* history_grid,
                                       SDL_Color label_color,
                                       SDL_Color dim_color) {
     if (!renderer || !rect || rect->w <= 0 || rect->h <= 0) {
@@ -263,6 +264,7 @@ void effects_meter_render_spectrogram(SDL_Renderer* renderer,
     ui_draw_text_clipped(renderer, rect->x + pad, bot_label_y, freq_buf, dim_color, 1.0f, label_w);
 
     if (!spectrogram || !frames || spectrogram->frames <= 0 || spectrogram->bins <= 0 || history_rect.h <= 0) {
+        effects_meter_history_grid_draw(renderer, &history_rect, history_grid);
         ui_draw_text_clipped(renderer,
                              history_rect.x + max_int(6, pad / 3),
                              history_rect.y + max_int(6, pad / 3),
@@ -294,6 +296,7 @@ void effects_meter_render_spectrogram(SDL_Renderer* renderer,
                                    bins,
                                    max_frames,
                                    border);
+        effects_meter_history_grid_draw(renderer, &history_rect, history_grid);
         return;
     }
     size_t rgba_size = (size_t)max_frames * (size_t)bins * 4u;
@@ -313,6 +316,7 @@ void effects_meter_render_spectrogram(SDL_Renderer* renderer,
                                    bins,
                                    max_frames,
                                    border);
+        effects_meter_history_grid_draw(renderer, &history_rect, history_grid);
         return;
     }
 
@@ -348,4 +352,5 @@ void effects_meter_render_spectrogram(SDL_Renderer* renderer,
         return;
     }
     render_spectrogram_surface(renderer, surface, &history_rect, bins, max_frames, border);
+    effects_meter_history_grid_draw(renderer, &history_rect, history_grid);
 }
