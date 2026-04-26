@@ -187,6 +187,16 @@ Legacy test lane:
   - `tools/packaging/macos/Info.plist`
   - `tools/packaging/macos/daw-launcher`
   - `tools/packaging/macos/bundle-dylibs.sh`
+- icon packaging contract:
+  - plist advertises `CFBundleIconFile=AppIcon`
+  - default local icon store is `tools/packaging/macos/local_app_icon/AppIcon.icns` and `tools/packaging/macos/local_app_icon/AppIcon.iconset`
+  - `package-desktop*` accepts either:
+    - `PACKAGE_APP_ICON_SRC=/absolute/path/AppIcon.icns`
+    - `PACKAGE_APP_ICONSET_SRC=/absolute/path/AppIcon.iconset`
+  - bundle output path:
+    - `Contents/Resources/AppIcon.icns`
+  - the local packaging icon store is gitignored and treated as a local distribution asset lane
+  - Desktop refresh/copy uses `ditto` instead of `cp -R` to preserve signed bundle integrity
 - launcher diagnostics:
   - `--print-config`
   - startup logs at `~/Library/Logs/DAW/launcher.log` (tmp fallback)

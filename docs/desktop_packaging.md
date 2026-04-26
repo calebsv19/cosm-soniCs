@@ -2,6 +2,8 @@
 
 DAW (`soniCs`) supports standardized macOS app-bundle packaging and release notarization via Makefile targets.
 
+Last updated: 2026-04-25
+
 ## Local Desktop Package
 
 ```sh
@@ -20,6 +22,28 @@ make -C daw package-desktop-refresh
 ```
 
 `package-desktop-self-test` validates launcher/binary/plist lanes, packaged resource presence, and launcher runtime config output.
+
+Optional icon inputs:
+
+```sh
+make -C daw package-desktop-refresh \
+  PACKAGE_APP_ICONSET_SRC="/absolute/path/AppIcon.iconset"
+```
+
+or
+
+```sh
+make -C daw package-desktop-refresh \
+  PACKAGE_APP_ICON_SRC="/absolute/path/AppIcon.icns"
+```
+
+If either variable is supplied, packaging will bundle `Contents/Resources/AppIcon.icns` and the app plist will advertise `CFBundleIconFile=AppIcon`.
+
+Default local icon store:
+- `daw/tools/packaging/macos/local_app_icon/AppIcon.icns`
+- `daw/tools/packaging/macos/local_app_icon/AppIcon.iconset`
+
+Plain `make -C daw package-desktop-refresh` and `package-desktop-self-test` now look in that local store first. The local icon store is gitignored so refreshed icon copies do not dirty the normal repo worktree.
 
 ## Release Distribution Pipeline
 
@@ -74,3 +98,6 @@ Launcher diagnostics:
 open /Users/<user>/Desktop/soniCs.app
 tail -n 120 ~/Library/Logs/DAW/launcher.log
 ```
+
+Note:
+- a fresh clone will still need an `AppIcon.icns` copied into `tools/packaging/macos/local_app_icon/` before plain packaging picks it up, because that lane is intentionally ignored.
