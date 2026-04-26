@@ -1,6 +1,8 @@
 # UI module notes
 
-- `font.h` / `font.c`: SDL_ttf-backed font helper (float scaling, cached sizes).
+- `font.h` / `font.c`: public UI font facade; active Vulkan draw/measure now routes through shared `kit_render_external_text.*`.
+- `font_bridge.c`: bounded logical-font cache and shared font-source registration for the UI text lane.
+- `text_draw.c`: shared text draw/measure wrapper plus the remaining local clipped-draw seam.
 - `layout.c`: Pane layout and rendering helpers.
 - `transport.c`: Transport bar (play/stop, time readout, grid toggle, zoom sliders).
 - `timeline_view.c`: Timeline lanes, clips, header bar controls, selection drawing, and automation-mode overlays.

@@ -17,6 +17,7 @@ CORE_JOBS_DIR := $(SHARED_ROOT)/core/core_jobs
 CORE_WAKE_DIR := $(SHARED_ROOT)/core/core_wake
 CORE_KERNEL_DIR := $(SHARED_ROOT)/core/core_kernel
 KIT_VIZ_DIR := $(SHARED_ROOT)/kit/kit_viz
+KIT_RENDER_DIR := $(SHARED_ROOT)/kit/kit_render
 
 # --- Auto-discover all effect sources (non-recursive per known subdir)
 # NOTE: the quotes in compile rules already protect the & in "filter&tone".
@@ -46,6 +47,7 @@ SRCS := \
 	$(SRC_DIR)/core/loop/daw_render_invalidation.c \
 	$(SRC_DIR)/app/daw_app_main.c \
 	$(SRC_DIR)/app/main_bounce.c \
+	$(SRC_DIR)/app/main_loop_policy.c \
 	$(SRC_DIR)/app/main.c \
 	$(SRC_DIR)/config/config.c \
 	$(SRC_DIR)/config/data_paths.c \
@@ -113,7 +115,9 @@ SRCS := \
 	$(SRC_DIR)/ui/timeline_view_controls.c \
 	$(SRC_DIR)/ui/overlay/timeline_view_runtime_overlays.c \
 	$(SRC_DIR)/ui/font.c \
+	$(SRC_DIR)/ui/font_bridge.c \
 	$(SRC_DIR)/ui/shared_theme_font_adapter.c \
+	$(SRC_DIR)/ui/text_draw.c \
 	$(SRC_DIR)/ui/transport.c \
 	$(SRC_DIR)/ui/clip_inspector.c \
 	$(SRC_DIR)/ui/clip_inspector_controls.c \
@@ -198,6 +202,8 @@ CORE_KERNEL_SRCS := $(CORE_KERNEL_DIR)/src/core_kernel.c
 SRCS += $(CORE_BASE_SRCS) $(CORE_IO_SRCS) $(CORE_DATA_SRCS) $(CORE_PACK_SRCS) $(CORE_TIME_SRCS) $(CORE_THEME_SRCS) $(CORE_FONT_SRCS) $(CORE_QUEUE_SRCS) $(CORE_SCHED_SRCS) $(CORE_JOBS_SRCS) $(CORE_WAKE_SRCS) $(CORE_KERNEL_SRCS)
 KIT_VIZ_SRCS := $(KIT_VIZ_DIR)/src/kit_viz.c
 SRCS += $(KIT_VIZ_SRCS)
+KIT_RENDER_EXTERNAL_TEXT_SRCS := $(KIT_RENDER_DIR)/src/kit_render_external_text.c
+SRCS += $(KIT_RENDER_EXTERNAL_TEXT_SRCS)
 
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS))
 OBJS_QUOTED := $(foreach obj,$(OBJS),"$(obj)")
@@ -273,7 +279,7 @@ else
 	endif
 endif
 
-CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) -I$(VK_RENDERER_DIR)/include -I$(TIMER_HUD_DIR)/include -I$(TIMER_HUD_DIR)/external -I$(CORE_BASE_DIR)/include -I$(CORE_IO_DIR)/include -I$(CORE_DATA_DIR)/include -I$(CORE_PACK_DIR)/include -I$(CORE_TIME_DIR)/include -I$(CORE_THEME_DIR)/include -I$(CORE_FONT_DIR)/include -I$(CORE_QUEUE_DIR)/include -I$(CORE_SCHED_DIR)/include -I$(CORE_JOBS_DIR)/include -I$(CORE_WAKE_DIR)/include -I$(CORE_KERNEL_DIR)/include -I$(KIT_VIZ_DIR)/include $(SDL2_CFLAGS) $(VULKAN_CFLAGS) -DVK_RENDERER_SHADER_ROOT=\"$(abspath $(VK_RENDERER_DIR))\" -include $(VK_RENDERER_DIR)/include/vk_renderer_sdl.h
+CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) -I$(VK_RENDERER_DIR)/include -I$(TIMER_HUD_DIR)/include -I$(TIMER_HUD_DIR)/external -I$(CORE_BASE_DIR)/include -I$(CORE_IO_DIR)/include -I$(CORE_DATA_DIR)/include -I$(CORE_PACK_DIR)/include -I$(CORE_TIME_DIR)/include -I$(CORE_THEME_DIR)/include -I$(CORE_FONT_DIR)/include -I$(CORE_QUEUE_DIR)/include -I$(CORE_SCHED_DIR)/include -I$(CORE_JOBS_DIR)/include -I$(CORE_WAKE_DIR)/include -I$(CORE_KERNEL_DIR)/include -I$(KIT_VIZ_DIR)/include -I$(KIT_RENDER_DIR)/include $(SDL2_CFLAGS) $(VULKAN_CFLAGS) -DVK_RENDERER_SHADER_ROOT=\"$(abspath $(VK_RENDERER_DIR))\" -include $(VK_RENDERER_DIR)/include/vk_renderer_sdl.h
 
 LDFLAGS := $(SDL2_LDFLAGS) $(SDL2_LIBS) $(SDL2_FRAMEWORKS) $(VULKAN_LIBS)
 ifeq ($(UNAME_S),Darwin)

@@ -3,6 +3,7 @@
 #include "daw/daw_app_main.h"
 #include "daw/data_paths.h"
 #include "app/main_bounce.h"
+#include "app/main_loop_policy.h"
 #include "engine/engine.h"
 #include "session.h"
 #include "sdl_app_framework.h"
@@ -33,7 +34,6 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 #include <inttypes.h>
-#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -50,31 +50,6 @@ typedef struct DawRenderDerivation {
     bool request_redraw;
     uint32_t redraw_reason_bits;
 } DawRenderDerivation;
-
-// Stores DAW wake-loop runtime policy loaded from env or defaults.
-typedef struct DawLoopRuntimePolicy {
-    uint32_t max_wait_ms;
-    uint32_t heartbeat_ms;
-    uint64_t jobs_budget_ms;
-    int message_drain_budget;
-    bool diagnostics;
-    bool diagnostics_json;
-} DawLoopRuntimePolicy;
-
-typedef enum DawGateScenario {
-    DAW_GATE_SCENARIO_IDLE = 0,
-    DAW_GATE_SCENARIO_PLAYBACK = 1,
-    DAW_GATE_SCENARIO_INTERACTION = 2
-} DawGateScenario;
-
-typedef struct DawLoopGatePolicy {
-    bool enabled;
-    DawGateScenario scenario;
-    uint32_t min_waits_playback;
-    double max_active_pct_idle;
-    double min_blocked_pct_idle;
-    double max_active_pct_interaction;
-} DawLoopGatePolicy;
 
 static DawLoopRuntimePolicy g_loop_policy = {
     .max_wait_ms = 16,
@@ -100,108 +75,6 @@ static DawMainThreadMessageQueueStats g_prev_msg_stats = {0};
 static DawMainThreadJobsStats g_prev_job_stats = {0};
 static uint32_t g_last_render_cadence_wait_ms = 0;
 static int g_last_dirty_pane_count = 0;
-
-// Parses a uint32 env var and falls back when the value is missing/invalid.
-static uint32_t env_u32_or_default(const char* name, uint32_t fallback, uint32_t min_value, uint32_t max_value) {
-    const char* value = getenv(name);
-    if (!value || !value[0]) {
-        return fallback;
-    }
-    char* end = NULL;
-    unsigned long parsed = strtoul(value, &end, 10);
-    if (!end || end == value || *end != '\0') {
-        return fallback;
-    }
-    if (parsed < min_value) {
-        parsed = min_value;
-    }
-    if (parsed > max_value) {
-        parsed = max_value;
-    }
-    return (uint32_t)parsed;
-}
-
-// Parses a double env var with clamp and default fallback.
-static double env_double_or_default(const char* name, double fallback, double min_value, double max_value) {
-    const char* value = getenv(name);
-    if (!value || !value[0]) {
-        return fallback;
-    }
-    char* end = NULL;
-    double parsed = strtod(value, &end);
-    if (!end || end == value || *end != '\0') {
-        return fallback;
-    }
-    if (parsed < min_value) {
-        parsed = min_value;
-    }
-    if (parsed > max_value) {
-        parsed = max_value;
-    }
-    return parsed;
-}
-
-// Parses a bool-like env var using 1/true/yes/on as true.
-static bool env_bool_or_default(const char* name, bool fallback) {
-    const char* value = getenv(name);
-    if (!value || !value[0]) {
-        return fallback;
-    }
-    if (strcmp(value, "1") == 0 ||
-        strcmp(value, "true") == 0 ||
-        strcmp(value, "TRUE") == 0 ||
-        strcmp(value, "yes") == 0 ||
-        strcmp(value, "on") == 0) {
-        return true;
-    }
-    if (strcmp(value, "0") == 0 ||
-        strcmp(value, "false") == 0 ||
-        strcmp(value, "FALSE") == 0 ||
-        strcmp(value, "no") == 0 ||
-        strcmp(value, "off") == 0) {
-        return false;
-    }
-    return fallback;
-}
-
-// Parses gate scenario string from env.
-static DawGateScenario env_gate_scenario(void) {
-    const char* scenario = getenv("DAW_SCENARIO");
-    if (!scenario || !scenario[0]) {
-        return DAW_GATE_SCENARIO_IDLE;
-    }
-    if (strcmp(scenario, "playback") == 0) {
-        return DAW_GATE_SCENARIO_PLAYBACK;
-    }
-    if (strcmp(scenario, "interaction") == 0) {
-        return DAW_GATE_SCENARIO_INTERACTION;
-    }
-    return DAW_GATE_SCENARIO_IDLE;
-}
-
-// Loads DAW loop runtime policy from env knobs.
-static void daw_load_loop_policy_from_env(void) {
-    const char* loop_diag_format = NULL;
-    g_loop_policy.max_wait_ms = env_u32_or_default("DAW_LOOP_MAX_WAIT_MS", 16, 1, 250);
-    g_loop_policy.heartbeat_ms = env_u32_or_default("DAW_LOOP_HEARTBEAT_MS", 250, 16, 2000);
-    g_loop_policy.jobs_budget_ms = env_u32_or_default("DAW_LOOP_JOBS_BUDGET_MS", 2, 1, 50);
-    g_loop_policy.message_drain_budget = (int)env_u32_or_default("DAW_LOOP_MESSAGE_BUDGET", 32, 1, 256);
-    g_loop_policy.diagnostics = env_bool_or_default("DAW_LOOP_DIAG_LOG", false);
-    g_loop_policy.diagnostics_json = env_bool_or_default("DAW_LOOP_DIAG_JSON", false);
-    loop_diag_format = getenv("DAW_LOOP_DIAG_FORMAT");
-    if (loop_diag_format && loop_diag_format[0] && strcmp(loop_diag_format, "json") == 0) {
-        g_loop_policy.diagnostics_json = true;
-    }
-    if (g_loop_policy.diagnostics_json) {
-        g_loop_policy.diagnostics = true;
-    }
-    g_gate_policy.enabled = env_bool_or_default("DAW_LOOP_GATE_EVAL", false);
-    g_gate_policy.scenario = env_gate_scenario();
-    g_gate_policy.min_waits_playback = env_u32_or_default("DAW_GATE_MIN_WAITS_PLAYBACK", 1, 0, 1000);
-    g_gate_policy.max_active_pct_idle = env_double_or_default("DAW_GATE_MAX_ACTIVE_PCT_IDLE", 15.0, 0.0, 100.0);
-    g_gate_policy.min_blocked_pct_idle = env_double_or_default("DAW_GATE_MIN_BLOCKED_PCT_IDLE", 85.0, 0.0, 100.0);
-    g_gate_policy.max_active_pct_interaction = env_double_or_default("DAW_GATE_MAX_ACTIVE_PCT_INTERACTION", 90.0, 0.0, 100.0);
-}
 
 // Returns DAW invalidation reason bits for SDL events that change visible UI state.
 static uint32_t invalidation_reason_from_event(const SDL_Event* event) {
@@ -774,7 +647,7 @@ int daw_app_main_legacy(void) {
     state.automation_ui.track_index = -1;
     state.automation_ui.clip_index = -1;
     state.automation_ui.point_index = -1;
-    daw_load_loop_policy_from_env();
+    daw_load_loop_policy_from_env(&g_loop_policy, &g_gate_policy);
     state.reset_meter_history_on_seek = true;
     state.inspector.waveform.use_kit_viz_waveform = true;
     waveform_cache_init(&state.waveform_cache);
