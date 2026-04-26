@@ -17,11 +17,15 @@ This document defines what each shared library owns so behavior does not overlap
 - `core_wake`: cross-thread wake/wait abstraction for kernel orchestration.
 - `core_kernel`: runtime phase orchestration and module lifecycle policy.
 - `core_scene`: scene schema and scene-level object grouping/state metadata.
+- `core_scene_compile`: shared authoring-to-runtime scene compile and normalization boundary.
 - `core_space`: coordinate-space mapping, transforms, and grid/window/world conversion.
+- `core_units`: unit vocabulary, unit conversions, and world-scale conversion primitives.
+- `core_object`: app-neutral object identity/transform/dimensional-mode validation primitives.
 - `core_pack`: versioned chunked interchange container (`.pack`).
 - `core_layout`: renderer-agnostic layout transaction state (runtime/authoring mode, apply/cancel, revision/rebuild flags).
 - `core_config`: lightweight typed runtime configuration table boundary.
 - `core_action`: action identity + trigger-binding registry boundary.
+- `core_pane_module`: renderer-agnostic pane-module descriptor registry and binding validation semantics.
 - `core_trace`: trace capture/ingest/export primitives.
 - `core_pane`: renderer-agnostic pane tree layout semantics (split ratios, constraints, splitter hit/drag math).
 - `core_theme`: tokenized color + spacing presets.
@@ -30,6 +34,7 @@ This document defines what each shared library owns so behavior does not overlap
 ## Kit Libs
 
 - `kit_viz`: visualization-specific helpers layered on top of core contracts.
+- `kit_workspace_authoring`: host-agnostic authoring interaction glue (entry chord checks, trigger mapping, callback-driven action/text-step adapters) plus host-attach contract guidance for theme/font state handoff and top-level shell parity expectations.
 
 ## Non-Core Shared Modules
 
