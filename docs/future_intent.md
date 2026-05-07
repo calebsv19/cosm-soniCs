@@ -1,6 +1,6 @@
 # DAW Future Intent
 
-Last updated: 2026-04-11
+Last updated: 2026-05-04
 
 ## Scaffold Alignment Intent
 1. Preserve DAW's existing subsystem decomposition strengths.
@@ -55,6 +55,10 @@ Last updated: 2026-04-11
   - standardized `package-desktop*` + `release-*` targets are landed
   - notarization/staple/verification lane is integrated in Makefile
   - launcher runtime model is hardened for writable runtime + Vulkan ICD exports
+- Intel target-contract follow-up is now in maintenance/proof mode:
+  - `TARGET_ARCH=x86_64` builds and release artifacts are active
+  - target-aware dependency closure and runtime shader-copy hardening are landed
+  - next step is manual Intel launch verification on refreshed package output
 - next packaging posture:
   - maintenance-only parity with ecosystem release contract updates
   - keep Desktop/Finder launch + `release-verify-notarized` evidence in packaging-affecting closeout gates

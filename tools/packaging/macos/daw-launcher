@@ -8,6 +8,47 @@ LOG_DIR="${HOME}/Library/Logs/DAW"
 LOG_FILE="$LOG_DIR/launcher.log"
 RUNTIME_DIR_DEFAULT="${HOME}/Library/Application Support/DAW/runtime"
 RUNTIME_DIR="${DAW_RUNTIME_DIR:-$RUNTIME_DIR_DEFAULT}"
+
+ensure_bundle_copy() {
+    target="$1"
+    source="$2"
+    required_rels="${3:-}"
+    if [ -L "$target" ]; then
+        rm -rf "$target" 2>/dev/null || true
+    fi
+    if [ -e "$target" ] && [ -n "$required_rels" ]; then
+        old_ifs="${IFS}"
+        IFS=':'
+        all_present=1
+        for required_rel in $required_rels; do
+            if [ ! -e "$target/$required_rel" ]; then
+                all_present=0
+                break
+            fi
+        done
+        IFS="${old_ifs}"
+        if [ "$all_present" -eq 1 ]; then
+            return 0
+        fi
+        rm -rf "$target" 2>/dev/null || true
+    fi
+    [ -e "$source" ] || return 0
+    mkdir -p "$(dirname "$target")" 2>/dev/null || true
+    if [ -d "$source" ]; then
+        /usr/bin/ditto "$source" "$target"
+    else
+        cp "$source" "$target"
+    fi
+}
+
+ensure_bundle_link() {
+    target="$1"
+    source="$2"
+    if [ -L "$target" ] || [ ! -e "$target" ]; then
+        ln -sfn "$source" "$target"
+    fi
+}
+
 if ! mkdir -p "$RUNTIME_DIR" 2>/dev/null; then
     RUNTIME_DIR="${TMPDIR:-/tmp}/DAW/runtime"
     mkdir -p "$RUNTIME_DIR" 2>/dev/null || true
@@ -17,16 +58,10 @@ if [ ! -f "$RUNTIME_DIR/config/engine.cfg" ]; then
     mkdir -p "$RUNTIME_DIR/config" 2>/dev/null || true
     cp -R "$RES_DIR/config/." "$RUNTIME_DIR/config/" 2>/dev/null || true
 fi
-if [ -L "$RUNTIME_DIR/assets" ] || [ ! -e "$RUNTIME_DIR/assets" ]; then
-    ln -sfn "$RES_DIR/assets" "$RUNTIME_DIR/assets"
-fi
-
-if [ -L "$RUNTIME_DIR/vk_renderer" ] || [ ! -e "$RUNTIME_DIR/vk_renderer" ]; then
-    ln -sfn "$RES_DIR/vk_renderer" "$RUNTIME_DIR/vk_renderer"
-fi
-if [ -L "$RUNTIME_DIR/config/shared/shaders/vk_renderer" ] || [ ! -e "$RUNTIME_DIR/config/shared/shaders/vk_renderer" ]; then
-    ln -sfn "$RES_DIR/vk_renderer" "$RUNTIME_DIR/config/shared/shaders/vk_renderer"
-fi
+ensure_bundle_link "$RUNTIME_DIR/assets" "$RES_DIR/assets"
+ensure_bundle_copy "$RUNTIME_DIR/shaders" "$RES_DIR/shaders" "textured.vert.spv:textured.frag.spv:line.vert.spv:line.frag.spv:fill.vert.spv:fill.frag.spv"
+ensure_bundle_copy "$RUNTIME_DIR/vk_renderer" "$RES_DIR/vk_renderer" "shaders/textured.vert.spv:shaders/textured.frag.spv:shaders/line.vert.spv:shaders/line.frag.spv:shaders/fill.vert.spv:shaders/fill.frag.spv"
+ensure_bundle_link "$RUNTIME_DIR/config/shared/shaders/vk_renderer" "$RUNTIME_DIR/vk_renderer"
 
 mkdir -p "$LOG_DIR" 2>/dev/null || true
 if ! touch "$LOG_FILE" 2>/dev/null; then
@@ -35,7 +70,9 @@ if ! touch "$LOG_FILE" 2>/dev/null; then
 fi
 
 export DAW_RUNTIME_DIR="$RUNTIME_DIR"
-export VK_RENDERER_SHADER_ROOT="${VK_RENDERER_SHADER_ROOT:-$RUNTIME_DIR/vk_renderer}"
+export VK_RENDERER_SHADER_ROOT="${VK_RENDERER_SHADER_ROOT:-$RUNTIME_DIR}"
+export DAW_TIMER_HUD_SETTINGS="${DAW_TIMER_HUD_SETTINGS:-$DAW_RUNTIME_DIR/timerhud/daw/settings.json}"
+export DAW_TIMER_HUD="${DAW_TIMER_HUD:-0}"
 MOLTENVK_DYLIB="$APP_CONTENTS_DIR/Frameworks/libMoltenVK.dylib"
 ICD_FILE="$RUNTIME_DIR/vk/MoltenVK_icd.json"
 cat >"$ICD_FILE" <<EOF
@@ -56,6 +93,10 @@ if [ "${1:-}" = "--print-config" ]; then
     echo "RES_DIR=$RES_DIR"
     echo "LOG_FILE=$LOG_FILE"
     echo "DAW_RUNTIME_DIR=$DAW_RUNTIME_DIR"
+    echo "DAW_TIMER_HUD_SETTINGS=$DAW_TIMER_HUD_SETTINGS"
+    echo "DAW_TIMER_HUD=$DAW_TIMER_HUD"
+    echo "DAW_TIMER_HUD_OVERLAY=${DAW_TIMER_HUD_OVERLAY:-}"
+    echo "DAW_TIMER_HUD_VISUAL_MODE=${DAW_TIMER_HUD_VISUAL_MODE:-}"
     echo "VK_RENDERER_SHADER_ROOT=$VK_RENDERER_SHADER_ROOT"
     echo "VK_ICD_FILENAMES=$VK_ICD_FILENAMES"
     echo "VK_DRIVER_FILES=$VK_DRIVER_FILES"
@@ -71,12 +112,24 @@ if [ "${1:-}" = "--self-test" ]; then
     [ -f "$RES_DIR/config/engine.cfg" ] || { echo "missing: config/engine.cfg" >&2; exit 1; }
     [ -f "$RES_DIR/assets/audio/README.md" ] || { echo "missing: bundled audio readme" >&2; exit 1; }
     [ -f "$RES_DIR/include/fonts/Montserrat/Montserrat-Regular.ttf" ] || { echo "missing: bundled Montserrat" >&2; exit 1; }
-    [ -f "$RES_DIR/vk_renderer/shaders/textured.vert.spv" ] || { echo "missing: bundled vk renderer shader" >&2; exit 1; }
-    [ -f "$RES_DIR/shaders/textured.vert.spv" ] || { echo "missing: bundled runtime shader" >&2; exit 1; }
+    [ -f "$RUNTIME_DIR/vk_renderer/shaders/textured.vert.spv" ] || { echo "missing: runtime vk renderer textured shader" >&2; exit 1; }
+    [ -f "$RUNTIME_DIR/vk_renderer/shaders/line.vert.spv" ] || { echo "missing: runtime vk renderer line shader" >&2; exit 1; }
+    [ -f "$RUNTIME_DIR/vk_renderer/shaders/line.frag.spv" ] || { echo "missing: runtime vk renderer line shader" >&2; exit 1; }
+    [ -f "$RUNTIME_DIR/vk_renderer/shaders/fill.vert.spv" ] || { echo "missing: runtime vk renderer fill shader" >&2; exit 1; }
+    [ -f "$RUNTIME_DIR/vk_renderer/shaders/fill.frag.spv" ] || { echo "missing: runtime vk renderer fill shader" >&2; exit 1; }
+    [ -f "$RUNTIME_DIR/shaders/textured.vert.spv" ] || { echo "missing: runtime textured shader" >&2; exit 1; }
+    [ -f "$RUNTIME_DIR/shaders/line.vert.spv" ] || { echo "missing: runtime line shader" >&2; exit 1; }
+    [ -f "$RUNTIME_DIR/shaders/line.frag.spv" ] || { echo "missing: runtime line shader" >&2; exit 1; }
+    [ -f "$RUNTIME_DIR/shaders/fill.vert.spv" ] || { echo "missing: runtime fill shader" >&2; exit 1; }
+    [ -f "$RUNTIME_DIR/shaders/fill.frag.spv" ] || { echo "missing: runtime fill shader" >&2; exit 1; }
     [ -f "$ICD_FILE" ] || { echo "missing: runtime MoltenVK_icd.json" >&2; exit 1; }
     echo "self-test: ok"
     echo "LOG_FILE=$LOG_FILE"
     echo "DAW_RUNTIME_DIR=$DAW_RUNTIME_DIR"
+    echo "DAW_TIMER_HUD_SETTINGS=$DAW_TIMER_HUD_SETTINGS"
+    echo "DAW_TIMER_HUD=$DAW_TIMER_HUD"
+    echo "DAW_TIMER_HUD_OVERLAY=${DAW_TIMER_HUD_OVERLAY:-}"
+    echo "DAW_TIMER_HUD_VISUAL_MODE=${DAW_TIMER_HUD_VISUAL_MODE:-}"
     echo "VK_RENDERER_SHADER_ROOT=$VK_RENDERER_SHADER_ROOT"
     echo "VK_ICD_FILENAMES=$VK_ICD_FILENAMES"
     echo "VK_DRIVER_FILES=$VK_DRIVER_FILES"

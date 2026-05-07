@@ -16,6 +16,7 @@ BASENAME_BIN="/usr/bin/basename"
 OTOOL_BIN="/usr/bin/otool"
 INSTALL_NAME_TOOL_BIN="/usr/bin/install_name_tool"
 MKDIR_BIN="/bin/mkdir"
+SEARCH_ROOTS_LIST="${PACKAGE_DEP_SEARCH_ROOTS:-/opt/homebrew:/usr/local}"
 
 "$MKDIR_BIN" -p "$FRAMEWORKS_DIR"
 
@@ -25,10 +26,46 @@ QUEUE_FILE="$WORK_TMP_DIR/queue.txt"
 SEEN_FILE="$WORK_TMP_DIR/seen.txt"
 touch "$QUEUE_FILE" "$SEEN_FILE"
 
+resolve_search_root_dep() {
+    dep_base="$1"
+    old_ifs="${IFS}"
+    IFS=":"
+    for search_root in $SEARCH_ROOTS_LIST; do
+        [ -n "$search_root" ] || continue
+        if [ -f "$search_root/lib/$dep_base" ]; then
+            IFS="${old_ifs}"
+            printf '%s\n' "$search_root/lib/$dep_base"
+            return 0
+        fi
+    done
+    IFS="${old_ifs}"
+    return 1
+}
+
 cleanup() {
     rm -rf "$WORK_TMP_DIR" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
+
+replacement_path_for() {
+    current_file="$1"
+    dep_base="$2"
+
+    case "$current_file" in
+        "$FRAMEWORKS_DIR"/*)
+            printf '%s\n' "@loader_path/$dep_base"
+            ;;
+        */Contents/MacOS/*)
+            printf '%s\n' "@loader_path/../Frameworks/$dep_base"
+            ;;
+        */Contents/Resources/*)
+            printf '%s\n' "@loader_path/../../Frameworks/$dep_base"
+            ;;
+        *)
+            printf '%s\n' "@loader_path/$dep_base"
+            ;;
+    esac
+}
 
 echo "$APP_BIN" >>"$QUEUE_FILE"
 
@@ -54,10 +91,8 @@ while IFS= read -r current_file; do
             @rpath/*)
                 if [ -f "$FRAMEWORKS_DIR/$dep_base" ]; then
                     dep_src="$FRAMEWORKS_DIR/$dep_base"
-                elif [ -f "/opt/homebrew/lib/$dep_base" ]; then
-                    dep_src="/opt/homebrew/lib/$dep_base"
-                elif [ -f "/usr/local/lib/$dep_base" ]; then
-                    dep_src="/usr/local/lib/$dep_base"
+                elif dep_src="$(resolve_search_root_dep "$dep_base")"; then
+                    :
                 else
                     echo "warning: unable to resolve $dep for $current_file" >&2
                     continue
@@ -72,22 +107,12 @@ while IFS= read -r current_file; do
             echo "$dep_dst" >>"$QUEUE_FILE"
         fi
 
-        if [ "$current_file" = "$APP_BIN" ]; then
-            replacement="@executable_path/../Frameworks/$dep_base"
-        else
-            replacement="@loader_path/$dep_base"
-        fi
+        replacement="$(replacement_path_for "$current_file" "$dep_base")"
         "$INSTALL_NAME_TOOL_BIN" -change "$dep" "$replacement" "$current_file"
     done
 done <"$QUEUE_FILE"
 
-MOLTENVK_SRC=""
-for candidate in /opt/homebrew/lib/libMoltenVK.dylib /usr/local/lib/libMoltenVK.dylib; do
-    if [ -f "$candidate" ]; then
-        MOLTENVK_SRC="$candidate"
-        break
-    fi
-done
+MOLTENVK_SRC="$(resolve_search_root_dep libMoltenVK.dylib || true)"
 if [ -n "$MOLTENVK_SRC" ]; then
     MOLTENVK_DST="$FRAMEWORKS_DIR/libMoltenVK.dylib"
     if [ ! -f "$MOLTENVK_DST" ]; then
@@ -95,6 +120,16 @@ if [ -n "$MOLTENVK_SRC" ]; then
         "$CHMOD_BIN" u+w "$MOLTENVK_DST"
     fi
     "$INSTALL_NAME_TOOL_BIN" -id "@loader_path/libMoltenVK.dylib" "$MOLTENVK_DST" || true
+fi
+
+VULKAN_SRC="$(resolve_search_root_dep libvulkan.1.dylib || true)"
+if [ -n "$VULKAN_SRC" ]; then
+    VULKAN_DST="$FRAMEWORKS_DIR/libvulkan.1.dylib"
+    if [ ! -f "$VULKAN_DST" ]; then
+        "$CP_BIN" -fL "$VULKAN_SRC" "$VULKAN_DST"
+        "$CHMOD_BIN" u+w "$VULKAN_DST"
+    fi
+    "$INSTALL_NAME_TOOL_BIN" -id "@loader_path/libvulkan.1.dylib" "$VULKAN_DST" || true
 fi
 
 exit 0

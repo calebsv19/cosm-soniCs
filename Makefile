@@ -2,8 +2,43 @@ APP_NAME := daw_app
 BUILD_DIR := build
 SRC_DIR := src
 SDLAPP_DIR := SDLApp
+HOST_CC ?= cc
+FISICS_CC ?= /Users/calebsv/Desktop/CodeWork/fisiCs/fisics
+BUILD_TOOLCHAIN ?= clang
+PACKAGE_TOOLCHAIN ?= $(BUILD_TOOLCHAIN)
+TEST_TOOLCHAIN ?= clang
+RELEASE_TOOLCHAIN ?= clang
+PKG_CONFIG ?= pkg-config
+TARGET_CONTRACT_HELPER ?= ../bin/desktop_release_target_contract.sh
+HOST_ARCH := $(strip $(shell "$(TARGET_CONTRACT_HELPER)" get host_arch))
+TARGET_OS_INPUT := $(TARGET_OS)
+TARGET_ARCH_INPUT := $(TARGET_ARCH)
+TARGET_VARIANT_INPUT := $(TARGET_VARIANT)
+TARGET_OS ?= $(strip $(shell TARGET_OS="$(TARGET_OS_INPUT)" TARGET_ARCH="$(TARGET_ARCH_INPUT)" TARGET_VARIANT="$(TARGET_VARIANT_INPUT)" "$(TARGET_CONTRACT_HELPER)" get target_os))
+TARGET_ARCH ?= $(strip $(shell TARGET_OS="$(TARGET_OS_INPUT)" TARGET_ARCH="$(TARGET_ARCH_INPUT)" TARGET_VARIANT="$(TARGET_VARIANT_INPUT)" "$(TARGET_CONTRACT_HELPER)" get target_arch))
+TARGET_VARIANT ?= $(strip $(shell TARGET_OS="$(TARGET_OS_INPUT)" TARGET_ARCH="$(TARGET_ARCH_INPUT)" TARGET_VARIANT="$(TARGET_VARIANT_INPUT)" "$(TARGET_CONTRACT_HELPER)" get target_variant))
+TARGET_TRIPLE := $(strip $(shell TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" "$(TARGET_CONTRACT_HELPER)" get target_triple))
+RELEASE_PLATFORM := $(strip $(shell TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" "$(TARGET_CONTRACT_HELPER)" get release_platform))
+RELEASE_ARCH := $(strip $(shell TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" "$(TARGET_CONTRACT_HELPER)" get release_arch))
+TARGET_HOMEBREW_PREFIX ?= $(strip $(shell TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" "$(TARGET_CONTRACT_HELPER)" get homebrew_prefix))
+TARGET_ALT_HOMEBREW_PREFIX ?= $(strip $(shell TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" "$(TARGET_CONTRACT_HELPER)" get alt_homebrew_prefix))
+TARGET_PKG_CONFIG_LIBDIR ?= $(TARGET_HOMEBREW_PREFIX)/lib/pkgconfig:$(TARGET_HOMEBREW_PREFIX)/share/pkgconfig
+TARGET_DEP_SEARCH_ROOTS ?= $(TARGET_HOMEBREW_PREFIX):$(TARGET_ALT_HOMEBREW_PREFIX)
+ARCH_FLAGS := -arch $(TARGET_ARCH)
+
+ifeq ($(BUILD_TOOLCHAIN),clang)
+APP_CC := $(HOST_CC)
+TOOLCHAIN_DEP :=
+else ifeq ($(BUILD_TOOLCHAIN),fisics)
+APP_CC := $(FISICS_CC)
+TOOLCHAIN_DEP := $(FISICS_CC)
+else
+$(error Unsupported BUILD_TOOLCHAIN '$(BUILD_TOOLCHAIN)'; expected clang or fisics)
+endif
+
 SHARED_ROOT ?= third_party/codework_shared
 VK_RENDERER_DIR := $(SHARED_ROOT)/vk_renderer
+TIMER_HUD_DIR := $(SHARED_ROOT)/timer_hud
 CORE_BASE_DIR := $(SHARED_ROOT)/core/core_base
 CORE_IO_DIR := $(SHARED_ROOT)/core/core_io
 CORE_DATA_DIR := $(SHARED_ROOT)/core/core_data
@@ -14,13 +49,24 @@ CORE_FONT_DIR := $(SHARED_ROOT)/core/core_font
 CORE_QUEUE_DIR := $(SHARED_ROOT)/core/core_queue
 CORE_SCHED_DIR := $(SHARED_ROOT)/core/core_sched
 CORE_JOBS_DIR := $(SHARED_ROOT)/core/core_jobs
+CORE_WORKERS_DIR := $(SHARED_ROOT)/core/core_workers
 CORE_WAKE_DIR := $(SHARED_ROOT)/core/core_wake
 CORE_KERNEL_DIR := $(SHARED_ROOT)/core/core_kernel
+CORE_TRACE_DIR := $(SHARED_ROOT)/core/core_trace
 KIT_VIZ_DIR := $(SHARED_ROOT)/kit/kit_viz
 KIT_RENDER_DIR := $(SHARED_ROOT)/kit/kit_render
 
-# --- Auto-discover all effect sources (non-recursive per known subdir)
-# NOTE: the quotes in compile rules already protect the & in "filter&tone".
+TARGET_BUILD_ROOT := $(BUILD_DIR)/targets/$(TARGET_TRIPLE)
+TOOLCHAIN_BUILD_ROOT := $(TARGET_BUILD_ROOT)/toolchains
+APP_BUILD_ROOT := $(TOOLCHAIN_BUILD_ROOT)/$(BUILD_TOOLCHAIN)
+APP_OBJ_DIR := $(APP_BUILD_ROOT)/obj
+APP_BIN_DIR := $(APP_BUILD_ROOT)/bin
+COMPILER_STAMP_DIR := $(APP_BUILD_ROOT)/compiler
+COMPILER_STAMP := $(COMPILER_STAMP_DIR)/$(BUILD_TOOLCHAIN).stamp
+HOST_OBJ_DIR := $(TARGET_BUILD_ROOT)/host
+TEST_BUILD_ROOT := $(TARGET_BUILD_ROOT)/tests
+SHARED_BUILD_DIR := $(TARGET_BUILD_ROOT)/shared
+
 EFFECTS_DIRS := \
 	$(SRC_DIR)/effects \
 	$(SRC_DIR)/effects/basics \
@@ -36,8 +82,7 @@ EFFECTS_DIRS := \
 EFFECTS_SRCS := $(foreach d,$(EFFECTS_DIRS),$(wildcard $(d)/*.c))
 EFFECTS_SRCS := $(filter-out $(SRC_DIR)/effects/effects_manager.c,$(EFFECTS_SRCS))
 
-# --- The rest of your sources (unchanged, but with hard-coded FX removed)
-SRCS := \
+APP_SRCS := \
 	$(SDLAPP_DIR)/sdl_app_framework.c \
 	$(SRC_DIR)/core/loop/daw_mainthread_wake.c \
 	$(SRC_DIR)/core/loop/daw_mainthread_timer.c \
@@ -59,6 +104,8 @@ SRCS := \
 	$(SRC_DIR)/audio/media_cache.c \
 	$(SRC_DIR)/audio/media_registry.c \
 	$(SRC_DIR)/export/daw_pack_export.c \
+	$(SRC_DIR)/export/daw_trace_export.c \
+	$(SRC_DIR)/export/daw_trace_export_async.c \
 	$(SRC_DIR)/engine/audio_source.c \
 	$(SRC_DIR)/engine/engine_core.c \
 	$(SRC_DIR)/engine/engine_io.c \
@@ -176,39 +223,15 @@ SRCS := \
 	$(SRC_DIR)/render/adapters/timer_hud_adapter.c \
 	$(EFFECTS_SRCS)
 
-VK_RENDERER_SRCS := $(shell find $(VK_RENDERER_DIR)/src -type f -name '*.c')
-TIMER_HUD_DIR := $(SHARED_ROOT)/timer_hud
 TIMER_HUD_SRCS := $(shell find $(TIMER_HUD_DIR)/src -type f -name '*.c')
 TIMER_HUD_EXTERNAL_SRCS := $(TIMER_HUD_DIR)/external/cJSON.c
-SRCS += $(VK_RENDERER_SRCS) $(TIMER_HUD_SRCS) $(TIMER_HUD_EXTERNAL_SRCS)
-CORE_BASE_SRCS := $(CORE_BASE_DIR)/src/core_base.c
-CORE_IO_SRCS := $(CORE_IO_DIR)/src/core_io.c
-CORE_DATA_SRCS := $(CORE_DATA_DIR)/src/core_data.c
-CORE_PACK_SRCS := $(CORE_PACK_DIR)/src/core_pack.c
-CORE_TIME_SRCS := $(CORE_TIME_DIR)/src/core_time.c
-ifeq ($(shell uname -s),Darwin)
-CORE_TIME_SRCS += $(CORE_TIME_DIR)/src/core_time_mac.c
-else
-CORE_TIME_SRCS += $(CORE_TIME_DIR)/src/core_time_posix.c
-endif
-CORE_TIME_TEST_SUPPORT_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(CORE_TIME_SRCS))
-CORE_THEME_SRCS := $(CORE_THEME_DIR)/src/core_theme.c
-CORE_FONT_SRCS := $(CORE_FONT_DIR)/src/core_font.c
-CORE_QUEUE_SRCS := $(CORE_QUEUE_DIR)/src/core_queue.c
-CORE_SCHED_SRCS := $(CORE_SCHED_DIR)/src/core_sched.c
-CORE_JOBS_SRCS := $(CORE_JOBS_DIR)/src/core_jobs.c
-CORE_WAKE_SRCS := $(CORE_WAKE_DIR)/src/core_wake.c
-CORE_KERNEL_SRCS := $(CORE_KERNEL_DIR)/src/core_kernel.c
-SRCS += $(CORE_BASE_SRCS) $(CORE_IO_SRCS) $(CORE_DATA_SRCS) $(CORE_PACK_SRCS) $(CORE_TIME_SRCS) $(CORE_THEME_SRCS) $(CORE_FONT_SRCS) $(CORE_QUEUE_SRCS) $(CORE_SCHED_SRCS) $(CORE_JOBS_SRCS) $(CORE_WAKE_SRCS) $(CORE_KERNEL_SRCS)
-KIT_VIZ_SRCS := $(KIT_VIZ_DIR)/src/kit_viz.c
-SRCS += $(KIT_VIZ_SRCS)
-KIT_RENDER_EXTERNAL_TEXT_SRCS := $(KIT_RENDER_DIR)/src/kit_render_external_text.c
-SRCS += $(KIT_RENDER_EXTERNAL_TEXT_SRCS)
+TIMER_HUD_SUPPORT_SRCS := $(TIMER_HUD_SRCS) $(TIMER_HUD_EXTERNAL_SRCS)
 
-OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS))
-OBJS_QUOTED := $(foreach obj,$(OBJS),"$(obj)")
+APP_OBJS := $(patsubst %.c,$(APP_OBJ_DIR)/%.o,$(APP_SRCS))
+APP_OBJS_QUOTED := $(foreach obj,$(APP_OBJS),"$(obj)")
+TIMER_HUD_OBJS := $(patsubst $(TIMER_HUD_DIR)/%.c,$(HOST_OBJ_DIR)/timer_hud/%.o,$(TIMER_HUD_SUPPORT_SRCS))
+TIMER_HUD_OBJS_QUOTED := $(foreach obj,$(TIMER_HUD_OBJS),"$(obj)")
 
-CC := cc
 CFLAGS := -std=c11 -Wall -Wextra -Wpedantic -MMD -MP
 
 UNAME_S := $(shell uname -s)
@@ -221,24 +244,30 @@ VULKAN_CFLAGS :=
 VULKAN_LIBS :=
 
 ifeq ($(UNAME_S),Darwin)
-	VULKAN_CFLAGS := $(shell pkg-config --cflags vulkan 2>/dev/null)
-	VULKAN_LIBS := $(shell pkg-config --libs vulkan 2>/dev/null)
+	VULKAN_CFLAGS := $(shell env PKG_CONFIG_LIBDIR="$(TARGET_PKG_CONFIG_LIBDIR)" $(PKG_CONFIG) --cflags vulkan 2>/dev/null)
+	VULKAN_LIBS := $(shell env PKG_CONFIG_LIBDIR="$(TARGET_PKG_CONFIG_LIBDIR)" $(PKG_CONFIG) --libs vulkan 2>/dev/null)
 	ifeq ($(strip $(VULKAN_CFLAGS)$(VULKAN_LIBS)),)
-		VULKAN_CFLAGS := -I/opt/homebrew/include
-		VULKAN_LIBS := -L/opt/homebrew/lib -lvulkan
+		ifneq ($(wildcard $(TARGET_HOMEBREW_PREFIX)/include/vulkan/vulkan.h),)
+			VULKAN_CFLAGS := -I$(TARGET_HOMEBREW_PREFIX)/include
+			VULKAN_LIBS := -L$(TARGET_HOMEBREW_PREFIX)/lib -lvulkan
+		else ifneq ($(wildcard $(TARGET_ALT_HOMEBREW_PREFIX)/include/vulkan/vulkan.h),)
+			VULKAN_CFLAGS := -I$(TARGET_ALT_HOMEBREW_PREFIX)/include
+			VULKAN_LIBS := -L$(TARGET_ALT_HOMEBREW_PREFIX)/lib -lvulkan
+		else
+			VULKAN_CFLAGS := -I/usr/include
+			VULKAN_LIBS := -lvulkan
+		endif
 	endif
 
-	# Prefer explicit Homebrew prefixes for both Apple Silicon (/opt/homebrew) and Intel (/usr/local).
-	ifneq ($(wildcard /opt/homebrew/include/SDL2/SDL.h),)
-		SDL2_CFLAGS += -I/opt/homebrew/include -D_THREAD_SAFE
-		SDL2_LDFLAGS += -L/opt/homebrew/lib
+	ifneq ($(wildcard $(TARGET_HOMEBREW_PREFIX)/include/SDL2/SDL.h),)
+		SDL2_CFLAGS += -I$(TARGET_HOMEBREW_PREFIX)/include -D_THREAD_SAFE
+		SDL2_LDFLAGS += -L$(TARGET_HOMEBREW_PREFIX)/lib
 	endif
-	ifneq ($(wildcard /usr/local/include/SDL2/SDL.h),)
-		SDL2_CFLAGS += -I/usr/local/include -D_THREAD_SAFE
-		SDL2_LDFLAGS += -L/usr/local/lib
+	ifneq ($(wildcard $(TARGET_ALT_HOMEBREW_PREFIX)/include/SDL2/SDL.h),)
+		SDL2_CFLAGS += -I$(TARGET_ALT_HOMEBREW_PREFIX)/include -D_THREAD_SAFE
+		SDL2_LDFLAGS += -L$(TARGET_ALT_HOMEBREW_PREFIX)/lib
 	endif
 
-	# Framework fallback when headers are installed as frameworks.
 	ifeq ($(strip $(SDL2_CFLAGS)),)
 		ifneq ($(wildcard /Library/Frameworks/SDL2.framework/Headers/SDL.h),)
 			SDL2_CFLAGS += -F/Library/Frameworks -I/Library/Frameworks/SDL2.framework/Headers -D_THREAD_SAFE
@@ -248,7 +277,6 @@ ifeq ($(UNAME_S),Darwin)
 		endif
 	endif
 
-	# Last-resort: sdl2-config if nothing else is found.
 	ifeq ($(strip $(SDL2_CFLAGS)),)
 		ifneq ($(SDL_CONFIG),)
 			SDL2_CFLAGS += $(shell $(SDL_CONFIG) --cflags)
@@ -256,22 +284,21 @@ ifeq ($(UNAME_S),Darwin)
 		endif
 	endif
 else
-	VULKAN_CFLAGS := $(shell pkg-config --cflags vulkan 2>/dev/null)
-	VULKAN_LIBS := $(shell pkg-config --libs vulkan 2>/dev/null)
+	VULKAN_CFLAGS := $(shell $(PKG_CONFIG) --cflags vulkan 2>/dev/null)
+	VULKAN_LIBS := $(shell $(PKG_CONFIG) --libs vulkan 2>/dev/null)
 	ifeq ($(strip $(VULKAN_CFLAGS)$(VULKAN_LIBS)),)
 		VULKAN_CFLAGS := -I/usr/include
 		VULKAN_LIBS := -lvulkan
 	endif
 
-	# Non-macOS: prefer sdl2-config, then pkg-config, then a basic system fallback.
 	ifneq ($(SDL_CONFIG),)
 		SDL2_CFLAGS += $(shell $(SDL_CONFIG) --cflags)
 		SDL2_LDFLAGS += $(shell $(SDL_CONFIG) --libs)
 	else
-		SDL_PKGCONFIG := $(shell pkg-config --exists sdl2 >/dev/null 2>&1 && echo yes)
+		SDL_PKGCONFIG := $(shell $(PKG_CONFIG) --exists sdl2 >/dev/null 2>&1 && echo yes)
 		ifeq ($(SDL_PKGCONFIG),yes)
-			SDL2_CFLAGS += $(shell pkg-config --cflags sdl2)
-			SDL2_LDFLAGS += $(shell pkg-config --libs sdl2)
+			SDL2_CFLAGS += $(shell $(PKG_CONFIG) --cflags sdl2)
+			SDL2_LDFLAGS += $(shell $(PKG_CONFIG) --libs sdl2)
 		else
 			SDL2_CFLAGS += -I/usr/include/SDL2
 			SDL2_LDFLAGS += -L/usr/lib
@@ -279,16 +306,72 @@ else
 	endif
 endif
 
-CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) -I$(VK_RENDERER_DIR)/include -I$(TIMER_HUD_DIR)/include -I$(TIMER_HUD_DIR)/external -I$(CORE_BASE_DIR)/include -I$(CORE_IO_DIR)/include -I$(CORE_DATA_DIR)/include -I$(CORE_PACK_DIR)/include -I$(CORE_TIME_DIR)/include -I$(CORE_THEME_DIR)/include -I$(CORE_FONT_DIR)/include -I$(CORE_QUEUE_DIR)/include -I$(CORE_SCHED_DIR)/include -I$(CORE_JOBS_DIR)/include -I$(CORE_WAKE_DIR)/include -I$(CORE_KERNEL_DIR)/include -I$(KIT_VIZ_DIR)/include -I$(KIT_RENDER_DIR)/include $(SDL2_CFLAGS) $(VULKAN_CFLAGS) -DVK_RENDERER_SHADER_ROOT=\"$(abspath $(VK_RENDERER_DIR))\" -include $(VK_RENDERER_DIR)/include/vk_renderer_sdl.h
+CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) -I$(VK_RENDERER_DIR)/include -I$(TIMER_HUD_DIR)/include -I$(TIMER_HUD_DIR)/external -I$(CORE_BASE_DIR)/include -I$(CORE_IO_DIR)/include -I$(CORE_DATA_DIR)/include -I$(CORE_PACK_DIR)/include -I$(CORE_TIME_DIR)/include -I$(CORE_THEME_DIR)/include -I$(CORE_FONT_DIR)/include -I$(CORE_QUEUE_DIR)/include -I$(CORE_SCHED_DIR)/include -I$(CORE_JOBS_DIR)/include -I$(CORE_WORKERS_DIR)/include -I$(CORE_WAKE_DIR)/include -I$(CORE_KERNEL_DIR)/include -I$(CORE_TRACE_DIR)/include -I$(KIT_VIZ_DIR)/include -I$(KIT_RENDER_DIR)/include $(SDL2_CFLAGS) $(VULKAN_CFLAGS) -DVK_RENDERER_SHADER_ROOT=\"$(abspath $(VK_RENDERER_DIR))\" -include $(VK_RENDERER_DIR)/include/vk_renderer_sdl.h
 
-LDFLAGS := $(SDL2_LDFLAGS) $(SDL2_LIBS) $(SDL2_FRAMEWORKS) $(VULKAN_LIBS)
+LDFLAGS := $(ARCH_FLAGS) $(SDL2_LDFLAGS) $(SDL2_LIBS) $(SDL2_FRAMEWORKS) $(VULKAN_LIBS)
 ifeq ($(UNAME_S),Darwin)
 	CFLAGS += -DVK_USE_PLATFORM_METAL_EXT
 	LDFLAGS += -framework AudioToolbox -framework CoreFoundation -framework Metal -framework QuartzCore -framework Cocoa -framework IOKit -framework CoreVideo
 endif
 
-APP_BIN := $(BUILD_DIR)/$(APP_NAME)
-DIST_DIR := dist
+CORE_BASE_LIB_SRC := $(CORE_BASE_DIR)/build/libcore_base.a
+CORE_IO_LIB_SRC := $(CORE_IO_DIR)/build/libcore_io.a
+CORE_DATA_LIB_SRC := $(CORE_DATA_DIR)/build/libcore_data.a
+CORE_PACK_LIB_SRC := $(CORE_PACK_DIR)/build/libcore_pack.a
+CORE_TIME_LIB_SRC := $(CORE_TIME_DIR)/build/libcore_time.a
+CORE_THEME_LIB_SRC := $(CORE_THEME_DIR)/build/libcore_theme.a
+CORE_FONT_LIB_SRC := $(CORE_FONT_DIR)/build/libcore_font.a
+CORE_QUEUE_LIB_SRC := $(CORE_QUEUE_DIR)/build/libcore_queue.a
+CORE_SCHED_LIB_SRC := $(CORE_SCHED_DIR)/build/libcore_sched.a
+CORE_JOBS_LIB_SRC := $(CORE_JOBS_DIR)/build/libcore_jobs.a
+CORE_WORKERS_LIB_SRC := $(CORE_WORKERS_DIR)/build/libcore_workers.a
+CORE_WAKE_LIB_SRC := $(CORE_WAKE_DIR)/build/libcore_wake.a
+CORE_KERNEL_LIB_SRC := $(CORE_KERNEL_DIR)/build/libcore_kernel.a
+CORE_TRACE_LIB_SRC := $(CORE_TRACE_DIR)/build/libcore_trace.a
+KIT_VIZ_LIB_SRC := $(KIT_VIZ_DIR)/build/libkit_viz.a
+KIT_RENDER_LIB_SRC := $(KIT_RENDER_DIR)/build/vk/libkit_render.a
+VK_RENDERER_LIB_SRC := $(VK_RENDERER_DIR)/build/lib/libvkrenderer.a
+
+CORE_BASE_LIB := $(SHARED_BUILD_DIR)/libcore_base.a
+CORE_IO_LIB := $(SHARED_BUILD_DIR)/libcore_io.a
+CORE_DATA_LIB := $(SHARED_BUILD_DIR)/libcore_data.a
+CORE_PACK_LIB := $(SHARED_BUILD_DIR)/libcore_pack.a
+CORE_TIME_LIB := $(SHARED_BUILD_DIR)/libcore_time.a
+CORE_THEME_LIB := $(SHARED_BUILD_DIR)/libcore_theme.a
+CORE_FONT_LIB := $(SHARED_BUILD_DIR)/libcore_font.a
+CORE_QUEUE_LIB := $(SHARED_BUILD_DIR)/libcore_queue.a
+CORE_SCHED_LIB := $(SHARED_BUILD_DIR)/libcore_sched.a
+CORE_JOBS_LIB := $(SHARED_BUILD_DIR)/libcore_jobs.a
+CORE_WORKERS_LIB := $(SHARED_BUILD_DIR)/libcore_workers.a
+CORE_WAKE_LIB := $(SHARED_BUILD_DIR)/libcore_wake.a
+CORE_KERNEL_LIB := $(SHARED_BUILD_DIR)/libcore_kernel.a
+CORE_TRACE_LIB := $(SHARED_BUILD_DIR)/libcore_trace.a
+KIT_VIZ_LIB := $(SHARED_BUILD_DIR)/libkit_viz.a
+KIT_RENDER_LIB := $(SHARED_BUILD_DIR)/libkit_render.a
+VK_RENDERER_LIB := $(SHARED_BUILD_DIR)/libvkrenderer.a
+
+APP_SHARED_LIBS := \
+	$(CORE_TRACE_LIB) \
+	$(CORE_KERNEL_LIB) \
+	$(CORE_WAKE_LIB) \
+	$(CORE_WORKERS_LIB) \
+	$(CORE_JOBS_LIB) \
+	$(CORE_SCHED_LIB) \
+	$(CORE_QUEUE_LIB) \
+	$(CORE_TIME_LIB) \
+	$(CORE_PACK_LIB) \
+	$(CORE_IO_LIB) \
+	$(CORE_DATA_LIB) \
+	$(CORE_THEME_LIB) \
+	$(CORE_FONT_LIB) \
+	$(CORE_BASE_LIB) \
+	$(KIT_VIZ_LIB) \
+	$(KIT_RENDER_LIB) \
+	$(VK_RENDERER_LIB)
+
+APP_BIN := $(APP_BIN_DIR)/$(APP_NAME)
+PACKAGE_BIN := $(TARGET_BUILD_ROOT)/toolchains/$(PACKAGE_TOOLCHAIN)/bin/$(APP_NAME)
+DIST_DIR := $(TARGET_BUILD_ROOT)/dist
 PACKAGE_APP_NAME := soniCs.app
 PACKAGE_APP_DIR := $(DIST_DIR)/$(PACKAGE_APP_NAME)
 PACKAGE_CONTENTS_DIR := $(PACKAGE_APP_DIR)/Contents
@@ -315,7 +398,7 @@ RELEASE_CHANNEL ?= stable
 RELEASE_PRODUCT_NAME := soniCs
 RELEASE_PROGRAM_KEY := daw
 RELEASE_BUNDLE_ID := com.cosm.sonics
-RELEASE_ARTIFACT_BASENAME := $(RELEASE_PRODUCT_NAME)-$(RELEASE_VERSION)-macOS-$(RELEASE_CHANNEL)
+RELEASE_ARTIFACT_BASENAME := $(RELEASE_PRODUCT_NAME)-$(RELEASE_VERSION)-$(RELEASE_PLATFORM)-$(RELEASE_ARCH)-$(RELEASE_CHANNEL)
 RELEASE_DIR := build/release
 RELEASE_APP_ZIP := $(RELEASE_DIR)/$(RELEASE_ARTIFACT_BASENAME).zip
 RELEASE_MANIFEST := $(RELEASE_DIR)/$(RELEASE_ARTIFACT_BASENAME).manifest.txt
@@ -329,85 +412,87 @@ STAPLE_RETRY_DELAY_SEC ?= 15
 TEST_SRCS := \
 	tests/session_serialization_test.c
 
-TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(TEST_SRCS))
-TEST_BIN := $(BUILD_DIR)/tests/session_serialization_test
+TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(TEST_SRCS))
+TEST_BIN := $(TEST_BUILD_ROOT)/session_serialization_test
 
 CACHE_TEST_SRCS := \
 	tests/media_cache_stress_test.c
 
-CACHE_TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(CACHE_TEST_SRCS))
-CACHE_TEST_BIN := $(BUILD_DIR)/tests/media_cache_stress_test
+CACHE_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(CACHE_TEST_SRCS))
+CACHE_TEST_BIN := $(TEST_BUILD_ROOT)/media_cache_stress_test
 
 OVERLAP_TEST_SRCS := \
 	tests/clip_overlap_priority_test.c
 
-OVERLAP_TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(OVERLAP_TEST_SRCS))
-OVERLAP_TEST_BIN := $(BUILD_DIR)/tests/clip_overlap_priority_test
+OVERLAP_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(OVERLAP_TEST_SRCS))
+OVERLAP_TEST_BIN := $(TEST_BUILD_ROOT)/clip_overlap_priority_test
 
 SMOKE_TEST_SRCS := \
 	tests/engine_smoke_test.c
 
-SMOKE_TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SMOKE_TEST_SRCS))
-SMOKE_TEST_BIN := $(BUILD_DIR)/tests/engine_smoke_test
+SMOKE_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(SMOKE_TEST_SRCS))
+SMOKE_TEST_BIN := $(TEST_BUILD_ROOT)/engine_smoke_test
 
 KITVIZ_ADAPTER_TEST_SRCS := \
 	tests/kit_viz_waveform_adapter_test.c
 
-KITVIZ_ADAPTER_TEST_BIN := $(BUILD_DIR)/tests/kit_viz_waveform_adapter_test
+KITVIZ_ADAPTER_TEST_BIN := $(TEST_BUILD_ROOT)/kit_viz_waveform_adapter_test
 
 WAVEFORM_PACK_WARMSTART_TEST_SRCS := \
 	tests/waveform_cache_pack_warmstart_test.c
 
-WAVEFORM_PACK_WARMSTART_TEST_BIN := $(BUILD_DIR)/tests/waveform_cache_pack_warmstart_test
+WAVEFORM_PACK_WARMSTART_TEST_BIN := $(TEST_BUILD_ROOT)/waveform_cache_pack_warmstart_test
 
 PACK_CONTRACT_TEST_SRCS := \
 	tests/daw_pack_contract_parity_test.c
 
-PACK_CONTRACT_TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(PACK_CONTRACT_TEST_SRCS))
-PACK_CONTRACT_TEST_BIN := $(BUILD_DIR)/tests/daw_pack_contract_parity_test
+PACK_CONTRACT_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(PACK_CONTRACT_TEST_SRCS))
+PACK_CONTRACT_TEST_BIN := $(TEST_BUILD_ROOT)/daw_pack_contract_parity_test
 
 TRACE_CONTRACT_TEST_SRCS := \
 	tests/daw_trace_export_contract_test.c
 
-TRACE_CONTRACT_TEST_BIN := $(BUILD_DIR)/tests/daw_trace_export_contract_test
+TRACE_CONTRACT_TEST_BIN := $(TEST_BUILD_ROOT)/daw_trace_export_contract_test
 
 TRACE_ASYNC_CONTRACT_TEST_SRCS := \
 	tests/daw_trace_export_async_contract_test.c
 
-TRACE_ASYNC_CONTRACT_TEST_BIN := $(BUILD_DIR)/tests/daw_trace_export_async_contract_test
+TRACE_ASYNC_CONTRACT_TEST_BIN := $(TEST_BUILD_ROOT)/daw_trace_export_async_contract_test
 
 KITVIZ_FX_PREVIEW_ADAPTER_TEST_SRCS := \
 	tests/kit_viz_fx_preview_adapter_test.c
 
-KITVIZ_FX_PREVIEW_ADAPTER_TEST_BIN := $(BUILD_DIR)/tests/kit_viz_fx_preview_adapter_test
+KITVIZ_FX_PREVIEW_ADAPTER_TEST_BIN := $(TEST_BUILD_ROOT)/kit_viz_fx_preview_adapter_test
 
 KITVIZ_METER_ADAPTER_TEST_SRCS := \
 	tests/kit_viz_meter_adapter_test.c
 
-KITVIZ_METER_ADAPTER_TEST_BIN := $(BUILD_DIR)/tests/kit_viz_meter_adapter_test
+KITVIZ_METER_ADAPTER_TEST_BIN := $(TEST_BUILD_ROOT)/kit_viz_meter_adapter_test
 
 SHARED_THEME_FONT_ADAPTER_TEST_SRCS := \
 	tests/shared_theme_font_adapter_test.c
 
-SHARED_THEME_FONT_ADAPTER_TEST_BIN := $(BUILD_DIR)/tests/shared_theme_font_adapter_test
+SHARED_THEME_FONT_ADAPTER_TEST_BIN := $(TEST_BUILD_ROOT)/shared_theme_font_adapter_test
 
 LAYOUT_SWEEP_TEST_SRCS := \
 	tests/layout_text_scaling_sweep_test.c
 
-LAYOUT_SWEEP_TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(LAYOUT_SWEEP_TEST_SRCS))
-LAYOUT_SWEEP_TEST_BIN := $(BUILD_DIR)/tests/layout_text_scaling_sweep_test
+LAYOUT_SWEEP_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(LAYOUT_SWEEP_TEST_SRCS))
+LAYOUT_SWEEP_TEST_BIN := $(TEST_BUILD_ROOT)/layout_text_scaling_sweep_test
 
 DATA_PATH_CONTRACT_TEST_SRCS := \
 	tests/daw_data_path_contract_test.c
 
-DATA_PATH_CONTRACT_TEST_OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(DATA_PATH_CONTRACT_TEST_SRCS))
-DATA_PATH_CONTRACT_TEST_BIN := $(BUILD_DIR)/tests/daw_data_path_contract_test
+DATA_PATH_CONTRACT_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(DATA_PATH_CONTRACT_TEST_SRCS))
+DATA_PATH_CONTRACT_TEST_BIN := $(TEST_BUILD_ROOT)/daw_data_path_contract_test
 
 # Keep legacy app tests wired to the full non-main app object set so link coverage
 # stays in lock-step with engine/runtime refactors.
-ENGINE_TEST_SUPPORT_OBJS = $(APP_OBJS_NO_MAIN)
+APP_OBJS_NO_MAIN := $(filter-out $(APP_OBJ_DIR)/src/app/main.o,$(APP_OBJS))
+ENGINE_TEST_SUPPORT_OBJS = $(APP_OBJS_NO_MAIN) $(TIMER_HUD_OBJS)
 
-APP_DEPS := $(OBJS:.o=.d)
+APP_DEPS := $(APP_OBJS:.o=.d)
+TIMER_HUD_DEPS := $(TIMER_HUD_OBJS:.o=.d)
 TEST_DEPS := $(TEST_OBJS:.o=.d)
 CACHE_TEST_DEPS := $(CACHE_TEST_OBJS:.o=.d)
 OVERLAP_TEST_DEPS := $(OVERLAP_TEST_OBJS:.o=.d)
@@ -416,9 +501,7 @@ PACK_CONTRACT_TEST_DEPS := $(PACK_CONTRACT_TEST_OBJS:.o=.d)
 LAYOUT_SWEEP_TEST_DEPS := $(LAYOUT_SWEEP_TEST_OBJS:.o=.d)
 DATA_PATH_CONTRACT_TEST_DEPS := $(DATA_PATH_CONTRACT_TEST_OBJS:.o=.d)
 ENGINE_TEST_SUPPORT_DEPS := $(ENGINE_TEST_SUPPORT_OBJS:.o=.d)
-ALL_DEPS := $(APP_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(SMOKE_TEST_DEPS) $(PACK_CONTRACT_TEST_DEPS) $(LAYOUT_SWEEP_TEST_DEPS) $(DATA_PATH_CONTRACT_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
-
-APP_OBJS_NO_MAIN := $(filter-out $(BUILD_DIR)/src/app/main.o,$(OBJS))
+ALL_DEPS := $(APP_DEPS) $(TIMER_HUD_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(SMOKE_TEST_DEPS) $(PACK_CONTRACT_TEST_DEPS) $(LAYOUT_SWEEP_TEST_DEPS) $(DATA_PATH_CONTRACT_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
 
 STABLE_TEST_TARGETS := \
 	test-pack-contract \
@@ -439,17 +522,59 @@ LEGACY_TEST_TARGETS := \
 	test-smoke \
 	test-shared-theme-font-adapter
 
-.PHONY: all clean run run-ide-theme run-headless-smoke visual-harness package-desktop package-desktop-smoke package-desktop-self-test package-desktop-copy-desktop package-desktop-sync package-desktop-open package-desktop-remove package-desktop-refresh release-contract release-clean release-build release-bundle-audit release-sign release-verify release-verify-signed release-notarize release-staple release-verify-notarized release-artifact release-distribute release-desktop-refresh loop-gates loop-gates-strict test-stable test-legacy test-session test-cache test-overlap test-smoke test-kitviz-adapter test-waveform-pack-warmstart test-pack-contract test-trace-contract test-trace-async-contract test-kitviz-fx-preview-adapter test-kitviz-meter-adapter test-shared-theme-font-adapter test-layout-sweep test-data-path-contract test-library-copy-vs-reference-contract
+.PHONY: all clean run run-ide-theme run-headless-smoke visual-harness package-build-lane package-desktop package-desktop-smoke package-desktop-self-test package-desktop-copy-desktop package-desktop-sync package-desktop-open package-desktop-remove package-desktop-refresh release-contract release-clean release-build release-build-internal release-bundle-audit release-bundle-audit-internal release-sign release-sign-internal release-verify release-verify-internal release-verify-signed release-verify-signed-internal release-notarize release-notarize-internal release-staple release-staple-internal release-verify-notarized release-verify-notarized-internal release-artifact release-artifact-internal release-distribute release-distribute-internal release-desktop-refresh release-desktop-refresh-internal loop-gates loop-gates-strict test test-stable test-legacy test-session test-cache test-overlap test-smoke test-kitviz-adapter test-waveform-pack-warmstart test-pack-contract test-trace-contract test-trace-async-contract test-kitviz-fx-preview-adapter test-kitviz-meter-adapter test-shared-theme-font-adapter test-layout-sweep test-data-path-contract test-library-copy-vs-reference-contract
+
+FORCE:
 
 all: $(APP_BIN)
 
-$(APP_BIN): $(OBJS)
-	@mkdir -p "$(dir $@)"
-	$(CC) $(OBJS_QUOTED) -o "$@" $(LDFLAGS)
+$(APP_BIN_DIR) $(COMPILER_STAMP_DIR):
+	@mkdir -p "$@"
 
-$(BUILD_DIR)/%.o: %.c
+$(COMPILER_STAMP): $(TOOLCHAIN_DEP) | $(COMPILER_STAMP_DIR)
+	@printf '%s\n' "$(APP_CC)" > "$@"
+
+SHARED_CC := $(HOST_CC) $(ARCH_FLAGS)
+
+$(SHARED_BUILD_DIR):
+	@mkdir -p "$@"
+
+define build_copy_static_lib
+$($(1)_LIB): FORCE | $(SHARED_BUILD_DIR)
+	$$(MAKE) -C $($(1)_DIR) clean $(2)
+	PKG_CONFIG_LIBDIR="$(TARGET_PKG_CONFIG_LIBDIR)" PKG_CONFIG="$(PKG_CONFIG)" $$(MAKE) -C $($(1)_DIR) CC="$$(SHARED_CC)" $(2)
+	cp "$$($(1)_LIB_SRC)" "$$@"
+endef
+
+$(eval $(call build_copy_static_lib,CORE_BASE,))
+$(eval $(call build_copy_static_lib,CORE_IO,))
+$(eval $(call build_copy_static_lib,CORE_DATA,))
+$(eval $(call build_copy_static_lib,CORE_PACK,))
+$(eval $(call build_copy_static_lib,CORE_TIME,))
+$(eval $(call build_copy_static_lib,CORE_THEME,))
+$(eval $(call build_copy_static_lib,CORE_FONT,))
+$(eval $(call build_copy_static_lib,CORE_QUEUE,))
+$(eval $(call build_copy_static_lib,CORE_SCHED,))
+$(eval $(call build_copy_static_lib,CORE_JOBS,))
+$(eval $(call build_copy_static_lib,CORE_WORKERS,))
+$(eval $(call build_copy_static_lib,CORE_WAKE,))
+$(eval $(call build_copy_static_lib,CORE_KERNEL,))
+$(eval $(call build_copy_static_lib,CORE_TRACE,))
+$(eval $(call build_copy_static_lib,KIT_VIZ,))
+$(eval $(call build_copy_static_lib,KIT_RENDER,KIT_RENDER_ENABLE_VK=1))
+$(eval $(call build_copy_static_lib,VK_RENDERER,))
+
+$(APP_BIN): $(APP_OBJS) $(TIMER_HUD_OBJS) $(APP_SHARED_LIBS) | $(APP_BIN_DIR)
 	@mkdir -p "$(dir $@)"
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c "$<" -o "$@"
+	$(HOST_CC) $(ARCH_FLAGS) $(APP_OBJS_QUOTED) $(TIMER_HUD_OBJS_QUOTED) $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+$(APP_OBJ_DIR)/%.o: %.c $(COMPILER_STAMP)
+	@mkdir -p "$(dir $@)"
+	$(APP_CC) $(CPPFLAGS) $(CFLAGS) $(if $(filter clang,$(BUILD_TOOLCHAIN)),$(ARCH_FLAGS),) -c "$<" -o "$@"
+
+$(HOST_OBJ_DIR)/timer_hud/%.o: $(TIMER_HUD_DIR)/%.c
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) -c "$<" -o "$@"
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -466,12 +591,15 @@ run-headless-smoke: all test-stable
 visual-harness: $(APP_BIN)
 	@echo "visual harness binary ready: $(APP_BIN)"
 
-package-desktop: all
+package-build-lane:
+	@$(MAKE) BUILD_TOOLCHAIN="$(PACKAGE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" "$(PACKAGE_BIN)"
+
+package-desktop: package-build-lane
 	@echo "Preparing desktop package..."
 	@rm -rf "$(PACKAGE_APP_DIR)"
 	@mkdir -p "$(PACKAGE_MACOS_DIR)" "$(PACKAGE_RESOURCES_DIR)" "$(PACKAGE_FRAMEWORKS_DIR)"
 	@cp "$(PACKAGE_INFO_PLIST_SRC)" "$(PACKAGE_CONTENTS_DIR)/Info.plist"
-	@cp "$(APP_BIN)" "$(PACKAGE_MACOS_DIR)/daw-bin"
+	@cp "$(PACKAGE_BIN)" "$(PACKAGE_MACOS_DIR)/daw-bin"
 	@cp "$(PACKAGE_LAUNCHER_SRC)" "$(PACKAGE_MACOS_DIR)/daw-launcher"
 	@chmod +x "$(PACKAGE_MACOS_DIR)/daw-bin" "$(PACKAGE_MACOS_DIR)/daw-launcher"
 	@if [ -f "$(PACKAGE_APP_ICON_SRC)" ]; then \
@@ -483,7 +611,7 @@ package-desktop: all
 	else \
 		echo "warning: no app icon source found at $(PACKAGE_APP_ICON_SRC) or $(PACKAGE_APP_ICONSET_SRC)"; \
 	fi
-	@"$(PACKAGE_DYLIB_BUNDLER)" "$(PACKAGE_MACOS_DIR)/daw-bin" "$(PACKAGE_FRAMEWORKS_DIR)"
+	@PACKAGE_DEP_SEARCH_ROOTS="$(TARGET_DEP_SEARCH_ROOTS)" "$(PACKAGE_DYLIB_BUNDLER)" "$(PACKAGE_MACOS_DIR)/daw-bin" "$(PACKAGE_FRAMEWORKS_DIR)"
 	@mkdir -p "$(PACKAGE_RESOURCES_DIR)/config" "$(PACKAGE_RESOURCES_DIR)/assets" "$(PACKAGE_RESOURCES_DIR)/include" "$(PACKAGE_RESOURCES_DIR)/shared/assets" "$(PACKAGE_RESOURCES_DIR)/vk_renderer" "$(PACKAGE_RESOURCES_DIR)/shaders"
 	@cp -R config/. "$(PACKAGE_RESOURCES_DIR)/config/"
 	@cp -R assets/audio "$(PACKAGE_RESOURCES_DIR)/assets/"
@@ -493,11 +621,11 @@ package-desktop: all
 	@cp -R "$(VK_RENDERER_DIR)/shaders/." "$(PACKAGE_RESOURCES_DIR)/shaders/"
 	@for dylib in "$(PACKAGE_FRAMEWORKS_DIR)"/*.dylib; do \
 		[ -f "$$dylib" ] || continue; \
-		codesign --force --sign "$(PACKAGE_ADHOC_SIGN_IDENTITY)" "$$dylib"; \
+		codesign --force --sign "$(PACKAGE_ADHOC_SIGN_IDENTITY)" --timestamp=none "$$dylib"; \
 	done
-	@codesign --force --sign "$(PACKAGE_ADHOC_SIGN_IDENTITY)" "$(PACKAGE_MACOS_DIR)/daw-bin"
-	@codesign --force --sign "$(PACKAGE_ADHOC_SIGN_IDENTITY)" "$(PACKAGE_MACOS_DIR)/daw-launcher"
-	@codesign --force --sign "$(PACKAGE_ADHOC_SIGN_IDENTITY)" "$(PACKAGE_APP_DIR)"
+	@codesign --force --sign "$(PACKAGE_ADHOC_SIGN_IDENTITY)" --timestamp=none "$(PACKAGE_MACOS_DIR)/daw-bin"
+	@codesign --force --sign "$(PACKAGE_ADHOC_SIGN_IDENTITY)" --timestamp=none "$(PACKAGE_MACOS_DIR)/daw-launcher"
+	@codesign --force --sign "$(PACKAGE_ADHOC_SIGN_IDENTITY)" --timestamp=none "$(PACKAGE_APP_DIR)"
 	@codesign --verify --deep --strict "$(PACKAGE_APP_DIR)"
 	@echo "Desktop package ready: $(PACKAGE_APP_DIR)"
 
@@ -515,6 +643,13 @@ package-desktop-smoke: package-desktop
 	@test -f "$(PACKAGE_RESOURCES_DIR)/include/fonts/Montserrat/Montserrat-Regular.ttf" || (echo "Missing bundled Montserrat"; exit 1)
 	@test -f "$(PACKAGE_RESOURCES_DIR)/vk_renderer/shaders/textured.vert.spv" || (echo "Missing bundled vk shaders"; exit 1)
 	@test -f "$(PACKAGE_RESOURCES_DIR)/shaders/textured.vert.spv" || (echo "Missing bundled runtime shader"; exit 1)
+	@actual_archs="$$(/usr/bin/lipo -archs "$(PACKAGE_MACOS_DIR)/daw-bin" 2>/dev/null || true)"; \
+	printf '%s\n' "$$actual_archs" | /usr/bin/grep -qw "$(TARGET_ARCH)" || (echo "Unexpected app binary archs: $$actual_archs"; exit 1)
+	@for dylib in "$(PACKAGE_FRAMEWORKS_DIR)"/*.dylib; do \
+		[ -f "$$dylib" ] || continue; \
+		dylib_archs="$$(/usr/bin/lipo -archs "$$dylib" 2>/dev/null || true)"; \
+		printf '%s\n' "$$dylib_archs" | /usr/bin/grep -qw "$(TARGET_ARCH)" || (echo "Unexpected dylib archs for $$dylib: $$dylib_archs"; exit 1); \
+	done
 	@echo "package-desktop-smoke passed."
 
 package-desktop-self-test: package-desktop-smoke
@@ -544,6 +679,15 @@ package-desktop-refresh: package-desktop
 	@echo "Refreshed $(PACKAGE_APP_NAME) at $(DESKTOP_APP_DIR)"
 
 release-contract:
+	@echo "HOST_ARCH=$(HOST_ARCH)"
+	@echo "TARGET_OS=$(TARGET_OS)"
+	@echo "TARGET_ARCH=$(TARGET_ARCH)"
+	@echo "TARGET_VARIANT=$(TARGET_VARIANT)"
+	@echo "TARGET_TRIPLE=$(TARGET_TRIPLE)"
+	@echo "RELEASE_PLATFORM=$(RELEASE_PLATFORM)"
+	@echo "RELEASE_ARCH=$(RELEASE_ARCH)"
+	@echo "TARGET_HOMEBREW_PREFIX=$(TARGET_HOMEBREW_PREFIX)"
+	@echo "TARGET_PKG_CONFIG_LIBDIR=$(TARGET_PKG_CONFIG_LIBDIR)"
 	@echo "RELEASE_PROGRAM_KEY=$(RELEASE_PROGRAM_KEY)"
 	@echo "RELEASE_PRODUCT_NAME=$(RELEASE_PRODUCT_NAME)"
 	@echo "RELEASE_BUNDLE_ID=$(RELEASE_BUNDLE_ID)"
@@ -560,10 +704,16 @@ release-clean:
 	@echo "release-clean complete."
 
 release-build:
+	@$(MAKE) BUILD_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" PACKAGE_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" release-build-internal
+
+release-build-internal:
 	@$(MAKE) package-desktop-self-test
 	@echo "release-build complete."
 
-release-bundle-audit: release-build
+release-bundle-audit:
+	@$(MAKE) BUILD_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" PACKAGE_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" release-bundle-audit-internal
+
+release-bundle-audit-internal: release-build-internal
 	@mkdir -p "$(RELEASE_DIR)"
 	@/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$(PACKAGE_CONTENTS_DIR)/Info.plist" > "$(RELEASE_DIR)/bundle_id.txt"
 	@test "$$(cat "$(RELEASE_DIR)/bundle_id.txt")" = "$(RELEASE_BUNDLE_ID)" || (echo "Bundle identifier mismatch"; exit 1)
@@ -580,35 +730,62 @@ release-bundle-audit: release-build
 	@rg -q '^VK_ICD_FILENAMES=' "$(RELEASE_DIR)/print_config.txt" || (echo "Missing VK_ICD_FILENAMES in launcher config"; exit 1)
 	@echo "release-bundle-audit passed."
 
-release-sign: release-bundle-audit
+release-sign:
+	@$(MAKE) BUILD_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" PACKAGE_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" release-sign-internal
+
+release-sign-internal: release-bundle-audit-internal
 	@test -n "$(RELEASE_CODESIGN_IDENTITY)" || (echo "Missing signing identity"; exit 1)
 	@echo "Signing with identity: $(RELEASE_CODESIGN_IDENTITY)"
-	@for dylib in "$(PACKAGE_FRAMEWORKS_DIR)"/*.dylib; do \
-		[ -f "$$dylib" ] || continue; \
-		codesign --force --timestamp --options runtime --sign "$(RELEASE_CODESIGN_IDENTITY)" "$$dylib"; \
-	done
-	@codesign --force --timestamp --options runtime --sign "$(RELEASE_CODESIGN_IDENTITY)" "$(PACKAGE_MACOS_DIR)/daw-bin"
-	@codesign --force --timestamp --options runtime --sign "$(PACKAGE_ADHOC_SIGN_IDENTITY)" "$(PACKAGE_MACOS_DIR)/daw-launcher"
-	@codesign --force --timestamp --options runtime --sign "$(RELEASE_CODESIGN_IDENTITY)" "$(PACKAGE_APP_DIR)"
+	@if [ "$(RELEASE_CODESIGN_IDENTITY)" = "-" ]; then \
+		for dylib in "$(PACKAGE_FRAMEWORKS_DIR)"/*.dylib; do \
+			[ -f "$$dylib" ] || continue; \
+			codesign --force --sign "$(RELEASE_CODESIGN_IDENTITY)" --timestamp=none "$$dylib"; \
+		done; \
+		codesign --force --sign "$(RELEASE_CODESIGN_IDENTITY)" --timestamp=none "$(PACKAGE_MACOS_DIR)/daw-bin"; \
+		codesign --force --sign "$(RELEASE_CODESIGN_IDENTITY)" --timestamp=none "$(PACKAGE_MACOS_DIR)/daw-launcher"; \
+		codesign --force --sign "$(RELEASE_CODESIGN_IDENTITY)" --timestamp=none "$(PACKAGE_APP_DIR)"; \
+	else \
+		for dylib in "$(PACKAGE_FRAMEWORKS_DIR)"/*.dylib; do \
+			[ -f "$$dylib" ] || continue; \
+			codesign --force --timestamp --options runtime --sign "$(RELEASE_CODESIGN_IDENTITY)" "$$dylib"; \
+		done; \
+		codesign --force --timestamp --options runtime --sign "$(RELEASE_CODESIGN_IDENTITY)" "$(PACKAGE_MACOS_DIR)/daw-bin"; \
+		codesign --force --timestamp --options runtime --sign "$(RELEASE_CODESIGN_IDENTITY)" "$(PACKAGE_MACOS_DIR)/daw-launcher"; \
+		codesign --force --timestamp --options runtime --sign "$(RELEASE_CODESIGN_IDENTITY)" "$(PACKAGE_APP_DIR)"; \
+	fi
 	@echo "release-sign complete."
 
-release-verify: release-sign
-	@codesign --verify --deep --strict "$(PACKAGE_APP_DIR)"
-	@set +e; spctl_out="$$(spctl --assess --type execute --verbose=2 "$(PACKAGE_APP_DIR)" 2>&1)"; spctl_rc=$$?; set -e; \
-	echo "$$spctl_out"; \
-	if [ $$spctl_rc -eq 0 ]; then \
-		echo "release-verify passed."; \
-	elif printf '%s' "$$spctl_out" | rg -q 'source=Unnotarized Developer ID'; then \
-		echo "release-verify passed (pre-notary signed state)."; \
-	else \
-		echo "release-verify failed."; \
-		exit $$spctl_rc; \
-	fi
+release-verify:
+	@$(MAKE) BUILD_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" PACKAGE_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" release-verify-internal
 
-release-verify-signed: release-verify
+release-verify-internal: release-sign-internal
+	@codesign --verify --deep --strict "$(PACKAGE_APP_DIR)"
+	@if [ "$(RELEASE_CODESIGN_IDENTITY)" = "-" ]; then \
+		echo "release-verify note: ad-hoc identity in use; skipping spctl Gatekeeper assessment"; \
+	else \
+		set +e; spctl_out="$$(spctl --assess --type execute --verbose=2 "$(PACKAGE_APP_DIR)" 2>&1)"; spctl_rc=$$?; set -e; \
+		echo "$$spctl_out"; \
+		if [ $$spctl_rc -eq 0 ]; then \
+			:; \
+		elif printf '%s' "$$spctl_out" | rg -q 'source=Unnotarized Developer ID'; then \
+			echo "release-verify passed (pre-notary signed state)."; \
+		else \
+			echo "release-verify failed."; \
+			exit $$spctl_rc; \
+		fi; \
+	fi
+	@echo "release-verify passed."
+
+release-verify-signed:
+	@$(MAKE) BUILD_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" PACKAGE_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" release-verify-signed-internal
+
+release-verify-signed-internal: release-verify-internal
 	@echo "release-verify-signed passed."
 
-release-notarize: release-sign
+release-notarize:
+	@$(MAKE) BUILD_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" PACKAGE_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" release-notarize-internal
+
+release-notarize-internal: release-sign-internal
 	@test -n "$(APPLE_NOTARY_PROFILE)" || (echo "Missing APPLE_NOTARY_PROFILE"; exit 1)
 	@mkdir -p "$(RELEASE_DIR)"
 	@ditto -c -k --keepParent "$(PACKAGE_APP_DIR)" "$(RELEASE_APP_ZIP)"
@@ -617,6 +794,9 @@ release-notarize: release-sign
 	@echo "release-notarize passed."
 
 release-staple:
+	@$(MAKE) BUILD_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" PACKAGE_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" release-staple-internal
+
+release-staple-internal:
 	@attempt=1; \
 	while [ $$attempt -le $(STAPLE_MAX_ATTEMPTS) ]; do \
 		if xcrun stapler staple "$(PACKAGE_APP_DIR)" && xcrun stapler validate "$(PACKAGE_APP_DIR)"; then \
@@ -630,18 +810,31 @@ release-staple:
 	echo "release-staple failed."; \
 	exit 1
 
-release-verify-notarized: release-staple
+release-verify-notarized:
+	@$(MAKE) BUILD_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" PACKAGE_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" release-verify-notarized-internal
+
+release-verify-notarized-internal: release-staple-internal
 	@spctl --assess --type execute --verbose=2 "$(PACKAGE_APP_DIR)"
 	@xcrun stapler validate "$(PACKAGE_APP_DIR)"
 	@echo "release-verify-notarized passed."
 
-release-artifact: release-verify-notarized
+release-artifact:
+	@$(MAKE) BUILD_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" PACKAGE_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" release-artifact-internal
+
+release-artifact-internal: release-verify-internal
 	@mkdir -p "$(RELEASE_DIR)"
 	@ditto -c -k --keepParent "$(PACKAGE_APP_DIR)" "$(RELEASE_APP_ZIP)"
 	@shasum -a 256 "$(RELEASE_APP_ZIP)" > "$(RELEASE_APP_ZIP).sha256"
 	@{ \
 		echo "product=$(RELEASE_PRODUCT_NAME)"; \
 		echo "program=$(RELEASE_PROGRAM_KEY)"; \
+		echo "host_arch=$(HOST_ARCH)"; \
+		echo "target_os=$(TARGET_OS)"; \
+		echo "target_arch=$(TARGET_ARCH)"; \
+		echo "target_variant=$(TARGET_VARIANT)"; \
+		echo "target_triple=$(TARGET_TRIPLE)"; \
+		echo "release_platform=$(RELEASE_PLATFORM)"; \
+		echo "release_arch=$(RELEASE_ARCH)"; \
 		echo "version=$(RELEASE_VERSION)"; \
 		echo "channel=$(RELEASE_CHANNEL)"; \
 		echo "bundle_id=$(RELEASE_BUNDLE_ID)"; \
@@ -650,10 +843,16 @@ release-artifact: release-verify-notarized
 	} > "$(RELEASE_MANIFEST)"
 	@echo "release-artifact complete: $(RELEASE_APP_ZIP)"
 
-release-distribute: release-artifact
+release-distribute:
+	@$(MAKE) BUILD_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" PACKAGE_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" release-distribute-internal
+
+release-distribute-internal: release-artifact-internal
 	@echo "release-distribute passed."
 
-release-desktop-refresh: release-distribute
+release-desktop-refresh:
+	@$(MAKE) BUILD_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" PACKAGE_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" release-desktop-refresh-internal
+
+release-desktop-refresh-internal: release-distribute-internal
 	@mkdir -p "$$(dirname "$(DESKTOP_APP_DIR)")"
 	@rm -rf "$(DESKTOP_APP_DIR)"
 	@cp -R "$(PACKAGE_APP_DIR)" "$(DESKTOP_APP_DIR)"
@@ -665,6 +864,10 @@ loop-gates: $(APP_BIN)
 
 loop-gates-strict: $(APP_BIN)
 	PROFILE=strict STRICT=1 RUN_SECONDS=$${RUN_SECONDS:-8} ./tools/run_loop_gates.sh
+
+test:
+	@$(MAKE) BUILD_TOOLCHAIN="$(TEST_TOOLCHAIN)" run-headless-smoke
+	@$(MAKE) BUILD_TOOLCHAIN="$(TEST_TOOLCHAIN)" test-stable
 
 test-stable:
 	@$(MAKE) $(STABLE_TEST_TARGETS)
@@ -686,59 +889,64 @@ test-session: $(TEST_BIN)
 	$(TEST_BIN)
 
 $(TEST_BIN): $(TEST_OBJS) \
-	$(BUILD_DIR)/src/session/session_document.o \
-	$(BUILD_DIR)/src/session/session_validation.o \
-	$(BUILD_DIR)/src/session/session_io_write.o \
-	$(BUILD_DIR)/src/session/session_io_read.o \
-	$(BUILD_DIR)/src/session/session_io_json.o \
-	$(BUILD_DIR)/src/session/session_io_read_parse.o \
-	$(BUILD_DIR)/src/session/session_io_read_parse_engine.o \
-	$(BUILD_DIR)/src/session/session_io_read_parse_effects_panel.o \
-	$(BUILD_DIR)/src/session/session_io_read_parse_master_fx.o \
-	$(BUILD_DIR)/src/session/session_io_read_parse_track_clips.o \
-	$(BUILD_DIR)/src/session/session_io_read_parse_track_fx.o \
-	$(BUILD_DIR)/src/session/session_apply.o \
-	$(BUILD_DIR)/src/config/config.o
+	$(APP_OBJ_DIR)/src/session/session_document.o \
+	$(APP_OBJ_DIR)/src/session/session_validation.o \
+	$(APP_OBJ_DIR)/src/session/session_io_write.o \
+	$(APP_OBJ_DIR)/src/session/session_io_read.o \
+	$(APP_OBJ_DIR)/src/session/session_io_json.o \
+	$(APP_OBJ_DIR)/src/session/session_io_read_parse.o \
+	$(APP_OBJ_DIR)/src/session/session_io_read_parse_engine.o \
+	$(APP_OBJ_DIR)/src/session/session_io_read_parse_effects_panel.o \
+	$(APP_OBJ_DIR)/src/session/session_io_read_parse_master_fx.o \
+	$(APP_OBJ_DIR)/src/session/session_io_read_parse_track_clips.o \
+	$(APP_OBJ_DIR)/src/session/session_io_read_parse_track_fx.o \
+	$(APP_OBJ_DIR)/src/session/session_apply.o \
+	$(APP_OBJ_DIR)/src/config/config.o \
+	$(CORE_PACK_LIB) \
+	$(CORE_IO_LIB) \
+	$(CORE_BASE_LIB)
 	@mkdir -p "$(dir $@)"
-	$(CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
+	$(HOST_CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
 
 test-cache: $(CACHE_TEST_BIN)
 	$(CACHE_TEST_BIN)
 
-$(CACHE_TEST_BIN): $(CACHE_TEST_OBJS) $(BUILD_DIR)/src/audio/media_cache.o $(BUILD_DIR)/src/audio/media_clip.o
+$(CACHE_TEST_BIN): $(CACHE_TEST_OBJS) $(APP_OBJ_DIR)/src/audio/media_cache.o $(APP_OBJ_DIR)/src/audio/media_clip.o
 	@mkdir -p "$(dir $@)"
-	$(CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
+	$(HOST_CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
 
 test-overlap: $(OVERLAP_TEST_BIN)
 	$(OVERLAP_TEST_BIN)
 
 $(OVERLAP_TEST_BIN): $(OVERLAP_TEST_OBJS) $(ENGINE_TEST_SUPPORT_OBJS)
 	@mkdir -p "$(dir $@)"
-	$(CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
+	$(HOST_CC) $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(OVERLAP_TEST_OBJS) $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
 
 test-smoke: $(SMOKE_TEST_BIN)
 	$(SMOKE_TEST_BIN)
 
 $(SMOKE_TEST_BIN): $(SMOKE_TEST_OBJS) $(ENGINE_TEST_SUPPORT_OBJS)
 	@mkdir -p "$(dir $@)"
-	$(CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
+	$(HOST_CC) $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(SMOKE_TEST_OBJS) $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
 
 test-kitviz-adapter: $(KITVIZ_ADAPTER_TEST_BIN)
 	$(KITVIZ_ADAPTER_TEST_BIN)
 
-$(KITVIZ_ADAPTER_TEST_BIN): $(KITVIZ_ADAPTER_TEST_SRCS) src/ui/kit_viz_waveform_adapter.c src/ui/timeline_waveform.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c
+$(KITVIZ_ADAPTER_TEST_BIN): $(KITVIZ_ADAPTER_TEST_SRCS) src/ui/kit_viz_waveform_adapter.c src/ui/timeline_waveform.c $(KIT_VIZ_LIB) $(CORE_PACK_LIB) $(CORE_IO_LIB) $(CORE_DATA_LIB) $(CORE_BASE_LIB)
 	@mkdir -p "$(dir $@)"
-	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/kit/kit_viz/include -I$(SHARED_ROOT)/core/core_pack/include -I$(SHARED_ROOT)/core/core_io/include -I$(SHARED_ROOT)/core/core_base/include \
-		tests/kit_viz_waveform_adapter_test.c src/ui/kit_viz_waveform_adapter.c src/ui/timeline_waveform.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c $(SHARED_ROOT)/core/core_pack/src/core_pack.c $(SHARED_ROOT)/core/core_io/src/core_io.c $(SHARED_ROOT)/core/core_base/src/core_base.c \
+	$(HOST_CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/kit/kit_viz/include -I$(SHARED_ROOT)/core/core_pack/include -I$(SHARED_ROOT)/core/core_io/include -I$(SHARED_ROOT)/core/core_data/include -I$(SHARED_ROOT)/core/core_base/include \
+		tests/kit_viz_waveform_adapter_test.c src/ui/kit_viz_waveform_adapter.c src/ui/timeline_waveform.c \
+		$(KIT_VIZ_LIB) $(CORE_PACK_LIB) $(CORE_IO_LIB) $(CORE_DATA_LIB) $(CORE_BASE_LIB) \
 		$(SDL2_LDFLAGS) -lSDL2 -lm -o "$@"
 
 test-waveform-pack-warmstart: $(WAVEFORM_PACK_WARMSTART_TEST_BIN)
 	$(WAVEFORM_PACK_WARMSTART_TEST_BIN)
 
-$(WAVEFORM_PACK_WARMSTART_TEST_BIN): $(WAVEFORM_PACK_WARMSTART_TEST_SRCS) src/ui/timeline_waveform.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c $(SHARED_ROOT)/core/core_pack/src/core_pack.c $(SHARED_ROOT)/core/core_io/src/core_io.c $(SHARED_ROOT)/core/core_base/src/core_base.c
+$(WAVEFORM_PACK_WARMSTART_TEST_BIN): $(WAVEFORM_PACK_WARMSTART_TEST_SRCS) src/ui/timeline_waveform.c $(KIT_VIZ_LIB) $(CORE_PACK_LIB) $(CORE_IO_LIB) $(CORE_DATA_LIB) $(CORE_BASE_LIB)
 	@mkdir -p "$(dir $@)"
-	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/kit/kit_viz/include -I$(SHARED_ROOT)/core/core_pack/include -I$(SHARED_ROOT)/core/core_io/include -I$(SHARED_ROOT)/core/core_base/include \
-		tests/waveform_cache_pack_warmstart_test.c src/ui/timeline_waveform.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c $(SHARED_ROOT)/core/core_pack/src/core_pack.c $(SHARED_ROOT)/core/core_io/src/core_io.c $(SHARED_ROOT)/core/core_base/src/core_base.c \
+	$(HOST_CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/kit/kit_viz/include -I$(SHARED_ROOT)/core/core_pack/include -I$(SHARED_ROOT)/core/core_io/include -I$(SHARED_ROOT)/core/core_data/include -I$(SHARED_ROOT)/core/core_base/include \
+		tests/waveform_cache_pack_warmstart_test.c src/ui/timeline_waveform.c \
+		$(KIT_VIZ_LIB) $(CORE_PACK_LIB) $(CORE_IO_LIB) $(CORE_DATA_LIB) $(CORE_BASE_LIB) \
 		$(SDL2_LDFLAGS) -lSDL2 -lm -o "$@"
 
 test-layout-sweep: $(LAYOUT_SWEEP_TEST_BIN)
@@ -746,7 +954,7 @@ test-layout-sweep: $(LAYOUT_SWEEP_TEST_BIN)
 
 $(LAYOUT_SWEEP_TEST_BIN): $(LAYOUT_SWEEP_TEST_OBJS) $(APP_OBJS_NO_MAIN)
 	@mkdir -p "$(dir $@)"
-	$(CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
+	$(HOST_CC) $(foreach obj,$(APP_OBJS_NO_MAIN),"$(obj)") $(TIMER_HUD_OBJS_QUOTED) $(LAYOUT_SWEEP_TEST_OBJS) $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
 
 test-data-path-contract: $(DATA_PATH_CONTRACT_TEST_BIN)
 	$(DATA_PATH_CONTRACT_TEST_BIN)
@@ -756,62 +964,62 @@ test-library-copy-vs-reference-contract: test-data-path-contract
 
 $(DATA_PATH_CONTRACT_TEST_BIN): $(DATA_PATH_CONTRACT_TEST_OBJS) $(APP_OBJS_NO_MAIN)
 	@mkdir -p "$(dir $@)"
-	$(CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
+	$(HOST_CC) $(foreach obj,$(APP_OBJS_NO_MAIN),"$(obj)") $(TIMER_HUD_OBJS_QUOTED) $(DATA_PATH_CONTRACT_TEST_OBJS) $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
 
 test-pack-contract: $(PACK_CONTRACT_TEST_BIN)
 	$(PACK_CONTRACT_TEST_BIN)
 
 $(PACK_CONTRACT_TEST_BIN): $(PACK_CONTRACT_TEST_OBJS) $(APP_OBJS_NO_MAIN)
 	@mkdir -p "$(dir $@)"
-	$(CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
+	$(HOST_CC) $(foreach obj,$(APP_OBJS_NO_MAIN),"$(obj)") $(TIMER_HUD_OBJS_QUOTED) $(PACK_CONTRACT_TEST_OBJS) $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
 
 test-trace-contract: $(TRACE_CONTRACT_TEST_BIN)
 	$(TRACE_CONTRACT_TEST_BIN)
 
-$(TRACE_CONTRACT_TEST_BIN): $(TRACE_CONTRACT_TEST_SRCS) src/export/daw_trace_export.c $(SHARED_ROOT)/core/core_trace/src/core_trace.c $(SHARED_ROOT)/core/core_pack/src/core_pack.c $(SHARED_ROOT)/core/core_io/src/core_io.c $(SHARED_ROOT)/core/core_base/src/core_base.c
+$(TRACE_CONTRACT_TEST_BIN): $(TRACE_CONTRACT_TEST_SRCS) src/export/daw_trace_export.c $(CORE_TRACE_LIB) $(CORE_PACK_LIB) $(CORE_IO_LIB) $(CORE_BASE_LIB)
 	@mkdir -p "$(dir $@)"
-	$(CC) -std=c11 -Wall -Wextra -Wpedantic -Iinclude -I$(SHARED_ROOT)/core/core_trace/include -I$(SHARED_ROOT)/core/core_pack/include -I$(SHARED_ROOT)/core/core_io/include -I$(SHARED_ROOT)/core/core_base/include \
-		tests/daw_trace_export_contract_test.c src/export/daw_trace_export.c $(SHARED_ROOT)/core/core_trace/src/core_trace.c $(SHARED_ROOT)/core/core_pack/src/core_pack.c $(SHARED_ROOT)/core/core_io/src/core_io.c $(SHARED_ROOT)/core/core_base/src/core_base.c \
+	$(HOST_CC) -std=c11 -Wall -Wextra -Wpedantic -Iinclude -I$(SHARED_ROOT)/core/core_trace/include -I$(SHARED_ROOT)/core/core_pack/include -I$(SHARED_ROOT)/core/core_io/include -I$(SHARED_ROOT)/core/core_base/include \
+		tests/daw_trace_export_contract_test.c src/export/daw_trace_export.c $(CORE_TRACE_LIB) $(CORE_PACK_LIB) $(CORE_IO_LIB) $(CORE_BASE_LIB) \
 		-lm -o "$@"
 
 test-trace-async-contract: $(TRACE_ASYNC_CONTRACT_TEST_BIN)
 	$(TRACE_ASYNC_CONTRACT_TEST_BIN)
 
-$(TRACE_ASYNC_CONTRACT_TEST_BIN): $(TRACE_ASYNC_CONTRACT_TEST_SRCS) src/export/daw_trace_export.c src/export/daw_trace_export_async.c $(SHARED_ROOT)/core/core_workers/src/core_workers.c $(SHARED_ROOT)/core/core_trace/src/core_trace.c $(SHARED_ROOT)/core/core_queue/src/core_queue.c $(SHARED_ROOT)/core/core_pack/src/core_pack.c $(SHARED_ROOT)/core/core_io/src/core_io.c $(SHARED_ROOT)/core/core_base/src/core_base.c
+$(TRACE_ASYNC_CONTRACT_TEST_BIN): $(TRACE_ASYNC_CONTRACT_TEST_SRCS) src/export/daw_trace_export.c src/export/daw_trace_export_async.c $(CORE_WORKERS_LIB) $(CORE_TRACE_LIB) $(CORE_QUEUE_LIB) $(CORE_PACK_LIB) $(CORE_IO_LIB) $(CORE_BASE_LIB)
 	@mkdir -p "$(dir $@)"
-	$(CC) -std=c11 -Wall -Wextra -Wpedantic -Iinclude -I$(SHARED_ROOT)/core/core_workers/include -I$(SHARED_ROOT)/core/core_trace/include -I$(SHARED_ROOT)/core/core_queue/include -I$(SHARED_ROOT)/core/core_pack/include -I$(SHARED_ROOT)/core/core_io/include -I$(SHARED_ROOT)/core/core_base/include \
-		tests/daw_trace_export_async_contract_test.c src/export/daw_trace_export.c src/export/daw_trace_export_async.c $(SHARED_ROOT)/core/core_workers/src/core_workers.c $(SHARED_ROOT)/core/core_trace/src/core_trace.c $(SHARED_ROOT)/core/core_queue/src/core_queue.c $(SHARED_ROOT)/core/core_pack/src/core_pack.c $(SHARED_ROOT)/core/core_io/src/core_io.c $(SHARED_ROOT)/core/core_base/src/core_base.c \
+	$(HOST_CC) -std=c11 -Wall -Wextra -Wpedantic -Iinclude -I$(SHARED_ROOT)/core/core_workers/include -I$(SHARED_ROOT)/core/core_trace/include -I$(SHARED_ROOT)/core/core_queue/include -I$(SHARED_ROOT)/core/core_pack/include -I$(SHARED_ROOT)/core/core_io/include -I$(SHARED_ROOT)/core/core_base/include \
+		tests/daw_trace_export_async_contract_test.c src/export/daw_trace_export.c src/export/daw_trace_export_async.c $(CORE_WORKERS_LIB) $(CORE_TRACE_LIB) $(CORE_QUEUE_LIB) $(CORE_PACK_LIB) $(CORE_IO_LIB) $(CORE_BASE_LIB) \
 		-lm -lpthread -o "$@"
 
 test-kitviz-fx-preview-adapter: $(KITVIZ_FX_PREVIEW_ADAPTER_TEST_BIN)
 	$(KITVIZ_FX_PREVIEW_ADAPTER_TEST_BIN)
 
-$(KITVIZ_FX_PREVIEW_ADAPTER_TEST_BIN): $(KITVIZ_FX_PREVIEW_ADAPTER_TEST_SRCS) src/ui/kit_viz_fx_preview_adapter.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c
+$(KITVIZ_FX_PREVIEW_ADAPTER_TEST_BIN): $(KITVIZ_FX_PREVIEW_ADAPTER_TEST_SRCS) src/ui/kit_viz_fx_preview_adapter.c $(KIT_VIZ_LIB) $(CORE_DATA_LIB) $(CORE_BASE_LIB)
 	@mkdir -p "$(dir $@)"
-	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/kit/kit_viz/include -I$(SHARED_ROOT)/core/core_base/include \
-		tests/kit_viz_fx_preview_adapter_test.c src/ui/kit_viz_fx_preview_adapter.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c \
+	$(HOST_CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/kit/kit_viz/include -I$(SHARED_ROOT)/core/core_data/include -I$(SHARED_ROOT)/core/core_base/include \
+		tests/kit_viz_fx_preview_adapter_test.c src/ui/kit_viz_fx_preview_adapter.c $(KIT_VIZ_LIB) $(CORE_DATA_LIB) $(CORE_BASE_LIB) \
 		$(SDL2_LDFLAGS) -lSDL2 -lm -o "$@"
 
 test-kitviz-meter-adapter: $(KITVIZ_METER_ADAPTER_TEST_BIN)
 	$(KITVIZ_METER_ADAPTER_TEST_BIN)
 
-$(KITVIZ_METER_ADAPTER_TEST_BIN): $(KITVIZ_METER_ADAPTER_TEST_SRCS) src/ui/kit_viz_meter_adapter.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c
+$(KITVIZ_METER_ADAPTER_TEST_BIN): $(KITVIZ_METER_ADAPTER_TEST_SRCS) src/ui/kit_viz_meter_adapter.c $(KIT_VIZ_LIB) $(CORE_DATA_LIB) $(CORE_BASE_LIB)
 	@mkdir -p "$(dir $@)"
-	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/kit/kit_viz/include -I$(SHARED_ROOT)/core/core_base/include \
-		tests/kit_viz_meter_adapter_test.c src/ui/kit_viz_meter_adapter.c $(SHARED_ROOT)/kit/kit_viz/src/kit_viz.c \
+	$(HOST_CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/kit/kit_viz/include -I$(SHARED_ROOT)/core/core_data/include -I$(SHARED_ROOT)/core/core_base/include \
+		tests/kit_viz_meter_adapter_test.c src/ui/kit_viz_meter_adapter.c $(KIT_VIZ_LIB) $(CORE_DATA_LIB) $(CORE_BASE_LIB) \
 		$(SDL2_LDFLAGS) -lSDL2 -lm -o "$@"
 
 test-shared-theme-font-adapter: $(SHARED_THEME_FONT_ADAPTER_TEST_BIN)
 	$(SHARED_THEME_FONT_ADAPTER_TEST_BIN)
 
-$(SHARED_THEME_FONT_ADAPTER_TEST_BIN): $(SHARED_THEME_FONT_ADAPTER_TEST_SRCS) src/ui/shared_theme_font_adapter.c $(SHARED_ROOT)/core/core_theme/src/core_theme.c $(SHARED_ROOT)/core/core_font/src/core_font.c $(SHARED_ROOT)/core/core_base/src/core_base.c
+$(SHARED_THEME_FONT_ADAPTER_TEST_BIN): $(SHARED_THEME_FONT_ADAPTER_TEST_SRCS) src/ui/shared_theme_font_adapter.c $(CORE_THEME_LIB) $(CORE_FONT_LIB) $(CORE_BASE_LIB)
 	@mkdir -p "$(dir $@)"
-	$(CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/core/core_theme/include -I$(SHARED_ROOT)/core/core_font/include -I$(SHARED_ROOT)/core/core_base/include \
-		tests/shared_theme_font_adapter_test.c src/ui/shared_theme_font_adapter.c $(SHARED_ROOT)/core/core_theme/src/core_theme.c $(SHARED_ROOT)/core/core_font/src/core_font.c $(SHARED_ROOT)/core/core_base/src/core_base.c \
+	$(HOST_CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/core/core_theme/include -I$(SHARED_ROOT)/core/core_font/include -I$(SHARED_ROOT)/core/core_base/include \
+		tests/shared_theme_font_adapter_test.c src/ui/shared_theme_font_adapter.c $(CORE_THEME_LIB) $(CORE_FONT_LIB) $(CORE_BASE_LIB) \
 		$(SDL2_LDFLAGS) -lSDL2 -o "$@"
 
-$(BUILD_DIR)/tests/%.o: tests/%.c
+$(TEST_BUILD_ROOT)/%.o: tests/%.c
 	@mkdir -p "$(dir $@)"
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c "$<" -o "$@"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) -c "$<" -o "$@"
 
 -include $(ALL_DEPS)

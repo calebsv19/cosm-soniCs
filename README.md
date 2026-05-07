@@ -8,6 +8,7 @@ This repository is an early public baseline intended for real-world testing and 
 - Stage: alpha, actively developed.
 - Build output: `build/daw_app`.
 - Platform focus: macOS-first local desktop workflows.
+- Public version: `0.2.0`.
 - License: Apache-2.0.
 
 ## Implemented Today
@@ -23,6 +24,7 @@ This repository is an early public baseline intended for real-world testing and 
   3. `config/templates/public_default_project.json`
   4. fresh in-memory bootstrap
 - Runtime diagnostics toggles for engine/cache/timing logging.
+- Target-aware desktop packaging and Intel `x86_64` release artifact flow for `soniCs`.
 
 ## Current Gaps
 

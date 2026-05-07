@@ -2,7 +2,7 @@
 
 DAW (`soniCs`) supports standardized macOS app-bundle packaging and release notarization via Makefile targets.
 
-Last updated: 2026-04-25
+Last updated: 2026-05-04
 
 ## Local Desktop Package
 
@@ -12,6 +12,7 @@ make -C daw package-desktop
 
 Output:
 - `dist/soniCs.app`
+- target-scoped package outputs also stage under `build/targets/<target-triple>/...`
 
 ## Local Validation Gates
 
@@ -71,25 +72,32 @@ This runs:
 - `release-artifact`
 
 Release outputs:
-- `build/release/soniCs-<version>-macOS-stable.zip`
-- `build/release/soniCs-<version>-macOS-stable.zip.sha256`
-- `build/release/soniCs-<version>-macOS-stable.manifest.txt`
+- `build/release/soniCs-<version>-<platform>-<arch>-stable.zip`
+- `build/release/soniCs-<version>-<platform>-<arch>-stable.zip.sha256`
+- `build/release/soniCs-<version>-<platform>-<arch>-stable.manifest.txt`
 
 ## Launcher Runtime Model
 
 `tools/packaging/macos/daw-launcher`:
 - resolves writable runtime root under `~/Library/Application Support/DAW/runtime` (tmp fallback)
 - generates runtime Vulkan ICD config for MoltenVK
+- seeds runtime `shaders/` and `vk_renderer/` lanes from bundled resources when required
 - exports runtime Vulkan env:
   - `VK_ICD_FILENAMES`
   - `VK_DRIVER_FILES`
   - `MOLTENVK_DYLIB`
+- points `VK_RENDERER_SHADER_ROOT` at the writable runtime root that contains the copied shader lanes
 - launches `daw-bin` from runtime cwd
 - logs startup to `~/Library/Logs/DAW/launcher.log` (tmp fallback)
 
 Launcher diagnostics:
 - `--self-test`
 - `--print-config`
+
+Intel target note:
+
+- `TARGET_ARCH=x86_64` emits Intel artifact names in the form `soniCs-<version>-macOS-x86_64-stable.*`
+- bundle closure now respects target dependency search roots instead of assuming one Homebrew lane
 
 ## Manual Validation
 

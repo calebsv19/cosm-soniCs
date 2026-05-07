@@ -29,7 +29,6 @@
 #include "core/loop/daw_mainthread_kernel.h"
 #include "core/loop/daw_render_invalidation.h"
 #include "render/timer_hud_adapter.h"
-#include "timer_hud/time_scope.h"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
@@ -605,7 +604,7 @@ static void handle_render(AppContext* ctx) {
     ui_render_panes(renderer, state);
     ui_render_controls(renderer, state);
     ui_render_overlays(renderer, state);
-    ts_render();
+    ts_session_render(timer_hud_session());
 
     uint64_t rendered_frame_id = 0;
     if (daw_consume_frame_invalidation(NULL, NULL, &rendered_frame_id)) {
@@ -794,7 +793,8 @@ int daw_app_main_legacy(void) {
     }
     timer_hud_register_backend();
     timer_hud_bind_context(&ctx);
-    ts_init();
+    ts_session_init(timer_hud_session());
+    timer_hud_apply_startup_env_overrides();
 
     ui_layout_panes(&state, window_width, window_height);
     pane_manager_init(&state.pane_manager, state.panes, state.pane_count);
@@ -875,7 +875,7 @@ int daw_app_main_legacy(void) {
 
     effects_meter_history_cache_shutdown(ctx.renderer);
     ui_font_shutdown();
-    ts_shutdown();
+    timer_hud_shutdown_session();
     waveform_cache_shutdown(&state.waveform_cache);
     undo_manager_free(&state.undo);
     tempo_map_free(&state.tempo_map);
