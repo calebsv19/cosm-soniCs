@@ -1,6 +1,12 @@
 #include "core_sim.h"
 
 enum {
+    CORE_SIM_FNV1A_64_PRIME = 1099511628211ull,
+    CORE_SIM_FNV1A_64_OFFSET_HIGH = 0xcbf29ce4u,
+    CORE_SIM_FNV1A_64_OFFSET_LOW = 0x84222325u
+};
+
+enum {
     CORE_SIM_DEFAULT_MAX_TICKS_PER_FRAME = 8
 };
 
@@ -23,6 +29,10 @@ static CoreSimFrameOutcome core_sim_frame_outcome_init(const CoreSimLoopState *s
     return outcome;
 }
 
+const char *core_sim_version(void) {
+    return CORE_SIM_VERSION_STRING;
+}
+
 const char *core_sim_status_name(CoreSimStatus status) {
     switch (status) {
         case CORE_SIM_STATUS_OK:
@@ -36,6 +46,90 @@ const char *core_sim_status_name(CoreSimStatus status) {
         default:
             return "unknown";
     }
+}
+
+const char *core_sim_frame_reason_name(CoreSimFrameReason reason) {
+    switch (reason) {
+        case CORE_SIM_FRAME_REASON_NONE:
+            return "none";
+        case CORE_SIM_FRAME_REASON_TICK_EXECUTED:
+            return "tick_executed";
+        case CORE_SIM_FRAME_REASON_RENDER_REQUESTED:
+            return "render_requested";
+        case CORE_SIM_FRAME_REASON_MAX_TICK_CLAMP_HIT:
+            return "max_tick_clamp_hit";
+        case CORE_SIM_FRAME_REASON_SINGLE_STEP_CONSUMED:
+            return "single_step_consumed";
+        case CORE_SIM_FRAME_REASON_PASS_FAILED:
+            return "pass_failed";
+        default:
+            return "unknown";
+    }
+}
+
+static size_t core_sim_reason_names_add(const char *name,
+                                        const char **out_names,
+                                        size_t out_name_capacity,
+                                        size_t count) {
+    if (out_names && count < out_name_capacity) {
+        out_names[count] = name;
+    }
+    return count + 1u;
+}
+
+size_t core_sim_frame_reason_names(uint32_t reason_bits,
+                                   const char **out_names,
+                                   size_t out_name_capacity) {
+    uint32_t known_bits = CORE_SIM_FRAME_REASON_TICK_EXECUTED |
+                          CORE_SIM_FRAME_REASON_RENDER_REQUESTED |
+                          CORE_SIM_FRAME_REASON_MAX_TICK_CLAMP_HIT |
+                          CORE_SIM_FRAME_REASON_SINGLE_STEP_CONSUMED |
+                          CORE_SIM_FRAME_REASON_PASS_FAILED;
+    size_t count = 0u;
+
+    if (reason_bits == CORE_SIM_FRAME_REASON_NONE) {
+        return core_sim_reason_names_add(core_sim_frame_reason_name(CORE_SIM_FRAME_REASON_NONE),
+                                         out_names,
+                                         out_name_capacity,
+                                         count);
+    }
+    if ((reason_bits & CORE_SIM_FRAME_REASON_TICK_EXECUTED) != 0u) {
+        count = core_sim_reason_names_add(core_sim_frame_reason_name(CORE_SIM_FRAME_REASON_TICK_EXECUTED),
+                                          out_names,
+                                          out_name_capacity,
+                                          count);
+    }
+    if ((reason_bits & CORE_SIM_FRAME_REASON_RENDER_REQUESTED) != 0u) {
+        count = core_sim_reason_names_add(core_sim_frame_reason_name(CORE_SIM_FRAME_REASON_RENDER_REQUESTED),
+                                          out_names,
+                                          out_name_capacity,
+                                          count);
+    }
+    if ((reason_bits & CORE_SIM_FRAME_REASON_MAX_TICK_CLAMP_HIT) != 0u) {
+        count = core_sim_reason_names_add(core_sim_frame_reason_name(CORE_SIM_FRAME_REASON_MAX_TICK_CLAMP_HIT),
+                                          out_names,
+                                          out_name_capacity,
+                                          count);
+    }
+    if ((reason_bits & CORE_SIM_FRAME_REASON_SINGLE_STEP_CONSUMED) != 0u) {
+        count = core_sim_reason_names_add(core_sim_frame_reason_name(CORE_SIM_FRAME_REASON_SINGLE_STEP_CONSUMED),
+                                          out_names,
+                                          out_name_capacity,
+                                          count);
+    }
+    if ((reason_bits & CORE_SIM_FRAME_REASON_PASS_FAILED) != 0u) {
+        count = core_sim_reason_names_add(core_sim_frame_reason_name(CORE_SIM_FRAME_REASON_PASS_FAILED),
+                                          out_names,
+                                          out_name_capacity,
+                                          count);
+    }
+    if ((reason_bits & ~known_bits) != 0u) {
+        count = core_sim_reason_names_add("unknown",
+                                          out_names,
+                                          out_name_capacity,
+                                          count);
+    }
+    return count;
 }
 
 void core_sim_step_policy_defaults(CoreSimStepPolicy *policy) {
@@ -145,6 +239,172 @@ void core_sim_pass_outcome_init(CoreSimPassOutcome *outcome, uint32_t pass_id) {
     outcome->status = CORE_SIM_STATUS_OK;
     outcome->pass_id = pass_id;
     outcome->message = 0;
+}
+
+static uint64_t core_sim_hash_u64(uint64_t hash, uint64_t value) {
+    int shift;
+
+    for (shift = 0; shift < 64; shift += 8) {
+        hash ^= (uint64_t)((value >> shift) & 0xffu);
+        hash *= CORE_SIM_FNV1A_64_PRIME;
+    }
+    return hash;
+}
+
+static uint64_t core_sim_hash_string(uint64_t hash, const char *value) {
+    const unsigned char *cursor = (const unsigned char *)(value ? value : "");
+
+    while (*cursor) {
+        hash ^= (uint64_t)(*cursor++);
+        hash *= CORE_SIM_FNV1A_64_PRIME;
+    }
+    hash ^= 0u;
+    hash *= CORE_SIM_FNV1A_64_PRIME;
+    return hash;
+}
+
+uint64_t core_sim_pass_order_hash(const CoreSimPassOrder *pass_order) {
+    uint64_t hash = (((uint64_t)CORE_SIM_FNV1A_64_OFFSET_HIGH) << 32) |
+                    (uint64_t)CORE_SIM_FNV1A_64_OFFSET_LOW;
+    size_t i;
+
+    if (!pass_order || !pass_order->passes || pass_order->pass_count == 0u) {
+        return core_sim_hash_u64(hash, 0u);
+    }
+
+    hash = core_sim_hash_u64(hash, (uint64_t)pass_order->pass_count);
+    for (i = 0u; i < pass_order->pass_count; ++i) {
+        hash = core_sim_hash_u64(hash, (uint64_t)pass_order->passes[i].pass_id);
+        hash = core_sim_hash_string(hash, pass_order->passes[i].name);
+    }
+    return hash;
+}
+
+bool core_sim_artifact_run_header_init(CoreSimArtifactRunHeader *header,
+                                       const char *program_key,
+                                       const char *host_adapter_id,
+                                       const CoreSimLoopState *state,
+                                       const CoreSimPassOrder *pass_order) {
+    if (!header || !state) {
+        return false;
+    }
+
+    header->schema_version = CORE_SIM_ARTIFACT_SCHEMA_VERSION;
+    header->program_key = program_key ? program_key : "";
+    header->host_adapter_id = host_adapter_id ? host_adapter_id : "";
+    header->core_sim_version = core_sim_version();
+    header->fixed_dt_seconds = state->policy.fixed_dt_seconds;
+    header->max_ticks_per_frame = state->policy.max_ticks_per_frame;
+    header->drop_excess_accumulator_on_clamp = state->policy.drop_excess_accumulator_on_clamp;
+    header->pass_order_hash = core_sim_pass_order_hash(pass_order);
+    header->pass_count = pass_order ? pass_order->pass_count : 0u;
+    return true;
+}
+
+bool core_sim_frame_summary_from_outcome(const CoreSimFrameOutcome *outcome,
+                                         CoreSimFrameSummary *summary) {
+    if (!outcome || !summary) {
+        return false;
+    }
+
+    summary->status_name = core_sim_status_name(outcome->status);
+    summary->frame_index = outcome->frame_index;
+    summary->ticks_executed = outcome->ticks_executed;
+    summary->passes_executed = outcome->passes_executed;
+    summary->reason_bits = outcome->reason_bits;
+    summary->reason_count = (uint32_t)core_sim_frame_reason_names(outcome->reason_bits,
+                                                                  0,
+                                                                  0u);
+    summary->render_requested = outcome->render_requested;
+    summary->max_tick_clamp_hit = outcome->max_tick_clamp_hit;
+    summary->single_step_consumed = outcome->single_step_consumed;
+    summary->failed = outcome->status != CORE_SIM_STATUS_OK;
+    summary->failed_pass_id = outcome->failed_pass_id;
+    summary->failed_pass_name = outcome->failed_pass_name;
+    summary->message = outcome->message;
+    summary->simulation_time_advanced_seconds = outcome->simulation_time_advanced_seconds;
+    summary->accumulator_remaining_seconds = outcome->accumulator_remaining_seconds;
+    return true;
+}
+
+bool core_sim_frame_record_from_outcome(CoreSimFrameRecord *record,
+                                        const CoreSimLoopState *state,
+                                        const CoreSimFrameRequest *request,
+                                        const CoreSimFrameOutcome *outcome) {
+    CoreSimFrameSummary summary;
+
+    if (!record || !state || !request || !outcome) {
+        return false;
+    }
+    if (!core_sim_frame_summary_from_outcome(outcome, &summary)) {
+        return false;
+    }
+
+    record->schema_version = CORE_SIM_ARTIFACT_SCHEMA_VERSION;
+    record->status_name = summary.status_name;
+    record->frame_index = summary.frame_index;
+    record->tick_index_after = state->tick_index;
+    record->input_dt_seconds = request->frame_dt_seconds;
+    record->fixed_dt_seconds = state->policy.fixed_dt_seconds;
+    record->simulation_time_after_seconds = state->simulation_time_seconds;
+    record->simulation_time_advanced_seconds = summary.simulation_time_advanced_seconds;
+    record->accumulator_remaining_seconds = summary.accumulator_remaining_seconds;
+    record->ticks_executed = summary.ticks_executed;
+    record->passes_executed = summary.passes_executed;
+    record->reason_bits = summary.reason_bits;
+    record->reason_count = summary.reason_count;
+    record->render_requested = summary.render_requested;
+    record->max_tick_clamp_hit = summary.max_tick_clamp_hit;
+    record->single_step_consumed = summary.single_step_consumed;
+    record->failed = summary.failed;
+    record->failed_pass_id = summary.failed_pass_id;
+    record->failed_pass_name = summary.failed_pass_name;
+    record->message = summary.message;
+    return true;
+}
+
+bool core_sim_stage_timings_compute(const CoreSimStageMark *marks,
+                                    size_t mark_count,
+                                    CoreSimStageTiming *out_timings,
+                                    size_t out_timing_capacity,
+                                    size_t *out_timing_count) {
+    size_t timing_count;
+    size_t i;
+
+    if (out_timing_count) {
+        *out_timing_count = 0u;
+    }
+    if (mark_count == 0u || mark_count == 1u) {
+        return true;
+    }
+    if (!marks) {
+        return false;
+    }
+
+    timing_count = mark_count - 1u;
+    if (out_timing_count) {
+        *out_timing_count = timing_count;
+    }
+    if (timing_count > out_timing_capacity) {
+        return false;
+    }
+    if (timing_count > 0u && !out_timings) {
+        return false;
+    }
+
+    for (i = 0u; i < timing_count; ++i) {
+        double start_seconds = marks[i].seconds;
+        double end_seconds = marks[i + 1u].seconds;
+        if (end_seconds < start_seconds) {
+            return false;
+        }
+
+        out_timings[i].name = marks[i + 1u].name ? marks[i + 1u].name : marks[i].name;
+        out_timings[i].start_seconds = start_seconds;
+        out_timings[i].end_seconds = end_seconds;
+        out_timings[i].duration_seconds = end_seconds - start_seconds;
+    }
+    return true;
 }
 
 bool core_sim_pass_order_valid(const CoreSimPassOrder *pass_order) {
