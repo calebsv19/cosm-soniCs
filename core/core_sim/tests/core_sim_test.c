@@ -180,18 +180,115 @@ static int test_pass_order_and_failure(void) {
 static int test_public_helpers(void) {
     CoreSimPassDescriptor invalid_pass = { 1u, "missing", 0 };
     CoreSimPassOrder invalid_order = { &invalid_pass, 1u };
+    CoreSimLoopState state;
+    CoreSimStepPolicy policy = test_policy();
     CoreSimPassOutcome outcome;
+    CoreSimFrameOutcome frame_outcome;
+    CoreSimFrameSummary summary;
+    CoreSimArtifactRunHeader run_header;
+    CoreSimFrameRecord frame_record;
+    const char *reason_names[4];
+    size_t reason_count;
+    CoreSimStageMark marks[] = {
+        { "frame_begin", 10.0 },
+        { "after_events", 10.125 },
+        { "after_update", 10.250 },
+        { "after_submit", 10.500 },
+    };
+    CoreSimStageTiming timings[3];
+    size_t timing_count = 0u;
+    uint64_t empty_hash = core_sim_pass_order_hash(0);
+    uint64_t invalid_hash = core_sim_pass_order_hash(&invalid_order);
 
+    if (!expect_true(core_sim_loop_init(&state, &policy), "helper state init")) return 0;
     core_sim_pass_outcome_init(&outcome, 42u);
-    return expect_true(strcmp(core_sim_status_name(CORE_SIM_STATUS_OK), "ok") == 0,
+    frame_outcome = core_sim_frame_outcome_make_invalid(CORE_SIM_STATUS_PASS_FAILED,
+                                                        "summary failure");
+    frame_outcome.frame_index = 7u;
+    frame_outcome.ticks_executed = 2u;
+    frame_outcome.passes_executed = 5u;
+    frame_outcome.reason_bits = CORE_SIM_FRAME_REASON_TICK_EXECUTED |
+                                CORE_SIM_FRAME_REASON_RENDER_REQUESTED |
+                                CORE_SIM_FRAME_REASON_PASS_FAILED;
+    frame_outcome.failed_pass_id = 99u;
+    frame_outcome.failed_pass_name = "failing_pass";
+    frame_outcome.simulation_time_advanced_seconds = 0.5;
+    frame_outcome.accumulator_remaining_seconds = 0.125;
+    state.tick_index = 4u;
+    state.simulation_time_seconds = 1.0;
+    reason_count = core_sim_frame_reason_names(frame_outcome.reason_bits,
+                                               reason_names,
+                                               sizeof(reason_names) / sizeof(reason_names[0]));
+    return expect_true(strcmp(core_sim_version(), CORE_SIM_VERSION_STRING) == 0,
+                       "version string") &&
+           expect_true(strcmp(core_sim_status_name(CORE_SIM_STATUS_OK), "ok") == 0,
                        "status name ok") &&
            expect_true(strcmp(core_sim_status_name(CORE_SIM_STATUS_PASS_FAILED), "pass_failed") == 0,
                        "status name pass failed") &&
+           expect_true(strcmp(core_sim_frame_reason_name(CORE_SIM_FRAME_REASON_TICK_EXECUTED),
+                              "tick_executed") == 0,
+                       "reason name tick") &&
+           expect_true(reason_count == 3u, "reason name count") &&
+           expect_true(strcmp(reason_names[0], "tick_executed") == 0,
+                       "reason name first") &&
+           expect_true(strcmp(reason_names[2], "pass_failed") == 0,
+                       "reason name third") &&
            expect_true(core_sim_pass_order_valid(0), "null order valid") &&
            expect_true(!core_sim_pass_order_valid(&invalid_order), "invalid order rejected") &&
+           expect_true(empty_hash != 0u, "empty hash nonzero") &&
+           expect_true(invalid_hash != empty_hash, "pass hash captures pass metadata") &&
+           expect_true(core_sim_artifact_run_header_init(&run_header,
+                                                         "test_program",
+                                                         "test_host",
+                                                         &state,
+                                                         &invalid_order),
+                       "artifact run header") &&
+           expect_true(strcmp(run_header.schema_version, CORE_SIM_ARTIFACT_SCHEMA_VERSION) == 0,
+                       "artifact schema version") &&
+           expect_true(strcmp(run_header.core_sim_version, CORE_SIM_VERSION_STRING) == 0,
+                       "artifact core sim version") &&
+           expect_true(run_header.pass_order_hash == invalid_hash,
+                       "artifact pass hash") &&
+           expect_true(run_header.pass_count == 1u,
+                       "artifact pass count") &&
            expect_true(outcome.status == CORE_SIM_STATUS_OK, "pass outcome status") &&
            expect_true(outcome.pass_id == 42u, "pass outcome id") &&
-           expect_true(outcome.message == 0, "pass outcome message");
+           expect_true(outcome.message == 0, "pass outcome message") &&
+           expect_true(core_sim_frame_summary_from_outcome(&frame_outcome, &summary),
+                       "summary computed") &&
+           expect_true(strcmp(summary.status_name, "pass_failed") == 0,
+                       "summary status") &&
+           expect_true(summary.failed && summary.failed_pass_id == 99u,
+                       "summary failure fields") &&
+           expect_true(summary.reason_count == 3u, "summary reason count") &&
+           expect_true(nearly_equal(summary.simulation_time_advanced_seconds, 0.5),
+                       "summary sim time") &&
+           expect_true(core_sim_frame_record_from_outcome(&frame_record,
+                                                          &state,
+                                                          &(CoreSimFrameRequest){ 0.75, 0, &invalid_order },
+                                                          &frame_outcome),
+                       "frame record") &&
+           expect_true(strcmp(frame_record.schema_version, CORE_SIM_ARTIFACT_SCHEMA_VERSION) == 0,
+                       "frame record schema version") &&
+           expect_true(frame_record.frame_index == 7u && frame_record.tick_index_after == 4u,
+                       "frame record indices") &&
+           expect_true(nearly_equal(frame_record.input_dt_seconds, 0.75),
+                       "frame record input dt") &&
+           expect_true(nearly_equal(frame_record.simulation_time_after_seconds, 1.0),
+                       "frame record sim time after") &&
+           expect_true(frame_record.failed && frame_record.failed_pass_id == 99u,
+                       "frame record failure fields") &&
+           expect_true(core_sim_stage_timings_compute(marks,
+                                                      sizeof(marks) / sizeof(marks[0]),
+                                                      timings,
+                                                      sizeof(timings) / sizeof(timings[0]),
+                                                      &timing_count),
+                       "stage timings computed") &&
+           expect_true(timing_count == 3u, "stage timing count") &&
+           expect_true(strcmp(timings[0].name, "after_events") == 0,
+                       "stage timing name") &&
+           expect_true(nearly_equal(timings[2].duration_seconds, 0.250),
+                       "stage timing duration");
 }
 
 int main(void) {
