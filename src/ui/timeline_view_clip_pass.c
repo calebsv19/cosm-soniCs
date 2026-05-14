@@ -2,9 +2,11 @@
 
 #include "audio/media_registry.h"
 #include "engine/engine.h"
+#include "input/timeline/timeline_clip_helpers.h"
 #include "ui/font.h"
 #include "ui/kit_viz_waveform_adapter.h"
 #include "ui/render_utils.h"
+#include "ui/timeline_midi_clip_preview.h"
 #include "ui/timeline_view.h"
 #include "ui/timeline_waveform.h"
 #include "ui/waveform_render.h"
@@ -63,6 +65,9 @@ static const char* timeline_clip_display_name(const AppState* state,
     }
     if (clip->name[0] != '\0') {
         return clip->name;
+    }
+    if (engine_clip_get_kind(clip) == ENGINE_CLIP_KIND_MIDI) {
+        return "MIDI Region";
     }
     const char* media_id = engine_clip_get_media_id(clip);
     if (state && media_id && media_id[0] != '\0') {
@@ -179,6 +184,237 @@ static void draw_toggle_button(SDL_Renderer* renderer,
     if (text_x < rect->x + 2) text_x = rect->x + 2;
     int text_y = rect->y + (rect->h - text_h) / 2;
     ui_draw_text(renderer, text_x, text_y, label, text, scale);
+}
+
+static SDL_Color timeline_midi_grid_color(SDL_Color a, SDL_Color b, int a_weight, int b_weight, Uint8 alpha) {
+    int total = a_weight + b_weight;
+    if (total <= 0) {
+        total = 1;
+    }
+    return (SDL_Color){
+        (Uint8)(((int)a.r * a_weight + (int)b.r * b_weight) / total),
+        (Uint8)(((int)a.g * a_weight + (int)b.g * b_weight) / total),
+        (Uint8)(((int)a.b * a_weight + (int)b.b * b_weight) / total),
+        alpha
+    };
+}
+
+static bool timeline_midi_grid_is_whole_multiple(double value, double interval) {
+    if (interval <= 0.0) {
+        return false;
+    }
+    double units = value / interval;
+    return fabs(units - round(units)) < 0.0001;
+}
+
+static void timeline_midi_draw_grid_line(SDL_Renderer* renderer,
+                                         const SDL_Rect* rect,
+                                         int x,
+                                         SDL_Color color) {
+    if (!renderer || !rect || rect->w <= 0 || rect->h <= 0 ||
+        x < rect->x || x > rect->x + rect->w) {
+        return;
+    }
+    int top = rect->y + 3;
+    int bottom = rect->y + rect->h - 4;
+    if (bottom < top) {
+        bottom = top;
+    }
+    SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+    SDL_RenderDrawLine(renderer, x, top, x, bottom);
+}
+
+static void timeline_midi_draw_grid_label(SDL_Renderer* renderer,
+                                          const SDL_Rect* rect,
+                                          int x,
+                                          const char* label,
+                                          SDL_Color color,
+                                          int* last_label_right) {
+    if (!renderer || !rect || !label || !last_label_right || rect->h < 40 || rect->w < 90) {
+        return;
+    }
+    float scale = 0.75f;
+    int label_x = x + 3;
+    int label_w = ui_measure_text_width(label, scale);
+    if (label_x < rect->x + 3 || label_x + label_w > rect->x + rect->w - 3 ||
+        label_x <= *last_label_right + 10) {
+        return;
+    }
+    int label_y = rect->y + rect->h - ui_font_line_height(scale) - 4;
+    ui_draw_text(renderer, label_x, label_y, label, color, scale);
+    *last_label_right = label_x + label_w;
+}
+
+static void timeline_draw_midi_time_grid(SDL_Renderer* renderer,
+                                         const SDL_Rect* rect,
+                                         double visible_start_sec,
+                                         double visible_end_sec,
+                                         float pixels_per_second,
+                                         SDL_Color sub_line,
+                                         SDL_Color major_line,
+                                         SDL_Color label_color) {
+    double visible_seconds = visible_end_sec - visible_start_sec;
+    if (!renderer || !rect || visible_seconds <= 0.0 || pixels_per_second <= 0.0f) {
+        return;
+    }
+    double sub_interval = 1.0;
+    double major_interval = 1.0;
+    if (visible_seconds <= 4.0) {
+        sub_interval = 0.1;
+        major_interval = 0.5;
+    } else if (visible_seconds <= 10.0) {
+        sub_interval = 0.25;
+        major_interval = 1.0;
+    } else if (visible_seconds <= 30.0) {
+        sub_interval = 0.5;
+        major_interval = 2.0;
+    } else if (visible_seconds <= 60.0) {
+        sub_interval = 1.0;
+        major_interval = 5.0;
+    } else {
+        sub_interval = 2.0;
+        major_interval = 10.0;
+    }
+
+    int last_label_right = rect->x - 4096;
+    double first = floor(visible_start_sec / sub_interval) * sub_interval;
+    for (double sec = first; sec <= visible_end_sec + sub_interval * 0.5; sec += sub_interval) {
+        if (sec < visible_start_sec - 0.0001) {
+            continue;
+        }
+        int x = rect->x + (int)round((sec - visible_start_sec) * (double)pixels_per_second);
+        bool major = timeline_midi_grid_is_whole_multiple(sec, major_interval);
+        timeline_midi_draw_grid_line(renderer, rect, x, major ? major_line : sub_line);
+        if (major) {
+            char label[24];
+            if (major_interval < 1.0) {
+                snprintf(label, sizeof(label), "%.1fs", sec);
+            } else {
+                snprintf(label, sizeof(label), "%.0fs", sec);
+            }
+            timeline_midi_draw_grid_label(renderer, rect, x, label, label_color, &last_label_right);
+        }
+    }
+}
+
+static void timeline_draw_midi_beat_grid(SDL_Renderer* renderer,
+                                         const SDL_Rect* rect,
+                                         const AppState* state,
+                                         double visible_start_sec,
+                                         double visible_end_sec,
+                                         float pixels_per_second,
+                                         SDL_Color sub_line,
+                                         SDL_Color beat_line,
+                                         SDL_Color downbeat_line,
+                                         SDL_Color label_color) {
+    if (!renderer || !rect || !state || pixels_per_second <= 0.0f ||
+        state->tempo_map.event_count <= 0 || state->tempo_map.sample_rate <= 0.0) {
+        return;
+    }
+    double start_beats = tempo_map_seconds_to_beats(&state->tempo_map, visible_start_sec);
+    double end_beats = tempo_map_seconds_to_beats(&state->tempo_map, visible_end_sec);
+    double visible_beats = end_beats - start_beats;
+    if (visible_beats <= 0.0) {
+        return;
+    }
+    const TimeSignatureEvent* sig = time_signature_map_event_at_beat(&state->time_signature_map, start_beats);
+    double beat_unit = time_signature_beat_unit(sig);
+    if (beat_unit <= 0.0) {
+        beat_unit = 1.0;
+    }
+    double sub_interval = beat_unit;
+    if (visible_beats <= 8.0) {
+        sub_interval = beat_unit * 0.25;
+    } else if (visible_beats <= 32.0) {
+        sub_interval = beat_unit * 0.5;
+    }
+    if (sub_interval <= 0.0) {
+        sub_interval = beat_unit;
+    }
+
+    int last_label_right = rect->x - 4096;
+    double first = floor(start_beats / sub_interval) * sub_interval;
+    for (double beat = first; beat <= end_beats + sub_interval * 0.5; beat += sub_interval) {
+        if (beat < start_beats - 0.0001) {
+            continue;
+        }
+        double sec = tempo_map_beats_to_seconds(&state->tempo_map, beat);
+        int x = rect->x + (int)round((sec - visible_start_sec) * (double)pixels_per_second);
+        bool whole_beat = timeline_midi_grid_is_whole_multiple(beat, beat_unit);
+        bool downbeat = false;
+        int bar = 1;
+        int beat_idx = 1;
+        if (whole_beat) {
+            double sub = 0.0;
+            time_signature_map_beat_to_bar_beat(&state->time_signature_map,
+                                                beat,
+                                                &bar,
+                                                &beat_idx,
+                                                &sub,
+                                                NULL,
+                                                NULL);
+            downbeat = beat_idx == 1;
+        }
+        timeline_midi_draw_grid_line(renderer,
+                                     rect,
+                                     x,
+                                     whole_beat ? (downbeat ? downbeat_line : beat_line) : sub_line);
+        if (whole_beat && downbeat) {
+            char label[24];
+            snprintf(label, sizeof(label), "%d", bar);
+            timeline_midi_draw_grid_label(renderer, rect, x, label, label_color, &last_label_right);
+        }
+    }
+}
+
+static void timeline_draw_midi_clip_grid(SDL_Renderer* renderer,
+                                         const SDL_Rect* rect,
+                                         const AppState* state,
+                                         const TimelineTheme* theme,
+                                         double visible_start_sec,
+                                         double visible_end_sec,
+                                         float pixels_per_second) {
+    if (!renderer || !rect || !state || !theme || rect->w <= 0 || rect->h <= 0) {
+        return;
+    }
+    SDL_Color sub_line = timeline_midi_grid_color(theme->clip_fill, theme->text_muted, 3, 1, 48);
+    SDL_Color beat_line = timeline_midi_grid_color(theme->clip_fill, theme->text, 2, 1, 74);
+    SDL_Color downbeat_line = timeline_midi_grid_color(theme->toggle_active_auto, theme->text, 2, 1, 112);
+    SDL_Color label_color = timeline_midi_grid_color(theme->clip_fill, theme->text, 1, 2, 118);
+
+    ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
+    if (state->timeline_view_in_beats &&
+        state->tempo_map.event_count > 0 &&
+        state->tempo_map.sample_rate > 0.0) {
+        timeline_draw_midi_beat_grid(renderer,
+                                     rect,
+                                     state,
+                                     visible_start_sec,
+                                     visible_end_sec,
+                                     pixels_per_second,
+                                     sub_line,
+                                     beat_line,
+                                     downbeat_line,
+                                     label_color);
+    } else {
+        timeline_draw_midi_time_grid(renderer,
+                                     rect,
+                                     visible_start_sec,
+                                     visible_end_sec,
+                                     pixels_per_second,
+                                     sub_line,
+                                     beat_line,
+                                     label_color);
+    }
+
+    int rows = rect->h >= 48 ? 4 : 2;
+    SDL_Color row_line = timeline_midi_grid_color(theme->clip_fill, theme->text_muted, 4, 1, 34);
+    SDL_SetRenderDrawColor(renderer, row_line.r, row_line.g, row_line.b, row_line.a);
+    for (int i = 1; i < rows; ++i) {
+        int y = rect->y + (rect->h * i) / rows;
+        SDL_RenderDrawLine(renderer, rect->x + 2, y, rect->x + rect->w - 2, y);
+    }
+    ui_set_blend_mode(renderer, SDL_BLENDMODE_NONE);
 }
 
 void timeline_view_render_track_clip_pass(SDL_Renderer* renderer,
@@ -324,7 +560,7 @@ void timeline_view_render_track_clip_pass(SDL_Renderer* renderer,
             }
 
             const uint64_t start_frame = clip->timeline_start_frames;
-            uint64_t frame_count = clip->duration_frames;
+            uint64_t frame_count = timeline_clip_frame_count(clip);
             uint64_t media_frames = (clip->media && clip->media->frame_count > 0) ? clip->media->frame_count : 0;
             uint64_t clip_available = media_frames > clip->offset_frames ? media_frames - clip->offset_frames : 0;
             if (frame_count == 0 || (clip_available > 0 && frame_count > clip_available)) {
@@ -362,8 +598,41 @@ void timeline_view_render_track_clip_pass(SDL_Renderer* renderer,
                                                  &clip_rect);
 
             bool is_selected = timeline_clip_is_selected(state, t, i);
-            SDL_SetRenderDrawColor(renderer, theme->clip_fill.r, theme->clip_fill.g, theme->clip_fill.b, theme->clip_fill.a);
+            bool is_midi = engine_clip_get_kind(clip) == ENGINE_CLIP_KIND_MIDI;
+            SDL_Color clip_fill = theme->clip_fill;
+            if (is_midi) {
+                clip_fill.r = (Uint8)lroundf((float)theme->clip_fill.r * 0.76f + (float)theme->toggle_active_auto.r * 0.24f);
+                clip_fill.g = (Uint8)lroundf((float)theme->clip_fill.g * 0.76f + (float)theme->toggle_active_auto.g * 0.24f);
+                clip_fill.b = (Uint8)lroundf((float)theme->clip_fill.b * 0.76f + (float)theme->toggle_active_auto.b * 0.24f);
+            }
+            SDL_SetRenderDrawColor(renderer, clip_fill.r, clip_fill.g, clip_fill.b, clip_fill.a);
             SDL_RenderFillRect(renderer, &clip_rect);
+
+            if (is_midi) {
+                timeline_draw_midi_clip_grid(renderer,
+                                             &clip_rect,
+                                             state,
+                                             theme,
+                                             visible_start_sec,
+                                             visible_end_sec,
+                                             pixels_per_second);
+
+                double midi_visible_offset_sec = visible_start_sec - start_sec;
+                if (midi_visible_offset_sec < 0.0) {
+                    midi_visible_offset_sec = 0.0;
+                }
+                uint64_t midi_visible_start = (uint64_t)llround(midi_visible_offset_sec * (double)sample_rate);
+                uint64_t midi_visible_frames = (uint64_t)llround((visible_end_sec - visible_start_sec) * (double)sample_rate);
+                if (midi_visible_frames == 0) {
+                    midi_visible_frames = 1;
+                }
+                timeline_midi_clip_preview_render(renderer,
+                                                  clip,
+                                                  &clip_rect,
+                                                  midi_visible_start,
+                                                  midi_visible_frames,
+                                                  theme);
+            }
 
             if (is_selected) {
                 SDL_SetRenderDrawColor(renderer,

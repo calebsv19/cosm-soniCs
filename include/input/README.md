@@ -9,5 +9,7 @@ Purpose: Input handling contracts that connect SDL events to the app state.
 - `automation_input.h`: Automation snapshot and undo helpers for timeline/inspector editing.
 - `transport_input.h`: Slider and button handlers driving the transport UI (`transport_input_*`).
 - `timeline_input.h`: Main timeline interaction surface—initialisation, event handling, and per-frame updates.
+- `midi_editor_input.h`: Bottom-pane MIDI editor input capture contract for selected MIDI regions, including QWERTY capture-state queries, multi-note selection/marquee state, editor-local viewport/ruler interaction, quantize/default-velocity/octave UI state, and the instrument-panel open path.
+- `midi_instrument_panel_input.h`: Bottom-pane instrument subview input contract for selected MIDI regions, including preset menu selection and per-region parameter slider state.
 - `timeline_selection.h`: Selection bookkeeping helpers used by input handlers and keyboard shortcuts.
 - `timeline_drag.h`: Clip move/overlap utilities consumed by the timeline input flow.

@@ -1,5 +1,6 @@
 #include "engine/engine_internal.h"
 
+#include "engine/instrument.h"
 #include "engine/sampler.h"
 #include "effects/effects_builtin.h"
 #include "core/loop/daw_mainthread_messages.h"
@@ -69,11 +70,55 @@ void engine_rebuild_sources(Engine* engine) {
         float track_gain = track->gain != 0.0f ? track->gain : 1.0f;
         for (int c = 0; c < track->clip_count; ++c) {
             EngineClip* clip = &track->clips[c];
-            if (!clip->active || !clip->sampler) {
+            if (!clip->active) {
                 continue;
             }
             float clip_gain = clip->gain != 0.0f ? clip->gain : 1.0f;
-            engine_graph_add_source(engine->graph, &engine->sampler_ops, clip->sampler, track_gain * clip_gain, i);
+            if (clip->kind == ENGINE_CLIP_KIND_MIDI) {
+                if (!clip->instrument) {
+                    continue;
+                }
+                if (engine_instrument_source_set_midi_clip(clip->instrument,
+                                                           clip->timeline_start_frames,
+                                                           clip->duration_frames,
+                                                           clip->instrument_preset,
+                                                           clip->instrument_params,
+                                                           clip->midi_notes.notes,
+                                                           clip->midi_notes.note_count)) {
+                    engine_graph_add_source(engine->graph,
+                                            &engine->instrument_ops,
+                                            clip->instrument,
+                                            track_gain * clip_gain,
+                                            i);
+                }
+            } else if (clip->sampler) {
+                engine_graph_add_source(engine->graph, &engine->sampler_ops, clip->sampler, track_gain * clip_gain, i);
+            }
+        }
+    }
+    if (engine->midi_audition_source && engine->midi_audition_notes.note_count > 0) {
+        int track_index = engine->midi_audition_track_index;
+        if (track_index < 0 || track_index >= engine->track_count) {
+            track_index = 0;
+        }
+        EngineTrack* track = (track_index >= 0 && track_index < engine->track_count)
+            ? &engine->tracks[track_index]
+            : NULL;
+        bool track_allowed = track && track->active && !track->muted && (!any_solo || track->solo);
+        if (track_allowed &&
+            engine_instrument_source_set_midi_clip(engine->midi_audition_source,
+                                                   0,
+                                                   UINT64_MAX,
+                                                   engine->midi_audition_preset,
+                                                   engine->midi_audition_params,
+                                                   engine->midi_audition_notes.notes,
+                                                   engine->midi_audition_notes.note_count)) {
+            float track_gain = track->gain != 0.0f ? track->gain : 1.0f;
+            engine_graph_add_source(engine->graph,
+                                    &engine->instrument_ops,
+                                    engine->midi_audition_source,
+                                    track_gain,
+                                    track_index);
         }
     }
     engine_graph_reset(engine->graph);
@@ -185,6 +230,20 @@ static void engine_process_commands(Engine* engine) {
                 engine->tempo = tempo;
                 break;
             }
+            case ENGINE_CMD_MIDI_AUDITION_NOTE_ON:
+                engine_midi_audition_apply_note_on(engine,
+                                                   cmd.payload.midi_audition.track_index,
+                                                   cmd.payload.midi_audition.preset,
+                                                   cmd.payload.midi_audition.params,
+                                                   cmd.payload.midi_audition.note,
+                                                   cmd.payload.midi_audition.velocity);
+                break;
+            case ENGINE_CMD_MIDI_AUDITION_NOTE_OFF:
+                engine_midi_audition_apply_note_off(engine, cmd.payload.midi_audition.note);
+                break;
+            case ENGINE_CMD_MIDI_AUDITION_ALL_OFF:
+                engine_midi_audition_apply_all_off(engine);
+                break;
             default:
                 break;
         }
@@ -217,7 +276,9 @@ static int engine_worker_main(void* userdata) {
 
     while (atomic_load_explicit(&engine->worker_running, memory_order_acquire)) {
         engine_process_commands(engine);
-        if (!atomic_load_explicit(&engine->transport_playing, memory_order_acquire)) {
+        bool transport_playing = atomic_load_explicit(&engine->transport_playing, memory_order_acquire);
+        bool audition_active = engine->midi_audition_notes.note_count > 0;
+        if (!transport_playing && !audition_active) {
             SDL_Delay(2);
             continue;
         }
@@ -256,7 +317,9 @@ static int engine_worker_main(void* userdata) {
                 loop_enabled = false;
             }
             int chunk = frames_remaining;
-            uint64_t current = engine->transport_frame;
+            uint64_t current = transport_playing
+                ? engine->transport_frame
+                : engine->transport_frame + engine->midi_audition_idle_frame;
             bool loop_active = loop_enabled && loop_end > loop_start;
             bool loop_this_block = false;
             if (loop_active) {
@@ -289,9 +352,20 @@ static int engine_worker_main(void* userdata) {
 
             // mix tracks with per-track FX
             float* out_ptr = block_buffer + produced * channels;
-            engine_mix_tracks(engine, engine->transport_frame, chunk, out_ptr, track_buffer, channels);
+            uint64_t render_frame = transport_playing
+                ? engine->transport_frame
+                : engine->transport_frame + engine->midi_audition_idle_frame;
+            if (transport_playing) {
+                engine_mix_tracks(engine, render_frame, chunk, out_ptr, track_buffer, channels);
+            } else {
+                engine_mix_midi_audition_only(engine, render_frame, chunk, out_ptr, track_buffer, channels);
+            }
 
-            engine->transport_frame += (uint64_t)chunk;
+            if (transport_playing) {
+                engine->transport_frame += (uint64_t)chunk;
+            } else {
+                engine->midi_audition_idle_frame += (uint64_t)chunk;
+            }
             produced += chunk;
             frames_remaining -= chunk;
 
@@ -310,7 +384,7 @@ static int engine_worker_main(void* userdata) {
                 }
             }
 
-            if (loop_this_block) {
+            if (transport_playing && loop_this_block) {
                 uint64_t loop_start_cur = atomic_load_explicit(&engine->loop_start_frame, memory_order_acquire);
                 uint64_t loop_end_cur = atomic_load_explicit(&engine->loop_end_frame, memory_order_acquire);
                 if (atomic_load_explicit(&engine->loop_enabled, memory_order_acquire) && loop_end_cur > loop_start_cur &&
@@ -325,7 +399,7 @@ static int engine_worker_main(void* userdata) {
         engine_spectrum_update(engine, block_buffer, block, channels);
 
         uint64_t now_ns = core_time_now_ns();
-        if (core_time_diff_ns(now_ns, last_transport_notify_ns) >= 16000000ULL) {
+        if (transport_playing && core_time_diff_ns(now_ns, last_transport_notify_ns) >= 16000000ULL) {
             (void)daw_mainthread_message_post(DAW_MAINTHREAD_MSG_ENGINE_TRANSPORT,
                                               engine->transport_frame,
                                               engine);
@@ -445,6 +519,7 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
     engine_eq_init(&engine->master_eq, (float)engine->config.sample_rate, engine_graph_get_channels(engine->graph));
     engine_tone_source_ops(&engine->tone_ops);
     engine_sampler_source_ops(&engine->sampler_ops);
+    engine_instrument_source_ops(&engine->instrument_ops);
     engine->tone_source = engine_tone_source_create();
     if (!engine->tone_source) {
         engine_graph_destroy(engine->graph);
@@ -670,6 +745,12 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
     engine->active_fx_meter_id = 0;
     engine->active_fx_meter_is_master = true;
     engine->active_fx_meter_track = -1;
+    engine->midi_audition_source = engine_instrument_source_create();
+    engine_midi_note_list_init(&engine->midi_audition_notes);
+    engine->midi_audition_preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+    engine->midi_audition_params = engine_instrument_default_params(engine->midi_audition_preset);
+    engine->midi_audition_idle_frame = 0;
+    engine->midi_audition_track_index = -1;
 
     engine_graph_clear_sources(engine->graph);
     engine_graph_add_source(engine->graph, &engine->tone_ops, engine->tone_source, 1.0f, -1);
@@ -701,6 +782,11 @@ void engine_destroy(Engine* engine) {
         engine_tone_source_destroy(engine->tone_source);
         engine->tone_source = NULL;
     }
+    if (engine->midi_audition_source) {
+        engine_instrument_source_destroy(engine->midi_audition_source);
+        engine->midi_audition_source = NULL;
+    }
+    engine_midi_note_list_free(&engine->midi_audition_notes);
     engine_scope_host_free(engine);
     for (int i = 0; i < engine->track_capacity; ++i) {
         engine_track_clear(engine, &engine->tracks[i]);

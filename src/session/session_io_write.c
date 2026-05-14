@@ -144,6 +144,16 @@ static void json_write_float(FILE* file, float value) {
     fprintf(file, "%.6f", corrected);
 }
 
+static const char* session_clip_kind_to_string(EngineClipKind kind) {
+    switch (kind) {
+        case ENGINE_CLIP_KIND_MIDI:
+            return "midi";
+        case ENGINE_CLIP_KIND_AUDIO:
+        default:
+            return "audio";
+    }
+}
+
 bool session_document_write_file(const SessionDocument* doc, const char* path) {
     char error[256] = {0};
     if (!session_document_validate(doc, error, sizeof(error))) {
@@ -546,6 +556,10 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
             json_write_string(file, clip->name);
             fprintf(file, ",\n");
             json_write_indent(file, 5);
+            fprintf(file, "\"kind\": ");
+            json_write_string(file, session_clip_kind_to_string(clip->kind));
+            fprintf(file, ",\n");
+            json_write_indent(file, 5);
             fprintf(file, "\"media_id\": ");
             json_write_string(file, clip->media_id);
             fprintf(file, ",\n");
@@ -567,6 +581,23 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
             fprintf(file, "\"fade_in_curve\": %d,\n", (int)clip->fade_in_curve);
             json_write_indent(file, 5);
             fprintf(file, "\"fade_out_curve\": %d,\n", (int)clip->fade_out_curve);
+            json_write_indent(file, 5);
+            fprintf(file, "\"instrument_preset\": ");
+            json_write_string(file, engine_instrument_preset_id_string(clip->instrument_preset));
+            fprintf(file, ",\n");
+            json_write_indent(file, 5);
+            EngineInstrumentParams params = engine_instrument_params_sanitize(clip->instrument_preset,
+                                                                              clip->instrument_params);
+            fprintf(file, "\"instrument_params\": {");
+            fprintf(file, "\"level\": ");
+            json_write_float(file, params.level);
+            fprintf(file, ", \"tone\": ");
+            json_write_float(file, params.tone);
+            fprintf(file, ", \"attack_ms\": ");
+            json_write_float(file, params.attack_ms);
+            fprintf(file, ", \"release_ms\": ");
+            json_write_float(file, params.release_ms);
+            fprintf(file, "},\n");
             json_write_indent(file, 5);
             fprintf(file, "\"automation\": [\n");
             for (int l = 0; l < clip->automation_lane_count; ++l) {
@@ -593,6 +624,25 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
                 json_write_indent(file, 6);
                 fprintf(file, "}");
                 if (l + 1 < clip->automation_lane_count) {
+                    fprintf(file, ",");
+                }
+                fprintf(file, "\n");
+            }
+            json_write_indent(file, 5);
+            fprintf(file, "],\n");
+            json_write_indent(file, 5);
+            fprintf(file, "\"midi_notes\": [\n");
+            for (int n = 0; n < clip->midi_note_count; ++n) {
+                const EngineMidiNote* note = &clip->midi_notes[n];
+                json_write_indent(file, 6);
+                fprintf(file,
+                        "{ \"start_frame\": %" PRIu64 ", \"duration_frames\": %" PRIu64 ", \"note\": %u, \"velocity\": ",
+                        note->start_frame,
+                        note->duration_frames,
+                        (unsigned)note->note);
+                json_write_float(file, note->velocity);
+                fprintf(file, " }");
+                if (n + 1 < clip->midi_note_count) {
                     fprintf(file, ",");
                 }
                 fprintf(file, "\n");

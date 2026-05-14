@@ -5,6 +5,8 @@
 #include "engine/automation.h"
 #include "engine/engine_eq.h"
 #include "engine/fade_curve.h"
+#include "engine/instrument.h"
+#include "engine/midi.h"
 #include "engine/scope_host.h"
 #include "time/tempo.h"
 
@@ -19,6 +21,7 @@ typedef struct EngineTrack EngineTrack;
 typedef struct EngineClip EngineClip;
 typedef struct EngineAudioSource EngineAudioSource;
 struct EngineSamplerSource;
+struct EngineInstrumentSource;
 
 #define ENGINE_CLIP_NAME_MAX 128
 #define ENGINE_CLIP_PATH_MAX 512
@@ -41,6 +44,12 @@ typedef enum {
     ENGINE_SPECTRUM_VIEW_MASTER = 0,
     ENGINE_SPECTRUM_VIEW_TRACK
 } EngineSpectrumView;
+
+// Identifies which runtime payload a timeline clip owns.
+typedef enum {
+    ENGINE_CLIP_KIND_AUDIO = 0,
+    ENGINE_CLIP_KIND_MIDI
+} EngineClipKind;
 
 // EngineSpectrogramSnapshot carries a rolling spectrogram history for UI display.
 typedef struct {
@@ -87,9 +96,14 @@ typedef struct {
 
 // Holds runtime clip state including timing, fades, and automation.
 struct EngineClip {
+    EngineClipKind kind;
     struct EngineSamplerSource* sampler;
+    struct EngineInstrumentSource* instrument;
+    EngineInstrumentPresetId instrument_preset;
+    EngineInstrumentParams instrument_params;
     struct AudioMediaClip* media;
     EngineAudioSource* source;
+    EngineMidiNoteList midi_notes;
     float gain;
     bool active;
     char name[ENGINE_CLIP_NAME_MAX];
@@ -185,6 +199,11 @@ bool    engine_add_clip_to_track_with_id(Engine* engine,
                                          const char* media_id,
                                          uint64_t start_frame,
                                          int* out_clip_index);
+bool    engine_add_midi_clip_to_track(Engine* engine,
+                                      int track_index,
+                                      uint64_t start_frame,
+                                      uint64_t duration_frames,
+                                      int* out_clip_index);
 int     engine_add_track(Engine* engine);
 bool    engine_insert_track(Engine* engine, int track_index);
 bool    engine_remove_track(Engine* engine, int track_index);
@@ -264,6 +283,49 @@ bool    engine_add_clip_segment(Engine* engine, int track_index, const EngineCli
                                 int* out_clip_index);
 const char* engine_clip_get_media_id(const EngineClip* clip);
 const char* engine_clip_get_media_path(const EngineClip* clip);
+EngineClipKind engine_clip_get_kind(const EngineClip* clip);
+bool    engine_clip_midi_add_note(Engine* engine,
+                                  int track_index,
+                                  int clip_index,
+                                  EngineMidiNote note,
+                                  int* out_note_index);
+bool    engine_clip_midi_update_note(Engine* engine,
+                                     int track_index,
+                                     int clip_index,
+                                     int note_index,
+                                     EngineMidiNote note,
+                                     int* out_note_index);
+bool    engine_clip_midi_remove_note(Engine* engine, int track_index, int clip_index, int note_index);
+bool    engine_clip_midi_set_notes(Engine* engine,
+                                   int track_index,
+                                   int clip_index,
+                                   const EngineMidiNote* notes,
+                                   int note_count);
+int     engine_clip_midi_note_count(const EngineClip* clip);
+const EngineMidiNote* engine_clip_midi_notes(const EngineClip* clip);
+EngineInstrumentPresetId engine_clip_midi_instrument_preset(const EngineClip* clip);
+bool    engine_clip_midi_set_instrument_preset(Engine* engine,
+                                               int track_index,
+                                               int clip_index,
+                                               EngineInstrumentPresetId preset);
+EngineInstrumentParams engine_clip_midi_instrument_params(const EngineClip* clip);
+bool    engine_clip_midi_set_instrument_params(Engine* engine,
+                                               int track_index,
+                                               int clip_index,
+                                               EngineInstrumentParams params);
+bool    engine_clip_midi_set_instrument_param(Engine* engine,
+                                              int track_index,
+                                              int clip_index,
+                                              EngineInstrumentParamId param,
+                                              float value);
+bool    engine_midi_audition_note_on(Engine* engine,
+                                     int track_index,
+                                     EngineInstrumentPresetId preset,
+                                     EngineInstrumentParams params,
+                                     uint8_t note,
+                                     float velocity);
+bool    engine_midi_audition_note_off(Engine* engine, uint8_t note);
+void    engine_midi_audition_all_notes_off(Engine* engine);
 bool    engine_track_apply_no_overlap(Engine* engine,
                                       int track_index,
                                       struct EngineSamplerSource* anchor_sampler,

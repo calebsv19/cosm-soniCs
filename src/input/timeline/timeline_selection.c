@@ -4,6 +4,7 @@
 #include "engine/engine.h"
 #include "engine/sampler.h"
 #include "input/inspector_input.h"
+#include "input/timeline/timeline_clip_helpers.h"
 #include "input/timeline_drag.h"
 #include "undo/undo_manager.h"
 
@@ -129,31 +130,10 @@ void timeline_selection_delete(AppState* state) {
                     cmd.data.clip_add_remove.added = false;
                     cmd.data.clip_add_remove.track_index = state->selected_track_index;
                     cmd.data.clip_add_remove.sampler = clip->sampler;
-                    memset(&cmd.data.clip_add_remove.clip, 0, sizeof(cmd.data.clip_add_remove.clip));
-                    const char* media_id = engine_clip_get_media_id(clip);
-                    const char* media_path = engine_clip_get_media_path(clip);
-                    strncpy(cmd.data.clip_add_remove.clip.media_id, media_id ? media_id : "",
-                            sizeof(cmd.data.clip_add_remove.clip.media_id) - 1);
-                    cmd.data.clip_add_remove.clip.media_id[sizeof(cmd.data.clip_add_remove.clip.media_id) - 1] = '\0';
-                    strncpy(cmd.data.clip_add_remove.clip.media_path, media_path ? media_path : "",
-                            sizeof(cmd.data.clip_add_remove.clip.media_path) - 1);
-                    cmd.data.clip_add_remove.clip.media_path[sizeof(cmd.data.clip_add_remove.clip.media_path) - 1] = '\0';
-                    strncpy(cmd.data.clip_add_remove.clip.name, clip->name,
-                            sizeof(cmd.data.clip_add_remove.clip.name) - 1);
-                    cmd.data.clip_add_remove.clip.name[sizeof(cmd.data.clip_add_remove.clip.name) - 1] = '\0';
-                    cmd.data.clip_add_remove.clip.start_frame = clip->timeline_start_frames;
-                    cmd.data.clip_add_remove.clip.duration_frames = clip->duration_frames;
-                    cmd.data.clip_add_remove.clip.offset_frames = clip->offset_frames;
-                    cmd.data.clip_add_remove.clip.fade_in_frames = clip->fade_in_frames;
-                    cmd.data.clip_add_remove.clip.fade_out_frames = clip->fade_out_frames;
-                    cmd.data.clip_add_remove.clip.fade_in_curve = clip->fade_in_curve;
-                    cmd.data.clip_add_remove.clip.fade_out_curve = clip->fade_out_curve;
-                    cmd.data.clip_add_remove.clip.gain = clip->gain;
-                    cmd.data.clip_add_remove.clip.selected = false;
-                    if (cmd.data.clip_add_remove.clip.duration_frames == 0 && clip->sampler) {
-                        cmd.data.clip_add_remove.clip.duration_frames = engine_sampler_get_frame_count(clip->sampler);
+                    if (timeline_session_clip_from_engine(clip, &cmd.data.clip_add_remove.clip)) {
+                        undo_manager_push(&state->undo, &cmd);
+                        timeline_session_clip_clear(&cmd.data.clip_add_remove.clip);
                     }
-                    undo_manager_push(&state->undo, &cmd);
                 }
             }
             engine_remove_clip(state->engine, state->selected_track_index, state->selected_clip_index);
@@ -175,31 +155,10 @@ void timeline_selection_delete(AppState* state) {
                     cmd.data.clip_add_remove.added = false;
                     cmd.data.clip_add_remove.track_index = track_index;
                     cmd.data.clip_add_remove.sampler = clip->sampler;
-                    memset(&cmd.data.clip_add_remove.clip, 0, sizeof(cmd.data.clip_add_remove.clip));
-                    const char* media_id = engine_clip_get_media_id(clip);
-                    const char* media_path = engine_clip_get_media_path(clip);
-                    strncpy(cmd.data.clip_add_remove.clip.media_id, media_id ? media_id : "",
-                            sizeof(cmd.data.clip_add_remove.clip.media_id) - 1);
-                    cmd.data.clip_add_remove.clip.media_id[sizeof(cmd.data.clip_add_remove.clip.media_id) - 1] = '\0';
-                    strncpy(cmd.data.clip_add_remove.clip.media_path, media_path ? media_path : "",
-                            sizeof(cmd.data.clip_add_remove.clip.media_path) - 1);
-                    cmd.data.clip_add_remove.clip.media_path[sizeof(cmd.data.clip_add_remove.clip.media_path) - 1] = '\0';
-                    strncpy(cmd.data.clip_add_remove.clip.name, clip->name,
-                            sizeof(cmd.data.clip_add_remove.clip.name) - 1);
-                    cmd.data.clip_add_remove.clip.name[sizeof(cmd.data.clip_add_remove.clip.name) - 1] = '\0';
-                    cmd.data.clip_add_remove.clip.start_frame = clip->timeline_start_frames;
-                    cmd.data.clip_add_remove.clip.duration_frames = clip->duration_frames;
-                    cmd.data.clip_add_remove.clip.offset_frames = clip->offset_frames;
-                    cmd.data.clip_add_remove.clip.fade_in_frames = clip->fade_in_frames;
-                    cmd.data.clip_add_remove.clip.fade_out_frames = clip->fade_out_frames;
-                    cmd.data.clip_add_remove.clip.fade_in_curve = clip->fade_in_curve;
-                    cmd.data.clip_add_remove.clip.fade_out_curve = clip->fade_out_curve;
-                    cmd.data.clip_add_remove.clip.gain = clip->gain;
-                    cmd.data.clip_add_remove.clip.selected = false;
-                    if (cmd.data.clip_add_remove.clip.duration_frames == 0 && clip->sampler) {
-                        cmd.data.clip_add_remove.clip.duration_frames = engine_sampler_get_frame_count(clip->sampler);
+                    if (timeline_session_clip_from_engine(clip, &cmd.data.clip_add_remove.clip)) {
+                        undo_manager_push(&state->undo, &cmd);
+                        timeline_session_clip_clear(&cmd.data.clip_add_remove.clip);
                     }
-                    undo_manager_push(&state->undo, &cmd);
                 }
             }
             if (engine_remove_clip(state->engine, track_index, clip_index)) {

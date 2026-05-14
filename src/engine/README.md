@@ -13,7 +13,8 @@ Purpose: Real-time audio engine, graph, and source implementations.
   - Decoded audio cache (`AudioMediaCache`) shares buffers between clips referencing the same file+sample-rate.
   - Transport helpers (`engine_transport_play/stop/is_playing/seek/set_loop`) and command queue plumbing for worker-thread safe updates.
   - Segment utilities (`engine_add_clip_segment`) to clone portions of an existing clip when splitting around drops.
-  - Graph wiring (`engine_queue_graph_swap`, `engine_rebuild_sources`) and command processing (`engine_post_command`, worker thread loop).
+  - MIDI clip creation and note mutation APIs; persisted MIDI notes rebuild preset/parameter-aware instrument sources, and live audition commands feed temporary QWERTY notes through the selected region preset and sanitized parameter overrides without mutating clips. Stopped-transport audition uses an engine-local idle clock plus an audition-only mix path so Test mode can produce sound without advancing the playhead or playing saved region notes.
+  - Graph wiring (`engine_queue_graph_swap`, `engine_rebuild_sources`) and command processing (`engine_post_command`, worker thread loop), including MIDI instrument source registration.
   - Utility helpers for sampler refresh, clip sorting, and transport frame tracking.
 - `engine_meter.c`
   - Master/track peak-RMS metering snapshots plus FX metering taps (correlation, vectorscope, LUFS).
@@ -27,11 +28,27 @@ Purpose: Real-time audio engine, graph, and source implementations.
   - `engine_graph_add_source/clear_sources`: Register sampler/tone sources with optional reset callbacks.
   - `engine_graph_render/reset`: Mix active sources into an interleaved block each engine tick.
   - `engine_graph_get_*`: Expose graph configuration (channels/sample-rate/max block/pool).
+- `midi.c`
+  - `engine_midi_note_list_*`: Maintain bounded, sorted MIDI note arrays for model-only MIDI clips.
+  - `engine_midi_note_is_valid`: Validate note duration, pitch range, and velocity range before clip-level duration checks.
+- `engine_midi_audition.c`
+  - `engine_midi_audition_note_on/off/all_notes_off`: Queue or apply temporary live MIDI notes for editor audition without writing clip note arrays, including stopped-transport audition cleanup.
+- `engine_audio.c`
+  - `engine_mix_midi_audition_only`: Renders only the temporary MIDI audition source for stopped Test mode while preserving track/master processing.
+- `instrument_osc.c`
+  - `engine_instrument_param_*`: Describe and sanitize the first bounded per-region instrument parameters: Level, Tone, Attack, and Release.
+  - `engine_instrument_source_create/destroy`: Own per-MIDI-clip instrument state and copied note snapshots.
+  - `engine_instrument_source_set_midi_clip`: Capture transport placement, clip duration, preset id, sanitized params, and bounded MIDI notes for graph rendering.
+  - `engine_instrument_source_render/reset`: Render built-in Pure Sine, Soft Square, Saw Lead, and Simple Bass presets with MIDI pitch-to-frequency conversion, tone shaping, level scaling, and attack/release ramps.
 - `sampler.c`
   - `engine_sampler_source_create/destroy`: Manage per-clip sampler instances.
   - `engine_sampler_source_set_clip`: Map a media clip segment onto the global transport timeline, capturing fade-in/out spans for ramping.
   - `engine_sampler_source_render/reset`: Produce interleaved audio frames from the scheduled segment.
   - Accessors for start frame, frame counts, offsets, and underlying media.
+- `timeline_contract.c`
+  - `daw_timeline_frame_range*`: Define half-open transport-frame ranges and overlap predicates.
+  - `daw_timeline_analyze_overlap`: Produce trim/split/remove/shift plans used by clip overlap resolution.
+  - `daw_timeline_frames_from_*`: Convert seconds or tempo-map beats into canonical transport frames for audio and MIDI region placement.
 - `source_tone.c`
   - `engine_tone_source_create/destroy`: Allocate a diagnostic tone generator.
   - `engine_tone_source_render/reset`: Fill buffers with a simple sine tone, keeping phase continuity.

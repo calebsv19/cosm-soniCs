@@ -20,6 +20,7 @@
 #include "session/project_manager.h"
 #include "time/tempo.h"
 #include "undo/undo_manager.h"
+#include "app/workspace_authoring/daw_workspace_authoring_host.h"
 
 #define TIMELINE_MAX_SELECTION 256
 
@@ -88,6 +89,109 @@ typedef struct {
     int pending_shift_track;
     int pending_shift_clip;
 } TimelineDragState;
+
+typedef enum {
+    MIDI_EDITOR_DRAG_NONE = 0,
+    MIDI_EDITOR_DRAG_CREATE,
+    MIDI_EDITOR_DRAG_MOVE,
+    MIDI_EDITOR_DRAG_RESIZE_LEFT,
+    MIDI_EDITOR_DRAG_RESIZE_RIGHT,
+    MIDI_EDITOR_DRAG_VELOCITY
+} MidiEditorDragMode;
+
+#define MIDI_EDITOR_QWERTY_ACTIVE_NOTE_CAPACITY 24
+
+typedef struct {
+    bool active;
+    SDL_Keycode key;
+    uint8_t note;
+    float velocity;
+    bool record_on_release;
+    int track_index;
+    int clip_index;
+    uint64_t clip_creation_index;
+    uint64_t start_frame;
+} MidiEditorQwertyActiveNote;
+
+typedef enum {
+    MIDI_REGION_PANEL_EDITOR = 0,
+    MIDI_REGION_PANEL_INSTRUMENT
+} MidiRegionPanelMode;
+
+typedef struct {
+    int selected_track_index;
+    int selected_clip_index;
+    uint64_t selected_clip_creation_index;
+    int selected_note_index;
+    bool selected_note_indices[ENGINE_MIDI_NOTE_CAP];
+    bool hover_note_valid;
+    int hover_track_index;
+    int hover_clip_index;
+    uint64_t hover_clip_creation_index;
+    int hover_note_index;
+    MidiRegionPanelMode panel_mode;
+    bool qwerty_record_armed;
+    bool qwerty_test_enabled;
+    bool instrument_menu_open;
+    bool instrument_param_drag_active;
+    int instrument_param_drag_index;
+    int instrument_param_drag_start_y;
+    float instrument_param_drag_start_value;
+    int quantize_division;
+    float default_velocity;
+    int qwerty_octave_offset;
+    MidiEditorQwertyActiveNote qwerty_active_notes[MIDI_EDITOR_QWERTY_ACTIVE_NOTE_CAPACITY];
+    bool marquee_active;
+    bool marquee_additive;
+    int marquee_start_x;
+    int marquee_start_y;
+    int marquee_current_x;
+    int marquee_current_y;
+    bool marquee_preview_note_indices[ENGINE_MIDI_NOTE_CAP];
+    EngineMidiNote clipboard_notes[ENGINE_MIDI_NOTE_CAP];
+    int clipboard_note_count;
+    uint64_t clipboard_span_frames;
+    int viewport_track_index;
+    int viewport_clip_index;
+    uint64_t viewport_clip_creation_index;
+    uint64_t viewport_start_frame;
+    uint64_t viewport_span_frames;
+    bool shift_note_pending;
+    int shift_note_pending_track_index;
+    int shift_note_pending_clip_index;
+    uint64_t shift_note_pending_clip_creation_index;
+    int shift_note_pending_note_index;
+    int shift_note_pending_x;
+    int shift_note_pending_y;
+    bool note_press_pending;
+    int note_press_pending_track_index;
+    int note_press_pending_clip_index;
+    uint64_t note_press_pending_clip_creation_index;
+    int note_press_pending_note_index;
+    int note_press_pending_x;
+    int note_press_pending_y;
+    int note_press_pending_part;
+    bool note_press_group_candidate;
+    bool drag_active;
+    MidiEditorDragMode drag_mode;
+    int drag_track_index;
+    int drag_clip_index;
+    uint64_t drag_clip_creation_index;
+    int drag_note_index;
+    EngineMidiNote drag_original_note;
+    int drag_start_x;
+    int drag_start_y;
+    uint64_t drag_anchor_frame;
+    uint8_t drag_anchor_note;
+    float drag_anchor_velocity;
+    bool drag_velocity_group;
+    float drag_velocity_original_values[ENGINE_MIDI_NOTE_CAP];
+    bool drag_move_group;
+    int drag_move_original_note_count;
+    bool drag_move_selected_indices[ENGINE_MIDI_NOTE_CAP];
+    EngineMidiNote drag_move_original_notes[ENGINE_MIDI_NOTE_CAP];
+    bool drag_mutated;
+} MidiEditorUIState;
 
 // Keeps editing state for numeric inspector fields that map to clip timing.
 typedef struct {
@@ -391,8 +495,10 @@ typedef struct EffectsPanelState {
 typedef struct {
     SDL_Rect add_rect;
     SDL_Rect remove_rect;
+    SDL_Rect midi_region_rect;
     bool add_hovered;
     bool remove_hovered;
+    bool midi_region_hovered;
     SDL_Rect loop_toggle_rect;
     SDL_Rect snap_toggle_rect;
     SDL_Rect automation_toggle_rect;
@@ -554,6 +660,7 @@ struct AppState {
     bool timeline_tempo_overlay_enabled;
     AutomationUIState automation_ui;
     TempoOverlayUIState tempo_overlay_ui;
+    MidiEditorUIState midi_editor_ui;
     bool timeline_marquee_active;
     SDL_Rect timeline_marquee_rect;
     bool timeline_marquee_extend;
@@ -589,4 +696,5 @@ struct AppState {
     ProjectLoadModal project_load;
     WaveformCache waveform_cache;
     UndoManager undo;
+    DawWorkspaceAuthoringHostState workspace_authoring;
 };

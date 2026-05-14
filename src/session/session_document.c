@@ -176,6 +176,11 @@ void session_document_free(SessionDocument* doc) {
                         clip->automation_lanes = NULL;
                         clip->automation_lane_count = 0;
                     }
+                    if (clip->midi_notes) {
+                        free(clip->midi_notes);
+                        clip->midi_notes = NULL;
+                        clip->midi_note_count = 0;
+                    }
                 }
                 free(doc->tracks[i].clips);
                 doc->tracks[i].clips = NULL;
@@ -223,10 +228,16 @@ static int count_active_clips(const EngineTrack* track) {
     int active = 0;
     for (int i = 0; i < track->clip_count; ++i) {
         const EngineClip* clip = &track->clips[i];
+        if (!clip->active) {
+            continue;
+        }
+        if (engine_clip_get_kind(clip) == ENGINE_CLIP_KIND_MIDI) {
+            ++active;
+            continue;
+        }
         const char* media_id = engine_clip_get_media_id(clip);
         const char* media_path = engine_clip_get_media_path(clip);
-        if (clip->active &&
-            ((media_id && media_id[0] != '\0') || (media_path && media_path[0] != '\0'))) {
+        if ((media_id && media_id[0] != '\0') || (media_path && media_path[0] != '\0')) {
             ++active;
         }
     }
@@ -266,6 +277,32 @@ static bool session_clip_copy_automation(const EngineClip* src, SessionClip* dst
             }
         }
     }
+    return true;
+}
+
+static bool session_clip_copy_midi_notes(const EngineClip* src, SessionClip* dst) {
+    if (!src || !dst) {
+        return false;
+    }
+    dst->midi_notes = NULL;
+    dst->midi_note_count = 0;
+    if (engine_clip_get_kind(src) != ENGINE_CLIP_KIND_MIDI) {
+        return true;
+    }
+    int note_count = engine_clip_midi_note_count(src);
+    if (note_count <= 0) {
+        return true;
+    }
+    const EngineMidiNote* notes = engine_clip_midi_notes(src);
+    if (!notes) {
+        return false;
+    }
+    dst->midi_notes = (EngineMidiNote*)calloc((size_t)note_count, sizeof(EngineMidiNote));
+    if (!dst->midi_notes) {
+        return false;
+    }
+    memcpy(dst->midi_notes, notes, sizeof(EngineMidiNote) * (size_t)note_count);
+    dst->midi_note_count = note_count;
     return true;
 }
 
@@ -427,15 +464,19 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
         int clip_out = 0;
         for (int c = 0; c < src_track->clip_count; ++c) {
             const EngineClip* src_clip = &src_track->clips[c];
+            EngineClipKind clip_kind = engine_clip_get_kind(src_clip);
             const char* media_id = engine_clip_get_media_id(src_clip);
             const char* media_path = engine_clip_get_media_path(src_clip);
             if (!src_clip->active) {
                 continue;
             }
-            if ((!media_id || media_id[0] == '\0') && (!media_path || media_path[0] == '\0')) {
+            if (clip_kind != ENGINE_CLIP_KIND_MIDI &&
+                (!media_id || media_id[0] == '\0') &&
+                (!media_path || media_path[0] == '\0')) {
                 continue;
             }
             SessionClip* dst_clip = &dst_track->clips[clip_out++];
+            dst_clip->kind = clip_kind;
             copy_string(dst_clip->name, sizeof(dst_clip->name), src_clip->name);
             copy_string(dst_clip->media_id, sizeof(dst_clip->media_id), media_id ? media_id : "");
             copy_string(dst_clip->media_path, sizeof(dst_clip->media_path), media_path ? media_path : "");
@@ -446,8 +487,15 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
             dst_clip->fade_out_frames = src_clip->fade_out_frames;
             dst_clip->fade_in_curve = src_clip->fade_in_curve;
             dst_clip->fade_out_curve = src_clip->fade_out_curve;
+            dst_clip->instrument_preset = engine_clip_midi_instrument_preset(src_clip);
+            dst_clip->instrument_params = engine_clip_midi_instrument_params(src_clip);
             if (!session_clip_copy_automation(src_clip, dst_clip)) {
                 SDL_Log("session_document_capture: failed to copy automation for track %d clip %d", t, c);
+                session_document_reset(out_doc);
+                return false;
+            }
+            if (!session_clip_copy_midi_notes(src_clip, dst_clip)) {
+                SDL_Log("session_document_capture: failed to copy MIDI notes for track %d clip %d", t, c);
                 session_document_reset(out_doc);
                 return false;
             }

@@ -2,6 +2,7 @@
 
 #include "engine/engine.h"
 #include "engine/sampler.h"
+#include "input/timeline/timeline_clip_helpers.h"
 
 #include <SDL2/SDL.h>
 
@@ -47,9 +48,66 @@ int timeline_move_clip_to_track(AppState* state, int src_track, int clip_index, 
         return -1;
     }
     const EngineClip* clip = &source_track->clips[clip_index];
+    if (!clip) {
+        return -1;
+    }
+    if (engine_clip_get_kind(clip) == ENGINE_CLIP_KIND_MIDI) {
+        if (dst_track == src_track) {
+            int updated_index = clip_index;
+            if (engine_clip_set_timeline_start(state->engine, src_track, clip_index, start_frame, &updated_index)) {
+                return updated_index;
+            }
+            return -1;
+        }
+        SessionClip snapshot = {0};
+        if (!timeline_session_clip_from_engine(clip, &snapshot)) {
+            return -1;
+        }
+        int new_clip_index = -1;
+        bool ok = engine_add_midi_clip_to_track(state->engine,
+                                                dst_track,
+                                                start_frame,
+                                                snapshot.duration_frames,
+                                                &new_clip_index);
+        if (ok) {
+            engine_clip_set_name(state->engine, dst_track, new_clip_index, snapshot.name);
+            engine_clip_set_gain(state->engine, dst_track, new_clip_index, snapshot.gain == 0.0f ? 1.0f : snapshot.gain);
+            engine_clip_set_region(state->engine, dst_track, new_clip_index, snapshot.offset_frames, snapshot.duration_frames);
+            engine_clip_set_fades(state->engine, dst_track, new_clip_index,
+                                  snapshot.fade_in_frames,
+                                  snapshot.fade_out_frames);
+            engine_clip_set_fade_curves(state->engine, dst_track, new_clip_index,
+                                        snapshot.fade_in_curve,
+                                        snapshot.fade_out_curve);
+            engine_clip_midi_set_instrument_preset(state->engine,
+                                                   dst_track,
+                                                   new_clip_index,
+                                                   snapshot.instrument_preset);
+            engine_clip_midi_set_instrument_params(state->engine,
+                                                   dst_track,
+                                                   new_clip_index,
+                                                   snapshot.instrument_params);
+            for (int n = 0; n < snapshot.midi_note_count; ++n) {
+                engine_clip_midi_add_note(state->engine, dst_track, new_clip_index, snapshot.midi_notes[n], NULL);
+            }
+            for (int l = 0; l < snapshot.automation_lane_count; ++l) {
+                SessionAutomationLane* lane = &snapshot.automation_lanes[l];
+                engine_clip_set_automation_lane_points(state->engine,
+                                                       dst_track,
+                                                       new_clip_index,
+                                                       lane->target,
+                                                       (const EngineAutomationPoint*)lane->points,
+                                                       lane->point_count);
+            }
+            engine_remove_clip(state->engine, src_track, clip_index);
+        }
+        timeline_session_clip_clear(&snapshot);
+        return ok ? new_clip_index : -1;
+    }
+
     const char* media_path = engine_clip_get_media_path(clip);
     const char* media_id = engine_clip_get_media_id(clip);
-    if (!clip || !media_path || media_path[0] == '\0') {
+    if (!media_path || media_path[0] == '\0') {
         return -1;
     }
 

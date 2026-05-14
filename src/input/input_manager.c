@@ -1,17 +1,22 @@
 #include "input/input_manager.h"
 
 #include "app_state.h"
+#include "app/workspace_authoring/daw_workspace_authoring_host.h"
 #include "engine/engine.h"
 #include "input/library_input.h"
 #include "input/timeline_input.h"
 #include "input/transport_input.h"
 #include "input/inspector_input.h"
 #include "input/effects_panel_input.h"
+#include "input/midi_editor_input.h"
+#include "input/midi_instrument_panel_input.h"
 #include "input/timeline_selection.h"
 #include "session.h"
 #include "ui/layout.h"
 #include "ui/library_browser.h"
 #include "ui/effects_panel.h"
+#include "ui/midi_editor.h"
+#include "ui/midi_instrument_panel.h"
 #include "ui/panes.h"
 #include "ui/transport.h"
 #include "ui/font.h"
@@ -278,6 +283,18 @@ static void seek_to_seconds(AppState* state, float seconds, bool resume_playback
     }
 }
 
+static bool input_manager_authoring_text_entry_active(AppState* state) {
+    if (!state) {
+        return false;
+    }
+    return state->project_prompt.active ||
+           state->project_load.active ||
+           state->tempo_ui.editing ||
+           library_input_is_editing(state) ||
+           state->track_name_editor.editing ||
+           inspector_input_has_text_focus(state);
+}
+
 static void apply_shared_ui_font(AppState* state) {
     char font_path[256];
     int font_point_size = 9;
@@ -293,6 +310,30 @@ static void apply_shared_ui_font(AppState* state) {
     }
     daw_invalidate_all(state->panes, state->pane_count, reason_bits);
     daw_request_full_redraw(reason_bits);
+}
+
+static void input_manager_apply_authoring_preview_dirty(AppState* state) {
+    const uint32_t theme_bits = DAW_RENDER_INVALIDATION_THEME | DAW_RENDER_INVALIDATION_BACKGROUND;
+    if (!state) {
+        return;
+    }
+    if (daw_workspace_authoring_host_take_theme_dirty(&state->workspace_authoring)) {
+        ui_apply_shared_theme(state);
+        daw_invalidate_all(state->panes, state->pane_count, theme_bits);
+        daw_request_full_redraw(theme_bits);
+    }
+    if (daw_workspace_authoring_host_take_font_dirty(&state->workspace_authoring)) {
+        apply_shared_ui_font(state);
+    }
+}
+
+static void input_manager_save_authoring_accepted_preferences(AppState* state) {
+    if (!state || !state->workspace_authoring.last_event_accepted) {
+        return;
+    }
+    (void)daw_shared_theme_save_persisted();
+    (void)daw_shared_font_save_persisted();
+    (void)daw_shared_font_zoom_save_persisted();
 }
 
 static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
@@ -414,7 +455,9 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
 
     bool delete_now = keys[SDL_SCANCODE_DELETE] != 0 || keys[SDL_SCANCODE_BACKSPACE] != 0;
     if (!inspector_text_focus && delete_now && !manager->previous_delete) {
-        timeline_selection_delete(state);
+        if (!midi_editor_should_render(state)) {
+            timeline_selection_delete(state);
+        }
     }
     manager->previous_delete = delete_now;
 
@@ -437,16 +480,24 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
 
     bool b_now = keys[SDL_SCANCODE_B] != 0;
     bool folder_b_now = ctrl_or_cmd && b_now;
-    if (folder_b_now && !manager->previous_folder_b) {
+    if (midi_editor_input_qwerty_capturing(state) && !ctrl_or_cmd) {
+        manager->previous_folder_b = folder_b_now;
+        manager->previous_b = b_now;
+    } else if (folder_b_now && !manager->previous_folder_b) {
         (void)library_input_open_folder_dialog(state);
     } else if (b_now && !manager->previous_b) {
         state->bounce_requested = true;
+        manager->previous_folder_b = folder_b_now;
+        manager->previous_b = b_now;
+    } else {
+        manager->previous_folder_b = folder_b_now;
+        manager->previous_b = b_now;
     }
-    manager->previous_folder_b = folder_b_now;
-    manager->previous_b = b_now;
 
     bool s_now = keys[SDL_SCANCODE_S] != 0;
-    if (s_now && !manager->previous_s) {
+    if (midi_editor_input_qwerty_capturing(state) && !ctrl_or_cmd) {
+        manager->previous_s = s_now;
+    } else if (s_now && !manager->previous_s) {
         char session_path[SESSION_PATH_MAX];
         project_manager_last_session_path(state, session_path, sizeof(session_path));
         if (!session_save_to_file(state, session_path)) {
@@ -454,8 +505,10 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
         } else {
             SDL_Log("Session saved to %s", session_path);
         }
+        manager->previous_s = s_now;
+    } else {
+        manager->previous_s = s_now;
     }
-    manager->previous_s = s_now;
 
     bool f7_now = keys[SDL_SCANCODE_F7] != 0;
     if (f7_now && !manager->previous_f7) {
@@ -546,6 +599,18 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
         return;
     }
 
+    daw_workspace_authoring_host_set_viewport(&state->workspace_authoring,
+                                              (uint32_t)(state->window_width > 0 ? state->window_width : 0),
+                                              (uint32_t)(state->window_height > 0 ? state->window_height : 0));
+    if (daw_workspace_authoring_host_handle_sdl_event(
+            &state->workspace_authoring,
+            event,
+            input_manager_authoring_text_entry_active(state))) {
+        input_manager_apply_authoring_preview_dirty(state);
+        input_manager_save_authoring_accepted_preferences(state);
+        return;
+    }
+
     if (state->project_load.active) {
         project_load_handle_event(state, event);
         return;
@@ -573,6 +638,12 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
     }
 
     transport_input_handle_event(manager, state, event);
+    if (midi_instrument_panel_input_handle_event(manager, state, event)) {
+        return;
+    }
+    if (midi_editor_input_handle_event(manager, state, event)) {
+        return;
+    }
     inspector_input_handle_event(manager, state, event);
     effects_panel_input_handle_event(manager, state, event);
     timeline_input_handle_event(manager, state, event);
@@ -594,15 +665,18 @@ void input_manager_update(InputManager* manager, AppState* state) {
 
     manager->previous_buttons = prev_buttons;
     manager->current_buttons = buttons;
+    state->mouse_x = mouse_x;
+    state->mouse_y = mouse_y;
+
+    if (daw_workspace_authoring_host_active(&state->workspace_authoring)) {
+        return;
+    }
 
     ui_layout_handle_pointer(state, prev_buttons, buttons, mouse_x, mouse_y);
     if (state->layout_runtime.drag.active) {
         state->dragging_library = false;
         state->drag_library_index = -1;
     }
-
-    state->mouse_x = mouse_x;
-    state->mouse_y = mouse_y;
 
     pane_manager_update_hover(&state->pane_manager, mouse_x, mouse_y);
     transport_ui_update_hover(&state->transport_ui, mouse_x, mouse_y);
@@ -614,7 +688,11 @@ void input_manager_update(InputManager* manager, AppState* state) {
     transport_input_update(manager, state);
     transport_input_follow_playhead(manager, state);
     timeline_input_update(manager, state, left_was_down, left_is_down);
-    effects_panel_input_update(manager, state, left_was_down, left_is_down);
+    midi_instrument_panel_input_update(manager, state, left_was_down, left_is_down);
+    midi_editor_input_update(manager, state, left_was_down, left_is_down);
+    if (!midi_editor_should_render(state)) {
+        effects_panel_input_update(manager, state, left_was_down, left_is_down);
+    }
     library_browser_refresh_project_usage(&state->library, state->engine);
 
     handle_transport_controls(state, left_was_down, left_is_down);
@@ -632,9 +710,11 @@ void input_manager_update(InputManager* manager, AppState* state) {
         }
     }
 
-    if (state->inspector.adjusting_gain) {
+    if (!midi_editor_should_render(state) && state->inspector.adjusting_gain) {
         inspector_input_handle_gain_drag(state, state->mouse_x);
     }
 
-    inspector_input_sync(state);
+    if (!midi_editor_should_render(state)) {
+        inspector_input_sync(state);
+    }
 }

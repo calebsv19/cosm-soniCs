@@ -1,5 +1,6 @@
 #include "app/main_bounce.h"
 
+#include "app/bounce_region.h"
 #include "audio/wav_writer.h"
 #include "core_time.h"
 #include "export/daw_pack_export.h"
@@ -9,32 +10,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <sys/stat.h>
-
-static bool path_exists(const char* path) {
-    struct stat st;
-    return path && stat(path, &st) == 0;
-}
-
-static bool next_bounce_path(char* out, size_t len) {
-    if (!out || len == 0) {
-        return false;
-    }
-    const char* dir = "assets/audio";
-    for (int i = 0; i < 10000; ++i) {
-        char name[64];
-        if (i == 0) {
-            snprintf(name, sizeof(name), "bounce.wav");
-        } else {
-            snprintf(name, sizeof(name), "bounce%d.wav", i);
-        }
-        snprintf(out, len, "%s/%s", dir, name);
-        if (!path_exists(out)) {
-            return true;
-        }
-    }
-    return false;
-}
 
 static uint64_t find_project_end_frame(const Engine* engine) {
     if (!engine) {
@@ -108,8 +83,9 @@ void perform_bounce(AppContext* ctx, AppState* state, void (*handle_render)(AppC
     }
 
     char path[512];
-    if (!next_bounce_path(path, sizeof(path))) {
-        SDL_Log("Bounce aborted: unable to allocate output filename.");
+    if (!daw_bounce_next_path_for_state(state, path, sizeof(path))) {
+        SDL_Log("Bounce aborted: unable to allocate output filename under library root %s.",
+                daw_bounce_library_root(state));
         state->bounce_requested = false;
         return;
     }
@@ -168,6 +144,13 @@ void perform_bounce(AppContext* ctx, AppState* state, void (*handle_render)(AppC
                 }
             } else {
                 SDL_Log("Bounce pack export warning: failed to build pack path for %s", path);
+            }
+            int bounce_track = -1;
+            int bounce_clip = -1;
+            if (daw_bounce_insert_audio_track(state, path, start_frame, &bounce_track, &bounce_clip)) {
+                SDL_Log("Bounce region inserted: track=%d clip=%d", bounce_track, bounce_clip);
+            } else {
+                SDL_Log("Bounce region insert skipped for %s", path);
             }
         }
     }

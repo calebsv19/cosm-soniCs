@@ -3,13 +3,15 @@
 #include "config.h"
 #include "effects/effects_manager.h"
 #include "engine/automation.h"
+#include "engine/engine.h"
 #include "engine/fade_curve.h"
+#include "engine/midi.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-#define SESSION_DOCUMENT_VERSION 17
+#define SESSION_DOCUMENT_VERSION 20
 #define SESSION_PATH_MAX 512
 #define SESSION_NAME_MAX 128
 #define SESSION_FX_NAME_MAX 64
@@ -30,6 +32,7 @@ typedef struct {
 
 // Captures serialized clip data for session persistence.
 typedef struct {
+    EngineClipKind kind;
     char media_id[SESSION_MEDIA_ID_MAX];
     char media_path[SESSION_PATH_MAX];
     char name[SESSION_NAME_MAX];
@@ -42,6 +45,10 @@ typedef struct {
     EngineFadeCurve fade_out_curve;
     SessionAutomationLane* automation_lanes;
     int automation_lane_count;
+    EngineInstrumentPresetId instrument_preset;
+    EngineInstrumentParams instrument_params;
+    EngineMidiNote* midi_notes;
+    int midi_note_count;
     float gain;
     bool selected;
 } SessionClip;

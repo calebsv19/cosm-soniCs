@@ -3,6 +3,10 @@
 Purpose: Application bootstrap and SDL event loop integration.
 
 ## Files
+- `bounce_region.c`
+  - Allocates bounce filenames under the active library root and inserts successful bounces as normal audio clips on a newly appended `Bounce` track when track creation succeeds.
+- `main_bounce.c`
+  - Orchestrates offline bounce range selection, progress reporting, WAV/pack writes, library refresh, and bounce-region insertion.
 - `main.c`
   - `handle_input`: Feeds the current SDL event into the input manager when available.
   - `handle_update`: Ensures layout sizing is up to date and advances input state when work is due.

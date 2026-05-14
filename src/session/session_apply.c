@@ -387,6 +387,61 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
 
         for (int c = 0; c < track_doc->clip_count; ++c) {
             SessionClip* clip_doc = &track_doc->clips[c];
+            if (clip_doc->kind == ENGINE_CLIP_KIND_MIDI) {
+                int clip_index = -1;
+                if (!engine_add_midi_clip_to_track(state->engine,
+                                                   track_index,
+                                                   clip_doc->start_frame,
+                                                   clip_doc->duration_frames,
+                                                   &clip_index)) {
+                    SDL_Log("session_apply_document: failed to create MIDI clip %d:%d", t, c);
+                    continue;
+                }
+                engine_clip_set_gain(state->engine, track_index, clip_index, clip_doc->gain == 0.0f ? 1.0f : clip_doc->gain);
+                engine_clip_set_name(state->engine, track_index, clip_index, clip_doc->name);
+                engine_clip_midi_set_instrument_preset(state->engine,
+                                                       track_index,
+                                                       clip_index,
+                                                       clip_doc->instrument_preset);
+                engine_clip_midi_set_instrument_params(state->engine,
+                                                       track_index,
+                                                       clip_index,
+                                                       clip_doc->instrument_params);
+                if (clip_doc->offset_frames != 0 || clip_doc->duration_frames != 0) {
+                    engine_clip_set_region(state->engine,
+                                           track_index,
+                                           clip_index,
+                                           clip_doc->offset_frames,
+                                           clip_doc->duration_frames);
+                }
+                for (int n = 0; n < clip_doc->midi_note_count; ++n) {
+                    if (!engine_clip_midi_add_note(state->engine,
+                                                   track_index,
+                                                   clip_index,
+                                                   clip_doc->midi_notes[n],
+                                                   NULL)) {
+                        SDL_Log("session_apply_document: failed to add MIDI note %d for clip %d:%d", n, t, c);
+                    }
+                }
+                if (clip_doc->automation_lanes && clip_doc->automation_lane_count > 0) {
+                    for (int l = 0; l < clip_doc->automation_lane_count; ++l) {
+                        SessionAutomationLane* lane = &clip_doc->automation_lanes[l];
+                        engine_clip_set_automation_lane_points(state->engine,
+                                                               track_index,
+                                                               clip_index,
+                                                               lane->target,
+                                                               (const EngineAutomationPoint*)lane->points,
+                                                               lane->point_count);
+                    }
+                }
+                if (clip_doc->selected && state->selected_track_index == -1) {
+                    state->selected_track_index = track_index;
+                    state->selected_clip_index = clip_index;
+                    state->active_track_index = track_index;
+                    selected_from_clip = true;
+                }
+                continue;
+            }
             const char* resolved_path = clip_doc->media_path;
             const char* resolved_id = clip_doc->media_id;
             MediaRegistryEntry resolved_entry = {0};

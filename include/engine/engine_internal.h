@@ -45,6 +45,9 @@ typedef enum {
     ENGINE_CMD_REBUILD_SOURCES = 7,
     ENGINE_CMD_SET_FX_PARAM = 8,
     ENGINE_CMD_SET_TEMPO = 9,
+    ENGINE_CMD_MIDI_AUDITION_NOTE_ON = 10,
+    ENGINE_CMD_MIDI_AUDITION_NOTE_OFF = 11,
+    ENGINE_CMD_MIDI_AUDITION_ALL_OFF = 12,
 } EngineCommandType;
 
 typedef struct {
@@ -80,6 +83,13 @@ typedef struct {
         struct {
             TempoState tempo;
         } tempo;
+        struct {
+            int track_index;
+            EngineInstrumentPresetId preset;
+            EngineInstrumentParams params;
+            uint8_t note;
+            float velocity;
+        } midi_audition;
     } payload;
 } EngineCommand;
 
@@ -190,6 +200,13 @@ struct Engine {
     EngineToneSource* tone_source;
     EngineGraphSourceOps tone_ops;
     EngineGraphSourceOps sampler_ops;
+    EngineGraphSourceOps instrument_ops;
+    struct EngineInstrumentSource* midi_audition_source;
+    EngineMidiNoteList midi_audition_notes;
+    EngineInstrumentPresetId midi_audition_preset;
+    EngineInstrumentParams midi_audition_params;
+    uint64_t midi_audition_idle_frame;
+    int midi_audition_track_index;
     EngineEqState master_eq;
     EngineTrack* tracks;
     int track_count;
@@ -290,6 +307,12 @@ void engine_mix_tracks(Engine* engine,
                        float* interleaved_out,
                        float* track_buffer,
                        int channels);
+void engine_mix_midi_audition_only(Engine* engine,
+                                   uint64_t transport_frame,
+                                   int frames,
+                                   float* interleaved_out,
+                                   float* track_buffer,
+                                   int channels);
 int engine_spectrum_thread_main(void* userdata);
 bool engine_spectrum_begin_block(Engine* engine);
 void engine_spectrum_update(Engine* engine, const float* interleaved, int frames, int channels);
@@ -307,6 +330,14 @@ void engine_spectrogram_update_fx(Engine* engine,
                                   int frames,
                                   int channels);
 void engine_clip_destroy(Engine* engine, EngineClip* clip);
+void engine_midi_audition_apply_note_on(Engine* engine,
+                                        int track_index,
+                                        EngineInstrumentPresetId preset,
+                                        EngineInstrumentParams params,
+                                        uint8_t note,
+                                        float velocity);
+void engine_midi_audition_apply_note_off(Engine* engine, uint8_t note);
+void engine_midi_audition_apply_all_off(Engine* engine);
 void engine_track_init(EngineTrack* track);
 void engine_track_clear(Engine* engine, EngineTrack* track);
 EngineTrack* engine_get_track_mutable(Engine* engine, int track_index);

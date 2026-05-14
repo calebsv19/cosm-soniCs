@@ -18,10 +18,16 @@ Purpose: Translate SDL events and pointer state into engine/UI actions.
 - `inspector_input_commit_if_editing/sync`: Persist edits back to the engine and pull latest clip data.
 - `effects_panel_input.c`
   - Initializes the master effects panel state, synchronises effect snapshots, and handles the category/effect overlay navigation (including scroll wheel support), slider drags, and delete interactions when the mixer rack is active.
+- `midi_editor_input.c`
+  - Captures lower-pane MIDI editor input and applies time-ruler playhead seek, editor-local hover-routed zoom/pan viewport controls, click-create, hover/click slop, selected-first drag-move, selected-first edge-resize, selected-group click-drag movement with click-release collapse, Shift-click multi-note selection, Shift-empty-grid marquee selection, immediate/group shift-drag velocity edits, Delete/Backspace, selected-set quantize, selected-note copy/paste/duplicate, snap-enabled quantized create/drag/resize/QWERTY timing, `R`-armed QWERTY note recording with undo snapshots, non-recording Test-mode QWERTY audition, default velocity/octave controls for QWERTY input, per-region instrument preset dropdown selection, and the explicit instrument-panel open affordance.
+- `midi_instrument_panel_input.c`
+  - Captures the selected MIDI region's instrument subview input, including return-to-notes routing, preset menu selection, and per-region Level/Tone/Attack/Release slider drags without mutating MIDI notes.
+- `timeline/`
+  - Timeline drag helpers keep MIDI right-edge resizing bounded by existing note content and leave left-edge MIDI trim deferred until offset semantics are explicit.
 - `transport_input.c`
   - `transport_input_init`: Clear slider drag flags.
   - `transport_input_handle_event`: Handle clicks that toggle grid mode or begin slider drags.
   - `transport_input_update`: Continue slider adjustments while the mouse button stays down.
 
 ## Subdirectories
-- `timeline/`: Timeline-specific input helpers (selection, drag operations, and the main event/update loop).
+- `timeline/`: Timeline-specific input helpers (selection, drag operations, MIDI region creation/resizing, and the main event/update loop).

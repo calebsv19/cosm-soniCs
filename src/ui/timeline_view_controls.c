@@ -10,6 +10,7 @@ typedef struct TimelineTextMetrics {
     int text_h_1x;
     int width_plus;
     int width_minus;
+    int width_midi_region;
     int width_loop;
     int width_snap;
     int width_auto;
@@ -46,6 +47,7 @@ static void timeline_text_metrics_refresh(void) {
     metrics.text_h_1x = text_h;
     metrics.width_plus = ui_measure_text_width("+", 1.0f);
     metrics.width_minus = ui_measure_text_width("-", 1.0f);
+    metrics.width_midi_region = ui_measure_text_width("+ MIDI", 1.0f);
     metrics.width_loop = ui_measure_text_width("LOOP", 1.0f);
     metrics.width_snap = ui_measure_text_width("SNAP", 1.0f);
     metrics.width_auto = ui_measure_text_width("AUTO", 1.0f);
@@ -94,6 +96,7 @@ static int timeline_label_width_cached(const char* label) {
     }
     if (strcmp(label, "+") == 0) return metrics->width_plus;
     if (strcmp(label, "-") == 0) return metrics->width_minus;
+    if (strcmp(label, "+ MIDI") == 0) return metrics->width_midi_region;
     if (strcmp(label, "LOOP") == 0) return metrics->width_loop;
     if (strcmp(label, "SNAP") == 0) return metrics->width_snap;
     if (strcmp(label, "AUTO") == 0) return metrics->width_auto;
@@ -122,7 +125,7 @@ int timeline_view_controls_compute_layout(int timeline_x,
                                           int timeline_width,
                                           TimelineControlsUI* out_controls) {
     const TimelineTextMetrics* metrics = timeline_text_metrics();
-    enum { k_button_count = 8 };
+    enum { k_button_count = 9 };
     const int left_pad = 10;
     const int right_pad = 10;
     const int button_gap = 6;
@@ -148,12 +151,14 @@ int timeline_view_controls_compute_layout(int timeline_x,
     SDL_Rect local_rects[k_button_count] = {{0}};
     SDL_Rect* button_rects[k_button_count] = {
         &local_rects[0], &local_rects[1], &local_rects[2], &local_rects[3],
-        &local_rects[4], &local_rects[5], &local_rects[6], &local_rects[7]
+        &local_rects[4], &local_rects[5], &local_rects[6], &local_rects[7],
+        &local_rects[8]
     };
     if (out_controls) {
         SDL_Rect zero = {0, 0, 0, 0};
         out_controls->add_rect = zero;
         out_controls->remove_rect = zero;
+        out_controls->midi_region_rect = zero;
         out_controls->loop_toggle_rect = zero;
         out_controls->snap_toggle_rect = zero;
         out_controls->automation_toggle_rect = zero;
@@ -162,12 +167,13 @@ int timeline_view_controls_compute_layout(int timeline_x,
         out_controls->automation_label_toggle_rect = zero;
         button_rects[0] = &out_controls->add_rect;
         button_rects[1] = &out_controls->remove_rect;
-        button_rects[2] = &out_controls->loop_toggle_rect;
-        button_rects[3] = &out_controls->snap_toggle_rect;
-        button_rects[4] = &out_controls->automation_toggle_rect;
-        button_rects[5] = &out_controls->automation_target_rect;
-        button_rects[6] = &out_controls->tempo_toggle_rect;
-        button_rects[7] = &out_controls->automation_label_toggle_rect;
+        button_rects[2] = &out_controls->midi_region_rect;
+        button_rects[3] = &out_controls->loop_toggle_rect;
+        button_rects[4] = &out_controls->snap_toggle_rect;
+        button_rects[5] = &out_controls->automation_toggle_rect;
+        button_rects[6] = &out_controls->automation_target_rect;
+        button_rects[7] = &out_controls->tempo_toggle_rect;
+        button_rects[8] = &out_controls->automation_label_toggle_rect;
     }
 
     if (timeline_width <= 0) {
@@ -182,18 +188,19 @@ int timeline_view_controls_compute_layout(int timeline_x,
     int widths[k_button_count];
     widths[0] = timeline_button_width("+", text_h + 8);
     widths[1] = timeline_button_width("-", text_h + 8);
-    widths[2] = timeline_button_width("LOOP", 36);
-    widths[3] = timeline_button_width("SNAP", 40);
-    widths[4] = timeline_button_width("AUTO", 44);
-    widths[5] = timeline_button_width("PAN", 40);
+    widths[2] = timeline_button_width("+ MIDI", 54);
+    widths[3] = timeline_button_width("LOOP", 36);
+    widths[4] = timeline_button_width("SNAP", 40);
+    widths[5] = timeline_button_width("AUTO", 44);
+    widths[6] = timeline_button_width("PAN", 40);
     {
         int vol_w = timeline_button_width("VOL", 40);
-        if (vol_w > widths[5]) {
-            widths[5] = vol_w;
+        if (vol_w > widths[6]) {
+            widths[6] = vol_w;
         }
     }
-    widths[6] = timeline_button_width("TEMPO", 52);
-    widths[7] = timeline_button_width("VAL", 40);
+    widths[7] = timeline_button_width("TEMPO", 52);
+    widths[8] = timeline_button_width("VAL", 40);
 
     for (int i = 0; i < k_button_count; ++i) {
         if (widths[i] > available_w) {

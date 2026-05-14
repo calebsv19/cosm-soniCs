@@ -11,9 +11,12 @@
 
 static bool g_theme_runtime_initialized = false;
 static CoreThemePresetId g_theme_runtime_preset = CORE_THEME_PRESET_DAW_DEFAULT;
+static bool g_font_runtime_initialized = false;
+static CoreFontPresetId g_font_runtime_preset = CORE_FONT_PRESET_DAW_DEFAULT;
 static bool g_font_zoom_runtime_initialized = false;
 static int g_font_zoom_step = 0;
 static const char* k_theme_persist_path = "config/theme_preset.txt";
+static const char* k_font_persist_path = "config/font_preset.txt";
 static const char* k_font_zoom_persist_path = "config/font_zoom_step.txt";
 static const CoreThemePresetId k_theme_cycle_order[] = {
     CORE_THEME_PRESET_DAW_DEFAULT,
@@ -53,6 +56,23 @@ static void font_zoom_runtime_init_if_needed(void) {
         }
     }
     g_font_zoom_runtime_initialized = true;
+}
+
+static void font_runtime_init_if_needed(void) {
+    const char* preset_name;
+    CoreFontPresetId resolved_id;
+    if (g_font_runtime_initialized) {
+        return;
+    }
+    preset_name = getenv("DAW_FONT_PRESET");
+    if (preset_name && preset_name[0]) {
+        CoreFontPreset preset = {0};
+        if (core_font_get_preset_by_name(preset_name, &preset).code == CORE_OK) {
+            resolved_id = preset.id;
+            g_font_runtime_preset = resolved_id;
+        }
+    }
+    g_font_runtime_initialized = true;
 }
 
 static int font_zoom_step_percent(void) {
@@ -284,6 +304,77 @@ bool daw_shared_theme_current_preset(char* out_name, size_t out_name_size) {
     return true;
 }
 
+bool daw_shared_font_set_preset(const char* preset_name) {
+    CoreFontPreset preset = {0};
+    if (!preset_name || !preset_name[0]) {
+        return false;
+    }
+    if (core_font_get_preset_by_name(preset_name, &preset).code != CORE_OK) {
+        return false;
+    }
+    g_font_runtime_preset = preset.id;
+    g_font_runtime_initialized = true;
+    return true;
+}
+
+bool daw_shared_font_current_preset(char* out_name, size_t out_name_size) {
+    const char* name;
+    if (!out_name || out_name_size == 0) {
+        return false;
+    }
+    font_runtime_init_if_needed();
+    name = core_font_preset_name(g_font_runtime_preset);
+    if (!name || !name[0]) {
+        return false;
+    }
+    strncpy(out_name, name, out_name_size - 1);
+    out_name[out_name_size - 1] = '\0';
+    return true;
+}
+
+bool daw_shared_font_load_persisted(void) {
+    FILE* file;
+    char preset_name[64];
+    if (!stat_path_exists(k_font_persist_path, NULL)) {
+        return false;
+    }
+    file = fopen(k_font_persist_path, "rb");
+    if (!file) {
+        return false;
+    }
+    preset_name[0] = '\0';
+    if (!fgets(preset_name, (int)sizeof(preset_name), file)) {
+        fclose(file);
+        return false;
+    }
+    fclose(file);
+    trim_trailing_whitespace(preset_name);
+    if (!preset_name[0]) {
+        return false;
+    }
+    return daw_shared_font_set_preset(preset_name);
+}
+
+bool daw_shared_font_save_persisted(void) {
+    FILE* file;
+    char preset_name[64];
+    if (!daw_shared_font_current_preset(preset_name, sizeof(preset_name))) {
+        return false;
+    }
+    file = fopen(k_font_persist_path, "wb");
+    if (!file) {
+        return false;
+    }
+    if (fputs(preset_name, file) < 0 || fputc('\n', file) == EOF) {
+        fclose(file);
+        return false;
+    }
+    if (fclose(file) != 0) {
+        return false;
+    }
+    return true;
+}
+
 bool daw_shared_theme_load_persisted(void) {
     FILE* file;
     char preset_name[64];
@@ -426,7 +517,6 @@ bool daw_shared_font_zoom_save_persisted(void) {
 }
 
 bool daw_shared_font_resolve_ui_regular(char* out_path, size_t out_path_size, int* out_point_size) {
-    const char* preset_name;
     CoreFontPreset preset = {0};
     CoreFontRoleSpec role = {0};
     const char* selected_path = NULL;
@@ -438,12 +528,8 @@ bool daw_shared_font_resolve_ui_regular(char* out_path, size_t out_path_size, in
         return false;
     }
 
-    preset_name = getenv("DAW_FONT_PRESET");
-    if (!preset_name || !preset_name[0]) {
-        preset_name = "daw_default";
-    }
-
-    r = core_font_get_preset_by_name(preset_name, &preset);
+    font_runtime_init_if_needed();
+    r = core_font_get_preset(g_font_runtime_preset, &preset);
     if (r.code != CORE_OK) {
         r = core_font_get_preset(CORE_FONT_PRESET_DAW_DEFAULT, &preset);
         if (r.code != CORE_OK) {

@@ -1,6 +1,8 @@
 #include "engine/engine_internal.h"
 #include "engine/engine_clips_automation_internal.h"
 
+#include "engine/instrument.h"
+#include "engine/midi.h"
 #include "engine/sampler.h"
 
 #include "audio/media_clip.h"
@@ -25,9 +27,14 @@ void engine_clip_destroy(Engine* engine, EngineClip* clip) {
     }
     clip->automation_lane_count = 0;
     clip->automation_lane_capacity = 0;
+    engine_midi_note_list_free(&clip->midi_notes);
     if (clip->sampler) {
         engine_sampler_source_destroy(clip->sampler);
         clip->sampler = NULL;
+    }
+    if (clip->instrument) {
+        engine_instrument_source_destroy(clip->instrument);
+        clip->instrument = NULL;
     }
     if (clip->media) {
         if (engine) {
@@ -39,6 +46,7 @@ void engine_clip_destroy(Engine* engine, EngineClip* clip) {
         clip->media = NULL;
     }
     clip->source = NULL;
+    clip->kind = ENGINE_CLIP_KIND_AUDIO;
     clip->gain = 0.0f;
     clip->active = false;
     clip->name[0] = '\0';
@@ -96,9 +104,12 @@ static EngineClip* engine_track_append_clip(Engine* engine, EngineTrack* track) 
         track->clip_capacity = new_cap;
     }
     EngineClip* clip = &track->clips[track->clip_count++];
+    clip->kind = ENGINE_CLIP_KIND_AUDIO;
     clip->sampler = NULL;
+    clip->instrument = NULL;
     clip->media = NULL;
     clip->source = NULL;
+    engine_midi_note_list_init(&clip->midi_notes);
     clip->gain = 1.0f;
     clip->active = true;
     clip->name[0] = '\0';
@@ -116,6 +127,40 @@ static EngineClip* engine_track_append_clip(Engine* engine, EngineTrack* track) 
     clip->selected = false;
     engine_clip_init_automation(clip);
     return clip;
+}
+
+static int engine_track_find_clip_by_creation_index(const EngineTrack* track, uint64_t creation_index) {
+    if (!track) {
+        return -1;
+    }
+    for (int i = 0; i < track->clip_count; ++i) {
+        if (track->clips[i].creation_index == creation_index) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static bool engine_midi_note_fits_duration(const EngineMidiNote* note, uint64_t duration_frames) {
+    if (!engine_midi_note_is_valid(note)) {
+        return false;
+    }
+    if (note->start_frame > duration_frames) {
+        return false;
+    }
+    return note->duration_frames <= duration_frames - note->start_frame;
+}
+
+static bool engine_midi_notes_fit_duration(const EngineMidiNoteList* notes, uint64_t duration_frames) {
+    if (!engine_midi_note_list_validate(notes)) {
+        return false;
+    }
+    for (int i = 0; i < notes->note_count; ++i) {
+        if (!engine_midi_note_fits_duration(&notes->notes[i], duration_frames)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static int engine_clip_compare_timeline(const void* a, const void* b) {
@@ -293,6 +338,8 @@ static EngineClip* engine_clip_create_with_source(Engine* engine,
         return NULL;
     }
 
+    clip_slot->kind = ENGINE_CLIP_KIND_AUDIO;
+    clip_slot->instrument = NULL;
     clip_slot->media = cached_media;
     clip_slot->source = source;
     clip_slot->timeline_start_frames = start_frame;
@@ -360,13 +407,14 @@ bool engine_add_clip_to_track_with_id(Engine* engine,
         return false;
     }
 
+    EngineSamplerSource* new_sampler = clip_slot->sampler;
     track->active = true;
     engine_track_sort_clips(track);
 
     if (out_clip_index) {
         *out_clip_index = 0;
         for (int i = 0; i < track->clip_count; ++i) {
-            if (track->clips[i].sampler == clip_slot->sampler) {
+            if (track->clips[i].sampler == new_sampler) {
                 *out_clip_index = i;
                 break;
             }
@@ -382,6 +430,56 @@ bool engine_add_clip_to_track_with_id(Engine* engine,
     return true;
 }
 
+bool engine_add_midi_clip_to_track(Engine* engine,
+                                   int track_index,
+                                   uint64_t start_frame,
+                                   uint64_t duration_frames,
+                                   int* out_clip_index) {
+    if (!engine || duration_frames == 0) {
+        return false;
+    }
+    EngineInstrumentSource* instrument = engine_instrument_source_create();
+    if (!instrument) {
+        return false;
+    }
+    EngineTrack* track = engine_get_track_mutable(engine, track_index);
+    if (!track) {
+        engine_instrument_source_destroy(instrument);
+        return false;
+    }
+
+    EngineClip* clip = engine_track_append_clip(engine, track);
+    if (!clip) {
+        engine_instrument_source_destroy(instrument);
+        return false;
+    }
+    clip->kind = ENGINE_CLIP_KIND_MIDI;
+    clip->instrument = instrument;
+    clip->instrument_preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+    clip->instrument_params = engine_instrument_default_params(clip->instrument_preset);
+    clip->timeline_start_frames = start_frame;
+    clip->duration_frames = duration_frames;
+    clip->offset_frames = 0;
+    clip->gain = 1.0f;
+    clip->active = true;
+    snprintf(clip->name, sizeof(clip->name), "MIDI Region");
+
+    uint64_t creation_index = clip->creation_index;
+    track->active = true;
+    engine_track_sort_clips(track);
+
+    if (out_clip_index) {
+        *out_clip_index = engine_track_find_clip_by_creation_index(track, creation_index);
+    }
+
+    engine_trace(engine, "midi clip add track=%d start=%llu duration=%llu",
+                 track_index,
+                 (unsigned long long)start_frame,
+                 (unsigned long long)duration_frames);
+    engine_request_rebuild_sources(engine);
+    return true;
+}
+
 bool engine_clip_set_timeline_start(Engine* engine, int track_index, int clip_index, uint64_t start_frame, int* out_clip_index) {
     if (!engine || track_index < 0 || track_index >= engine->track_count) {
         return false;
@@ -391,7 +489,20 @@ bool engine_clip_set_timeline_start(Engine* engine, int track_index, int clip_in
         return false;
     }
     EngineClip* clip = &track->clips[clip_index];
-    if (!clip || !clip->sampler) {
+    if (!clip) {
+        return false;
+    }
+    if (clip->kind == ENGINE_CLIP_KIND_MIDI) {
+        uint64_t creation_index = clip->creation_index;
+        clip->timeline_start_frames = start_frame;
+        engine_track_sort_clips(track);
+        if (out_clip_index) {
+            *out_clip_index = engine_track_find_clip_by_creation_index(track, creation_index);
+        }
+        engine_request_rebuild_sources(engine);
+        return true;
+    }
+    if (!clip->sampler) {
         return false;
     }
     if (!engine_clip_resolve_media(engine, clip)) {
@@ -432,7 +543,22 @@ bool engine_clip_set_region(Engine* engine, int track_index, int clip_index, uin
         return false;
     }
     EngineClip* clip = &track->clips[clip_index];
-    if (!clip || !clip->sampler) {
+    if (!clip) {
+        return false;
+    }
+    if (clip->kind == ENGINE_CLIP_KIND_MIDI) {
+        if (duration_frames == 0) {
+            return false;
+        }
+        if (!engine_midi_notes_fit_duration(&clip->midi_notes, duration_frames)) {
+            return false;
+        }
+        clip->offset_frames = offset_frames;
+        clip->duration_frames = duration_frames;
+        engine_request_rebuild_sources(engine);
+        return true;
+    }
+    if (!clip->sampler) {
         return false;
     }
     if (!engine_clip_resolve_media(engine, clip)) {
@@ -475,7 +601,13 @@ uint64_t engine_clip_get_total_frames(const Engine* engine, int track_index, int
         return 0;
     }
     const EngineClip* clip = &track->clips[clip_index];
-    if (!clip || !clip->media) {
+    if (!clip) {
+        return 0;
+    }
+    if (clip->kind == ENGINE_CLIP_KIND_MIDI) {
+        return clip->duration_frames;
+    }
+    if (!clip->media) {
         return 0;
     }
     return clip->media->frame_count;
@@ -689,13 +821,14 @@ bool engine_add_clip_segment(Engine* engine, int track_index, const EngineClip* 
                                          new_clip->automation_lanes,
                                          new_clip->automation_lane_count);
 
+    EngineSamplerSource* new_sampler = new_clip->sampler;
     track->active = true;
     engine_track_sort_clips(track);
 
     if (out_clip_index) {
         *out_clip_index = 0;
         for (int i = 0; i < track->clip_count; ++i) {
-            if (track->clips[i].sampler == new_clip->sampler) {
+            if (track->clips[i].sampler == new_sampler) {
                 *out_clip_index = i;
                 break;
             }
@@ -757,13 +890,14 @@ bool engine_duplicate_clip(Engine* engine, int track_index, int clip_index, uint
     engine_sampler_source_set_automation(new_clip->sampler,
                                          new_clip->automation_lanes,
                                          new_clip->automation_lane_count);
+    EngineSamplerSource* new_sampler = new_clip->sampler;
     track->active = true;
     engine_track_sort_clips(track);
 
     if (out_clip_index) {
         *out_clip_index = 0;
         for (int i = 0; i < track->clip_count; ++i) {
-            if (track->clips[i].sampler == new_clip->sampler) {
+            if (track->clips[i].sampler == new_sampler) {
                 *out_clip_index = i;
                 break;
             }
@@ -782,6 +916,186 @@ const char* engine_clip_get_media_id(const EngineClip* clip) {
         return clip->source->media_id;
     }
     return NULL;
+}
+
+EngineClipKind engine_clip_get_kind(const EngineClip* clip) {
+    return clip ? clip->kind : ENGINE_CLIP_KIND_AUDIO;
+}
+
+static EngineClip* engine_get_midi_clip_mutable(Engine* engine, int track_index, int clip_index) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return NULL;
+    }
+    EngineTrack* track = &engine->tracks[track_index];
+    if (clip_index < 0 || clip_index >= track->clip_count) {
+        return NULL;
+    }
+    EngineClip* clip = &track->clips[clip_index];
+    if (!clip || clip->kind != ENGINE_CLIP_KIND_MIDI) {
+        return NULL;
+    }
+    return clip;
+}
+
+bool engine_clip_midi_add_note(Engine* engine,
+                               int track_index,
+                               int clip_index,
+                               EngineMidiNote note,
+                               int* out_note_index) {
+    EngineClip* clip = engine_get_midi_clip_mutable(engine, track_index, clip_index);
+    if (!clip) {
+        return false;
+    }
+    if (!engine_midi_note_fits_duration(&note, clip->duration_frames)) {
+        return false;
+    }
+    bool ok = engine_midi_note_list_insert(&clip->midi_notes, note, out_note_index);
+    if (ok) {
+        engine_request_rebuild_sources(engine);
+    }
+    return ok;
+}
+
+bool engine_clip_midi_update_note(Engine* engine,
+                                  int track_index,
+                                  int clip_index,
+                                  int note_index,
+                                  EngineMidiNote note,
+                                  int* out_note_index) {
+    EngineClip* clip = engine_get_midi_clip_mutable(engine, track_index, clip_index);
+    if (!clip) {
+        return false;
+    }
+    if (!engine_midi_note_fits_duration(&note, clip->duration_frames)) {
+        return false;
+    }
+    bool ok = engine_midi_note_list_update(&clip->midi_notes, note_index, note, out_note_index);
+    if (ok) {
+        engine_request_rebuild_sources(engine);
+    }
+    return ok;
+}
+
+bool engine_clip_midi_remove_note(Engine* engine, int track_index, int clip_index, int note_index) {
+    EngineClip* clip = engine_get_midi_clip_mutable(engine, track_index, clip_index);
+    if (!clip) {
+        return false;
+    }
+    bool ok = engine_midi_note_list_remove(&clip->midi_notes, note_index);
+    if (ok) {
+        engine_request_rebuild_sources(engine);
+    }
+    return ok;
+}
+
+bool engine_clip_midi_set_notes(Engine* engine,
+                                int track_index,
+                                int clip_index,
+                                const EngineMidiNote* notes,
+                                int note_count) {
+    EngineClip* clip = engine_get_midi_clip_mutable(engine, track_index, clip_index);
+    if (!clip || note_count < 0) {
+        return false;
+    }
+    if (note_count > 0 && !notes) {
+        return false;
+    }
+    EngineMidiNoteList replacement;
+    engine_midi_note_list_init(&replacement);
+    bool ok = engine_midi_note_list_set(&replacement, notes, note_count);
+    if (ok) {
+        ok = engine_midi_notes_fit_duration(&replacement, clip->duration_frames);
+    }
+    if (ok) {
+        engine_midi_note_list_free(&clip->midi_notes);
+        clip->midi_notes = replacement;
+        engine_midi_note_list_init(&replacement);
+        engine_request_rebuild_sources(engine);
+    }
+    engine_midi_note_list_free(&replacement);
+    return ok;
+}
+
+int engine_clip_midi_note_count(const EngineClip* clip) {
+    if (!clip || clip->kind != ENGINE_CLIP_KIND_MIDI) {
+        return 0;
+    }
+    return clip->midi_notes.note_count;
+}
+
+const EngineMidiNote* engine_clip_midi_notes(const EngineClip* clip) {
+    if (!clip || clip->kind != ENGINE_CLIP_KIND_MIDI) {
+        return NULL;
+    }
+    return clip->midi_notes.notes;
+}
+
+EngineInstrumentPresetId engine_clip_midi_instrument_preset(const EngineClip* clip) {
+    if (!clip || clip->kind != ENGINE_CLIP_KIND_MIDI) {
+        return ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+    }
+    return engine_instrument_preset_clamp(clip->instrument_preset);
+}
+
+bool engine_clip_midi_set_instrument_preset(Engine* engine,
+                                            int track_index,
+                                            int clip_index,
+                                            EngineInstrumentPresetId preset) {
+    EngineClip* clip = engine_get_midi_clip_mutable(engine, track_index, clip_index);
+    if (!clip) {
+        return false;
+    }
+    EngineInstrumentPresetId clamped = engine_instrument_preset_clamp(preset);
+    if (clip->instrument_preset == clamped) {
+        return true;
+    }
+    clip->instrument_preset = clamped;
+    clip->instrument_params = engine_instrument_default_params(clamped);
+    engine_request_rebuild_sources(engine);
+    return true;
+}
+
+EngineInstrumentParams engine_clip_midi_instrument_params(const EngineClip* clip) {
+    EngineInstrumentPresetId preset = engine_clip_midi_instrument_preset(clip);
+    if (!clip || clip->kind != ENGINE_CLIP_KIND_MIDI) {
+        return engine_instrument_default_params(preset);
+    }
+    return engine_instrument_params_sanitize(preset, clip->instrument_params);
+}
+
+bool engine_clip_midi_set_instrument_params(Engine* engine,
+                                            int track_index,
+                                            int clip_index,
+                                            EngineInstrumentParams params) {
+    EngineClip* clip = engine_get_midi_clip_mutable(engine, track_index, clip_index);
+    if (!clip) {
+        return false;
+    }
+    EngineInstrumentPresetId preset = engine_clip_midi_instrument_preset(clip);
+    EngineInstrumentParams clamped = engine_instrument_params_sanitize(preset, params);
+    if (clip->instrument_params.level == clamped.level &&
+        clip->instrument_params.tone == clamped.tone &&
+        clip->instrument_params.attack_ms == clamped.attack_ms &&
+        clip->instrument_params.release_ms == clamped.release_ms) {
+        return true;
+    }
+    clip->instrument_params = clamped;
+    engine_request_rebuild_sources(engine);
+    return true;
+}
+
+bool engine_clip_midi_set_instrument_param(Engine* engine,
+                                           int track_index,
+                                           int clip_index,
+                                           EngineInstrumentParamId param,
+                                           float value) {
+    EngineClip* clip = engine_get_midi_clip_mutable(engine, track_index, clip_index);
+    if (!clip) {
+        return false;
+    }
+    EngineInstrumentPresetId preset = engine_clip_midi_instrument_preset(clip);
+    EngineInstrumentParams params = engine_instrument_params_set(preset, clip->instrument_params, param, value);
+    return engine_clip_midi_set_instrument_params(engine, track_index, clip_index, params);
 }
 
 const char* engine_clip_get_media_path(const EngineClip* clip) {

@@ -26,12 +26,15 @@ typedef enum {
     UNDO_CMD_FX_EDIT,
     UNDO_CMD_EQ_CURVE,
     UNDO_CMD_TRACK_SNAPSHOT,
-    UNDO_CMD_LIBRARY_RENAME
+    UNDO_CMD_LIBRARY_RENAME,
+    UNDO_CMD_MIDI_NOTE_EDIT
 } UndoCommandType;
 
 // Stores clip parameters for undo/redo transforms.
 typedef struct {
+    EngineClipKind kind;
     struct EngineSamplerSource* sampler;
+    uint64_t creation_index;
     int track_index;
     uint64_t start_frame;
     uint64_t offset_frames;
@@ -152,6 +155,15 @@ typedef struct {
 } UndoLibraryRename;
 
 typedef struct {
+    int track_index;
+    uint64_t clip_creation_index;
+    int before_note_count;
+    EngineMidiNote* before_notes;
+    int after_note_count;
+    EngineMidiNote* after_notes;
+} UndoMidiNoteEdit;
+
+typedef struct {
     UndoCommandType type;
     union {
         UndoClipTransform clip_transform;
@@ -166,6 +178,7 @@ typedef struct {
         UndoEqCurveEdit eq_curve_edit;
         UndoTrackSnapshotEdit track_snapshot_edit;
         UndoLibraryRename library_rename;
+        UndoMidiNoteEdit midi_note_edit;
     } data;
 } UndoCommand;
 

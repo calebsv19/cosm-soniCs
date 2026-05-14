@@ -1,6 +1,7 @@
 #include "engine/engine_internal.h"
 #include "engine/engine_clips_automation_internal.h"
 #include "engine/sampler.h"
+#include "engine/timeline_contract.h"
 
 #include <SDL2/SDL.h>
 #include <stdint.h>
@@ -114,7 +115,6 @@ bool engine_track_apply_no_overlap(Engine* engine,
         }
         return true;
     }
-    uint64_t anchor_end = anchor_start + anchor_duration;
 
     if (track->clip_count <= 1) {
         if (out_anchor_index) {
@@ -152,26 +152,23 @@ bool engine_track_apply_no_overlap(Engine* engine,
             continue;
         }
         uint64_t clip_start = clip->timeline_start_frames;
-        uint64_t clip_end = clip_start + clip_duration;
 
         bool clip_newer = clip->creation_index > anchor_clip->creation_index;
         if (clip_newer) {
             continue;
         }
 
-        if (clip_end <= anchor_start || clip_start >= anchor_end) {
+        DawTimelineFrameRange clip_range = daw_timeline_frame_range(clip_start, clip_duration);
+        DawTimelineFrameRange anchor_range = daw_timeline_frame_range(anchor_start, anchor_duration);
+        DawTimelineOverlapPlan overlap = daw_timeline_analyze_overlap(clip_range, anchor_range);
+        if (overlap.kind == DAW_TIMELINE_OVERLAP_NONE) {
             continue;
         }
 
-        bool overlaps_left = clip_start < anchor_start;
-        bool overlaps_right = clip_end > anchor_end;
-
-        if (overlaps_left && overlaps_right) {
+        if (overlap.kind == DAW_TIMELINE_OVERLAP_SPLIT) {
             uint64_t total_frames = engine_clip_get_total_frames(engine, track_index, i);
-            uint64_t left_duration = anchor_start - clip_start;
-            uint64_t right_duration = clip_end - anchor_end;
 
-            if (left_duration == 0) {
+            if (overlap.left_duration_frames == 0) {
                 ops[op_count].sampler = clip->sampler;
                 ops[op_count].action = ENGINE_NO_OVERLAP_REMOVE;
                 op_count++;
@@ -181,7 +178,7 @@ bool engine_track_apply_no_overlap(Engine* engine,
                 op_count++;
             }
 
-            if (right_duration > 0 && spawn_count < track->clip_count) {
+            if (overlap.right_duration_frames > 0 && spawn_count < track->clip_count) {
                 EngineNoOverlapSpawn* spawn = &spawns[spawn_count++];
                 memset(spawn, 0, sizeof(*spawn));
                 const char* media_id = engine_clip_get_media_id(clip);
@@ -196,9 +193,9 @@ bool engine_track_apply_no_overlap(Engine* engine,
                 spawn->fade_in_curve = clip->fade_in_curve;
                 spawn->fade_out_curve = clip->fade_out_curve;
                 engine_clip_snapshot_automation(clip, &spawn->automation_lanes, &spawn->automation_lane_count);
-                spawn->start_frames = anchor_end;
-                spawn->offset_frames = clip->offset_frames + left_duration;
-                spawn->duration_frames = right_duration;
+                spawn->start_frames = overlap.right_start_frame;
+                spawn->offset_frames = clip->offset_frames + overlap.source_offset_delta_frames;
+                spawn->duration_frames = overlap.right_duration_frames;
                 if (spawn->offset_frames >= total_frames) {
                     spawn->offset_frames = total_frames - 1;
                 }
@@ -206,11 +203,11 @@ bool engine_track_apply_no_overlap(Engine* engine,
                     spawn->duration_frames = total_frames - spawn->offset_frames;
                 }
             }
-        } else if (overlaps_left) {
+        } else if (overlap.kind == DAW_TIMELINE_OVERLAP_TRIM_END) {
             ops[op_count].sampler = clip->sampler;
             ops[op_count].action = ENGINE_NO_OVERLAP_TRIM_END;
             op_count++;
-        } else if (overlaps_right) {
+        } else if (overlap.kind == DAW_TIMELINE_OVERLAP_SHIFT_START) {
             ops[op_count].sampler = clip->sampler;
             ops[op_count].action = ENGINE_NO_OVERLAP_SHIFT_START;
             op_count++;
@@ -260,18 +257,28 @@ bool engine_track_apply_no_overlap(Engine* engine,
                 if (clip_duration == 0) {
                     break;
                 }
-                uint64_t shift = anchor_end - clip->timeline_start_frames;
-                uint64_t new_offset = clip->offset_frames + shift;
+                DawTimelineOverlapPlan overlap =
+                    daw_timeline_analyze_overlap(daw_timeline_frame_range(clip->timeline_start_frames, clip_duration),
+                                                 daw_timeline_frame_range(anchor_start, anchor_duration));
+                if (overlap.kind != DAW_TIMELINE_OVERLAP_SHIFT_START &&
+                    overlap.kind != DAW_TIMELINE_OVERLAP_SPLIT) {
+                    break;
+                }
+                uint64_t new_offset = clip->offset_frames + overlap.source_offset_delta_frames;
                 uint64_t total_frames = engine_clip_get_total_frames(engine, track_index, clip_index);
                 if (new_offset >= total_frames) {
                     break;
                 }
                 uint64_t max_duration = total_frames - new_offset;
-                if (clip_duration > max_duration) {
-                    clip_duration = max_duration;
+                uint64_t new_duration = overlap.right_duration_frames;
+                if (new_duration > max_duration) {
+                    new_duration = max_duration;
                 }
-                if (engine_clip_set_region(engine, track_index, clip_index, new_offset, clip_duration)) {
-                    if (engine_clip_set_timeline_start(engine, track_index, clip_index, anchor_end, NULL)) {
+                if (new_duration == 0) {
+                    break;
+                }
+                if (engine_clip_set_region(engine, track_index, clip_index, new_offset, new_duration)) {
+                    if (engine_clip_set_timeline_start(engine, track_index, clip_index, overlap.right_start_frame, NULL)) {
                         changed = true;
                         engine_clip_clamp_fades(engine, track_index, clip_index);
                     }

@@ -6,6 +6,7 @@
 - `layout.c`: Pane layout and rendering helpers.
 - `transport.c`: Transport bar (play/stop, time readout, grid toggle, zoom sliders).
 - `timeline_view.c`: Timeline lanes, clips, header bar controls, selection drawing, and automation-mode overlays.
+- `timeline_midi_clip_preview.c`: Timeline-region mini-renderer for velocity-colored MIDI clip note blocks, scaled by note timing and clip-local pitch bounds, with stable full-clip-width X mapping for right-edge resize.
 - `timeline_waveform.c`: Waveform cache for per-clip rendering.
 - `waveform_render.c`: Waveform renderer helpers shared by timeline/inspector views.
 - `kit_viz_fx_preview_adapter.c`: Shared plotting adapter for effects previews using `kit_viz` segment generation.
@@ -13,4 +14,6 @@
 - `effects_panel/spec_panel.c`: Spec-driven effects panel widgets and layout (new panel mode).
 - `effects_panel/meter_detail_*.c`: Meter detail views (correlation, vectorscope, peak/RMS, LUFS, spectrogram).
 - `clip_inspector.c`: Clip inspector panel (gain, fades, naming, waveform fade overlays).
+- `midi_editor.c`: Bottom-pane MIDI editor for selected MIDI regions, including piano lanes with full-width sharp-note shading and C-row markers, tempo-map quantize timing grid, note geometry/hit-testing with small note hit slop, selected-region summary with selected-note count, an `Instrument` preset dropdown, compact QWERTY record/test, quantize, default-velocity, octave, and instrument-panel header controls, active-key lane highlighting, velocity-colored existing-note drawing, multi-note selected-set highlighting, marquee preview drawing, and hover/selected-note highlighting.
+- `midi_instrument_panel.c`: Bottom-pane instrument subview for the selected MIDI region, replacing the MIDI editor when opened from the editor header and owning the per-region preset menu, compact knob-style Level/Tone/Attack/Release parameter controls, and a parameter-aware waveform/envelope preview.
 - `library_browser.c`: Asset browser panel for audio files.

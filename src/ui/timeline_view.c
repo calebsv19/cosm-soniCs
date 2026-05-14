@@ -185,8 +185,10 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
     timeline_view_controls_compute_layout(rect->x, rect->y, rect->w, controls);
 
     bool remove_enabled = track_count > 0;
+    bool midi_region_enabled = track_count > 0;
     timeline_view_draw_button(renderer, &controls->add_rect, "+", controls->add_hovered, true, &theme);
     timeline_view_draw_button(renderer, &controls->remove_rect, "-", controls->remove_hovered, remove_enabled, &theme);
+    timeline_view_draw_button(renderer, &controls->midi_region_rect, "+ MIDI", controls->midi_region_hovered, midi_region_enabled, &theme);
     timeline_view_draw_button(renderer, &controls->loop_toggle_rect, "LOOP", controls->loop_toggle_hovered, true, &theme);
     timeline_view_draw_button(renderer, &controls->snap_toggle_rect, "SNAP", controls->snap_toggle_hovered, true, &theme);
     timeline_view_draw_button(renderer, &controls->automation_toggle_rect, "AUTO", controls->automation_toggle_hovered, true, &theme);

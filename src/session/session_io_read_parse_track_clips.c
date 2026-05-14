@@ -12,8 +12,213 @@ static SessionClip* session_track_append_clip(SessionTrack* track) {
     track->clips = resized;
     SessionClip* clip = &track->clips[new_count - 1];
     memset(clip, 0, sizeof(*clip));
+    clip->instrument_preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+    clip->instrument_params = engine_instrument_default_params(clip->instrument_preset);
     track->clip_count = new_count;
     return clip;
+}
+
+static bool parse_session_clip_kind(JsonReader* r, SessionClip* clip) {
+    if (!r || !clip) {
+        return false;
+    }
+    json_skip_whitespace(r);
+    if (r->pos < r->length && r->data[r->pos] == '"') {
+        char kind[16];
+        if (!json_parse_string(r, kind, sizeof(kind))) {
+            return false;
+        }
+        if (strcmp(kind, "midi") == 0) {
+            clip->kind = ENGINE_CLIP_KIND_MIDI;
+        } else {
+            clip->kind = ENGINE_CLIP_KIND_AUDIO;
+        }
+        return true;
+    }
+    double val;
+    if (!json_parse_number(r, &val)) {
+        return false;
+    }
+    clip->kind = ((int)val == (int)ENGINE_CLIP_KIND_MIDI) ? ENGINE_CLIP_KIND_MIDI : ENGINE_CLIP_KIND_AUDIO;
+    return true;
+}
+
+static bool parse_session_instrument_preset(JsonReader* r, SessionClip* clip) {
+    if (!r || !clip) {
+        return false;
+    }
+    json_skip_whitespace(r);
+    if (r->pos < r->length && r->data[r->pos] == '"') {
+        char preset_id[48];
+        if (!json_parse_string(r, preset_id, sizeof(preset_id))) {
+            return false;
+        }
+        EngineInstrumentPresetId preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+        if (engine_instrument_preset_from_id_string(preset_id, &preset)) {
+            clip->instrument_preset = preset;
+            clip->instrument_params = engine_instrument_default_params(preset);
+        }
+        return true;
+    }
+    double val;
+    if (!json_parse_number(r, &val)) {
+        return false;
+    }
+    clip->instrument_preset = engine_instrument_preset_clamp((EngineInstrumentPresetId)(int)val);
+    clip->instrument_params = engine_instrument_default_params(clip->instrument_preset);
+    return true;
+}
+
+static bool parse_session_instrument_params(JsonReader* r, SessionClip* clip) {
+    if (!r || !clip || !json_expect(r, '{')) {
+        return false;
+    }
+    EngineInstrumentParams params = clip->instrument_params;
+    while (true) {
+        json_skip_whitespace(r);
+        if (r->pos < r->length && r->data[r->pos] == '}') {
+            ++r->pos;
+            break;
+        }
+        char param_key[48];
+        if (!json_parse_string(r, param_key, sizeof(param_key)) || !json_expect(r, ':')) {
+            return false;
+        }
+        double val = 0.0;
+        if (strcmp(param_key, "level") == 0 ||
+            strcmp(param_key, "tone") == 0 ||
+            strcmp(param_key, "attack_ms") == 0 ||
+            strcmp(param_key, "release_ms") == 0) {
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            if (strcmp(param_key, "level") == 0) {
+                params.level = (float)val;
+            } else if (strcmp(param_key, "tone") == 0) {
+                params.tone = (float)val;
+            } else if (strcmp(param_key, "attack_ms") == 0) {
+                params.attack_ms = (float)val;
+            } else {
+                params.release_ms = (float)val;
+            }
+        } else if (!json_skip_value(r)) {
+            return false;
+        }
+        json_skip_whitespace(r);
+        if (r->pos < r->length && r->data[r->pos] == ',') {
+            ++r->pos;
+            continue;
+        }
+    }
+    clip->instrument_params = engine_instrument_params_sanitize(clip->instrument_preset, params);
+    return true;
+}
+
+static bool session_clip_append_midi_note(SessionClip* clip, EngineMidiNote note) {
+    if (!clip || !engine_midi_note_is_valid(&note)) {
+        return false;
+    }
+    int new_count = clip->midi_note_count + 1;
+    if (new_count > ENGINE_MIDI_NOTE_CAP) {
+        return false;
+    }
+    EngineMidiNote* resized = (EngineMidiNote*)realloc(clip->midi_notes,
+                                                       (size_t)new_count * sizeof(EngineMidiNote));
+    if (!resized) {
+        return false;
+    }
+    clip->midi_notes = resized;
+    clip->midi_notes[new_count - 1] = note;
+    clip->midi_note_count = new_count;
+    return true;
+}
+
+static bool parse_session_midi_notes(JsonReader* r, SessionClip* clip) {
+    if (!r || !clip) {
+        return false;
+    }
+    if (!json_expect(r, '[')) {
+        return false;
+    }
+    while (true) {
+        json_skip_whitespace(r);
+        if (r->pos < r->length && r->data[r->pos] == ']') {
+            ++r->pos;
+            break;
+        }
+        if (!json_expect(r, '{')) {
+            return false;
+        }
+        EngineMidiNote note = {0};
+        while (true) {
+            json_skip_whitespace(r);
+            if (r->pos < r->length && r->data[r->pos] == '}') {
+                ++r->pos;
+                break;
+            }
+            char note_key[32];
+            if (!json_parse_string(r, note_key, sizeof(note_key))) {
+                return false;
+            }
+            if (!json_expect(r, ':')) {
+                return false;
+            }
+            if (strcmp(note_key, "start_frame") == 0) {
+                double val;
+                if (!json_parse_number(r, &val)) {
+                    return false;
+                }
+                note.start_frame = (uint64_t)(val < 0 ? 0 : val);
+            } else if (strcmp(note_key, "duration_frames") == 0) {
+                double val;
+                if (!json_parse_number(r, &val)) {
+                    return false;
+                }
+                note.duration_frames = (uint64_t)(val < 0 ? 0 : val);
+            } else if (strcmp(note_key, "note") == 0) {
+                double val;
+                if (!json_parse_number(r, &val)) {
+                    return false;
+                }
+                if (val < 0) {
+                    val = 0;
+                } else if (val > ENGINE_MIDI_NOTE_MAX) {
+                    val = ENGINE_MIDI_NOTE_MAX;
+                }
+                note.note = (uint8_t)val;
+            } else if (strcmp(note_key, "velocity") == 0) {
+                double val;
+                if (!json_parse_number(r, &val)) {
+                    return false;
+                }
+                note.velocity = (float)val;
+            } else {
+                if (!json_skip_value(r)) {
+                    return false;
+                }
+            }
+            json_skip_whitespace(r);
+            if (r->pos < r->length && r->data[r->pos] == ',') {
+                ++r->pos;
+                continue;
+            }
+            if (r->pos < r->length && r->data[r->pos] == '}') {
+                continue;
+            }
+        }
+        if (!session_clip_append_midi_note(clip, note)) {
+            return false;
+        }
+        json_skip_whitespace(r);
+        if (r->pos < r->length && r->data[r->pos] == ',') {
+            ++r->pos;
+            continue;
+        }
+        if (r->pos < r->length && r->data[r->pos] == ']') {
+            continue;
+        }
+    }
+    return true;
 }
 
 // Appends an automation point into a session lane.
@@ -218,6 +423,10 @@ bool parse_session_track_clips(JsonReader* r, SessionTrack* track) {
                 if (!json_parse_string(r, clip->name, sizeof(clip->name))) {
                     return false;
                 }
+            } else if (strcmp(clip_key, "kind") == 0) {
+                if (!parse_session_clip_kind(r, clip)) {
+                    return false;
+                }
             } else if (strcmp(clip_key, "media_id") == 0) {
                 if (!json_parse_string(r, clip->media_id, sizeof(clip->media_id))) {
                     return false;
@@ -276,8 +485,20 @@ bool parse_session_track_clips(JsonReader* r, SessionTrack* track) {
                     curve = ENGINE_FADE_CURVE_LINEAR;
                 }
                 clip->fade_out_curve = (EngineFadeCurve)curve;
+            } else if (strcmp(clip_key, "instrument_preset") == 0) {
+                if (!parse_session_instrument_preset(r, clip)) {
+                    return false;
+                }
+            } else if (strcmp(clip_key, "instrument_params") == 0) {
+                if (!parse_session_instrument_params(r, clip)) {
+                    return false;
+                }
             } else if (strcmp(clip_key, "automation") == 0) {
                 if (!parse_session_automation(r, clip)) {
+                    return false;
+                }
+            } else if (strcmp(clip_key, "midi_notes") == 0) {
+                if (!parse_session_midi_notes(r, clip)) {
                     return false;
                 }
             } else if (strcmp(clip_key, "gain") == 0) {

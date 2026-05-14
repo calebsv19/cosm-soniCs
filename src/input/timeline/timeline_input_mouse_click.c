@@ -8,9 +8,11 @@
 #include "input/inspector_input.h"
 #include "input/timeline_drag.h"
 #include "input/timeline/timeline_geometry.h"
+#include "input/timeline/timeline_clip_helpers.h"
 #include "input/timeline/timeline_input_mouse_clip_press.h"
 #include "input/timeline/timeline_input_mouse_drag.h"
 #include "input/timeline/timeline_input_mouse_tempo_overlay.h"
+#include "input/timeline/timeline_midi_region.h"
 #include "input/timeline_snap.h"
 #include "input/timeline_selection.h"
 #include "input/timeline_input.h"
@@ -58,6 +60,9 @@ static SDL_Rect timeline_lane_clip_rect(const TimelineGeometry* geom, int lane_t
 static void session_track_free(SessionTrack* track) {
     if (!track) {
         return;
+    }
+    for (int i = 0; i < track->clip_count; ++i) {
+        timeline_session_clip_clear(&track->clips[i]);
     }
     free(track->clips);
     free(track->fx);
@@ -116,24 +121,11 @@ static bool session_track_from_engine(AppState* state, int track_index, SessionT
         for (int i = 0; i < track->clip_count; ++i) {
             const EngineClip* clip = &track->clips[i];
             SessionClip* dst = &out_track->clips[i];
-            const char* media_id = engine_clip_get_media_id(clip);
-            const char* media_path = engine_clip_get_media_path(clip);
-            strncpy(dst->media_id, media_id ? media_id : "", sizeof(dst->media_id) - 1);
-            dst->media_id[sizeof(dst->media_id) - 1] = '\0';
-            strncpy(dst->media_path, media_path ? media_path : "", sizeof(dst->media_path) - 1);
-            dst->media_path[sizeof(dst->media_path) - 1] = '\0';
-            strncpy(dst->name, clip->name, sizeof(dst->name) - 1);
-            dst->name[sizeof(dst->name) - 1] = '\0';
-            dst->start_frame = clip->timeline_start_frames;
-            dst->duration_frames = clip->duration_frames;
-            dst->offset_frames = clip->offset_frames;
-            dst->fade_in_frames = clip->fade_in_frames;
-            dst->fade_out_frames = clip->fade_out_frames;
-            dst->gain = clip->gain;
-            dst->selected = clip->selected;
-            if (dst->duration_frames == 0 && clip->sampler) {
-                dst->duration_frames = engine_sampler_get_frame_count(clip->sampler);
+            if (!timeline_session_clip_from_engine(clip, dst)) {
+                session_track_free(out_track);
+                return false;
             }
+            dst->selected = clip->selected;
         }
     }
     FxMasterSnapshot fx_snapshot = {0};
@@ -241,6 +233,7 @@ static void timeline_controls_update_hover(AppState* state) {
     SDL_Point p = {state->mouse_x, state->mouse_y};
     controls->add_hovered = SDL_PointInRect(&p, &controls->add_rect);
     controls->remove_hovered = SDL_PointInRect(&p, &controls->remove_rect);
+    controls->midi_region_hovered = SDL_PointInRect(&p, &controls->midi_region_rect);
     controls->loop_toggle_hovered = SDL_PointInRect(&p, &controls->loop_toggle_rect);
     controls->snap_toggle_hovered = SDL_PointInRect(&p, &controls->snap_toggle_rect);
     controls->automation_toggle_hovered = SDL_PointInRect(&p, &controls->automation_toggle_rect);
@@ -345,6 +338,12 @@ static bool timeline_controls_handle_click(AppState* state, const SDL_Point* poi
         }
         return true;
     }
+    if (SDL_PointInRect(point, &controls->midi_region_rect)) {
+        track_name_editor_stop(state, true);
+        timeline_midi_region_create_on_active_track(state, NULL, NULL);
+        timeline_input_mouse_drag_end(state);
+        return true;
+    }
     if (SDL_PointInRect(point, &controls->loop_toggle_rect)) {
         track_name_editor_stop(state, true);
         controls->adjusting_loop_start = false;
@@ -439,9 +438,9 @@ static bool snap_time_to_any_clip(const AppState* state, int sample_rate, float 
                 continue;
             }
             float start_sec = (float)clip->timeline_start_frames / (float)sample_rate;
-            uint64_t duration = clip->duration_frames;
-            if (duration == 0 && clip->media) {
-                duration = clip->media->frame_count;
+            uint64_t duration = timeline_clip_frame_count(clip);
+            if (duration == 0) {
+                continue;
             }
             float end_sec = (float)(clip->timeline_start_frames + duration) / (float)sample_rate;
             float delta_start = fabsf(seconds - start_sec);
@@ -572,9 +571,8 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
                     int lane_top = geom.track_top + t * (geom.track_height + geom.track_spacing);
                     for (int i = 0; i < track->clip_count; ++i) {
                         const EngineClip* clip = &track->clips[i];
-                        if (!clip || !clip->sampler) continue;
-                        uint64_t frame_count = clip->duration_frames;
-                        if (frame_count == 0) frame_count = engine_sampler_get_frame_count(clip->sampler);
+                        if (!timeline_clip_is_timeline_region(clip)) continue;
+                        uint64_t frame_count = timeline_clip_frame_count(clip);
                         double start_sec = (double)clip->timeline_start_frames / (double)sample_rate;
                         double clip_sec = (double)frame_count / (double)sample_rate;
                         float clip_offset = start_sec - geom.window_start_seconds;
@@ -681,14 +679,11 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
 
         for (int i = 0; i < track->clip_count; ++i) {
             const EngineClip* clip = &track->clips[i];
-            if (!clip || !clip->sampler) {
+            if (!timeline_clip_is_timeline_region(clip)) {
                 continue;
             }
 
-            uint64_t frame_count = clip->duration_frames;
-            if (frame_count == 0) {
-                frame_count = engine_sampler_get_frame_count(clip->sampler);
-            }
+            uint64_t frame_count = timeline_clip_frame_count(clip);
 
             double start_sec = (double)clip->timeline_start_frames / (double)sample_rate;
             double clip_sec = (double)frame_count / (double)sample_rate;
@@ -747,10 +742,7 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
                 const EngineTrack* track = &tracks[track_index];
                 if (track && clip_index >= 0 && clip_index < track->clip_count) {
                     const EngineClip* clip = &track->clips[clip_index];
-                    uint64_t frame_count = clip->duration_frames;
-                    if (frame_count == 0) {
-                        frame_count = engine_sampler_get_frame_count(clip->sampler);
-                    }
+                    uint64_t frame_count = timeline_clip_frame_count(clip);
                     if (frame_count > 0) {
                         double start_sec = (double)clip->timeline_start_frames / (double)sample_rate;
                         double clip_sec = (double)frame_count / (double)sample_rate;
@@ -812,10 +804,7 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
     if (!was_down && is_down) {
         if (state->timeline_automation_mode && hit_clip >= 0 && hit_track >= 0) {
             const EngineClip* clip = &tracks[hit_track].clips[hit_clip];
-            uint64_t frame_count = clip->duration_frames;
-            if (frame_count == 0) {
-                frame_count = engine_sampler_get_frame_count(clip->sampler);
-            }
+            uint64_t frame_count = timeline_clip_frame_count(clip);
             if (frame_count > 0) {
                 double start_sec = (double)clip->timeline_start_frames / (double)sample_rate;
                 double clip_sec = (double)frame_count / (double)sample_rate;

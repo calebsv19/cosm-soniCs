@@ -4,6 +4,8 @@
 #include "daw/data_paths.h"
 #include "app/main_bounce.h"
 #include "app/main_loop_policy.h"
+#include "app/workspace_authoring/daw_workspace_authoring_host.h"
+#include "app/workspace_authoring/daw_workspace_authoring_overlay.h"
 #include "engine/engine.h"
 #include "session.h"
 #include "sdl_app_framework.h"
@@ -604,6 +606,7 @@ static void handle_render(AppContext* ctx) {
     ui_render_panes(renderer, state);
     ui_render_controls(renderer, state);
     ui_render_overlays(renderer, state);
+    daw_workspace_authoring_overlay_render(renderer, state);
     ts_session_render(timer_hud_session());
 
     uint64_t rendered_frame_id = 0;
@@ -651,6 +654,7 @@ int daw_app_main_legacy(void) {
     state.inspector.waveform.use_kit_viz_waveform = true;
     waveform_cache_init(&state.waveform_cache);
     undo_manager_init(&state.undo);
+    daw_workspace_authoring_host_reset(&state.workspace_authoring);
     media_registry_init(&state.media_registry, "config/library_index.json");
     media_registry_load(&state.media_registry);
     if (!config_load_file("config/engine.cfg", &state.runtime_cfg)) {
@@ -672,6 +676,7 @@ int daw_app_main_legacy(void) {
     state.timing_logging_enabled = state.runtime_cfg.enable_timing_logs;
 
     daw_shared_theme_load_persisted();
+    daw_shared_font_load_persisted();
     daw_shared_font_zoom_load_persisted();
 
     ui_init_panes(&state);
@@ -860,7 +865,11 @@ int daw_app_main_legacy(void) {
 
     App_Run(&ctx, &callbacks);
 
+    if (daw_workspace_authoring_host_active(&state.workspace_authoring)) {
+        (void)daw_workspace_authoring_host_cancel(&state.workspace_authoring);
+    }
     daw_shared_theme_save_persisted();
+    daw_shared_font_save_persisted();
     daw_shared_font_zoom_save_persisted();
 
     if (state.project.has_name) {

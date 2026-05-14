@@ -49,7 +49,9 @@ static bool inspector_fade_state_from_clip(const EngineClip* clip, int track_ind
     if (!clip || !out_state) {
         return false;
     }
+    out_state->kind = engine_clip_get_kind(clip);
     out_state->sampler = clip->sampler;
+    out_state->creation_index = clip->creation_index;
     out_state->track_index = track_index;
     out_state->start_frame = clip->timeline_start_frames;
     out_state->offset_frames = clip->offset_frames;

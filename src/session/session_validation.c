@@ -13,6 +13,16 @@ static void session_set_error(char* buffer, size_t buffer_len, const char* fmt, 
     va_end(args);
 }
 
+static bool session_midi_note_fits_duration(const EngineMidiNote* note, uint64_t duration_frames) {
+    if (!engine_midi_note_is_valid(note)) {
+        return false;
+    }
+    if (note->start_frame > duration_frames) {
+        return false;
+    }
+    return note->duration_frames <= duration_frames - note->start_frame;
+}
+
 bool session_document_validate(const SessionDocument* doc, char* error_message, size_t error_message_len) {
     if (!doc) {
         session_set_error(error_message, error_message_len, "document is null");
@@ -147,7 +157,13 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
                 session_set_error(error_message, error_message_len, "track %d clip %d is null", t, c);
                 return false;
             }
-            if (clip->media_path[0] == '\0' && clip->media_id[0] == '\0') {
+            if (clip->kind < ENGINE_CLIP_KIND_AUDIO || clip->kind > ENGINE_CLIP_KIND_MIDI) {
+                session_set_error(error_message, error_message_len, "track %d clip %d kind invalid", t, c);
+                return false;
+            }
+            if (clip->kind == ENGINE_CLIP_KIND_AUDIO &&
+                clip->media_path[0] == '\0' &&
+                clip->media_id[0] == '\0') {
                 session_set_error(error_message, error_message_len, "track %d clip %d missing media id/path", t, c);
                 return false;
             }
@@ -170,6 +186,44 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
             if (clip->fade_out_curve < 0 || clip->fade_out_curve >= ENGINE_FADE_CURVE_COUNT) {
                 session_set_error(error_message, error_message_len, "track %d clip %d fade-out curve invalid", t, c);
                 return false;
+            }
+            if (clip->midi_note_count < 0 || clip->midi_note_count > ENGINE_MIDI_NOTE_CAP) {
+                session_set_error(error_message, error_message_len, "track %d clip %d midi note count invalid", t, c);
+                return false;
+            }
+            if (clip->midi_note_count > 0 && !clip->midi_notes) {
+                session_set_error(error_message, error_message_len, "track %d clip %d midi notes missing", t, c);
+                return false;
+            }
+            if (clip->kind == ENGINE_CLIP_KIND_AUDIO && clip->midi_note_count > 0) {
+                session_set_error(error_message, error_message_len, "track %d clip %d audio clip has midi notes", t, c);
+                return false;
+            }
+            if (clip->kind == ENGINE_CLIP_KIND_MIDI &&
+                clip->instrument_preset != engine_instrument_preset_clamp(clip->instrument_preset)) {
+                session_set_error(error_message, error_message_len, "track %d clip %d instrument preset invalid", t, c);
+                return false;
+            }
+            if (clip->kind == ENGINE_CLIP_KIND_MIDI) {
+                EngineInstrumentParams clamped =
+                    engine_instrument_params_sanitize(clip->instrument_preset, clip->instrument_params);
+                if (clip->instrument_params.level != clamped.level ||
+                    clip->instrument_params.tone != clamped.tone ||
+                    clip->instrument_params.attack_ms != clamped.attack_ms ||
+                    clip->instrument_params.release_ms != clamped.release_ms) {
+                    session_set_error(error_message,
+                                      error_message_len,
+                                      "track %d clip %d instrument params invalid",
+                                      t,
+                                      c);
+                    return false;
+                }
+            }
+            for (int n = 0; n < clip->midi_note_count; ++n) {
+                if (!session_midi_note_fits_duration(&clip->midi_notes[n], clip->duration_frames)) {
+                    session_set_error(error_message, error_message_len, "track %d clip %d midi note out of range", t, c);
+                    return false;
+                }
             }
             if (clip->automation_lane_count < 0) {
                 session_set_error(error_message, error_message_len, "track %d clip %d automation lane count invalid", t, c);

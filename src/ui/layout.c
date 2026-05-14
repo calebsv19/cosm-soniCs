@@ -10,6 +10,8 @@
 #include "ui/transport.h"
 #include "ui/clip_inspector.h"
 #include "ui/effects_panel.h"
+#include "ui/midi_editor.h"
+#include "ui/midi_instrument_panel.h"
 #include "ui/shared_theme_font_adapter.h"
 
 #include <SDL2/SDL.h>
@@ -514,9 +516,37 @@ void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
         return;
     }
     ui_set_clip_rect(renderer, NULL);
-    ClipInspectorLayout inspector_layout;
-    clip_inspector_compute_layout(state, &inspector_layout);
-    if (state->inspector.visible) {
+    if (midi_instrument_panel_should_render(state)) {
+        MidiInstrumentPanelLayout instrument_layout;
+        midi_instrument_panel_compute_layout(state, &instrument_layout);
+        const Pane* mixer = ui_layout_get_pane(state, 2);
+        SDL_Rect prev_clip;
+        SDL_bool had_clip = ui_clip_is_enabled(renderer);
+        if (mixer) {
+            ui_get_clip_rect(renderer, &prev_clip);
+            ui_set_clip_rect(renderer, &mixer->rect);
+        }
+        midi_instrument_panel_render(renderer, state, &instrument_layout);
+        if (mixer) {
+            ui_set_clip_rect(renderer, had_clip ? &prev_clip : NULL);
+        }
+    } else if (midi_editor_should_render(state)) {
+        MidiEditorLayout midi_layout;
+        midi_editor_compute_layout(state, &midi_layout);
+        const Pane* mixer = ui_layout_get_pane(state, 2);
+        SDL_Rect prev_clip;
+        SDL_bool had_clip = ui_clip_is_enabled(renderer);
+        if (mixer) {
+            ui_get_clip_rect(renderer, &prev_clip);
+            ui_set_clip_rect(renderer, &mixer->rect);
+        }
+        midi_editor_render(renderer, state, &midi_layout);
+        if (mixer) {
+            ui_set_clip_rect(renderer, had_clip ? &prev_clip : NULL);
+        }
+    } else if (state->inspector.visible) {
+        ClipInspectorLayout inspector_layout;
+        clip_inspector_compute_layout(state, &inspector_layout);
         const Pane* mixer = ui_layout_get_pane(state, 2);
         SDL_Rect prev_clip;
         SDL_bool had_clip = ui_clip_is_enabled(renderer);

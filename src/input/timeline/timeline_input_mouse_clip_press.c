@@ -20,7 +20,9 @@ static bool clip_state_from_clip(const EngineClip* clip, int track_index, UndoCl
     if (!clip || !out_state) {
         return false;
     }
+    out_state->kind = engine_clip_get_kind(clip);
     out_state->sampler = clip->sampler;
+    out_state->creation_index = clip->creation_index;
     out_state->track_index = track_index;
     out_state->start_frame = clip->timeline_start_frames;
     out_state->offset_frames = clip->offset_frames;
@@ -232,6 +234,7 @@ bool timeline_input_mouse_handle_clip_press(InputManager* manager,
         }
 
         const EngineClip* clip = &track->clips[hit_clip];
+        bool midi_clip = engine_clip_get_kind(clip) == ENGINE_CLIP_KIND_MIDI;
 
         drag->destination_track_index = hit_track;
         uint64_t clip_frames_init = clip->duration_frames;
@@ -253,9 +256,9 @@ bool timeline_input_mouse_handle_clip_press(InputManager* manager,
         drag->multi_move = (state->selection_count > 1 && timeline_selection_contains(state, hit_track, hit_clip, NULL));
 
         drag->active = true;
-        bool fade_left = hit_left && !hit_right && alt_held;
-        bool fade_right = hit_right && !hit_left && alt_held;
-        drag->trimming_left = hit_left && !hit_right && !alt_held;
+        bool fade_left = !midi_clip && hit_left && !hit_right && alt_held;
+        bool fade_right = !midi_clip && hit_right && !hit_left && alt_held;
+        drag->trimming_left = !midi_clip && hit_left && !hit_right && !alt_held;
         drag->trimming_right = hit_right && !hit_left && !alt_held;
         drag->adjusting_fade_in = fade_left;
         drag->adjusting_fade_out = fade_right;
@@ -268,7 +271,7 @@ bool timeline_input_mouse_handle_clip_press(InputManager* manager,
             drag->mode = TIMELINE_DRAG_MODE_FADE_IN;
         } else if (fade_right) {
             drag->mode = TIMELINE_DRAG_MODE_FADE_OUT;
-        } else if (shift_held) {
+        } else if (shift_held && !midi_clip) {
             drag->mode = TIMELINE_DRAG_MODE_SLIP;
         } else if (alt_held) {
             drag->mode = TIMELINE_DRAG_MODE_RIPPLE;
@@ -281,7 +284,7 @@ bool timeline_input_mouse_handle_clip_press(InputManager* manager,
         drag->initial_offset_frames = clip->offset_frames;
         drag->initial_duration_frames = clip->duration_frames;
         drag->started_moving = false;
-        if (drag->initial_duration_frames == 0) {
+        if (drag->initial_duration_frames == 0 && clip->sampler) {
             drag->initial_duration_frames = engine_sampler_get_frame_count(clip->sampler);
         }
         drag->clip_total_frames = engine_clip_get_total_frames(state->engine, hit_track, hit_clip);

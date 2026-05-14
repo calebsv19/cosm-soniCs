@@ -46,6 +46,7 @@ CORE_PACK_DIR := $(SHARED_ROOT)/core/core_pack
 CORE_TIME_DIR := $(SHARED_ROOT)/core/core_time
 CORE_THEME_DIR := $(SHARED_ROOT)/core/core_theme
 CORE_FONT_DIR := $(SHARED_ROOT)/core/core_font
+CORE_PANE_DIR := $(SHARED_ROOT)/core/core_pane
 CORE_QUEUE_DIR := $(SHARED_ROOT)/core/core_queue
 CORE_SCHED_DIR := $(SHARED_ROOT)/core/core_sched
 CORE_JOBS_DIR := $(SHARED_ROOT)/core/core_jobs
@@ -55,6 +56,7 @@ CORE_KERNEL_DIR := $(SHARED_ROOT)/core/core_kernel
 CORE_TRACE_DIR := $(SHARED_ROOT)/core/core_trace
 KIT_VIZ_DIR := $(SHARED_ROOT)/kit/kit_viz
 KIT_RENDER_DIR := $(SHARED_ROOT)/kit/kit_render
+KIT_WORKSPACE_AUTHORING_DIR := $(SHARED_ROOT)/kit/kit_workspace_authoring
 
 TARGET_BUILD_ROOT := $(BUILD_DIR)/targets/$(TARGET_TRIPLE)
 TOOLCHAIN_BUILD_ROOT := $(TARGET_BUILD_ROOT)/toolchains
@@ -91,6 +93,7 @@ APP_SRCS := \
 	$(SRC_DIR)/core/loop/daw_mainthread_kernel.c \
 	$(SRC_DIR)/core/loop/daw_render_invalidation.c \
 	$(SRC_DIR)/app/daw_app_main.c \
+	$(SRC_DIR)/app/bounce_region.c \
 	$(SRC_DIR)/app/main_bounce.c \
 	$(SRC_DIR)/app/main_loop_policy.c \
 	$(SRC_DIR)/app/main.c \
@@ -115,6 +118,10 @@ APP_SRCS := \
 	$(SRC_DIR)/engine/engine_clips.c \
 	$(SRC_DIR)/engine/engine_clips_automation.c \
 	$(SRC_DIR)/engine/engine_clips_no_overlap.c \
+	$(SRC_DIR)/engine/midi.c \
+	$(SRC_DIR)/engine/engine_midi_audition.c \
+	$(SRC_DIR)/engine/instrument_osc.c \
+	$(SRC_DIR)/engine/timeline_contract.c \
 	$(SRC_DIR)/engine/engine_audio.c \
 	$(SRC_DIR)/engine/engine_meter.c \
 	$(SRC_DIR)/engine/engine_scope_host.c \
@@ -143,6 +150,8 @@ APP_SRCS := \
 	$(SRC_DIR)/session/project_manager.c \
 	$(SRC_DIR)/undo/undo_manager.c \
 	$(SRC_DIR)/undo/undo_manager_stack.c \
+	$(SRC_DIR)/app/workspace_authoring/daw_workspace_authoring_host.c \
+	$(SRC_DIR)/app/workspace_authoring/daw_workspace_authoring_overlay.c \
 	$(SRC_DIR)/ui/panes.c \
 	$(SRC_DIR)/ui/layout.c \
 	$(SRC_DIR)/ui/overlay/layout_modal_overlays.c \
@@ -158,6 +167,7 @@ APP_SRCS := \
 	$(SRC_DIR)/ui/timeline_view.c \
 	$(SRC_DIR)/ui/overlay/timeline_view_overlays.c \
 	$(SRC_DIR)/ui/timeline_view_clip_pass.c \
+	$(SRC_DIR)/ui/timeline_midi_clip_preview.c \
 	$(SRC_DIR)/ui/timeline_view_grid.c \
 	$(SRC_DIR)/ui/timeline_view_controls.c \
 	$(SRC_DIR)/ui/overlay/timeline_view_runtime_overlays.c \
@@ -169,6 +179,8 @@ APP_SRCS := \
 	$(SRC_DIR)/ui/clip_inspector.c \
 	$(SRC_DIR)/ui/clip_inspector_controls.c \
 	$(SRC_DIR)/ui/clip_inspector_waveform.c \
+	$(SRC_DIR)/ui/midi_editor.c \
+	$(SRC_DIR)/ui/midi_instrument_panel.c \
 	$(SRC_DIR)/ui/effects_panel/panel.c \
 	$(SRC_DIR)/ui/effects_panel/sync.c \
 	$(SRC_DIR)/ui/effects_panel/overlay.c \
@@ -207,6 +219,8 @@ APP_SRCS := \
 	$(SRC_DIR)/input/timeline/timeline_input_mouse_tempo_overlay.c \
 	$(SRC_DIR)/input/timeline/timeline_input_mouse_drag.c \
 	$(SRC_DIR)/input/timeline/timeline_input_mouse_scroll.c \
+	$(SRC_DIR)/input/timeline/timeline_clip_helpers.c \
+	$(SRC_DIR)/input/timeline/timeline_midi_region.c \
 	$(SRC_DIR)/input/timeline/timeline_snap.c \
 	$(SRC_DIR)/input/timeline/timeline_selection.c \
 	$(SRC_DIR)/input/timeline/timeline_drag.c \
@@ -215,6 +229,8 @@ APP_SRCS := \
 	$(SRC_DIR)/input/inspector_input.c \
 	$(SRC_DIR)/input/inspector_input_numeric_edit.c \
 	$(SRC_DIR)/input/inspector_fade_input.c \
+	$(SRC_DIR)/input/midi_editor_input.c \
+	$(SRC_DIR)/input/midi_instrument_panel_input.c \
 	$(SRC_DIR)/input/transport_input.c \
 	$(SRC_DIR)/input/effects_panel_input.c \
 	$(SRC_DIR)/input/effects_panel_input_helpers.c \
@@ -306,7 +322,7 @@ else
 	endif
 endif
 
-CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) -I$(VK_RENDERER_DIR)/include -I$(TIMER_HUD_DIR)/include -I$(TIMER_HUD_DIR)/external -I$(CORE_BASE_DIR)/include -I$(CORE_IO_DIR)/include -I$(CORE_DATA_DIR)/include -I$(CORE_PACK_DIR)/include -I$(CORE_TIME_DIR)/include -I$(CORE_THEME_DIR)/include -I$(CORE_FONT_DIR)/include -I$(CORE_QUEUE_DIR)/include -I$(CORE_SCHED_DIR)/include -I$(CORE_JOBS_DIR)/include -I$(CORE_WORKERS_DIR)/include -I$(CORE_WAKE_DIR)/include -I$(CORE_KERNEL_DIR)/include -I$(CORE_TRACE_DIR)/include -I$(KIT_VIZ_DIR)/include -I$(KIT_RENDER_DIR)/include $(SDL2_CFLAGS) $(VULKAN_CFLAGS) -DVK_RENDERER_SHADER_ROOT=\"$(abspath $(VK_RENDERER_DIR))\" -include $(VK_RENDERER_DIR)/include/vk_renderer_sdl.h
+CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) -I$(VK_RENDERER_DIR)/include -I$(TIMER_HUD_DIR)/include -I$(TIMER_HUD_DIR)/external -I$(CORE_BASE_DIR)/include -I$(CORE_IO_DIR)/include -I$(CORE_DATA_DIR)/include -I$(CORE_PACK_DIR)/include -I$(CORE_TIME_DIR)/include -I$(CORE_THEME_DIR)/include -I$(CORE_FONT_DIR)/include -I$(CORE_PANE_DIR)/include -I$(CORE_QUEUE_DIR)/include -I$(CORE_SCHED_DIR)/include -I$(CORE_JOBS_DIR)/include -I$(CORE_WORKERS_DIR)/include -I$(CORE_WAKE_DIR)/include -I$(CORE_KERNEL_DIR)/include -I$(CORE_TRACE_DIR)/include -I$(KIT_VIZ_DIR)/include -I$(KIT_RENDER_DIR)/include -I$(KIT_WORKSPACE_AUTHORING_DIR)/include $(SDL2_CFLAGS) $(VULKAN_CFLAGS) -DVK_RENDERER_SHADER_ROOT=\"$(abspath $(VK_RENDERER_DIR))\" -include $(VK_RENDERER_DIR)/include/vk_renderer_sdl.h
 
 LDFLAGS := $(ARCH_FLAGS) $(SDL2_LDFLAGS) $(SDL2_LIBS) $(SDL2_FRAMEWORKS) $(VULKAN_LIBS)
 ifeq ($(UNAME_S),Darwin)
@@ -321,6 +337,7 @@ CORE_PACK_LIB_SRC := $(CORE_PACK_DIR)/build/libcore_pack.a
 CORE_TIME_LIB_SRC := $(CORE_TIME_DIR)/build/libcore_time.a
 CORE_THEME_LIB_SRC := $(CORE_THEME_DIR)/build/libcore_theme.a
 CORE_FONT_LIB_SRC := $(CORE_FONT_DIR)/build/libcore_font.a
+CORE_PANE_LIB_SRC := $(CORE_PANE_DIR)/build/libcore_pane.a
 CORE_QUEUE_LIB_SRC := $(CORE_QUEUE_DIR)/build/libcore_queue.a
 CORE_SCHED_LIB_SRC := $(CORE_SCHED_DIR)/build/libcore_sched.a
 CORE_JOBS_LIB_SRC := $(CORE_JOBS_DIR)/build/libcore_jobs.a
@@ -330,6 +347,7 @@ CORE_KERNEL_LIB_SRC := $(CORE_KERNEL_DIR)/build/libcore_kernel.a
 CORE_TRACE_LIB_SRC := $(CORE_TRACE_DIR)/build/libcore_trace.a
 KIT_VIZ_LIB_SRC := $(KIT_VIZ_DIR)/build/libkit_viz.a
 KIT_RENDER_LIB_SRC := $(KIT_RENDER_DIR)/build/vk/libkit_render.a
+KIT_WORKSPACE_AUTHORING_LIB_SRC := $(KIT_WORKSPACE_AUTHORING_DIR)/build/libkit_workspace_authoring.a
 VK_RENDERER_LIB_SRC := $(VK_RENDERER_DIR)/build/lib/libvkrenderer.a
 
 CORE_BASE_LIB := $(SHARED_BUILD_DIR)/libcore_base.a
@@ -339,6 +357,7 @@ CORE_PACK_LIB := $(SHARED_BUILD_DIR)/libcore_pack.a
 CORE_TIME_LIB := $(SHARED_BUILD_DIR)/libcore_time.a
 CORE_THEME_LIB := $(SHARED_BUILD_DIR)/libcore_theme.a
 CORE_FONT_LIB := $(SHARED_BUILD_DIR)/libcore_font.a
+CORE_PANE_LIB := $(SHARED_BUILD_DIR)/libcore_pane.a
 CORE_QUEUE_LIB := $(SHARED_BUILD_DIR)/libcore_queue.a
 CORE_SCHED_LIB := $(SHARED_BUILD_DIR)/libcore_sched.a
 CORE_JOBS_LIB := $(SHARED_BUILD_DIR)/libcore_jobs.a
@@ -348,6 +367,7 @@ CORE_KERNEL_LIB := $(SHARED_BUILD_DIR)/libcore_kernel.a
 CORE_TRACE_LIB := $(SHARED_BUILD_DIR)/libcore_trace.a
 KIT_VIZ_LIB := $(SHARED_BUILD_DIR)/libkit_viz.a
 KIT_RENDER_LIB := $(SHARED_BUILD_DIR)/libkit_render.a
+KIT_WORKSPACE_AUTHORING_LIB := $(SHARED_BUILD_DIR)/libkit_workspace_authoring.a
 VK_RENDERER_LIB := $(SHARED_BUILD_DIR)/libvkrenderer.a
 
 APP_SHARED_LIBS := \
@@ -364,9 +384,11 @@ APP_SHARED_LIBS := \
 	$(CORE_DATA_LIB) \
 	$(CORE_THEME_LIB) \
 	$(CORE_FONT_LIB) \
+	$(CORE_PANE_LIB) \
 	$(CORE_BASE_LIB) \
 	$(KIT_VIZ_LIB) \
 	$(KIT_RENDER_LIB) \
+	$(KIT_WORKSPACE_AUTHORING_LIB) \
 	$(VK_RENDERER_LIB)
 
 APP_BIN := $(APP_BIN_DIR)/$(APP_NAME)
@@ -427,6 +449,36 @@ OVERLAP_TEST_SRCS := \
 OVERLAP_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(OVERLAP_TEST_SRCS))
 OVERLAP_TEST_BIN := $(TEST_BUILD_ROOT)/clip_overlap_priority_test
 
+TIMELINE_CONTRACT_TEST_SRCS := \
+	tests/timeline_contract_test.c
+
+TIMELINE_CONTRACT_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(TIMELINE_CONTRACT_TEST_SRCS))
+TIMELINE_CONTRACT_TEST_BIN := $(TEST_BUILD_ROOT)/timeline_contract_test
+
+MIDI_MODEL_TEST_SRCS := \
+	tests/midi_model_test.c
+
+MIDI_MODEL_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(MIDI_MODEL_TEST_SRCS))
+MIDI_MODEL_TEST_BIN := $(TEST_BUILD_ROOT)/midi_model_test
+
+MIDI_INSTRUMENT_RENDER_TEST_SRCS := \
+	tests/midi_instrument_render_test.c
+
+MIDI_INSTRUMENT_RENDER_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(MIDI_INSTRUMENT_RENDER_TEST_SRCS))
+MIDI_INSTRUMENT_RENDER_TEST_BIN := $(TEST_BUILD_ROOT)/midi_instrument_render_test
+
+TIMELINE_MIDI_REGION_TEST_SRCS := \
+	tests/timeline_midi_region_test.c
+
+TIMELINE_MIDI_REGION_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(TIMELINE_MIDI_REGION_TEST_SRCS))
+TIMELINE_MIDI_REGION_TEST_BIN := $(TEST_BUILD_ROOT)/timeline_midi_region_test
+
+MIDI_EDITOR_SHELL_TEST_SRCS := \
+	tests/midi_editor_shell_test.c
+
+MIDI_EDITOR_SHELL_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(MIDI_EDITOR_SHELL_TEST_SRCS))
+MIDI_EDITOR_SHELL_TEST_BIN := $(TEST_BUILD_ROOT)/midi_editor_shell_test
+
 SMOKE_TEST_SRCS := \
 	tests/engine_smoke_test.c
 
@@ -486,6 +538,12 @@ DATA_PATH_CONTRACT_TEST_SRCS := \
 DATA_PATH_CONTRACT_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(DATA_PATH_CONTRACT_TEST_SRCS))
 DATA_PATH_CONTRACT_TEST_BIN := $(TEST_BUILD_ROOT)/daw_data_path_contract_test
 
+WORKSPACE_AUTHORING_HOST_TEST_SRCS := \
+	tests/daw_workspace_authoring_host_test.c \
+	tests/daw_workspace_authoring_kit_render_stub.c
+
+WORKSPACE_AUTHORING_HOST_TEST_BIN := $(TEST_BUILD_ROOT)/daw_workspace_authoring_host_test
+
 # Keep legacy app tests wired to the full non-main app object set so link coverage
 # stays in lock-step with engine/runtime refactors.
 APP_OBJS_NO_MAIN := $(filter-out $(APP_OBJ_DIR)/src/app/main.o,$(APP_OBJS))
@@ -496,12 +554,17 @@ TIMER_HUD_DEPS := $(TIMER_HUD_OBJS:.o=.d)
 TEST_DEPS := $(TEST_OBJS:.o=.d)
 CACHE_TEST_DEPS := $(CACHE_TEST_OBJS:.o=.d)
 OVERLAP_TEST_DEPS := $(OVERLAP_TEST_OBJS:.o=.d)
+TIMELINE_CONTRACT_TEST_DEPS := $(TIMELINE_CONTRACT_TEST_OBJS:.o=.d)
+MIDI_MODEL_TEST_DEPS := $(MIDI_MODEL_TEST_OBJS:.o=.d)
+MIDI_INSTRUMENT_RENDER_TEST_DEPS := $(MIDI_INSTRUMENT_RENDER_TEST_OBJS:.o=.d)
+TIMELINE_MIDI_REGION_TEST_DEPS := $(TIMELINE_MIDI_REGION_TEST_OBJS:.o=.d)
+MIDI_EDITOR_SHELL_TEST_DEPS := $(MIDI_EDITOR_SHELL_TEST_OBJS:.o=.d)
 SMOKE_TEST_DEPS := $(SMOKE_TEST_OBJS:.o=.d)
 PACK_CONTRACT_TEST_DEPS := $(PACK_CONTRACT_TEST_OBJS:.o=.d)
 LAYOUT_SWEEP_TEST_DEPS := $(LAYOUT_SWEEP_TEST_OBJS:.o=.d)
 DATA_PATH_CONTRACT_TEST_DEPS := $(DATA_PATH_CONTRACT_TEST_OBJS:.o=.d)
 ENGINE_TEST_SUPPORT_DEPS := $(ENGINE_TEST_SUPPORT_OBJS:.o=.d)
-ALL_DEPS := $(APP_DEPS) $(TIMER_HUD_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(SMOKE_TEST_DEPS) $(PACK_CONTRACT_TEST_DEPS) $(LAYOUT_SWEEP_TEST_DEPS) $(DATA_PATH_CONTRACT_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
+ALL_DEPS := $(APP_DEPS) $(TIMER_HUD_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(TIMELINE_CONTRACT_TEST_DEPS) $(MIDI_MODEL_TEST_DEPS) $(MIDI_INSTRUMENT_RENDER_TEST_DEPS) $(TIMELINE_MIDI_REGION_TEST_DEPS) $(MIDI_EDITOR_SHELL_TEST_DEPS) $(SMOKE_TEST_DEPS) $(PACK_CONTRACT_TEST_DEPS) $(LAYOUT_SWEEP_TEST_DEPS) $(DATA_PATH_CONTRACT_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
 
 STABLE_TEST_TARGETS := \
 	test-pack-contract \
@@ -512,7 +575,13 @@ STABLE_TEST_TARGETS := \
 	test-kitviz-meter-adapter \
 	test-waveform-pack-warmstart \
 	test-layout-sweep \
+	test-timeline-contract \
+	test-midi-model \
+	test-midi-instrument-render \
+	test-timeline-midi-region \
+	test-midi-editor-shell \
 	test-data-path-contract \
+	test-workspace-authoring-host \
 	test-library-copy-vs-reference-contract
 
 LEGACY_TEST_TARGETS := \
@@ -522,7 +591,7 @@ LEGACY_TEST_TARGETS := \
 	test-smoke \
 	test-shared-theme-font-adapter
 
-.PHONY: all clean run run-ide-theme run-headless-smoke visual-harness package-build-lane package-desktop package-desktop-smoke package-desktop-self-test package-desktop-copy-desktop package-desktop-sync package-desktop-open package-desktop-remove package-desktop-refresh release-contract release-clean release-build release-build-internal release-bundle-audit release-bundle-audit-internal release-sign release-sign-internal release-verify release-verify-internal release-verify-signed release-verify-signed-internal release-notarize release-notarize-internal release-staple release-staple-internal release-verify-notarized release-verify-notarized-internal release-artifact release-artifact-internal release-distribute release-distribute-internal release-desktop-refresh release-desktop-refresh-internal loop-gates loop-gates-strict test test-stable test-legacy test-session test-cache test-overlap test-smoke test-kitviz-adapter test-waveform-pack-warmstart test-pack-contract test-trace-contract test-trace-async-contract test-kitviz-fx-preview-adapter test-kitviz-meter-adapter test-shared-theme-font-adapter test-layout-sweep test-data-path-contract test-library-copy-vs-reference-contract
+.PHONY: all clean run run-ide-theme run-headless-smoke visual-harness package-build-lane package-desktop package-desktop-smoke package-desktop-self-test package-desktop-copy-desktop package-desktop-sync package-desktop-open package-desktop-remove package-desktop-refresh release-contract release-clean release-build release-build-internal release-bundle-audit release-bundle-audit-internal release-sign release-sign-internal release-verify release-verify-internal release-verify-signed release-verify-signed-internal release-notarize release-notarize-internal release-staple release-staple-internal release-verify-notarized release-verify-notarized-internal release-artifact release-artifact-internal release-distribute release-distribute-internal release-desktop-refresh release-desktop-refresh-internal loop-gates loop-gates-strict test test-stable test-legacy test-session test-cache test-overlap test-timeline-contract test-midi-model test-midi-instrument-render test-timeline-midi-region test-midi-editor-shell test-smoke test-kitviz-adapter test-waveform-pack-warmstart test-pack-contract test-trace-contract test-trace-async-contract test-kitviz-fx-preview-adapter test-kitviz-meter-adapter test-shared-theme-font-adapter test-layout-sweep test-data-path-contract test-workspace-authoring-host test-library-copy-vs-reference-contract
 
 FORCE:
 
@@ -553,6 +622,7 @@ $(eval $(call build_copy_static_lib,CORE_PACK,))
 $(eval $(call build_copy_static_lib,CORE_TIME,))
 $(eval $(call build_copy_static_lib,CORE_THEME,))
 $(eval $(call build_copy_static_lib,CORE_FONT,))
+$(eval $(call build_copy_static_lib,CORE_PANE,))
 $(eval $(call build_copy_static_lib,CORE_QUEUE,))
 $(eval $(call build_copy_static_lib,CORE_SCHED,))
 $(eval $(call build_copy_static_lib,CORE_JOBS,))
@@ -562,6 +632,7 @@ $(eval $(call build_copy_static_lib,CORE_KERNEL,))
 $(eval $(call build_copy_static_lib,CORE_TRACE,))
 $(eval $(call build_copy_static_lib,KIT_VIZ,))
 $(eval $(call build_copy_static_lib,KIT_RENDER,KIT_RENDER_ENABLE_VK=1))
+$(eval $(call build_copy_static_lib,KIT_WORKSPACE_AUTHORING,))
 $(eval $(call build_copy_static_lib,VK_RENDERER,))
 
 $(APP_BIN): $(APP_OBJS) $(TIMER_HUD_OBJS) $(APP_SHARED_LIBS) | $(APP_BIN_DIR)
@@ -900,7 +971,7 @@ $(TEST_BIN): $(TEST_OBJS) \
 	$(APP_OBJ_DIR)/src/session/session_io_read_parse_master_fx.o \
 	$(APP_OBJ_DIR)/src/session/session_io_read_parse_track_clips.o \
 	$(APP_OBJ_DIR)/src/session/session_io_read_parse_track_fx.o \
-	$(APP_OBJ_DIR)/src/session/session_apply.o \
+	$(APP_OBJ_DIR)/src/engine/midi.o \
 	$(APP_OBJ_DIR)/src/config/config.o \
 	$(CORE_PACK_LIB) \
 	$(CORE_IO_LIB) \
@@ -918,14 +989,49 @@ $(CACHE_TEST_BIN): $(CACHE_TEST_OBJS) $(APP_OBJ_DIR)/src/audio/media_cache.o $(A
 test-overlap: $(OVERLAP_TEST_BIN)
 	$(OVERLAP_TEST_BIN)
 
-$(OVERLAP_TEST_BIN): $(OVERLAP_TEST_OBJS) $(ENGINE_TEST_SUPPORT_OBJS)
+$(OVERLAP_TEST_BIN): $(OVERLAP_TEST_OBJS) $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
 	@mkdir -p "$(dir $@)"
 	$(HOST_CC) $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(OVERLAP_TEST_OBJS) $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+test-timeline-contract: $(TIMELINE_CONTRACT_TEST_BIN)
+	$(TIMELINE_CONTRACT_TEST_BIN)
+
+$(TIMELINE_CONTRACT_TEST_BIN): $(TIMELINE_CONTRACT_TEST_OBJS) $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(TIMELINE_CONTRACT_TEST_OBJS) $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+test-midi-model: $(MIDI_MODEL_TEST_BIN)
+	$(MIDI_MODEL_TEST_BIN)
+
+$(MIDI_MODEL_TEST_BIN): $(MIDI_MODEL_TEST_OBJS) $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(MIDI_MODEL_TEST_OBJS) $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+test-midi-instrument-render: $(MIDI_INSTRUMENT_RENDER_TEST_BIN)
+	$(MIDI_INSTRUMENT_RENDER_TEST_BIN)
+
+$(MIDI_INSTRUMENT_RENDER_TEST_BIN): $(MIDI_INSTRUMENT_RENDER_TEST_OBJS) $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(MIDI_INSTRUMENT_RENDER_TEST_OBJS) $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+test-timeline-midi-region: $(TIMELINE_MIDI_REGION_TEST_BIN)
+	$(TIMELINE_MIDI_REGION_TEST_BIN)
+
+$(TIMELINE_MIDI_REGION_TEST_BIN): $(TIMELINE_MIDI_REGION_TEST_OBJS) $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(TIMELINE_MIDI_REGION_TEST_OBJS) $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+test-midi-editor-shell: $(MIDI_EDITOR_SHELL_TEST_BIN)
+	$(MIDI_EDITOR_SHELL_TEST_BIN)
+
+$(MIDI_EDITOR_SHELL_TEST_BIN): $(MIDI_EDITOR_SHELL_TEST_OBJS) $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(MIDI_EDITOR_SHELL_TEST_OBJS) $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
 
 test-smoke: $(SMOKE_TEST_BIN)
 	$(SMOKE_TEST_BIN)
 
-$(SMOKE_TEST_BIN): $(SMOKE_TEST_OBJS) $(ENGINE_TEST_SUPPORT_OBJS)
+$(SMOKE_TEST_BIN): $(SMOKE_TEST_OBJS) $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
 	@mkdir -p "$(dir $@)"
 	$(HOST_CC) $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(SMOKE_TEST_OBJS) $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
 
@@ -959,12 +1065,22 @@ $(LAYOUT_SWEEP_TEST_BIN): $(LAYOUT_SWEEP_TEST_OBJS) $(APP_OBJS_NO_MAIN)
 test-data-path-contract: $(DATA_PATH_CONTRACT_TEST_BIN)
 	$(DATA_PATH_CONTRACT_TEST_BIN)
 
+test-workspace-authoring-host: $(WORKSPACE_AUTHORING_HOST_TEST_BIN)
+	$(WORKSPACE_AUTHORING_HOST_TEST_BIN)
+
 test-library-copy-vs-reference-contract: test-data-path-contract
 	@echo "test-library-copy-vs-reference-contract: success"
 
 $(DATA_PATH_CONTRACT_TEST_BIN): $(DATA_PATH_CONTRACT_TEST_OBJS) $(APP_OBJS_NO_MAIN)
 	@mkdir -p "$(dir $@)"
 	$(HOST_CC) $(foreach obj,$(APP_OBJS_NO_MAIN),"$(obj)") $(TIMER_HUD_OBJS_QUOTED) $(DATA_PATH_CONTRACT_TEST_OBJS) $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+$(WORKSPACE_AUTHORING_HOST_TEST_BIN): $(WORKSPACE_AUTHORING_HOST_TEST_SRCS) src/app/workspace_authoring/daw_workspace_authoring_host.c src/ui/shared_theme_font_adapter.c $(KIT_WORKSPACE_AUTHORING_LIB) $(CORE_THEME_LIB) $(CORE_FONT_LIB) $(CORE_PANE_LIB) $(CORE_BASE_LIB)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(KIT_WORKSPACE_AUTHORING_DIR)/include -I$(KIT_RENDER_DIR)/include -I$(CORE_THEME_DIR)/include -I$(CORE_FONT_DIR)/include -I$(CORE_PANE_DIR)/include -I$(CORE_BASE_DIR)/include \
+		tests/daw_workspace_authoring_host_test.c tests/daw_workspace_authoring_kit_render_stub.c src/app/workspace_authoring/daw_workspace_authoring_host.c src/ui/shared_theme_font_adapter.c \
+		$(KIT_WORKSPACE_AUTHORING_LIB) $(CORE_THEME_LIB) $(CORE_FONT_LIB) $(CORE_PANE_LIB) $(CORE_BASE_LIB) \
+		$(SDL2_LDFLAGS) -lSDL2 -o "$@"
 
 test-pack-contract: $(PACK_CONTRACT_TEST_BIN)
 	$(PACK_CONTRACT_TEST_BIN)

@@ -1,9 +1,13 @@
 #include "engine/engine.h"
 #include "config.h"
 
+#include <errno.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 static void fail(const char* message) {
     fprintf(stderr, "clip_overlap_priority_test: %s\n", message);
@@ -17,10 +21,65 @@ static void expect(int condition, const char* message) {
 }
 
 static const char* const kClipPaths[] = {
-    "assets/audio/test.wav",
-    "assets/audio/sample-9s.wav",
-    "assets/audio/sample-12s.wav",
+    "tmp/clip_overlap_priority_a.wav",
+    "tmp/clip_overlap_priority_b.wav",
+    "tmp/clip_overlap_priority_c.wav",
 };
+
+static void write_u16_le(FILE* fp, uint16_t value) {
+    unsigned char bytes[2];
+    bytes[0] = (unsigned char)(value & 0xFFu);
+    bytes[1] = (unsigned char)((value >> 8) & 0xFFu);
+    fwrite(bytes, 1, sizeof(bytes), fp);
+}
+
+static void write_u32_le(FILE* fp, uint32_t value) {
+    unsigned char bytes[4];
+    bytes[0] = (unsigned char)(value & 0xFFu);
+    bytes[1] = (unsigned char)((value >> 8) & 0xFFu);
+    bytes[2] = (unsigned char)((value >> 16) & 0xFFu);
+    bytes[3] = (unsigned char)((value >> 24) & 0xFFu);
+    fwrite(bytes, 1, sizeof(bytes), fp);
+}
+
+static void write_test_wav_or_fail(const char* path, int sample_rate, uint32_t frames) {
+    const uint16_t channels = 1;
+    const uint16_t bits_per_sample = 16;
+    const uint16_t block_align = (uint16_t)(channels * (bits_per_sample / 8));
+    const uint32_t byte_rate = (uint32_t)sample_rate * (uint32_t)block_align;
+    const uint32_t data_size = frames * (uint32_t)block_align;
+    const uint32_t riff_size = 36u + data_size;
+    FILE* fp = NULL;
+
+    if (mkdir("tmp", 0755) != 0 && errno != EEXIST) {
+        fail("failed to create tmp directory");
+    }
+
+    fp = fopen(path, "wb");
+    if (!fp) {
+        fail("failed to create wav fixture");
+    }
+
+    fwrite("RIFF", 1, 4, fp);
+    write_u32_le(fp, riff_size);
+    fwrite("WAVE", 1, 4, fp);
+    fwrite("fmt ", 1, 4, fp);
+    write_u32_le(fp, 16u);
+    write_u16_le(fp, 1u);
+    write_u16_le(fp, channels);
+    write_u32_le(fp, (uint32_t)sample_rate);
+    write_u32_le(fp, byte_rate);
+    write_u16_le(fp, block_align);
+    write_u16_le(fp, bits_per_sample);
+    fwrite("data", 1, 4, fp);
+    write_u32_le(fp, data_size);
+
+    for (uint32_t i = 0; i < frames; ++i) {
+        write_u16_le(fp, 0u);
+    }
+
+    fclose(fp);
+}
 
 static int find_clip_index_by_id(const EngineTrack* track, uint64_t creation_index) {
     if (!track) {
@@ -49,6 +108,9 @@ static int find_clip_index_by_start(const EngineTrack* track, uint64_t start_fra
 int main(void) {
     EngineRuntimeConfig cfg;
     config_set_defaults(&cfg);
+    for (size_t i = 0; i < sizeof(kClipPaths) / sizeof(kClipPaths[0]); ++i) {
+        write_test_wav_or_fail(kClipPaths[i], cfg.sample_rate, (uint32_t)(cfg.sample_rate * 10));
+    }
 
     Engine* engine = engine_create(&cfg);
     if (!engine) {
@@ -327,6 +389,9 @@ int main(void) {
 
     int final_count = track->clip_count;
     engine_destroy(engine);
+    for (size_t i = 0; i < sizeof(kClipPaths) / sizeof(kClipPaths[0]); ++i) {
+        (void)unlink(kClipPaths[i]);
+    }
     printf("clip_overlap_priority_test: success (clips=%d)\n", final_count);
     return 0;
 }

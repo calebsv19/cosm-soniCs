@@ -62,24 +62,33 @@ static uint32_t undo_fx_collect_params(const SessionFxInstance* fx,
     return count;
 }
 
+static void session_clip_clear(SessionClip* clip) {
+    if (!clip) {
+        return;
+    }
+    if (clip->automation_lanes) {
+        for (int l = 0; l < clip->automation_lane_count; ++l) {
+            SessionAutomationLane* lane = &clip->automation_lanes[l];
+            free(lane->points);
+            lane->points = NULL;
+            lane->point_count = 0;
+        }
+        free(clip->automation_lanes);
+        clip->automation_lanes = NULL;
+        clip->automation_lane_count = 0;
+    }
+    free(clip->midi_notes);
+    clip->midi_notes = NULL;
+    clip->midi_note_count = 0;
+}
+
 static void session_track_clear(SessionTrack* track) {
     if (!track) {
         return;
     }
     if (track->clips) {
         for (int i = 0; i < track->clip_count; ++i) {
-            SessionClip* clip = &track->clips[i];
-            if (clip->automation_lanes) {
-                for (int l = 0; l < clip->automation_lane_count; ++l) {
-                    SessionAutomationLane* lane = &clip->automation_lanes[l];
-                    free(lane->points);
-                    lane->points = NULL;
-                    lane->point_count = 0;
-                }
-                free(clip->automation_lanes);
-                clip->automation_lanes = NULL;
-                clip->automation_lane_count = 0;
-            }
+            session_clip_clear(&track->clips[i]);
         }
     }
     free(track->clips);
@@ -144,12 +153,23 @@ static bool session_clip_clone(SessionClip* dst, const SessionClip* src) {
     *dst = *src;
     dst->automation_lanes = NULL;
     dst->automation_lane_count = 0;
+    dst->midi_notes = NULL;
+    dst->midi_note_count = 0;
+    if (src->midi_notes && src->midi_note_count > 0) {
+        dst->midi_notes = (EngineMidiNote*)calloc((size_t)src->midi_note_count, sizeof(EngineMidiNote));
+        if (!dst->midi_notes) {
+            return false;
+        }
+        memcpy(dst->midi_notes, src->midi_notes, sizeof(EngineMidiNote) * (size_t)src->midi_note_count);
+        dst->midi_note_count = src->midi_note_count;
+    }
     if (!src->automation_lanes || src->automation_lane_count <= 0) {
         return true;
     }
     dst->automation_lanes = (SessionAutomationLane*)calloc((size_t)src->automation_lane_count,
                                                            sizeof(SessionAutomationLane));
     if (!dst->automation_lanes) {
+        session_clip_clear(dst);
         return false;
     }
     dst->automation_lane_count = src->automation_lane_count;
@@ -162,6 +182,7 @@ static bool session_clip_clone(SessionClip* dst, const SessionClip* src) {
             dst_lane->points = (SessionAutomationPoint*)calloc((size_t)src_lane->point_count,
                                                                sizeof(SessionAutomationPoint));
             if (!dst_lane->points) {
+                session_clip_clear(dst);
                 return false;
             }
             memcpy(dst_lane->points,
@@ -243,6 +264,37 @@ static bool tempo_events_clone(TempoEvent** dst, int* dst_count, const TempoEven
     *dst = events;
     *dst_count = src_count;
     return true;
+}
+
+static bool midi_notes_clone(EngineMidiNote** dst, int* dst_count, const EngineMidiNote* src, int src_count) {
+    if (!dst || !dst_count || src_count < 0) {
+        return false;
+    }
+    *dst = NULL;
+    *dst_count = 0;
+    if (src_count == 0) {
+        return true;
+    }
+    if (!src) {
+        return false;
+    }
+    EngineMidiNote* notes = (EngineMidiNote*)calloc((size_t)src_count, sizeof(EngineMidiNote));
+    if (!notes) {
+        return false;
+    }
+    memcpy(notes, src, sizeof(EngineMidiNote) * (size_t)src_count);
+    *dst = notes;
+    *dst_count = src_count;
+    return true;
+}
+
+static void midi_notes_clear(EngineMidiNote** notes, int* note_count) {
+    if (!notes || !note_count) {
+        return;
+    }
+    free(*notes);
+    *notes = NULL;
+    *note_count = 0;
 }
 
 static void tempo_events_clear(TempoEvent** events, int* event_count) {
@@ -398,6 +450,29 @@ bool undo_command_clone(UndoCommand* dst, const UndoCommand* src) {
         case UNDO_CMD_LIBRARY_RENAME:
             dst->data.library_rename = src->data.library_rename;
             return true;
+        case UNDO_CMD_MIDI_NOTE_EDIT: {
+            const UndoMidiNoteEdit* msrc = &src->data.midi_note_edit;
+            UndoMidiNoteEdit* mdst = &dst->data.midi_note_edit;
+            *mdst = *msrc;
+            mdst->before_notes = NULL;
+            mdst->after_notes = NULL;
+            mdst->before_note_count = 0;
+            mdst->after_note_count = 0;
+            if (!midi_notes_clone(&mdst->before_notes,
+                                  &mdst->before_note_count,
+                                  msrc->before_notes,
+                                  msrc->before_note_count)) {
+                return false;
+            }
+            if (!midi_notes_clone(&mdst->after_notes,
+                                  &mdst->after_note_count,
+                                  msrc->after_notes,
+                                  msrc->after_note_count)) {
+                midi_notes_clear(&mdst->before_notes, &mdst->before_note_count);
+                return false;
+            }
+            return true;
+        }
         case UNDO_CMD_NONE:
         default:
             return true;
@@ -410,7 +485,21 @@ static int find_clip_by_snapshot(const EngineTrack* track, const SessionClip* cl
     }
     for (int i = 0; i < track->clip_count; ++i) {
         const EngineClip* current = &track->clips[i];
-        if (!current || !current->sampler) {
+        if (!current) {
+            continue;
+        }
+        if (engine_clip_get_kind(current) != clip->kind) {
+            continue;
+        }
+        if (clip->kind == ENGINE_CLIP_KIND_MIDI) {
+            if (current->timeline_start_frames == clip->start_frame &&
+                current->duration_frames == clip->duration_frames &&
+                strncmp(current->name, clip->name, ENGINE_CLIP_NAME_MAX) == 0) {
+                return i;
+            }
+            continue;
+        }
+        if (!current->sampler) {
             continue;
         }
         const char* media_path = engine_clip_get_media_path(current);
@@ -429,13 +518,23 @@ static bool apply_clip_add_remove(AppState* state, UndoClipAddRemove* edit, bool
     bool do_add = apply_after ? edit->added : !edit->added;
     if (do_add) {
         int new_index = -1;
-        if (!engine_add_clip_to_track_with_id(state->engine,
-                                              edit->track_index,
-                                              edit->clip.media_path,
-                                              edit->clip.media_id,
-                                              edit->clip.start_frame,
-                                              &new_index)) {
-            return false;
+        if (edit->clip.kind == ENGINE_CLIP_KIND_MIDI) {
+            if (!engine_add_midi_clip_to_track(state->engine,
+                                               edit->track_index,
+                                               edit->clip.start_frame,
+                                               edit->clip.duration_frames,
+                                               &new_index)) {
+                return false;
+            }
+        } else {
+            if (!engine_add_clip_to_track_with_id(state->engine,
+                                                  edit->track_index,
+                                                  edit->clip.media_path,
+                                                  edit->clip.media_id,
+                                                  edit->clip.start_frame,
+                                                  &new_index)) {
+                return false;
+            }
         }
         const EngineTrack* tracks = engine_get_tracks(state->engine);
         if (!tracks || edit->track_index < 0 ||
@@ -461,6 +560,23 @@ static bool apply_clip_add_remove(AppState* state, UndoClipAddRemove* edit, bool
                                     new_index,
                                     edit->clip.fade_in_curve,
                                     edit->clip.fade_out_curve);
+        if (edit->clip.kind == ENGINE_CLIP_KIND_MIDI) {
+            engine_clip_midi_set_instrument_preset(state->engine,
+                                                   edit->track_index,
+                                                   new_index,
+                                                   edit->clip.instrument_preset);
+            engine_clip_midi_set_instrument_params(state->engine,
+                                                   edit->track_index,
+                                                   new_index,
+                                                   edit->clip.instrument_params);
+            for (int n = 0; n < edit->clip.midi_note_count; ++n) {
+                engine_clip_midi_add_note(state->engine,
+                                          edit->track_index,
+                                          new_index,
+                                          edit->clip.midi_notes[n],
+                                          NULL);
+            }
+        }
         if (edit->clip.automation_lanes && edit->clip.automation_lane_count > 0) {
             for (int l = 0; l < edit->clip.automation_lane_count; ++l) {
                 SessionAutomationLane* lane = &edit->clip.automation_lanes[l];
@@ -524,12 +640,43 @@ static bool apply_automation_edit(AppState* state, UndoAutomationEdit* edit, boo
 }
 
 static bool apply_clip_state(AppState* state, const UndoClipState* target) {
-    if (!state || !target || !target->sampler) {
+    if (!state || !target) {
         return false;
     }
     int current_track = -1;
     int current_clip = -1;
-    if (!timeline_find_clip_by_sampler(state, target->sampler, &current_track, &current_clip)) {
+    if (target->sampler) {
+        if (!timeline_find_clip_by_sampler(state, target->sampler, &current_track, &current_clip)) {
+            return false;
+        }
+    } else if (target->kind == ENGINE_CLIP_KIND_MIDI && target->creation_index > 0) {
+        const EngineTrack* tracks = engine_get_tracks(state->engine);
+        int track_count = engine_get_track_count(state->engine);
+        if (!tracks) {
+            return false;
+        }
+        for (int t = 0; t < track_count; ++t) {
+            const EngineTrack* track = &tracks[t];
+            if (!track) {
+                continue;
+            }
+            for (int c = 0; c < track->clip_count; ++c) {
+                const EngineClip* clip = &track->clips[c];
+                if (clip && clip->kind == ENGINE_CLIP_KIND_MIDI &&
+                    clip->creation_index == target->creation_index) {
+                    current_track = t;
+                    current_clip = c;
+                    break;
+                }
+            }
+            if (current_clip >= 0) {
+                break;
+            }
+        }
+        if (current_clip < 0) {
+            return false;
+        }
+    } else {
         return false;
     }
     int final_track = current_track;
@@ -652,22 +799,50 @@ static bool apply_session_track(AppState* state, int track_index, const SessionT
 
     for (int c = 0; c < track->clip_count; ++c) {
         const SessionClip* clip = &track->clips[c];
-        if (clip->media_path[0] == '\0') {
-            continue;
-        }
         int clip_index = -1;
-        if (!engine_add_clip_to_track_with_id(state->engine,
-                                              track_index,
-                                              clip->media_path,
-                                              clip->media_id,
-                                              clip->start_frame,
-                                              &clip_index)) {
-            continue;
+        if (clip->kind == ENGINE_CLIP_KIND_MIDI) {
+            if (!engine_add_midi_clip_to_track(state->engine,
+                                               track_index,
+                                               clip->start_frame,
+                                               clip->duration_frames,
+                                               &clip_index)) {
+                continue;
+            }
+        } else {
+            if (clip->media_path[0] == '\0') {
+                continue;
+            }
+            if (!engine_add_clip_to_track_with_id(state->engine,
+                                                  track_index,
+                                                  clip->media_path,
+                                                  clip->media_id,
+                                                  clip->start_frame,
+                                                  &clip_index)) {
+                continue;
+            }
         }
         engine_clip_set_region(state->engine, track_index, clip_index, clip->offset_frames, clip->duration_frames);
         engine_clip_set_gain(state->engine, track_index, clip_index, clip->gain == 0.0f ? 1.0f : clip->gain);
         engine_clip_set_name(state->engine, track_index, clip_index, clip->name);
         engine_clip_set_fades(state->engine, track_index, clip_index, clip->fade_in_frames, clip->fade_out_frames);
+        engine_clip_set_fade_curves(state->engine,
+                                    track_index,
+                                    clip_index,
+                                    clip->fade_in_curve,
+                                    clip->fade_out_curve);
+        if (clip->kind == ENGINE_CLIP_KIND_MIDI) {
+            engine_clip_midi_set_instrument_preset(state->engine,
+                                                   track_index,
+                                                   clip_index,
+                                                   clip->instrument_preset);
+            engine_clip_midi_set_instrument_params(state->engine,
+                                                   track_index,
+                                                   clip_index,
+                                                   clip->instrument_params);
+        }
+        for (int n = 0; n < clip->midi_note_count; ++n) {
+            engine_clip_midi_add_note(state->engine, track_index, clip_index, clip->midi_notes[n], NULL);
+        }
     }
 
     if (track->fx_count > 0) {
@@ -745,6 +920,46 @@ static bool apply_track_edit(AppState* state, const UndoTrackEdit* edit, bool ap
     effects_panel_ensure_eq_curve_tracks(state, engine_get_track_count(state->engine));
     return apply_session_track(state, track_index, target);
 }
+
+static int find_clip_by_creation_index(const EngineTrack* track, uint64_t creation_index) {
+    if (!track || creation_index == 0) {
+        return -1;
+    }
+    for (int i = 0; i < track->clip_count; ++i) {
+        if (track->clips[i].creation_index == creation_index) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static bool apply_midi_note_edit(AppState* state, const UndoMidiNoteEdit* edit, bool apply_after) {
+    if (!state || !edit || !state->engine) {
+        return false;
+    }
+    const EngineMidiNote* notes = apply_after ? edit->after_notes : edit->before_notes;
+    int note_count = apply_after ? edit->after_note_count : edit->before_note_count;
+    const EngineTrack* tracks = engine_get_tracks(state->engine);
+    int track_count = engine_get_track_count(state->engine);
+    if (!tracks || edit->track_index < 0 || edit->track_index >= track_count) {
+        return false;
+    }
+    int clip_index = find_clip_by_creation_index(&tracks[edit->track_index], edit->clip_creation_index);
+    if (clip_index < 0) {
+        return false;
+    }
+    if (!engine_clip_midi_set_notes(state->engine, edit->track_index, clip_index, notes, note_count)) {
+        return false;
+    }
+    state->selected_track_index = edit->track_index;
+    state->selected_clip_index = clip_index;
+    state->midi_editor_ui.selected_track_index = edit->track_index;
+    state->midi_editor_ui.selected_clip_index = clip_index;
+    state->midi_editor_ui.selected_clip_creation_index = edit->clip_creation_index;
+    state->midi_editor_ui.selected_note_index = -1;
+    return true;
+}
+
 static bool apply_eq_curve(AppState* state, const UndoEqCurveEdit* edit, bool apply_after) {
     if (!state || !edit) {
         return false;
@@ -924,6 +1139,8 @@ bool undo_apply(AppState* state, UndoCommand* command, bool apply_after) {
             return apply_track_rename(state, &command->data.track_rename, apply_after);
         case UNDO_CMD_LIBRARY_RENAME:
             return apply_library_rename(state, &command->data.library_rename, apply_after);
+        case UNDO_CMD_MIDI_NOTE_EDIT:
+            return apply_midi_note_edit(state, &command->data.midi_note_edit, apply_after);
         case UNDO_CMD_NONE:
         default:
             return false;
@@ -963,17 +1180,13 @@ void undo_command_destroy(UndoCommand* cmd) {
                                &cmd->data.tempo_map_edit.after_event_count);
             break;
         case UNDO_CMD_CLIP_ADD_REMOVE:
-            if (cmd->data.clip_add_remove.clip.automation_lanes) {
-                for (int l = 0; l < cmd->data.clip_add_remove.clip.automation_lane_count; ++l) {
-                    SessionAutomationLane* lane = &cmd->data.clip_add_remove.clip.automation_lanes[l];
-                    free(lane->points);
-                    lane->points = NULL;
-                    lane->point_count = 0;
-                }
-                free(cmd->data.clip_add_remove.clip.automation_lanes);
-                cmd->data.clip_add_remove.clip.automation_lanes = NULL;
-                cmd->data.clip_add_remove.clip.automation_lane_count = 0;
-            }
+            session_clip_clear(&cmd->data.clip_add_remove.clip);
+            break;
+        case UNDO_CMD_MIDI_NOTE_EDIT:
+            midi_notes_clear(&cmd->data.midi_note_edit.before_notes,
+                             &cmd->data.midi_note_edit.before_note_count);
+            midi_notes_clear(&cmd->data.midi_note_edit.after_notes,
+                             &cmd->data.midi_note_edit.after_note_count);
             break;
         default:
             break;
