@@ -214,3 +214,44 @@ float engine_automation_lane_eval(const EngineAutomationLane* lane, uint64_t fra
     }
     return 0.0f;
 }
+
+bool engine_automation_target_is_instrument_param(EngineAutomationTarget target) {
+    return target >= ENGINE_AUTOMATION_TARGET_INSTRUMENT_LEVEL &&
+           target <= ENGINE_AUTOMATION_TARGET_INSTRUMENT_VIBRATO_DEPTH;
+}
+
+const char* engine_automation_target_display_label(EngineAutomationTarget target) {
+    switch (target) {
+    case ENGINE_AUTOMATION_TARGET_VOLUME:
+        return "VOL";
+    case ENGINE_AUTOMATION_TARGET_PAN:
+        return "PAN";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_LEVEL:
+        return "LEV";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_TONE:
+        return "TON";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_ATTACK_MS:
+        return "ATK";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_RELEASE_MS:
+        return "REL";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_DECAY_MS:
+        return "DEC";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_SUSTAIN:
+        return "SUS";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_OSC_MIX:
+        return "MIX";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_OSC2_DETUNE:
+        return "DET";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_SUB_MIX:
+        return "SUB";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_DRIVE:
+        return "DRV";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_VIBRATO_RATE:
+        return "VRT";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_VIBRATO_DEPTH:
+        return "VDP";
+    case ENGINE_AUTOMATION_TARGET_COUNT:
+    default:
+        return "";
+    }
+}

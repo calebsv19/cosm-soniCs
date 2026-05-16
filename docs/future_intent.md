@@ -1,6 +1,6 @@
 # DAW Future Intent
 
-Last updated: 2026-05-04
+Last updated: 2026-05-15
 
 ## Scaffold Alignment Intent
 1. Preserve DAW's existing subsystem decomposition strengths.
@@ -68,6 +68,25 @@ Last updated: 2026-05-04
 - next posture:
   - maintenance-only updates for explicit root handling and ingest-mode matrix (`copy` in library pane, `reference` in timeline drop).
   - keep `test-data-path-contract` and `test-library-copy-vs-reference-contract` in stable verification lane.
+
+## MIDI and Instrument Intent
+- MIDI region and instrument work is now active current product surface rather than speculative future work.
+- Completed direction includes durable MIDI notes, MIDI editor usability, grouped synth presets, track-level instrument defaults with region overrides, and instrument parameter automation.
+- next posture:
+  - refine factory/user preset storage and instrument UX in small slices.
+  - keep region overrides and track defaults explicitly separated in tests.
+  - defer external MIDI input until audio hardware capture lifecycle is fully proven in packaged app usage.
+
+## Audio Recording Intent
+- First microphone/audio-region recording lane is implemented as a DAW-local hardware-input path.
+- current behavior:
+  - timeline `R` arms/finishes recording.
+  - microphone frames are appended only while transport is moving.
+  - active takes show a live waveform preview and finish as normal audio clips.
+  - selected/armed track placement is supported, including record-armed solo gating for empty selected tracks.
+- next posture:
+  - validate live microphone workflows in the packaged app.
+  - decide whether the next lane is audio/MIDI track typing, recording UX polish, or external MIDI input.
 
 ## Connection Pass Intent
 - completed:

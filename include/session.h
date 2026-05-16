@@ -11,7 +11,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SESSION_DOCUMENT_VERSION 20
+#define SESSION_DOCUMENT_VERSION 23
 #define SESSION_PATH_MAX 512
 #define SESSION_NAME_MAX 128
 #define SESSION_FX_NAME_MAX 64
@@ -47,6 +47,7 @@ typedef struct {
     int automation_lane_count;
     EngineInstrumentPresetId instrument_preset;
     EngineInstrumentParams instrument_params;
+    bool instrument_inherits_track;
     EngineMidiNote* midi_notes;
     int midi_note_count;
     float gain;
@@ -68,6 +69,11 @@ typedef struct {
     int follow_mode;
     uint64_t playhead_frame;
 } SessionTimelineView;
+
+typedef struct {
+    int panel_mode;
+    int instrument_active_group;
+} SessionMidiEditorState;
 
 typedef struct {
     int view_mode;
@@ -163,6 +169,11 @@ typedef struct {
     float pan;
     bool muted;
     bool solo;
+    bool midi_instrument_enabled;
+    EngineInstrumentPresetId midi_instrument_preset;
+    EngineInstrumentParams midi_instrument_params;
+    SessionAutomationLane* midi_instrument_automation_lanes;
+    int midi_instrument_automation_lane_count;
     SessionEqCurve eq;
     int clip_count;
     SessionClip* clips;
@@ -201,6 +212,7 @@ typedef struct {
     SessionTimelineView timeline;
     int selected_track_index;
     int selected_clip_index;
+    SessionMidiEditorState midi_editor;
     SessionEffectsPanelState effects_panel;
     SessionClipInspectorState clip_inspector;
     SessionLayoutState layout;

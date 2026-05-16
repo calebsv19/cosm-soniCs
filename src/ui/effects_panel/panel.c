@@ -184,6 +184,16 @@ static void compute_list_layout(EffectsPanelState* panel,
         left_inner_w,
         slider_hit_h
     };
+    snapshot_y += slider_h + FX_PANEL_SNAPSHOT_GAP;
+    layout->track_snapshot.instrument_button_rect =
+        (SDL_Rect){left_inner_x, snapshot_y, left_inner_w, footer_h};
+    int menu_bottom = footer_y - FX_PANEL_LIST_PAD;
+    midi_preset_browser_compute_layout(layout->track_snapshot.instrument_button_rect,
+                                       menu_bottom,
+                                       panel->track_snapshot.instrument_menu_scroll_row,
+                                       (EngineInstrumentPresetCategoryId)panel->track_snapshot.instrument_menu_expanded_category,
+                                       &layout->track_snapshot.instrument_browser);
+    layout->track_snapshot.instrument_menu_rect = layout->track_snapshot.instrument_browser.menu_rect;
 
     int button_gap = FX_PANEL_SNAPSHOT_BUTTON_GAP;
     int button_w = (left_inner_w - button_gap) / 2;
@@ -191,7 +201,7 @@ static void compute_list_layout(EffectsPanelState* panel,
     layout->track_snapshot.mute_rect = (SDL_Rect){left_inner_x, footer_y, button_w, footer_h};
     layout->track_snapshot.solo_rect = (SDL_Rect){left_inner_x + button_w + button_gap, footer_y, button_w, footer_h};
 
-    int list_top = snapshot_y + slider_h + FX_PANEL_SNAPSHOT_LIST_GAP;
+    int list_top = snapshot_y + footer_h + FX_PANEL_SNAPSHOT_LIST_GAP;
     int list_bottom = footer_y - FX_PANEL_LIST_PAD;
     if (list_bottom < list_top) {
         list_bottom = list_top;
@@ -431,6 +441,9 @@ void effects_panel_init(AppState* state) {
     state->effects_panel.track_snapshot.list_scroll_max = 0.0f;
     state->effects_panel.track_snapshot.list_scroll_dragging = false;
     state->effects_panel.track_snapshot.list_scroll_drag_offset = 0.0f;
+    state->effects_panel.track_snapshot.instrument_menu_open = false;
+    state->effects_panel.track_snapshot.instrument_menu_scroll_row = 0;
+    state->effects_panel.track_snapshot.instrument_menu_expanded_category = -1;
     state->effects_panel.eq_detail.view_mode = EQ_DETAIL_VIEW_MASTER;
     state->effects_panel.eq_detail.spectrum_ready = false;
     state->effects_panel.eq_detail.last_track_index = -1;

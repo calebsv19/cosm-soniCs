@@ -4,6 +4,7 @@
 
 #include "effects/effects_manager.h"
 #include "ui/effects_panel_slot.h"
+#include "ui/midi_preset_browser.h"
 
 #ifndef FX_PANEL_MAX_TYPES
 #define FX_PANEL_MAX_TYPES 64
@@ -36,6 +37,9 @@ typedef struct {
     SDL_Rect pan_label_rect;
     SDL_Rect pan_rect;
     SDL_Rect pan_hit_rect;
+    SDL_Rect instrument_button_rect;
+    SDL_Rect instrument_menu_rect;
+    MidiPresetBrowserLayout instrument_browser;
     SDL_Rect list_rect;
     SDL_Rect list_clip_rect;
     SDL_Rect mute_rect;

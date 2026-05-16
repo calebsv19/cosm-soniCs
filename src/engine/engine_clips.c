@@ -47,6 +47,9 @@ void engine_clip_destroy(Engine* engine, EngineClip* clip) {
     }
     clip->source = NULL;
     clip->kind = ENGINE_CLIP_KIND_AUDIO;
+    clip->instrument_preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+    clip->instrument_params = engine_instrument_default_params(clip->instrument_preset);
+    clip->instrument_inherits_track = false;
     clip->gain = 0.0f;
     clip->active = false;
     clip->name[0] = '\0';
@@ -110,6 +113,9 @@ static EngineClip* engine_track_append_clip(Engine* engine, EngineTrack* track) 
     clip->media = NULL;
     clip->source = NULL;
     engine_midi_note_list_init(&clip->midi_notes);
+    clip->instrument_preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+    clip->instrument_params = engine_instrument_default_params(clip->instrument_preset);
+    clip->instrument_inherits_track = false;
     clip->gain = 1.0f;
     clip->active = true;
     clip->name[0] = '\0';
@@ -455,8 +461,15 @@ bool engine_add_midi_clip_to_track(Engine* engine,
     }
     clip->kind = ENGINE_CLIP_KIND_MIDI;
     clip->instrument = instrument;
-    clip->instrument_preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
-    clip->instrument_params = engine_instrument_default_params(clip->instrument_preset);
+    if (!track->midi_instrument_enabled) {
+        track->midi_instrument_enabled = true;
+        track->midi_instrument_preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+        track->midi_instrument_params = engine_instrument_default_params(track->midi_instrument_preset);
+    }
+    clip->instrument_preset = track->midi_instrument_preset;
+    clip->instrument_params = engine_instrument_params_sanitize(clip->instrument_preset,
+                                                                track->midi_instrument_params);
+    clip->instrument_inherits_track = true;
     clip->timeline_start_frames = start_frame;
     clip->duration_frames = duration_frames;
     clip->offset_frames = 0;
@@ -1030,11 +1043,144 @@ const EngineMidiNote* engine_clip_midi_notes(const EngineClip* clip) {
     return clip->midi_notes.notes;
 }
 
+static bool engine_instrument_params_equal(EngineInstrumentParams a, EngineInstrumentParams b);
+
 EngineInstrumentPresetId engine_clip_midi_instrument_preset(const EngineClip* clip) {
     if (!clip || clip->kind != ENGINE_CLIP_KIND_MIDI) {
         return ENGINE_INSTRUMENT_PRESET_PURE_SINE;
     }
     return engine_instrument_preset_clamp(clip->instrument_preset);
+}
+
+bool engine_clip_midi_inherits_track_instrument(const EngineClip* clip) {
+    return clip && clip->kind == ENGINE_CLIP_KIND_MIDI && clip->instrument_inherits_track;
+}
+
+bool engine_track_midi_instrument_enabled(const Engine* engine, int track_index) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    return engine->tracks[track_index].midi_instrument_enabled;
+}
+
+EngineInstrumentPresetId engine_track_midi_instrument_preset(const Engine* engine, int track_index) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+    }
+    return engine_instrument_preset_clamp(engine->tracks[track_index].midi_instrument_preset);
+}
+
+EngineInstrumentParams engine_track_midi_instrument_params(const Engine* engine, int track_index) {
+    EngineInstrumentPresetId preset = engine_track_midi_instrument_preset(engine, track_index);
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return engine_instrument_default_params(preset);
+    }
+    return engine_instrument_params_sanitize(preset, engine->tracks[track_index].midi_instrument_params);
+}
+
+bool engine_track_midi_set_instrument_preset(Engine* engine,
+                                             int track_index,
+                                             EngineInstrumentPresetId preset) {
+    EngineTrack* track = engine_get_track_mutable(engine, track_index);
+    if (!track) {
+        return false;
+    }
+    EngineInstrumentPresetId clamped = engine_instrument_preset_clamp(preset);
+    if (track->midi_instrument_enabled &&
+        track->midi_instrument_preset == clamped) {
+        return true;
+    }
+    track->midi_instrument_enabled = true;
+    track->midi_instrument_preset = clamped;
+    track->midi_instrument_params = engine_instrument_default_params(clamped);
+    engine_request_rebuild_sources(engine);
+    return true;
+}
+
+bool engine_track_midi_set_instrument_params(Engine* engine,
+                                             int track_index,
+                                             EngineInstrumentParams params) {
+    EngineTrack* track = engine_get_track_mutable(engine, track_index);
+    if (!track) {
+        return false;
+    }
+    EngineInstrumentPresetId preset = engine_instrument_preset_clamp(track->midi_instrument_preset);
+    EngineInstrumentParams clamped = engine_instrument_params_sanitize(preset, params);
+    if (track->midi_instrument_enabled &&
+        engine_instrument_params_equal(track->midi_instrument_params, clamped)) {
+        return true;
+    }
+    track->midi_instrument_enabled = true;
+    track->midi_instrument_params = clamped;
+    engine_request_rebuild_sources(engine);
+    return true;
+}
+
+bool engine_track_midi_set_instrument_enabled(Engine* engine, int track_index, bool enabled) {
+    EngineTrack* track = engine_get_track_mutable(engine, track_index);
+    if (!track) {
+        return false;
+    }
+    if (track->midi_instrument_enabled == enabled) {
+        return true;
+    }
+    track->midi_instrument_enabled = enabled;
+    engine_request_rebuild_sources(engine);
+    return true;
+}
+
+bool engine_clip_midi_set_inherits_track_instrument(Engine* engine,
+                                                    int track_index,
+                                                    int clip_index,
+                                                    bool inherits_track) {
+    EngineClip* clip = engine_get_midi_clip_mutable(engine, track_index, clip_index);
+    if (!clip) {
+        return false;
+    }
+    if (clip->instrument_inherits_track == inherits_track) {
+        return true;
+    }
+    clip->instrument_inherits_track = inherits_track;
+    engine_request_rebuild_sources(engine);
+    return true;
+}
+
+EngineInstrumentPresetId engine_clip_midi_effective_instrument_preset(const Engine* engine,
+                                                                      int track_index,
+                                                                      int clip_index) {
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+    }
+    const EngineTrack* track = &engine->tracks[track_index];
+    if (!track || clip_index < 0 || clip_index >= track->clip_count) {
+        return engine_track_midi_instrument_preset(engine, track_index);
+    }
+    const EngineClip* clip = &track->clips[clip_index];
+    if (!clip || clip->kind != ENGINE_CLIP_KIND_MIDI) {
+        return engine_track_midi_instrument_preset(engine, track_index);
+    }
+    if (clip->instrument_inherits_track) {
+        return engine_track_midi_instrument_preset(engine, track_index);
+    }
+    return engine_clip_midi_instrument_preset(clip);
+}
+
+EngineInstrumentParams engine_clip_midi_effective_instrument_params(const Engine* engine,
+                                                                    int track_index,
+                                                                    int clip_index) {
+    EngineInstrumentPresetId preset = engine_clip_midi_effective_instrument_preset(engine, track_index, clip_index);
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return engine_instrument_default_params(preset);
+    }
+    const EngineTrack* track = &engine->tracks[track_index];
+    if (!track || clip_index < 0 || clip_index >= track->clip_count) {
+        return engine_track_midi_instrument_params(engine, track_index);
+    }
+    const EngineClip* clip = &track->clips[clip_index];
+    if (!clip || clip->kind != ENGINE_CLIP_KIND_MIDI || clip->instrument_inherits_track) {
+        return engine_track_midi_instrument_params(engine, track_index);
+    }
+    return engine_clip_midi_instrument_params(clip);
 }
 
 bool engine_clip_midi_set_instrument_preset(Engine* engine,
@@ -1046,11 +1192,12 @@ bool engine_clip_midi_set_instrument_preset(Engine* engine,
         return false;
     }
     EngineInstrumentPresetId clamped = engine_instrument_preset_clamp(preset);
-    if (clip->instrument_preset == clamped) {
+    if (clip->instrument_preset == clamped && !clip->instrument_inherits_track) {
         return true;
     }
     clip->instrument_preset = clamped;
     clip->instrument_params = engine_instrument_default_params(clamped);
+    clip->instrument_inherits_track = false;
     engine_request_rebuild_sources(engine);
     return true;
 }
@@ -1063,6 +1210,16 @@ EngineInstrumentParams engine_clip_midi_instrument_params(const EngineClip* clip
     return engine_instrument_params_sanitize(preset, clip->instrument_params);
 }
 
+static bool engine_instrument_params_equal(EngineInstrumentParams a, EngineInstrumentParams b) {
+    for (int i = 0; i < ENGINE_INSTRUMENT_PARAM_COUNT; ++i) {
+        EngineInstrumentParamId param = (EngineInstrumentParamId)i;
+        if (engine_instrument_params_get(a, param) != engine_instrument_params_get(b, param)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 bool engine_clip_midi_set_instrument_params(Engine* engine,
                                             int track_index,
                                             int clip_index,
@@ -1071,15 +1228,18 @@ bool engine_clip_midi_set_instrument_params(Engine* engine,
     if (!clip) {
         return false;
     }
-    EngineInstrumentPresetId preset = engine_clip_midi_instrument_preset(clip);
+    EngineInstrumentPresetId preset = clip->instrument_inherits_track
+                                          ? engine_clip_midi_effective_instrument_preset(engine,
+                                                                                        track_index,
+                                                                                        clip_index)
+                                          : engine_clip_midi_instrument_preset(clip);
     EngineInstrumentParams clamped = engine_instrument_params_sanitize(preset, params);
-    if (clip->instrument_params.level == clamped.level &&
-        clip->instrument_params.tone == clamped.tone &&
-        clip->instrument_params.attack_ms == clamped.attack_ms &&
-        clip->instrument_params.release_ms == clamped.release_ms) {
+    if (engine_instrument_params_equal(clip->instrument_params, clamped) && !clip->instrument_inherits_track) {
         return true;
     }
+    clip->instrument_preset = preset;
     clip->instrument_params = clamped;
+    clip->instrument_inherits_track = false;
     engine_request_rebuild_sources(engine);
     return true;
 }
@@ -1093,8 +1253,15 @@ bool engine_clip_midi_set_instrument_param(Engine* engine,
     if (!clip) {
         return false;
     }
-    EngineInstrumentPresetId preset = engine_clip_midi_instrument_preset(clip);
-    EngineInstrumentParams params = engine_instrument_params_set(preset, clip->instrument_params, param, value);
+    EngineInstrumentPresetId preset = clip->instrument_inherits_track
+                                          ? engine_clip_midi_effective_instrument_preset(engine,
+                                                                                        track_index,
+                                                                                        clip_index)
+                                          : engine_clip_midi_instrument_preset(clip);
+    EngineInstrumentParams base = clip->instrument_inherits_track
+                                      ? engine_clip_midi_effective_instrument_params(engine, track_index, clip_index)
+                                      : clip->instrument_params;
+    EngineInstrumentParams params = engine_instrument_params_set(preset, base, param, value);
     return engine_clip_midi_set_instrument_params(engine, track_index, clip_index, params);
 }
 

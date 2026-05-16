@@ -53,41 +53,31 @@ static const EngineClip* inspector_get_clip_const(const AppState* state) {
     return &track->clips[state->inspector.clip_index];
 }
 
-static bool clip_state_from_clip(const EngineClip* clip, int track_index, UndoClipState* out_state) {
-    if (!clip || !out_state) {
-        return false;
-    }
-    out_state->kind = engine_clip_get_kind(clip);
-    out_state->sampler = clip->sampler;
-    out_state->creation_index = clip->creation_index;
-    out_state->track_index = track_index;
-    out_state->start_frame = clip->timeline_start_frames;
-    out_state->offset_frames = clip->offset_frames;
-    out_state->duration_frames = clip->duration_frames;
-    out_state->fade_in_frames = clip->fade_in_frames;
-    out_state->fade_out_frames = clip->fade_out_frames;
-    out_state->fade_in_curve = clip->fade_in_curve;
-    out_state->fade_out_curve = clip->fade_out_curve;
-    out_state->gain = clip->gain;
-    if (out_state->duration_frames == 0 && clip->sampler) {
-        out_state->duration_frames = engine_sampler_get_frame_count(clip->sampler);
-    }
-    return true;
-}
-
 static bool clip_state_equal(const UndoClipState* a, const UndoClipState* b) {
     if (!a || !b) {
         return true;
     }
-    return a->track_index == b->track_index &&
-           a->start_frame == b->start_frame &&
-           a->offset_frames == b->offset_frames &&
-           a->duration_frames == b->duration_frames &&
-           a->fade_in_frames == b->fade_in_frames &&
-           a->fade_out_frames == b->fade_out_frames &&
-           a->fade_in_curve == b->fade_in_curve &&
-           a->fade_out_curve == b->fade_out_curve &&
-           fabsf(a->gain - b->gain) < 0.0001f;
+    if (a->track_index != b->track_index ||
+        a->start_frame != b->start_frame ||
+        a->offset_frames != b->offset_frames ||
+        a->duration_frames != b->duration_frames ||
+        a->fade_in_frames != b->fade_in_frames ||
+        a->fade_out_frames != b->fade_out_frames ||
+        a->fade_in_curve != b->fade_in_curve ||
+        a->fade_out_curve != b->fade_out_curve ||
+        fabsf(a->gain - b->gain) >= 0.0001f ||
+        a->midi_note_count != b->midi_note_count) {
+        return false;
+    }
+    if (a->midi_note_count <= 0) {
+        return true;
+    }
+    if (!a->midi_notes || !b->midi_notes) {
+        return false;
+    }
+    return memcmp(a->midi_notes,
+                  b->midi_notes,
+                  sizeof(EngineMidiNote) * (size_t)a->midi_note_count) == 0;
 }
 
 static void inspector_begin_clip_drag(AppState* state) {
@@ -100,11 +90,16 @@ static void inspector_begin_clip_drag(AppState* state) {
     }
     UndoCommand cmd = {0};
     cmd.type = UNDO_CMD_CLIP_TRANSFORM;
-    if (!clip_state_from_clip(clip, state->inspector.track_index, &cmd.data.clip_transform.before)) {
+    if (!undo_clip_state_from_engine_clip(clip, state->inspector.track_index, &cmd.data.clip_transform.before)) {
         return;
     }
-    cmd.data.clip_transform.after = cmd.data.clip_transform.before;
+    if (!undo_clip_state_clone(&cmd.data.clip_transform.after, &cmd.data.clip_transform.before)) {
+        undo_clip_state_clear(&cmd.data.clip_transform.before);
+        return;
+    }
     undo_manager_begin_drag(&state->undo, &cmd);
+    undo_clip_state_clear(&cmd.data.clip_transform.before);
+    undo_clip_state_clear(&cmd.data.clip_transform.after);
 }
 
 static void inspector_stop_text_input(AppState* state) {
@@ -443,6 +438,10 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                 if (state->timeline_automation_mode && SDL_PointInRect(&p, &layout.right_waveform_rect)) {
                     const EngineClip* clip = inspector_get_clip_const(state);
                     if (clip) {
+                        if (engine_automation_target_is_instrument_param(state->automation_ui.target) &&
+                            clip->kind != ENGINE_CLIP_KIND_MIDI) {
+                            return;
+                        }
                         uint64_t clip_frames = inspector_numeric_clip_duration_frames(state, clip);
                         if (clip_frames == 0) {
                             clip_frames = 1;
@@ -627,10 +626,12 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                     const EngineClip* clip = inspector_get_clip_const(state);
                     if (clip) {
                         UndoClipState after = {0};
-                        if (clip_state_from_clip(clip, state->inspector.track_index, &after)) {
+                        if (undo_clip_state_from_engine_clip(clip, state->inspector.track_index, &after)) {
+                            undo_clip_state_clear(&cmd->data.clip_transform.after);
                             cmd->data.clip_transform.after = after;
                             cmd->data.clip_transform.before.sampler = after.sampler;
-                            if (!clip_state_equal(&cmd->data.clip_transform.before, &after)) {
+                            if (!clip_state_equal(&cmd->data.clip_transform.before,
+                                                  &cmd->data.clip_transform.after)) {
                                 undo_manager_commit_drag(&state->undo, cmd);
                                 return;
                             }

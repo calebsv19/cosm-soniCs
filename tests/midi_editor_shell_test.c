@@ -202,7 +202,12 @@ static void validate_instrument_panel_layout(const AppState* state, const MidiIn
     } else {
         expect(layout->scope_rect.h >= 40, "instrument preview should remain usable in compact panes");
     }
-    expect(layout->instrument_param_count == ENGINE_INSTRUMENT_PARAM_COUNT,
+    expect(layout->group_tab_count == ENGINE_INSTRUMENT_PARAM_GROUP_COUNT,
+           "instrument panel group tabs missing");
+    expect(layout->active_group >= 0 && layout->active_group < ENGINE_INSTRUMENT_PARAM_GROUP_COUNT,
+           "instrument panel active group invalid");
+    expect(layout->instrument_param_count > 0 &&
+               layout->instrument_param_count <= ENGINE_INSTRUMENT_PARAM_COUNT,
            "instrument panel params missing");
     expect(rect_contains_rect(&layout->panel_rect, &layout->header_rect), "instrument header outside panel");
     expect(rect_contains_rect(&layout->header_rect, &layout->notes_button_rect),
@@ -221,7 +226,16 @@ static void validate_instrument_panel_layout(const AppState* state, const MidiIn
            "instrument preset overlaps notes");
     expect(!rects_overlap_strict(&layout->param_grid_rect, &layout->scope_rect),
            "instrument params overlap preview");
+    for (int i = 0; i < layout->group_tab_count; ++i) {
+        expect(rect_has_positive_size(&layout->group_tab_rects[i]), "instrument group tab invalid");
+        expect(rect_contains_rect(&layout->panel_rect, &layout->group_tab_rects[i]),
+               "instrument group tab outside panel");
+    }
     for (int i = 0; i < layout->instrument_param_count; ++i) {
+        EngineInstrumentParamSpec spec = {0};
+        expect(engine_instrument_param_spec(layout->param_ids[i], &spec),
+               "instrument panel param id should have spec");
+        expect(spec.group == layout->active_group, "instrument panel param should match active group");
         expect(rect_has_positive_size(&layout->param_widget_rects[i]), "instrument param widget invalid");
         expect(rect_has_positive_size(&layout->param_knob_rects[i]), "instrument param knob invalid");
         expect(rect_contains_rect(&layout->param_grid_rect, &layout->param_widget_rects[i]),
@@ -232,6 +246,41 @@ static void validate_instrument_panel_layout(const AppState* state, const MidiIn
                "instrument param label outside widget");
         expect(rect_contains_rect(&layout->param_widget_rects[i], &layout->param_value_rects[i]),
                "instrument param value outside widget");
+    }
+}
+
+static int find_midi_note_index_by_pitch(const EngineClip* clip, uint8_t pitch) {
+    const EngineMidiNote* notes = engine_clip_midi_notes(clip);
+    int note_count = engine_clip_midi_note_count(clip);
+    for (int i = 0; notes && i < note_count; ++i) {
+        if (notes[i].note == pitch) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static int midi_editor_note_center_y_for_test(const MidiEditorLayout* layout, int note) {
+    int row = -1;
+    expect(midi_editor_pitch_note_to_row(layout, note, &row), "test note should be inside visible pitch range");
+    return layout->key_lane_rects[row].y + layout->key_lane_rects[row].h / 2;
+}
+
+static void set_midi_editor_note_selection_for_test(AppState* state,
+                                                    const MidiEditorSelection* selection,
+                                                    int primary_note_index,
+                                                    const int* selected_note_indices,
+                                                    int selected_note_count) {
+    expect(state && selection && selection->clip, "test note selection requires a selected MIDI clip");
+    state->midi_editor_ui.selected_track_index = selection->track_index;
+    state->midi_editor_ui.selected_clip_index = selection->clip_index;
+    state->midi_editor_ui.selected_clip_creation_index = selection->clip->creation_index;
+    state->midi_editor_ui.selected_note_index = primary_note_index;
+    memset(state->midi_editor_ui.selected_note_indices, 0, sizeof(state->midi_editor_ui.selected_note_indices));
+    for (int i = 0; selected_note_indices && i < selected_note_count; ++i) {
+        int note_index = selected_note_indices[i];
+        expect(note_index >= 0 && note_index < ENGINE_MIDI_NOTE_CAP, "test selected note index out of range");
+        state->midi_editor_ui.selected_note_indices[note_index] = true;
     }
 }
 
@@ -317,6 +366,16 @@ static void dispatch_mouse_motion(InputManager* manager, AppState* state, int x,
     expect(midi_editor_input_handle_event(manager, state, &event), "MIDI editor motion event not consumed");
 }
 
+static void dispatch_mouse_wheel(InputManager* manager, AppState* state, int x, int y, int wheel_y) {
+    SDL_Event event;
+    memset(&event, 0, sizeof(event));
+    state->mouse_x = x;
+    state->mouse_y = y;
+    event.type = SDL_MOUSEWHEEL;
+    event.wheel.y = wheel_y;
+    expect(midi_editor_input_handle_event(manager, state, &event), "MIDI editor wheel event not consumed");
+}
+
 static void dispatch_instrument_mouse_button(InputManager* manager,
                                              AppState* state,
                                              Uint32 type,
@@ -340,6 +399,17 @@ static void dispatch_instrument_mouse_motion(InputManager* manager, AppState* st
     event.motion.y = y;
     expect(midi_instrument_panel_input_handle_event(manager, state, &event),
            "MIDI instrument panel motion event not consumed");
+}
+
+static void dispatch_instrument_mouse_wheel(InputManager* manager, AppState* state, int x, int y, int wheel_y) {
+    SDL_Event event;
+    memset(&event, 0, sizeof(event));
+    state->mouse_x = x;
+    state->mouse_y = y;
+    event.type = SDL_MOUSEWHEEL;
+    event.wheel.y = wheel_y;
+    expect(midi_instrument_panel_input_handle_event(manager, state, &event),
+           "MIDI instrument panel wheel event not consumed");
 }
 
 static void dispatch_key(InputManager* manager, AppState* state, SDL_Keycode key) {
@@ -371,6 +441,20 @@ static void dispatch_key_with_mod(InputManager* manager, AppState* state, SDL_Ke
     SDL_SetModState((SDL_Keymod)(old_mods | mod));
     dispatch_key(manager, state, key);
     SDL_SetModState(old_mods);
+}
+
+static bool handle_key_with_mod(InputManager* manager, AppState* state, SDL_Keycode key, SDL_Keymod mod) {
+    SDL_Event event;
+    memset(&event, 0, sizeof(event));
+    event.type = SDL_KEYDOWN;
+    event.key.keysym.sym = key;
+    event.key.keysym.mod = mod;
+    event.key.repeat = 0;
+    SDL_Keymod old_mods = SDL_GetModState();
+    SDL_SetModState((SDL_Keymod)(old_mods | mod));
+    bool consumed = midi_editor_input_handle_event(manager, state, &event);
+    SDL_SetModState(old_mods);
+    return consumed;
 }
 
 static void dispatch_wheel_with_mod(InputManager* manager,
@@ -575,6 +659,546 @@ static void test_midi_editor_viewport_zoom_pan_maps_notes_and_hit_tests(void) {
     midi_editor_compute_layout(&state, &layout);
     expect(layout.view_start_frame == 0 && layout.view_span_frames == clip_duration,
            "Alt-0 over MIDI editor should fit the selected region");
+
+    state_destroy(&state);
+}
+
+static void test_midi_editor_pitch_viewport_state_is_clip_local(void) {
+    AppState state;
+    EngineRuntimeConfig cfg;
+    state_init(&state, &cfg);
+
+    int first_clip_index = -1;
+    int second_clip_index = -1;
+    uint64_t clip_duration = (uint64_t)cfg.sample_rate * 4u;
+    expect(engine_add_midi_clip_to_track(state.engine, 0, 0, clip_duration, &first_clip_index),
+           "failed to create first MIDI clip for pitch viewport test");
+    expect(engine_add_midi_clip_to_track(state.engine, 0, clip_duration + (uint64_t)cfg.sample_rate, clip_duration, &second_clip_index),
+           "failed to create second MIDI clip for pitch viewport test");
+    expect(engine_clip_midi_add_note(state.engine,
+                                     0,
+                                     first_clip_index,
+                                     (EngineMidiNote){0, (uint64_t)cfg.sample_rate / 2u, 96, 0.75f},
+                                     NULL),
+           "failed to seed high pitch viewport note");
+    expect(engine_clip_midi_add_note(state.engine,
+                                     0,
+                                     first_clip_index,
+                                     (EngineMidiNote){(uint64_t)cfg.sample_rate,
+                                                      (uint64_t)cfg.sample_rate / 2u,
+                                                      36,
+                                                      0.75f},
+                                     NULL),
+           "failed to seed low pitch viewport note");
+
+    state.selected_track_index = 0;
+    state.selected_clip_index = first_clip_index;
+    state.selection_count = 1;
+    state.selection[0].track_index = 0;
+    state.selection[0].clip_index = first_clip_index;
+
+    MidiEditorSelection selection = {0};
+    expect(midi_editor_get_selection(&state, &selection), "first MIDI clip selection missing");
+
+    MidiEditorLayout layout = {0};
+    midi_editor_compute_layout(&state, &layout);
+    validate_layout(&state, &layout);
+    int default_top_note = layout.key_row_count < 12 ? 60 + layout.key_row_count - 1 : 71;
+    int default_low_note = default_top_note - layout.key_row_count + 1;
+    expect(layout.highest_note == default_top_note && layout.lowest_note == default_low_note,
+           "pitch viewport should preserve the default editor range before clip-local state");
+
+    const EngineTrack* tracks = engine_get_tracks(state.engine);
+    const EngineClip* first_clip = &tracks[0].clips[first_clip_index];
+    const EngineMidiNote* notes = engine_clip_midi_notes(first_clip);
+    SDL_Rect note_rect = {0, 0, 0, 0};
+    midi_editor_store_pitch_viewport(&state, &selection, 96, layout.key_row_count);
+    midi_editor_compute_layout(&state, &layout);
+    expect(layout.highest_note == 96, "pitch viewport top note should be restored for the selected clip");
+    expect(layout.lowest_note == 96 - layout.key_row_count + 1,
+           "pitch viewport low note should follow stored row count");
+    expect(midi_editor_note_rect(&layout, &notes[0], first_clip->duration_frames, &note_rect),
+           "stored high pitch viewport should make the high note visible");
+    expect(!midi_editor_note_rect(&layout, &notes[1], first_clip->duration_frames, &note_rect),
+           "stored high pitch viewport should hide the low note");
+
+    int low_note_top = 36 + layout.key_row_count - 1;
+    midi_editor_store_pitch_viewport(&state, &selection, low_note_top, layout.key_row_count);
+    midi_editor_compute_layout(&state, &layout);
+    expect(layout.highest_note == low_note_top && layout.lowest_note == 36,
+           "pitch viewport should support lower manually stored note ranges");
+    expect(midi_editor_note_rect(&layout, &notes[1], first_clip->duration_frames, &note_rect),
+           "stored low pitch viewport should make the low note visible");
+    expect(!midi_editor_note_rect(&layout, &notes[0], first_clip->duration_frames, &note_rect),
+           "stored low pitch viewport should hide the high note");
+
+    midi_editor_store_pitch_viewport(&state, &selection, -20, layout.key_row_count);
+    midi_editor_compute_layout(&state, &layout);
+    expect(layout.lowest_note == ENGINE_MIDI_NOTE_MIN,
+           "pitch viewport should clamp below-range top notes to the MIDI floor");
+    expect(layout.highest_note == layout.key_row_count - 1,
+           "pitch viewport clamp should preserve the visible row count at the MIDI floor");
+
+    state.selected_clip_index = second_clip_index;
+    state.selection[0].clip_index = second_clip_index;
+    midi_editor_compute_layout(&state, &layout);
+    default_top_note = layout.key_row_count < 12 ? 60 + layout.key_row_count - 1 : 71;
+    default_low_note = default_top_note - layout.key_row_count + 1;
+    expect(layout.highest_note == default_top_note && layout.lowest_note == default_low_note,
+           "pitch viewport state should not leak across selected MIDI clips");
+
+    state.selected_clip_index = first_clip_index;
+    state.selection[0].clip_index = first_clip_index;
+    midi_editor_compute_layout(&state, &layout);
+    expect(layout.lowest_note == ENGINE_MIDI_NOTE_MIN,
+           "pitch viewport state should be restored when returning to its owning clip");
+
+    state_destroy(&state);
+}
+
+static void test_midi_editor_pitch_viewport_routes_edit_paths(void) {
+    AppState state;
+    EngineRuntimeConfig cfg;
+    state_init(&state, &cfg);
+
+    int clip_index = -1;
+    uint64_t clip_duration = (uint64_t)cfg.sample_rate * 4u;
+    uint64_t note_duration = (uint64_t)cfg.sample_rate / 4u;
+    expect(engine_add_midi_clip_to_track(state.engine, 0, 0, clip_duration, &clip_index),
+           "failed to create MIDI clip for pitch routing test");
+    expect(engine_clip_midi_add_note(state.engine,
+                                     0,
+                                     clip_index,
+                                     (EngineMidiNote){(uint64_t)cfg.sample_rate / 4u, note_duration, 96, 0.70f},
+                                     NULL),
+           "failed to seed first high pitch routing note");
+    expect(engine_clip_midi_add_note(state.engine,
+                                     0,
+                                     clip_index,
+                                     (EngineMidiNote){(uint64_t)cfg.sample_rate / 2u, note_duration, 100, 0.80f},
+                                     NULL),
+           "failed to seed second high pitch routing note");
+    state.selected_track_index = 0;
+    state.selected_clip_index = clip_index;
+    state.selection_count = 1;
+    state.selection[0].track_index = 0;
+    state.selection[0].clip_index = clip_index;
+    state.timeline_snap_enabled = false;
+
+    MidiEditorSelection selection = {0};
+    expect(midi_editor_get_selection(&state, &selection), "pitch routing selection missing");
+
+    MidiEditorLayout layout = {0};
+    midi_editor_compute_layout(&state, &layout);
+    validate_layout(&state, &layout);
+    midi_editor_store_pitch_viewport(&state, &selection, 108, layout.key_row_count);
+    midi_editor_compute_layout(&state, &layout);
+    expect(layout.highest_note == 108 && layout.lowest_note <= 96,
+           "pitch routing test should use a high visible pitch range");
+
+    InputManager manager = {0};
+    int create_x = layout.grid_rect.x + layout.grid_rect.w * 3 / 4;
+    int create_y = midi_editor_note_center_y_for_test(&layout, 104);
+    dispatch_mouse_button(&manager, &state, SDL_MOUSEBUTTONDOWN, create_x, create_y);
+    dispatch_mouse_button(&manager, &state, SDL_MOUSEBUTTONUP, create_x, create_y);
+
+    const EngineTrack* tracks = engine_get_tracks(state.engine);
+    const EngineClip* clip = &tracks[0].clips[clip_index];
+    expect(find_midi_note_index_by_pitch(clip, 104) >= 0,
+           "empty-grid create should use the active high pitch viewport");
+
+    midi_editor_compute_layout(&state, &layout);
+    clip = &engine_get_tracks(state.engine)[0].clips[clip_index];
+    int note_100_index = find_midi_note_index_by_pitch(clip, 100);
+    expect(note_100_index >= 0, "pitch routing note 100 missing after create");
+    SDL_Rect note_100_rect = {0, 0, 0, 0};
+    expect(midi_editor_note_rect(&layout,
+                                 &engine_clip_midi_notes(clip)[note_100_index],
+                                 clip->duration_frames,
+                                 &note_100_rect),
+           "pitch routing note 100 should render in the high viewport");
+    dispatch_mouse_motion(&manager,
+                          &state,
+                          note_100_rect.x + note_100_rect.w / 2,
+                          note_100_rect.y + note_100_rect.h / 2);
+    expect(state.midi_editor_ui.hover_note_valid, "hover should find high visible notes");
+    clip = &engine_get_tracks(state.engine)[0].clips[clip_index];
+    expect(engine_clip_midi_notes(clip)[state.midi_editor_ui.hover_note_index].note == 100,
+           "hover should target the high visible note");
+
+    state.midi_editor_ui.selected_note_index = -1;
+    memset(state.midi_editor_ui.selected_note_indices, 0, sizeof(state.midi_editor_ui.selected_note_indices));
+    int note_96_index = find_midi_note_index_by_pitch(clip, 96);
+    note_100_index = find_midi_note_index_by_pitch(clip, 100);
+    expect(note_96_index >= 0 && note_100_index >= 0, "high notes should exist before marquee");
+    SDL_Rect note_96_rect = {0, 0, 0, 0};
+    expect(midi_editor_note_rect(&layout,
+                                 &engine_clip_midi_notes(clip)[note_96_index],
+                                 clip->duration_frames,
+                                 &note_96_rect),
+           "pitch routing note 96 should render in the high viewport");
+    expect(midi_editor_note_rect(&layout,
+                                 &engine_clip_midi_notes(clip)[note_100_index],
+                                 clip->duration_frames,
+                                 &note_100_rect),
+           "pitch routing note 100 should still render in the high viewport");
+    int start_x = note_96_rect.x < note_100_rect.x ? note_96_rect.x - 6 : note_100_rect.x - 6;
+    int end_x = note_96_rect.x + note_96_rect.w > note_100_rect.x + note_100_rect.w
+        ? note_96_rect.x + note_96_rect.w + 6
+        : note_100_rect.x + note_100_rect.w + 6;
+    int start_y = note_100_rect.y - 6;
+    int end_y = note_96_rect.y + note_96_rect.h + 6;
+    if (start_x < layout.grid_rect.x) start_x = layout.grid_rect.x + 1;
+    if (end_x > layout.grid_rect.x + layout.grid_rect.w - 1) end_x = layout.grid_rect.x + layout.grid_rect.w - 1;
+    if (start_y < layout.grid_rect.y) start_y = layout.grid_rect.y + 1;
+    if (end_y > layout.grid_rect.y + layout.grid_rect.h - 1) end_y = layout.grid_rect.y + layout.grid_rect.h - 1;
+
+    SDL_Keymod old_mods = SDL_GetModState();
+    SDL_SetModState((SDL_Keymod)(old_mods | KMOD_SHIFT));
+    dispatch_mouse_button(&manager, &state, SDL_MOUSEBUTTONDOWN, start_x, start_y);
+    dispatch_mouse_motion(&manager, &state, end_x, end_y);
+    expect(state.midi_editor_ui.marquee_preview_note_indices[note_96_index],
+           "marquee preview should include note 96 in high pitch viewport");
+    expect(state.midi_editor_ui.marquee_preview_note_indices[note_100_index],
+           "marquee preview should include note 100 in high pitch viewport");
+    dispatch_mouse_button(&manager, &state, SDL_MOUSEBUTTONUP, end_x, end_y);
+    SDL_SetModState(old_mods);
+    expect(state.midi_editor_ui.selected_note_indices[note_96_index],
+           "marquee commit should select note 96 in high pitch viewport");
+    expect(state.midi_editor_ui.selected_note_indices[note_100_index],
+           "marquee commit should select note 100 in high pitch viewport");
+
+    int drag_start_x = note_96_rect.x + note_96_rect.w / 2;
+    int drag_start_y = note_96_rect.y + note_96_rect.h / 2;
+    int drag_end_x = drag_start_x + layout.grid_rect.w / 10;
+    int drag_end_y = midi_editor_note_center_y_for_test(&layout, 98);
+    dispatch_mouse_button(&manager, &state, SDL_MOUSEBUTTONDOWN, drag_start_x, drag_start_y);
+    dispatch_mouse_motion(&manager, &state, drag_end_x, drag_end_y);
+    dispatch_mouse_button(&manager, &state, SDL_MOUSEBUTTONUP, drag_end_x, drag_end_y);
+
+    clip = &engine_get_tracks(state.engine)[0].clips[clip_index];
+    expect(find_midi_note_index_by_pitch(clip, 98) >= 0,
+           "selected group move should route note 96 through the high pitch viewport");
+    expect(find_midi_note_index_by_pitch(clip, 102) >= 0,
+           "selected group move should preserve selected pitch deltas in the high viewport");
+    expect(find_midi_note_index_by_pitch(clip, 104) >= 0,
+           "selected group move should not mutate the unselected high note");
+
+    state_destroy(&state);
+}
+
+static void test_midi_editor_pitch_scroll_zoom_gestures(void) {
+    AppState state;
+    EngineRuntimeConfig cfg;
+    state_init(&state, &cfg);
+
+    int clip_index = -1;
+    uint64_t clip_duration = (uint64_t)cfg.sample_rate * 4u;
+    expect(engine_add_midi_clip_to_track(state.engine, 0, 0, clip_duration, &clip_index),
+           "failed to create MIDI clip for pitch gesture test");
+    state.selected_track_index = 0;
+    state.selected_clip_index = clip_index;
+    state.selection_count = 1;
+    state.selection[0].track_index = 0;
+    state.selection[0].clip_index = clip_index;
+
+    InputManager manager = {0};
+    MidiEditorLayout layout = {0};
+    midi_editor_compute_layout(&state, &layout);
+    validate_layout(&state, &layout);
+    int default_top = layout.highest_note;
+    int default_rows = layout.key_row_count;
+    uint64_t view_start = layout.view_start_frame;
+    uint64_t view_span = layout.view_span_frames;
+    int anchor_x = layout.grid_rect.x + layout.grid_rect.w / 2;
+    int anchor_y = layout.grid_rect.y + layout.grid_rect.h / 2;
+
+    dispatch_wheel_with_mod(&manager, &state, anchor_x, anchor_y, 4, KMOD_CTRL);
+    midi_editor_compute_layout(&state, &layout);
+    expect(layout.highest_note == default_top + 4,
+           "Ctrl-wheel over MIDI grid should scroll the visible pitch range upward");
+    expect(layout.key_row_count == default_rows,
+           "pitch scroll should preserve visible pitch row count");
+    expect(layout.view_start_frame == view_start && layout.view_span_frames == view_span,
+           "pitch scroll should not disturb horizontal MIDI viewport state");
+
+    int create_y = midi_editor_note_center_y_for_test(&layout, layout.highest_note);
+    dispatch_mouse_button(&manager, &state, SDL_MOUSEBUTTONDOWN, anchor_x, create_y);
+    dispatch_mouse_button(&manager, &state, SDL_MOUSEBUTTONUP, anchor_x, create_y);
+    const EngineClip* clip = &engine_get_tracks(state.engine)[0].clips[clip_index];
+    expect(find_midi_note_index_by_pitch(clip, (uint8_t)layout.highest_note) >= 0,
+           "note creation after pitch scroll should use the scrolled pitch range");
+
+    int zoom_anchor_y = midi_editor_note_center_y_for_test(&layout, 64);
+    dispatch_wheel_with_mod(&manager, &state, anchor_x, zoom_anchor_y, 1, (SDL_Keymod)(KMOD_CTRL | KMOD_ALT));
+    midi_editor_compute_layout(&state, &layout);
+    expect(layout.key_row_count < default_rows,
+           "Ctrl-Alt-wheel over MIDI grid should zoom into fewer pitch rows");
+    expect(layout.lowest_note <= 64 && layout.highest_note >= 64,
+           "pitch zoom should keep the anchor pitch visible");
+    expect(layout.view_start_frame == view_start && layout.view_span_frames == view_span,
+           "pitch zoom should not disturb horizontal MIDI viewport state");
+
+    int zoomed_rows = layout.key_row_count;
+    dispatch_wheel_with_mod(&manager, &state, anchor_x, zoom_anchor_y, -1, (SDL_Keymod)(KMOD_CTRL | KMOD_ALT));
+    midi_editor_compute_layout(&state, &layout);
+    expect(layout.key_row_count > zoomed_rows,
+           "Ctrl-Alt-wheel down should zoom back out to more pitch rows");
+    expect(layout.view_start_frame == view_start && layout.view_span_frames == view_span,
+           "pitch zoom-out should not disturb horizontal MIDI viewport state");
+
+    state_destroy(&state);
+}
+
+static void test_midi_editor_pitch_fit_selected_notes(void) {
+    AppState state;
+    EngineRuntimeConfig cfg;
+    state_init(&state, &cfg);
+
+    int clip_index = -1;
+    uint64_t clip_duration = (uint64_t)cfg.sample_rate * 6u;
+    uint64_t note_duration = (uint64_t)cfg.sample_rate / 4u;
+    expect(engine_add_midi_clip_to_track(state.engine, 0, 0, clip_duration, &clip_index),
+           "failed to create MIDI clip for pitch fit test");
+    int high_a_index = -1;
+    int high_b_index = -1;
+    int low_index = -1;
+    expect(engine_clip_midi_add_note(state.engine,
+                                     0,
+                                     clip_index,
+                                     (EngineMidiNote){(uint64_t)cfg.sample_rate / 4u, note_duration, 96, 0.70f},
+                                     &high_a_index),
+           "failed to seed first high pitch fit note");
+    expect(engine_clip_midi_add_note(state.engine,
+                                     0,
+                                     clip_index,
+                                     (EngineMidiNote){(uint64_t)cfg.sample_rate / 2u, note_duration, 100, 0.80f},
+                                     &high_b_index),
+           "failed to seed second high pitch fit note");
+    expect(engine_clip_midi_add_note(state.engine,
+                                     0,
+                                     clip_index,
+                                     (EngineMidiNote){(uint64_t)cfg.sample_rate, note_duration, 36, 0.75f},
+                                     &low_index),
+           "failed to seed low pitch fit note");
+    state.selected_track_index = 0;
+    state.selected_clip_index = clip_index;
+    state.selection_count = 1;
+    state.selection[0].track_index = 0;
+    state.selection[0].clip_index = clip_index;
+
+    InputManager manager = {0};
+    MidiEditorSelection selection = {0};
+    expect(midi_editor_get_selection(&state, &selection), "pitch fit selection missing");
+
+    MidiEditorLayout layout = {0};
+    midi_editor_compute_layout(&state, &layout);
+    validate_layout(&state, &layout);
+    int anchor_x = layout.grid_rect.x + layout.grid_rect.w / 2;
+    int anchor_y = layout.grid_rect.y + layout.grid_rect.h / 2;
+    int default_rows = layout.key_row_count;
+    uint64_t full_span = layout.view_span_frames;
+
+    dispatch_wheel_with_mod(&manager, &state, anchor_x, anchor_y, 1, KMOD_ALT);
+    midi_editor_compute_layout(&state, &layout);
+    uint64_t zoom_start = layout.view_start_frame;
+    uint64_t zoom_span = layout.view_span_frames;
+    expect(zoom_span < full_span, "pitch fit test should start with a zoomed horizontal viewport");
+
+    state.midi_editor_ui.selected_track_index = 0;
+    state.midi_editor_ui.selected_clip_index = clip_index;
+    state.midi_editor_ui.selected_clip_creation_index = selection.clip->creation_index;
+    state.midi_editor_ui.selected_note_index = high_a_index;
+    memset(state.midi_editor_ui.selected_note_indices, 0, sizeof(state.midi_editor_ui.selected_note_indices));
+    state.midi_editor_ui.selected_note_indices[high_a_index] = true;
+    state.midi_editor_ui.selected_note_indices[high_b_index] = true;
+    state.mouse_x = anchor_x;
+    state.mouse_y = anchor_y;
+    dispatch_key_with_mod(&manager, &state, SDLK_0, KMOD_CTRL);
+
+    midi_editor_compute_layout(&state, &layout);
+    expect(layout.key_row_count == default_rows,
+           "pitch fit should preserve row count when selected notes already fit within it");
+    expect(layout.view_start_frame == zoom_start && layout.view_span_frames == zoom_span,
+           "pitch fit should not disturb horizontal MIDI viewport state");
+    const EngineClip* clip = &engine_get_tracks(state.engine)[0].clips[clip_index];
+    SDL_Rect note_rect = {0, 0, 0, 0};
+    expect(midi_editor_note_rect(&layout,
+                                 &engine_clip_midi_notes(clip)[high_a_index],
+                                 clip->duration_frames,
+                                 &note_rect),
+           "pitch fit should bring the first high selected note into view");
+    expect(midi_editor_note_rect(&layout,
+                                 &engine_clip_midi_notes(clip)[high_b_index],
+                                 clip->duration_frames,
+                                 &note_rect),
+           "pitch fit should bring the second high selected note into view");
+
+    state.midi_editor_ui.selected_note_index = low_index;
+    memset(state.midi_editor_ui.selected_note_indices, 0, sizeof(state.midi_editor_ui.selected_note_indices));
+    state.midi_editor_ui.selected_note_indices[low_index] = true;
+    dispatch_key_with_mod(&manager, &state, SDLK_0, KMOD_CTRL);
+    midi_editor_compute_layout(&state, &layout);
+    expect(layout.view_start_frame == zoom_start && layout.view_span_frames == zoom_span,
+           "low-note pitch fit should not disturb horizontal MIDI viewport state");
+    expect(midi_editor_note_rect(&layout,
+                                 &engine_clip_midi_notes(clip)[low_index],
+                                 clip->duration_frames,
+                                 &note_rect),
+           "pitch fit should bring a low selected note into view");
+
+    state_destroy(&state);
+}
+
+static void test_midi_editor_pitch_viewport_edge_cases_and_selection_stability(void) {
+    AppState state;
+    EngineRuntimeConfig cfg;
+    state_init(&state, &cfg);
+
+    int clip_index = -1;
+    uint64_t clip_duration = (uint64_t)cfg.sample_rate * 8u;
+    uint64_t note_duration = (uint64_t)cfg.sample_rate / 4u;
+    expect(engine_add_midi_clip_to_track(state.engine, 0, 0, clip_duration, &clip_index),
+           "failed to create MIDI clip for pitch edge-case test");
+    int low_index = -1;
+    int center_index = -1;
+    int high_index = -1;
+    expect(engine_clip_midi_add_note(state.engine,
+                                     0,
+                                     clip_index,
+                                     (EngineMidiNote){0, note_duration, ENGINE_MIDI_NOTE_MIN, 0.70f},
+                                     &low_index),
+           "failed to seed low pitch edge-case note");
+    expect(engine_clip_midi_add_note(state.engine,
+                                     0,
+                                     clip_index,
+                                     (EngineMidiNote){(uint64_t)cfg.sample_rate, note_duration, 64, 0.75f},
+                                     &center_index),
+           "failed to seed center pitch edge-case note");
+    expect(engine_clip_midi_add_note(state.engine,
+                                     0,
+                                     clip_index,
+                                     (EngineMidiNote){(uint64_t)cfg.sample_rate * 2u,
+                                                      note_duration,
+                                                      ENGINE_MIDI_NOTE_MAX,
+                                                      0.80f},
+                                     &high_index),
+           "failed to seed high pitch edge-case note");
+    state.selected_track_index = 0;
+    state.selected_clip_index = clip_index;
+    state.selection_count = 1;
+    state.selection[0].track_index = 0;
+    state.selection[0].clip_index = clip_index;
+
+    InputManager manager = {0};
+    MidiEditorSelection selection = {0};
+    expect(midi_editor_get_selection(&state, &selection), "pitch edge-case selection missing");
+
+    MidiEditorLayout layout = {0};
+    midi_editor_compute_layout(&state, &layout);
+    validate_layout(&state, &layout);
+    int default_rows = layout.key_row_count;
+    uint64_t full_span = layout.view_span_frames;
+    int anchor_x = layout.grid_rect.x + layout.grid_rect.w / 2;
+    int anchor_y = layout.grid_rect.y + layout.grid_rect.h / 2;
+
+    dispatch_wheel_with_mod(&manager, &state, anchor_x, anchor_y, 1, KMOD_ALT);
+    midi_editor_compute_layout(&state, &layout);
+    uint64_t zoom_start = layout.view_start_frame;
+    uint64_t zoom_span = layout.view_span_frames;
+    expect(zoom_span < full_span, "pitch edge-case test should start with a zoomed horizontal viewport");
+
+    int center_selection[] = {center_index};
+    set_midi_editor_note_selection_for_test(&state, &selection, center_index, center_selection, 1);
+
+    dispatch_wheel_with_mod(&manager, &state, anchor_x, anchor_y, 200, KMOD_CTRL);
+    midi_editor_compute_layout(&state, &layout);
+    expect(layout.highest_note == ENGINE_MIDI_NOTE_MAX,
+           "large upward pitch scroll should clamp at the MIDI ceiling");
+    expect(layout.key_row_count == default_rows,
+           "large pitch scroll should preserve row count at the ceiling");
+    expect(layout.view_start_frame == zoom_start && layout.view_span_frames == zoom_span,
+           "ceiling pitch scroll should not disturb horizontal viewport state");
+    expect(state.midi_editor_ui.selected_note_index == center_index &&
+               state.midi_editor_ui.selected_note_indices[center_index],
+           "ceiling pitch scroll should preserve selected-note state");
+
+    dispatch_wheel_with_mod(&manager, &state, anchor_x, anchor_y, -300, KMOD_CTRL);
+    midi_editor_compute_layout(&state, &layout);
+    expect(layout.lowest_note == ENGINE_MIDI_NOTE_MIN,
+           "large downward pitch scroll should clamp at the MIDI floor");
+    expect(layout.key_row_count == default_rows,
+           "large pitch scroll should preserve row count at the floor");
+    expect(layout.view_start_frame == zoom_start && layout.view_span_frames == zoom_span,
+           "floor pitch scroll should not disturb horizontal viewport state");
+    expect(state.midi_editor_ui.selected_note_index == center_index &&
+               state.midi_editor_ui.selected_note_indices[center_index],
+           "floor pitch scroll should preserve selected-note state");
+
+    int floor_anchor_y = midi_editor_note_center_y_for_test(&layout, ENGINE_MIDI_NOTE_MIN);
+    for (int i = 0; i < MIDI_EDITOR_VISIBLE_KEY_ROWS; ++i) {
+        dispatch_wheel_with_mod(&manager,
+                                &state,
+                                anchor_x,
+                                floor_anchor_y,
+                                1,
+                                (SDL_Keymod)(KMOD_CTRL | KMOD_ALT));
+        midi_editor_compute_layout(&state, &layout);
+        floor_anchor_y = midi_editor_note_center_y_for_test(&layout, ENGINE_MIDI_NOTE_MIN);
+    }
+    expect(layout.key_row_count == 1 &&
+               layout.lowest_note == ENGINE_MIDI_NOTE_MIN &&
+               layout.highest_note == ENGINE_MIDI_NOTE_MIN,
+           "pitch zoom-in at the MIDI floor should clamp to a single floor row");
+    expect(layout.view_start_frame == zoom_start && layout.view_span_frames == zoom_span,
+           "floor pitch zoom-in should not disturb horizontal viewport state");
+    expect(state.midi_editor_ui.selected_note_index == center_index &&
+               state.midi_editor_ui.selected_note_indices[center_index],
+           "floor pitch zoom-in should preserve selected-note state");
+
+    for (int i = 0; i < MIDI_EDITOR_VISIBLE_KEY_ROWS; ++i) {
+        floor_anchor_y = midi_editor_note_center_y_for_test(&layout, ENGINE_MIDI_NOTE_MIN);
+        dispatch_wheel_with_mod(&manager,
+                                &state,
+                                anchor_x,
+                                floor_anchor_y,
+                                -1,
+                                (SDL_Keymod)(KMOD_CTRL | KMOD_ALT));
+        midi_editor_compute_layout(&state, &layout);
+    }
+    expect(layout.key_row_count == default_rows && layout.lowest_note == ENGINE_MIDI_NOTE_MIN,
+           "pitch zoom-out at the MIDI floor should restore full rows without crossing below MIDI note 0");
+    expect(layout.highest_note == default_rows - 1,
+           "pitch zoom-out at the MIDI floor should clamp the top note to the restored row count");
+    expect(layout.view_start_frame == zoom_start && layout.view_span_frames == zoom_span,
+           "floor pitch zoom-out should not disturb horizontal viewport state");
+
+    int no_selection_top = layout.highest_note;
+    int no_selection_rows = layout.key_row_count;
+    set_midi_editor_note_selection_for_test(&state, &selection, -1, NULL, 0);
+    state.mouse_x = anchor_x;
+    state.mouse_y = anchor_y;
+    dispatch_key_with_mod(&manager, &state, SDLK_0, KMOD_CTRL);
+    midi_editor_compute_layout(&state, &layout);
+    expect(layout.highest_note == no_selection_top && layout.key_row_count == no_selection_rows,
+           "pitch fit with no selected notes should leave pitch viewport unchanged");
+    expect(layout.view_start_frame == zoom_start && layout.view_span_frames == zoom_span,
+           "pitch fit with no selected notes should not disturb horizontal viewport state");
+
+    int wide_selection[] = {low_index, high_index};
+    set_midi_editor_note_selection_for_test(&state, &selection, low_index, wide_selection, 2);
+    dispatch_key_with_mod(&manager, &state, SDLK_0, KMOD_CTRL);
+    midi_editor_compute_layout(&state, &layout);
+    expect(layout.key_row_count == default_rows,
+           "wide pitch fit should use the maximum available editor row count");
+    expect(layout.lowest_note >= ENGINE_MIDI_NOTE_MIN && layout.highest_note <= ENGINE_MIDI_NOTE_MAX,
+           "wide pitch fit should stay inside MIDI pitch bounds");
+    expect(layout.view_start_frame == zoom_start && layout.view_span_frames == zoom_span,
+           "wide pitch fit should not disturb horizontal viewport state");
+    expect(state.midi_editor_ui.selected_note_index == low_index &&
+               state.midi_editor_ui.selected_note_indices[low_index] &&
+               state.midi_editor_ui.selected_note_indices[high_index],
+           "wide pitch fit should preserve multi-note selection state");
 
     state_destroy(&state);
 }
@@ -1221,6 +1845,58 @@ static void test_midi_editor_copy_paste_selected_notes(void) {
     state_destroy(&state);
 }
 
+static void test_midi_editor_clipboard_shortcut_falls_through_without_note_selection(void) {
+    AppState state;
+    EngineRuntimeConfig cfg;
+    state_init(&state, &cfg);
+
+    int clip_index = -1;
+    expect(engine_add_midi_clip_to_track(state.engine, 0, 0, (uint64_t)cfg.sample_rate * 3u, &clip_index),
+           "failed to create MIDI clip for clipboard fallthrough test");
+    expect(engine_clip_midi_add_note(state.engine, 0, clip_index, (EngineMidiNote){24000u, 6000u, 60, 0.50f}, NULL),
+           "failed to seed clipboard fallthrough note");
+    state.selected_track_index = 0;
+    state.selected_clip_index = clip_index;
+    state.selection_count = 1;
+    state.selection[0].track_index = 0;
+    state.selection[0].clip_index = clip_index;
+
+    const EngineTrack* tracks = engine_get_tracks(state.engine);
+    const EngineClip* clip = &tracks[0].clips[clip_index];
+    state.midi_editor_ui.selected_track_index = 0;
+    state.midi_editor_ui.selected_clip_index = clip_index;
+    state.midi_editor_ui.selected_clip_creation_index = clip->creation_index;
+    state.midi_editor_ui.selected_note_index = -1;
+    memset(state.midi_editor_ui.selected_note_indices, 0, sizeof(state.midi_editor_ui.selected_note_indices));
+
+    InputManager manager = {0};
+    SDL_Event event;
+    memset(&event, 0, sizeof(event));
+    event.type = SDL_KEYDOWN;
+    event.key.keysym.sym = SDLK_c;
+
+    SDL_Keymod old_mods = SDL_GetModState();
+    SDL_SetModState((SDL_Keymod)(old_mods | KMOD_CTRL));
+    bool consumed = midi_editor_input_handle_event(&manager, &state, &event);
+    SDL_SetModState(old_mods);
+
+    expect(!consumed, "MIDI editor should let region copy shortcut fall through when no notes are selected");
+    expect(state.midi_editor_ui.clipboard_note_count == 0,
+           "fallthrough note copy should not leave a MIDI note clipboard payload");
+
+    memset(&event, 0, sizeof(event));
+    event.type = SDL_KEYDOWN;
+    event.key.keysym.sym = SDLK_v;
+    old_mods = SDL_GetModState();
+    SDL_SetModState((SDL_Keymod)(old_mods | KMOD_CTRL));
+    consumed = midi_editor_input_handle_event(&manager, &state, &event);
+    SDL_SetModState(old_mods);
+
+    expect(!consumed, "MIDI editor should let region paste shortcut fall through without a note clipboard");
+
+    state_destroy(&state);
+}
+
 static void test_midi_editor_duplicate_selected_notes(void) {
     AppState state;
     EngineRuntimeConfig cfg;
@@ -1269,6 +1945,105 @@ static void test_midi_editor_duplicate_selected_notes(void) {
     tracks = engine_get_tracks(state.engine);
     clip = &tracks[0].clips[clip_index];
     expect(engine_clip_midi_note_count(clip) == 3, "duplicate undo should restore original note count");
+
+    state_destroy(&state);
+}
+
+static void test_midi_editor_note_command_shortcuts_edit_selection(void) {
+    AppState state;
+    EngineRuntimeConfig cfg;
+    state_init(&state, &cfg);
+
+    int clip_index = -1;
+    expect(engine_add_midi_clip_to_track(state.engine, 0, 0, (uint64_t)cfg.sample_rate * 3u, &clip_index),
+           "failed to create MIDI clip for note command test");
+    expect(engine_clip_midi_add_note(state.engine, 0, clip_index, (EngineMidiNote){12000u, 12000u, 60, 0.50f}, NULL),
+           "failed to seed first command note");
+    expect(engine_clip_midi_add_note(state.engine, 0, clip_index, (EngineMidiNote){24000u, 12000u, 64, 0.60f}, NULL),
+           "failed to seed second command note");
+    expect(engine_clip_midi_add_note(state.engine, 0, clip_index, (EngineMidiNote){72000u, 6000u, 67, 0.70f}, NULL),
+           "failed to seed unselected command note");
+    state.selected_track_index = 0;
+    state.selected_clip_index = clip_index;
+    state.selection_count = 1;
+    state.selection[0].track_index = 0;
+    state.selection[0].clip_index = clip_index;
+
+    const EngineTrack* tracks = engine_get_tracks(state.engine);
+    const EngineClip* clip = &tracks[0].clips[clip_index];
+    MidiEditorSelection selection = {
+        .track_index = 0,
+        .clip_index = clip_index,
+        .clip = clip
+    };
+    int selected[] = {0, 1};
+    set_midi_editor_note_selection_for_test(&state, &selection, 0, selected, 2);
+
+    InputManager manager = {0};
+    state.midi_editor_ui.qwerty_test_enabled = true;
+    expect(handle_key_with_mod(&manager, &state, SDLK_UP, KMOD_ALT),
+           "Alt+Up should transpose selected notes during QWERTY test mode");
+
+    tracks = engine_get_tracks(state.engine);
+    clip = &tracks[0].clips[clip_index];
+    const EngineMidiNote* notes = engine_clip_midi_notes(clip);
+    expect(notes && notes[0].note == 61 && notes[1].note == 65,
+           "Alt+Up should transpose selected notes by semitone");
+    expect(notes[2].note == 67, "transpose should not mutate unselected notes");
+    expect(state.midi_editor_ui.selected_note_indices[0] && state.midi_editor_ui.selected_note_indices[1],
+           "transpose should preserve selected note group");
+    expect(undo_manager_undo(&state.undo, &state), "transpose undo failed");
+    tracks = engine_get_tracks(state.engine);
+    clip = &tracks[0].clips[clip_index];
+    notes = engine_clip_midi_notes(clip);
+    expect(notes && notes[0].note == 60 && notes[1].note == 64,
+           "transpose undo should restore pitches");
+    expect(undo_manager_redo(&state.undo, &state), "transpose redo failed");
+
+    tracks = engine_get_tracks(state.engine);
+    clip = &tracks[0].clips[clip_index];
+    selection.clip = clip;
+    set_midi_editor_note_selection_for_test(&state, &selection, 0, selected, 2);
+    expect(handle_key_with_mod(&manager, &state, SDLK_DOWN, (SDL_Keymod)(KMOD_ALT | KMOD_SHIFT)),
+           "Alt+Shift+Down should transpose selected notes by octave");
+    tracks = engine_get_tracks(state.engine);
+    clip = &tracks[0].clips[clip_index];
+    notes = engine_clip_midi_notes(clip);
+    expect(notes && notes[0].note == 49 && notes[1].note == 53,
+           "Alt+Shift+Down should transpose selected notes by octave");
+
+    selection.clip = clip;
+    set_midi_editor_note_selection_for_test(&state, &selection, 0, selected, 2);
+    expect(handle_key_with_mod(&manager, &state, SDLK_RIGHT, KMOD_CTRL),
+           "Command/Ctrl+Right should nudge selected notes");
+    tracks = engine_get_tracks(state.engine);
+    clip = &tracks[0].clips[clip_index];
+    notes = engine_clip_midi_notes(clip);
+    expect(notes && notes[0].start_frame == 18000u && notes[1].start_frame == 30000u,
+           "nudge should move selected notes by the active grid");
+    expect(notes[2].start_frame == 72000u, "nudge should not move unselected notes");
+    expect(undo_manager_undo(&state.undo, &state), "nudge undo failed");
+    tracks = engine_get_tracks(state.engine);
+    clip = &tracks[0].clips[clip_index];
+    notes = engine_clip_midi_notes(clip);
+    expect(notes && notes[0].start_frame == 12000u && notes[1].start_frame == 24000u,
+           "nudge undo should restore starts");
+
+    selection.clip = clip;
+    set_midi_editor_note_selection_for_test(&state, &selection, 0, selected, 2);
+    expect(handle_key_with_mod(&manager, &state, SDLK_RIGHT, (SDL_Keymod)(KMOD_CTRL | KMOD_SHIFT)),
+           "Command/Ctrl+Shift+Right should lengthen selected notes");
+    tracks = engine_get_tracks(state.engine);
+    clip = &tracks[0].clips[clip_index];
+    notes = engine_clip_midi_notes(clip);
+    expect(notes && notes[0].duration_frames == 18000u && notes[1].duration_frames == 18000u,
+           "resize should lengthen selected notes by the active grid");
+    expect(notes[2].duration_frames == 6000u, "resize should not mutate unselected notes");
+
+    selection.clip = clip;
+    set_midi_editor_note_selection_for_test(&state, &selection, -1, NULL, 0);
+    expect(!handle_key_with_mod(&manager, &state, SDLK_RIGHT, KMOD_CTRL),
+           "note command should fall through when no MIDI notes are selected");
 
     state_destroy(&state);
 }
@@ -1657,7 +2432,65 @@ static void test_midi_editor_instrument_dropdown_sets_region_preset(void) {
     midi_editor_compute_layout(&state, &layout);
     expect(layout.instrument_menu_item_count >= ENGINE_INSTRUMENT_PRESET_COUNT,
            "instrument menu should expose all fixed presets");
+    expect(layout.instrument_browser.total_row_count == ENGINE_INSTRUMENT_PRESET_CATEGORY_COUNT,
+           "collapsed instrument preset browser should show category headers only");
+    expect(layout.instrument_browser.row_count > 0 &&
+               layout.instrument_browser.rows[0].type == MIDI_PRESET_BROWSER_ROW_CATEGORY,
+           "instrument preset browser should start with a category header");
+    expect(!rect_has_positive_size(&layout.instrument_menu_item_rects[ENGINE_INSTRUMENT_PRESET_SAW_LEAD]),
+           "collapsed instrument preset browser should hide preset rows");
+    dispatch_mouse_button(&manager,
+                          &state,
+                          SDL_MOUSEBUTTONDOWN,
+                          layout.instrument_browser.rows[0].rect.x + layout.instrument_browser.rows[0].rect.w / 2,
+                          layout.instrument_browser.rows[0].rect.y + layout.instrument_browser.rows[0].rect.h / 2);
+    expect(state.midi_editor_ui.instrument_menu_open,
+           "clicking a preset category header should keep the menu open");
+    expect(state.midi_editor_ui.instrument_menu_expanded_category == ENGINE_INSTRUMENT_PRESET_CATEGORY_BASIC,
+           "clicking Basic category should expand it");
+    const EngineTrack* tracks = engine_get_tracks(state.engine);
+    const EngineClip* clip = &tracks[0].clips[clip_index];
+    expect(engine_clip_midi_instrument_preset(clip) == ENGINE_INSTRUMENT_PRESET_PURE_SINE,
+           "clicking a preset category header should not select a preset");
+    midi_editor_compute_layout(&state, &layout);
+    expect(layout.instrument_browser.total_row_count >
+               layout.instrument_browser.visible_capacity,
+           "expanded Basic category should make the browser scrollable");
+    int scroll_before = state.midi_editor_ui.instrument_menu_scroll_row;
+    dispatch_mouse_wheel(&manager,
+                         &state,
+                         layout.instrument_menu_rect.x + layout.instrument_menu_rect.w / 2,
+                         layout.instrument_menu_rect.y + layout.instrument_menu_rect.h / 2,
+                         -1);
+    expect(state.midi_editor_ui.instrument_menu_scroll_row > scroll_before,
+           "expanded preset browser should scroll");
+
+    state.midi_editor_ui.instrument_menu_scroll_row = 0;
+    midi_editor_compute_layout(&state, &layout);
+    SDL_Rect lead_category = {0};
+    for (int i = 0; i < layout.instrument_browser.row_count; ++i) {
+        if (layout.instrument_browser.rows[i].type == MIDI_PRESET_BROWSER_ROW_CATEGORY &&
+            layout.instrument_browser.rows[i].category == ENGINE_INSTRUMENT_PRESET_CATEGORY_LEAD) {
+            lead_category = layout.instrument_browser.rows[i].rect;
+            break;
+        }
+    }
+    expect(rect_has_positive_size(&lead_category),
+           "Lead category should be visible after Basic expansion");
+    dispatch_mouse_button(&manager,
+                          &state,
+                          SDL_MOUSEBUTTONDOWN,
+                          lead_category.x + lead_category.w / 2,
+                          lead_category.y + lead_category.h / 2);
+    expect(state.midi_editor_ui.instrument_menu_open,
+           "clicking Lead category should keep the menu open");
+    expect(state.midi_editor_ui.instrument_menu_expanded_category == ENGINE_INSTRUMENT_PRESET_CATEGORY_LEAD,
+           "clicking Lead category should expand it");
+    midi_editor_compute_layout(&state, &layout);
+
     SDL_Rect saw_item = layout.instrument_menu_item_rects[ENGINE_INSTRUMENT_PRESET_SAW_LEAD];
+    expect(rect_has_positive_size(&saw_item),
+           "instrument preset browser should expose Saw Lead after expanding Lead");
     dispatch_mouse_button(&manager,
                           &state,
                           SDL_MOUSEBUTTONDOWN,
@@ -1665,12 +2498,22 @@ static void test_midi_editor_instrument_dropdown_sets_region_preset(void) {
                           saw_item.y + saw_item.h / 2);
     expect(!state.midi_editor_ui.instrument_menu_open, "selecting a preset should close the menu");
 
-    const EngineTrack* tracks = engine_get_tracks(state.engine);
-    const EngineClip* clip = &tracks[0].clips[clip_index];
+    tracks = engine_get_tracks(state.engine);
+    clip = &tracks[0].clips[clip_index];
     expect(engine_clip_midi_note_count(clip) == 0,
            "instrument preset selection should not mutate MIDI notes");
     expect(engine_clip_midi_instrument_preset(clip) == ENGINE_INSTRUMENT_PRESET_SAW_LEAD,
            "instrument dropdown should set the selected MIDI region preset");
+    expect(undo_manager_undo(&state.undo, &state), "instrument dropdown undo failed");
+    tracks = engine_get_tracks(state.engine);
+    clip = &tracks[0].clips[clip_index];
+    expect(engine_clip_midi_instrument_preset(clip) == ENGINE_INSTRUMENT_PRESET_PURE_SINE,
+           "instrument dropdown undo should restore previous preset");
+    expect(undo_manager_redo(&state.undo, &state), "instrument dropdown redo failed");
+    tracks = engine_get_tracks(state.engine);
+    clip = &tracks[0].clips[clip_index];
+    expect(engine_clip_midi_instrument_preset(clip) == ENGINE_INSTRUMENT_PRESET_SAW_LEAD,
+           "instrument dropdown redo should restore selected preset");
 
     state_destroy(&state);
 }
@@ -1720,6 +2563,87 @@ static void test_midi_editor_instrument_panel_button_swaps_subview(void) {
     state_destroy(&state);
 }
 
+static void test_midi_instrument_panel_grouped_preset_browser_sets_region_preset(void) {
+    AppState state;
+    EngineRuntimeConfig cfg;
+    state_init(&state, &cfg);
+
+    int clip_index = -1;
+    expect(engine_add_midi_clip_to_track(state.engine, 0, 0, (uint64_t)cfg.sample_rate * 2u, &clip_index),
+           "failed to create MIDI clip for instrument panel preset browser test");
+    state.selected_track_index = 0;
+    state.selected_clip_index = clip_index;
+    state.selection_count = 1;
+    state.selection[0].track_index = 0;
+    state.selection[0].clip_index = clip_index;
+    state.midi_editor_ui.panel_mode = MIDI_REGION_PANEL_INSTRUMENT;
+
+    MidiInstrumentPanelLayout layout = {0};
+    midi_instrument_panel_compute_layout(&state, &layout);
+    validate_instrument_panel_layout(&state, &layout);
+
+    InputManager manager = {0};
+    dispatch_instrument_mouse_button(&manager,
+                                     &state,
+                                     SDL_MOUSEBUTTONDOWN,
+                                     layout.preset_button_rect.x + layout.preset_button_rect.w / 2,
+                                     layout.preset_button_rect.y + layout.preset_button_rect.h / 2);
+    expect(state.midi_editor_ui.instrument_menu_open,
+           "instrument panel preset button should open grouped preset browser");
+
+    midi_instrument_panel_compute_layout(&state, &layout);
+    expect(layout.preset_browser.total_row_count == ENGINE_INSTRUMENT_PRESET_CATEGORY_COUNT,
+           "instrument panel collapsed preset browser should show category headers only");
+    expect(layout.preset_browser.row_count > 0 &&
+               layout.preset_browser.rows[0].type == MIDI_PRESET_BROWSER_ROW_CATEGORY,
+           "instrument panel preset browser should include category rows");
+
+    SDL_Rect keys_category = {0};
+    for (int i = 0; i < layout.preset_browser.row_count; ++i) {
+        if (layout.preset_browser.rows[i].type == MIDI_PRESET_BROWSER_ROW_CATEGORY &&
+            layout.preset_browser.rows[i].category == ENGINE_INSTRUMENT_PRESET_CATEGORY_KEYS) {
+            keys_category = layout.preset_browser.rows[i].rect;
+            break;
+        }
+    }
+    expect(rect_has_positive_size(&keys_category),
+           "instrument panel Keys category should be visible while collapsed");
+    dispatch_instrument_mouse_button(&manager,
+                                     &state,
+                                     SDL_MOUSEBUTTONDOWN,
+                                     keys_category.x + keys_category.w / 2,
+                                     keys_category.y + keys_category.h / 2);
+    expect(state.midi_editor_ui.instrument_menu_open,
+           "instrument panel category header click should keep menu open");
+    expect(state.midi_editor_ui.instrument_menu_expanded_category == ENGINE_INSTRUMENT_PRESET_CATEGORY_KEYS,
+           "instrument panel Keys category should expand after click");
+    midi_instrument_panel_compute_layout(&state, &layout);
+
+    SDL_Rect warm_keys_item = layout.preset_menu_item_rects[ENGINE_INSTRUMENT_PRESET_WARM_KEYS];
+    expect(rect_has_positive_size(&warm_keys_item),
+           "instrument panel preset browser should expose Warm Keys after expanding Keys");
+
+    dispatch_instrument_mouse_button(&manager,
+                                     &state,
+                                     SDL_MOUSEBUTTONDOWN,
+                                     warm_keys_item.x + warm_keys_item.w / 2,
+                                     warm_keys_item.y + warm_keys_item.h / 2);
+    expect(!state.midi_editor_ui.instrument_menu_open,
+           "instrument panel preset selection should close browser");
+
+    const EngineTrack* tracks = engine_get_tracks(state.engine);
+    const EngineClip* clip = &tracks[0].clips[clip_index];
+    expect(engine_clip_midi_instrument_preset(clip) == ENGINE_INSTRUMENT_PRESET_WARM_KEYS,
+           "instrument panel preset browser should set selected region preset");
+    expect(undo_manager_undo(&state.undo, &state), "instrument panel preset browser undo failed");
+    tracks = engine_get_tracks(state.engine);
+    clip = &tracks[0].clips[clip_index];
+    expect(engine_clip_midi_instrument_preset(clip) == ENGINE_INSTRUMENT_PRESET_PURE_SINE,
+           "instrument panel preset browser undo should restore previous preset");
+
+    state_destroy(&state);
+}
+
 static void test_midi_instrument_panel_param_knob_drag_sets_region_param(void) {
     AppState state;
     EngineRuntimeConfig cfg;
@@ -1738,6 +2662,9 @@ static void test_midi_instrument_panel_param_knob_drag_sets_region_param(void) {
     MidiInstrumentPanelLayout layout = {0};
     midi_instrument_panel_compute_layout(&state, &layout);
     validate_instrument_panel_layout(&state, &layout);
+    const EngineTrack* tracks = engine_get_tracks(state.engine);
+    const EngineClip* clip = &tracks[0].clips[clip_index];
+    EngineInstrumentParams before_params = engine_clip_midi_instrument_params(clip);
 
     InputManager manager = {0};
     SDL_Rect level_knob = layout.param_knob_rects[ENGINE_INSTRUMENT_PARAM_LEVEL];
@@ -1760,12 +2687,96 @@ static void test_midi_instrument_panel_param_knob_drag_sets_region_param(void) {
     expect(!state.midi_editor_ui.instrument_param_drag_active,
            "instrument param mouse up should stop knob drag");
 
-    const EngineTrack* tracks = engine_get_tracks(state.engine);
-    const EngineClip* clip = &tracks[0].clips[clip_index];
+    tracks = engine_get_tracks(state.engine);
+    clip = &tracks[0].clips[clip_index];
     EngineInstrumentParams params = engine_clip_midi_instrument_params(clip);
     expect(params.level < 0.05f, "instrument panel level knob should update region params");
     expect(engine_clip_midi_note_count(clip) == 0,
            "instrument panel param knob should not mutate MIDI notes");
+    expect(undo_manager_undo(&state.undo, &state), "instrument panel param undo failed");
+    tracks = engine_get_tracks(state.engine);
+    clip = &tracks[0].clips[clip_index];
+    params = engine_clip_midi_instrument_params(clip);
+    expect(params.level == before_params.level,
+           "instrument panel param undo should restore previous value");
+    expect(undo_manager_redo(&state.undo, &state), "instrument panel param redo failed");
+    tracks = engine_get_tracks(state.engine);
+    clip = &tracks[0].clips[clip_index];
+    params = engine_clip_midi_instrument_params(clip);
+    expect(params.level < 0.05f,
+           "instrument panel param redo should restore dragged value");
+
+    state_destroy(&state);
+}
+
+static void test_midi_instrument_panel_group_tab_routes_param_drag(void) {
+    AppState state;
+    EngineRuntimeConfig cfg;
+    state_init(&state, &cfg);
+
+    int clip_index = -1;
+    expect(engine_add_midi_clip_to_track(state.engine, 0, 0, (uint64_t)cfg.sample_rate * 2u, &clip_index),
+           "failed to create MIDI clip for instrument group test");
+    expect(engine_clip_midi_set_instrument_preset(state.engine,
+                                                  0,
+                                                  clip_index,
+                                                  ENGINE_INSTRUMENT_PRESET_SYNTH_LAB),
+           "failed to set synth lab preset for instrument group test");
+    state.selected_track_index = 0;
+    state.selected_clip_index = clip_index;
+    state.selection_count = 1;
+    state.selection[0].track_index = 0;
+    state.selection[0].clip_index = clip_index;
+    state.midi_editor_ui.panel_mode = MIDI_REGION_PANEL_INSTRUMENT;
+
+    MidiInstrumentPanelLayout layout = {0};
+    midi_instrument_panel_compute_layout(&state, &layout);
+    validate_instrument_panel_layout(&state, &layout);
+
+    InputManager manager = {0};
+    SDL_Rect osc_tab = layout.group_tab_rects[ENGINE_INSTRUMENT_PARAM_GROUP_OSCILLATOR];
+    dispatch_instrument_mouse_button(&manager,
+                                     &state,
+                                     SDL_MOUSEBUTTONDOWN,
+                                     osc_tab.x + osc_tab.w / 2,
+                                     osc_tab.y + osc_tab.h / 2);
+    midi_instrument_panel_compute_layout(&state, &layout);
+    validate_instrument_panel_layout(&state, &layout);
+    expect(layout.active_group == ENGINE_INSTRUMENT_PARAM_GROUP_OSCILLATOR,
+           "instrument group tab should switch active group");
+    expect(layout.instrument_param_count >= 3, "oscillator group should expose synth params");
+    expect(layout.param_ids[0] == ENGINE_INSTRUMENT_PARAM_OSC_MIX,
+           "oscillator group should route first knob to osc mix");
+
+    const EngineTrack* tracks = engine_get_tracks(state.engine);
+    const EngineClip* clip = &tracks[0].clips[clip_index];
+    float before = engine_clip_midi_instrument_params(clip).osc_mix;
+    SDL_Rect osc_knob = layout.param_knob_rects[0];
+    dispatch_instrument_mouse_button(&manager,
+                                     &state,
+                                     SDL_MOUSEBUTTONDOWN,
+                                     osc_knob.x + osc_knob.w / 2,
+                                     osc_knob.y + osc_knob.h / 2);
+    expect(state.midi_editor_ui.instrument_param_drag_active,
+           "oscillator param mouse down should start knob drag");
+    expect(state.midi_editor_ui.instrument_param_drag_index == ENGINE_INSTRUMENT_PARAM_OSC_MIX,
+           "oscillator knob drag should store actual param id");
+    dispatch_instrument_mouse_motion(&manager,
+                                     &state,
+                                     osc_knob.x + osc_knob.w / 2,
+                                     osc_knob.y + osc_knob.h / 2 + 120);
+    dispatch_instrument_mouse_button(&manager,
+                                     &state,
+                                     SDL_MOUSEBUTTONUP,
+                                     osc_knob.x + osc_knob.w / 2,
+                                     osc_knob.y + osc_knob.h / 2 + 120);
+
+    tracks = engine_get_tracks(state.engine);
+    clip = &tracks[0].clips[clip_index];
+    EngineInstrumentParams params = engine_clip_midi_instrument_params(clip);
+    expect(params.osc_mix < before, "oscillator group knob should update osc mix");
+    expect(engine_clip_midi_note_count(clip) == 0,
+           "instrument group param knob should not mutate MIDI notes");
 
     state_destroy(&state);
 }
@@ -1780,6 +2791,11 @@ int main(void) {
     test_midi_editor_create_delete_and_undo();
     test_midi_editor_time_ruler_click_seeks_transport();
     test_midi_editor_viewport_zoom_pan_maps_notes_and_hit_tests();
+    test_midi_editor_pitch_viewport_state_is_clip_local();
+    test_midi_editor_pitch_viewport_routes_edit_paths();
+    test_midi_editor_pitch_scroll_zoom_gestures();
+    test_midi_editor_pitch_fit_selected_notes();
+    test_midi_editor_pitch_viewport_edge_cases_and_selection_stability();
     test_midi_editor_drag_moves_note();
     test_midi_editor_resize_requires_selected_note();
     test_midi_editor_shift_drag_edits_velocity();
@@ -1790,7 +2806,9 @@ int main(void) {
     test_midi_editor_shift_marquee_selects_notes();
     test_midi_editor_multiselect_quantize_and_delete();
     test_midi_editor_copy_paste_selected_notes();
+    test_midi_editor_clipboard_shortcut_falls_through_without_note_selection();
     test_midi_editor_duplicate_selected_notes();
+    test_midi_editor_note_command_shortcuts_edit_selection();
     test_midi_editor_multiselect_velocity_drag_updates_group();
     test_midi_editor_selected_group_click_collapses_on_release();
     test_midi_editor_selected_group_drag_moves_group_and_keeps_selection();
@@ -1799,7 +2817,9 @@ int main(void) {
     test_midi_editor_qwerty_test_auditions_without_recording();
     test_midi_editor_instrument_dropdown_sets_region_preset();
     test_midi_editor_instrument_panel_button_swaps_subview();
+    test_midi_instrument_panel_grouped_preset_browser_sets_region_preset();
     test_midi_instrument_panel_param_knob_drag_sets_region_param();
+    test_midi_instrument_panel_group_tab_routes_param_drag();
     ui_font_shutdown();
     TTF_Quit();
     puts("midi_editor_shell_test: success");

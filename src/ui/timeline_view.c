@@ -192,7 +192,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
     timeline_view_draw_button(renderer, &controls->loop_toggle_rect, "LOOP", controls->loop_toggle_hovered, true, &theme);
     timeline_view_draw_button(renderer, &controls->snap_toggle_rect, "SNAP", controls->snap_toggle_hovered, true, &theme);
     timeline_view_draw_button(renderer, &controls->automation_toggle_rect, "AUTO", controls->automation_toggle_hovered, true, &theme);
-    const char* target_label = state->automation_ui.target == ENGINE_AUTOMATION_TARGET_PAN ? "PAN" : "VOL";
+    const char* target_label = engine_automation_target_display_label(state->automation_ui.target);
     timeline_view_draw_button(renderer, &controls->automation_target_rect, target_label, controls->automation_target_hovered, true, &theme);
     timeline_view_draw_button(renderer, &controls->tempo_toggle_rect, "TEMPO", controls->tempo_toggle_hovered, true, &theme);
     timeline_view_draw_button(renderer, &controls->automation_label_toggle_rect, "VAL", controls->automation_label_toggle_hovered, true, &theme);
@@ -395,6 +395,10 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
                 for (int i = 0; i < track->clip_count; ++i) {
                     const EngineClip* clip = &track->clips[i];
                     if (!clip) {
+                        continue;
+                    }
+                    if (engine_automation_target_is_instrument_param(state->automation_ui.target) &&
+                        clip->kind != ENGINE_CLIP_KIND_MIDI) {
                         continue;
                     }
                     uint64_t frame_count = clip->duration_frames;

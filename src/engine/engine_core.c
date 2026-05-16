@@ -48,9 +48,20 @@ void engine_rebuild_sources(Engine* engine) {
     }
     engine_graph_clear_sources(engine->graph);
     bool any_solo = false;
+    int record_armed_track = atomic_load_explicit(&engine->record_armed_track_index, memory_order_acquire);
     for (int i = 0; i < engine->track_count; ++i) {
         EngineTrack* track = &engine->tracks[i];
-        if (!track->active || track->clip_count == 0 || track->muted) {
+        if (i == record_armed_track) {
+            if (!track->muted && track->solo) {
+                any_solo = true;
+                break;
+            }
+            continue;
+        }
+        if (!track->active || track->muted) {
+            continue;
+        }
+        if (track->clip_count == 0) {
             continue;
         }
         if (track->solo) {
@@ -78,13 +89,26 @@ void engine_rebuild_sources(Engine* engine) {
                 if (!clip->instrument) {
                     continue;
                 }
+                EngineInstrumentPresetId preset =
+                    engine_clip_midi_effective_instrument_preset(engine, i, c);
+                EngineInstrumentParams params =
+                    engine_clip_midi_effective_instrument_params(engine, i, c);
+                const EngineAutomationLane* track_lanes = NULL;
+                int track_lane_count = 0;
+                if (engine_clip_midi_inherits_track_instrument(clip)) {
+                    engine_track_midi_get_instrument_automation_lanes(engine, i, &track_lanes, &track_lane_count);
+                }
                 if (engine_instrument_source_set_midi_clip(clip->instrument,
                                                            clip->timeline_start_frames,
                                                            clip->duration_frames,
-                                                           clip->instrument_preset,
-                                                           clip->instrument_params,
+                                                           preset,
+                                                           params,
                                                            clip->midi_notes.notes,
-                                                           clip->midi_notes.note_count)) {
+                                                           clip->midi_notes.note_count,
+                                                           track_lanes,
+                                                           track_lane_count,
+                                                           clip->automation_lanes,
+                                                           clip->automation_lane_count)) {
                     engine_graph_add_source(engine->graph,
                                             &engine->instrument_ops,
                                             clip->instrument,
@@ -112,7 +136,11 @@ void engine_rebuild_sources(Engine* engine) {
                                                    engine->midi_audition_preset,
                                                    engine->midi_audition_params,
                                                    engine->midi_audition_notes.notes,
-                                                   engine->midi_audition_notes.note_count)) {
+                                                   engine->midi_audition_notes.note_count,
+                                                   NULL,
+                                                   0,
+                                                   NULL,
+                                                   0)) {
             float track_gain = track->gain != 0.0f ? track->gain : 1.0f;
             engine_graph_add_source(engine->graph,
                                     &engine->instrument_ops,
@@ -429,6 +457,7 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
     atomic_init(&engine->worker_running, false);
     atomic_init(&engine->transport_playing, false);
     atomic_init(&engine->rebuild_sources_pending, false);
+    atomic_init(&engine->record_armed_track_index, -1);
     atomic_init(&engine->loop_enabled, false);
     atomic_init(&engine->loop_start_frame, 0);
     atomic_init(&engine->loop_end_frame, 0);

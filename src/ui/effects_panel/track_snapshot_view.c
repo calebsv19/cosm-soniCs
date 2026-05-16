@@ -386,6 +386,36 @@ void effects_panel_render_track_snapshot(SDL_Renderer* renderer, const AppState*
         }
     }
 
+    if (snap->instrument_button_rect.w > 0 && snap->instrument_button_rect.h > 0) {
+        bool midi_enabled = state->engine && panel->target == FX_PANEL_TARGET_TRACK &&
+                            panel->target_track_index >= 0 &&
+                            engine_track_midi_instrument_enabled(state->engine, panel->target_track_index);
+        EngineInstrumentPresetId preset = state->engine && panel->target == FX_PANEL_TARGET_TRACK
+                                              ? engine_track_midi_instrument_preset(state->engine,
+                                                                                    panel->target_track_index)
+                                              : ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+        SDL_SetRenderDrawColor(renderer,
+                               panel->track_snapshot.instrument_menu_open ? active_bg.r : button_bg.r,
+                               panel->track_snapshot.instrument_menu_open ? active_bg.g : button_bg.g,
+                               panel->track_snapshot.instrument_menu_open ? active_bg.b : button_bg.b,
+                               panel->track_snapshot.instrument_menu_open ? active_bg.a : button_bg.a);
+        SDL_RenderFillRect(renderer, &snap->instrument_button_rect);
+        SDL_SetRenderDrawColor(renderer, card_border.r, card_border.g, card_border.b, card_border.a);
+        SDL_RenderDrawRect(renderer, &snap->instrument_button_rect);
+        char instrument_label[96];
+        snprintf(instrument_label,
+                 sizeof(instrument_label),
+                 midi_enabled ? "Instrument: %s" : "Audio Track",
+                 engine_instrument_preset_display_name(preset));
+        ui_draw_text_clipped(renderer,
+                             snap->instrument_button_rect.x + 8,
+                             snap->instrument_button_rect.y + 5,
+                             instrument_label,
+                             label,
+                             0.95f,
+                             snap->instrument_button_rect.w - 16);
+    }
+
     draw_effects_list_background(renderer, snap);
 
     if (snap->mute_rect.w > 0 && snap->mute_rect.h > 0) {
@@ -442,4 +472,19 @@ void effects_panel_render_track_snapshot(SDL_Renderer* renderer, const AppState*
         }
     }
     draw_meter(renderer, snap, meter_peak_db, meter_rms_db, meter_clipped);
+
+    if (panel->target == FX_PANEL_TARGET_TRACK &&
+        panel->track_snapshot.instrument_menu_open &&
+        snap->instrument_menu_rect.w > 0 &&
+        snap->instrument_menu_rect.h > 0) {
+        EngineInstrumentPresetId preset = state->engine
+                                              ? engine_track_midi_instrument_preset(state->engine,
+                                                                                    panel->target_track_index)
+                                              : ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+        DawThemePalette daw_theme;
+        if (!daw_shared_theme_resolve_palette(&daw_theme)) {
+            return;
+        }
+        midi_preset_browser_draw(renderer, &snap->instrument_browser, preset, &daw_theme);
+    }
 }

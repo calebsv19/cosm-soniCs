@@ -12,6 +12,10 @@ Purpose: Platform audio plumbing, buffering utilities, and media decoding.
   - `audio_device_open`: Initialise SDL audio, choose a device, and capture the negotiated spec.
   - `audio_device_close`: Stop playback and close the SDL device.
   - `audio_device_start/stop`: Control SDL's pause state for streaming callbacks.
+- `audio_capture_device_sdl.c`
+  - `audio_capture_device_open`: Initialise SDL audio capture, choose the default or named input device, and require float32 capture callbacks while allowing sample-rate/channel/block-size negotiation.
+  - `audio_capture_device_start/stop/close`: Control microphone capture lifetime and keep callback teardown outside timeline/engine recording policy.
+  - Capture callbacks should enqueue frames only; DAW-local recording policy drains and finalizes takes in `src/app/audio_recording.c`.
 - `media_clip.c`
   - `audio_media_clip_load`: Detect file type (WAV/MP3), decode to float32, optionally resample, and fill an `AudioMediaClip`.
   - `audio_media_clip_free`: Release heap-backed sample buffers.

@@ -87,6 +87,10 @@ int timeline_move_clip_to_track(AppState* state, int src_track, int clip_index, 
                                                    dst_track,
                                                    new_clip_index,
                                                    snapshot.instrument_params);
+            engine_clip_midi_set_inherits_track_instrument(state->engine,
+                                                           dst_track,
+                                                           new_clip_index,
+                                                           snapshot.instrument_inherits_track);
             for (int n = 0; n < snapshot.midi_note_count; ++n) {
                 engine_clip_midi_add_note(state->engine, dst_track, new_clip_index, snapshot.midi_notes[n], NULL);
             }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/engine.h"
+#include "ui/midi_preset_browser.h"
 
 #include <SDL2/SDL.h>
 #include <stdbool.h>
@@ -13,8 +14,10 @@ typedef struct {
     SDL_Rect title_rect;
     SDL_Rect notes_button_rect;
     SDL_Rect preset_button_rect;
+    SDL_Rect group_tab_rects[ENGINE_INSTRUMENT_PARAM_GROUP_COUNT];
     SDL_Rect preset_menu_rect;
     SDL_Rect preset_menu_item_rects[ENGINE_INSTRUMENT_PRESET_COUNT];
+    MidiPresetBrowserLayout preset_browser;
     SDL_Rect summary_rect;
     SDL_Rect param_grid_rect;
     SDL_Rect param_widget_rects[ENGINE_INSTRUMENT_PARAM_COUNT];
@@ -24,6 +27,9 @@ typedef struct {
     SDL_Rect param_value_rects[ENGINE_INSTRUMENT_PARAM_COUNT];
     SDL_Rect scope_rect;
     int preset_menu_item_count;
+    int group_tab_count;
+    EngineInstrumentParamGroupId active_group;
+    EngineInstrumentParamId param_ids[ENGINE_INSTRUMENT_PARAM_COUNT];
     int instrument_param_count;
 } MidiInstrumentPanelLayout;
 

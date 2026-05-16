@@ -25,5 +25,7 @@
     <string>12.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>soniCs needs microphone access to record audio regions into your DAW project.</string>
 </dict>
 </plist>

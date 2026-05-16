@@ -20,6 +20,7 @@
 #include "session/project_manager.h"
 #include "time/tempo.h"
 #include "undo/undo_manager.h"
+#include "app/audio_recording.h"
 #include "app/workspace_authoring/daw_workspace_authoring_host.h"
 
 #define TIMELINE_MAX_SELECTION 256
@@ -75,6 +76,8 @@ typedef struct {
     uint64_t clip_total_frames;
     uint64_t initial_fade_in_frames;
     uint64_t initial_fade_out_frames;
+    EngineMidiNote* initial_midi_notes;
+    int initial_midi_note_count;
     bool multi_move;
     int multi_clip_count;
     EngineSamplerSource* multi_samplers[TIMELINE_MAX_SELECTION];
@@ -133,10 +136,13 @@ typedef struct {
     bool qwerty_record_armed;
     bool qwerty_test_enabled;
     bool instrument_menu_open;
+    int instrument_menu_scroll_row;
+    int instrument_menu_expanded_category;
     bool instrument_param_drag_active;
     int instrument_param_drag_index;
     int instrument_param_drag_start_y;
     float instrument_param_drag_start_value;
+    EngineInstrumentParamGroupId instrument_active_group;
     int quantize_division;
     float default_velocity;
     int qwerty_octave_offset;
@@ -156,6 +162,11 @@ typedef struct {
     uint64_t viewport_clip_creation_index;
     uint64_t viewport_start_frame;
     uint64_t viewport_span_frames;
+    int pitch_viewport_track_index;
+    int pitch_viewport_clip_index;
+    uint64_t pitch_viewport_clip_creation_index;
+    int pitch_viewport_top_note;
+    int pitch_viewport_row_count;
     bool shift_note_pending;
     int shift_note_pending_track_index;
     int shift_note_pending_clip_index;
@@ -384,6 +395,9 @@ typedef struct {
     float list_scroll_max;
     bool list_scroll_dragging;
     float list_scroll_drag_offset;
+    bool instrument_menu_open;
+    int instrument_menu_scroll_row;
+    int instrument_menu_expanded_category;
 } EffectsPanelTrackSnapshotState;
 
 typedef struct {
@@ -690,6 +704,7 @@ struct AppState {
     TempoState tempo;
     TempoMap tempo_map;
     TimeSignatureMap time_signature_map;
+    DawAudioRecordingState audio_recording;
     TempoUIState tempo_ui;
     ProjectState project;
     ProjectSavePrompt project_prompt;

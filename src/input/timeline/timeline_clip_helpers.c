@@ -97,6 +97,7 @@ bool timeline_session_clip_from_engine(const EngineClip* clip, SessionClip* out_
     out_clip->selected = false;
     out_clip->instrument_preset = engine_clip_midi_instrument_preset(clip);
     out_clip->instrument_params = engine_clip_midi_instrument_params(clip);
+    out_clip->instrument_inherits_track = engine_clip_midi_inherits_track_instrument(clip);
 
     if (clip->automation_lane_count > 0 && clip->automation_lanes) {
         out_clip->automation_lanes = (SessionAutomationLane*)calloc((size_t)clip->automation_lane_count,

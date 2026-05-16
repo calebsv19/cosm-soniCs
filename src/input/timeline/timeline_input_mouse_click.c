@@ -57,6 +57,36 @@ static SDL_Rect timeline_lane_clip_rect(const TimelineGeometry* geom, int lane_t
     return rect;
 }
 
+static bool timeline_selected_clip_is_midi(const AppState* state) {
+    if (!state || !state->engine || state->selected_track_index < 0 || state->selected_clip_index < 0) {
+        return false;
+    }
+    const EngineTrack* tracks = engine_get_tracks(state->engine);
+    int track_count = engine_get_track_count(state->engine);
+    if (!tracks || state->selected_track_index >= track_count) {
+        return false;
+    }
+    const EngineTrack* track = &tracks[state->selected_track_index];
+    if (state->selected_clip_index >= track->clip_count) {
+        return false;
+    }
+    return track->clips[state->selected_clip_index].kind == ENGINE_CLIP_KIND_MIDI;
+}
+
+static EngineAutomationTarget timeline_next_automation_target(const AppState* state) {
+    int next = (int)(state ? state->automation_ui.target : ENGINE_AUTOMATION_TARGET_VOLUME) + 1;
+    bool midi_selected = timeline_selected_clip_is_midi(state);
+    int count = midi_selected ? (int)ENGINE_AUTOMATION_TARGET_COUNT
+                              : (int)ENGINE_AUTOMATION_TARGET_INSTRUMENT_LEVEL;
+    if (count <= 0) {
+        return ENGINE_AUTOMATION_TARGET_VOLUME;
+    }
+    if (next >= count) {
+        next = 0;
+    }
+    return (EngineAutomationTarget)next;
+}
+
 static void session_track_free(SessionTrack* track) {
     if (!track) {
         return;
@@ -107,6 +137,9 @@ static bool session_track_from_engine(AppState* state, int track_index, SessionT
     out_track->pan = track->pan;
     out_track->muted = track->muted;
     out_track->solo = track->solo;
+    out_track->midi_instrument_enabled = engine_track_midi_instrument_enabled(state->engine, track_index);
+    out_track->midi_instrument_preset = engine_track_midi_instrument_preset(state->engine, track_index);
+    out_track->midi_instrument_params = engine_track_midi_instrument_params(state->engine, track_index);
     if (state->effects_panel.eq_curve_tracks &&
         track_index < state->effects_panel.eq_curve_tracks_count) {
         eq_curve_to_session(&state->effects_panel.eq_curve_tracks[track_index], &out_track->eq);
@@ -381,11 +414,7 @@ static bool timeline_controls_handle_click(AppState* state, const SDL_Point* poi
     }
     if (SDL_PointInRect(point, &controls->automation_target_rect)) {
         track_name_editor_stop(state, true);
-        int next = (int)state->automation_ui.target + 1;
-        if (next >= (int)ENGINE_AUTOMATION_TARGET_COUNT) {
-            next = 0;
-        }
-        state->automation_ui.target = (EngineAutomationTarget)next;
+        state->automation_ui.target = timeline_next_automation_target(state);
         return true;
     }
     if (SDL_PointInRect(point, &controls->tempo_toggle_rect)) {
@@ -668,11 +697,15 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
 
         if (!was_down && is_down) {
             if (SDL_PointInRect(&mouse_point, &mute_rect)) {
+                timeline_selection_set_single(state, t, -1);
                 engine_track_set_muted(state->engine, t, !track->muted);
+                effects_panel_sync_from_engine(state);
                 return;
             }
             if (SDL_PointInRect(&mouse_point, &solo_rect)) {
+                timeline_selection_set_single(state, t, -1);
                 engine_track_set_solo(state->engine, t, !track->solo);
+                effects_panel_sync_from_engine(state);
                 return;
             }
         }
@@ -804,6 +837,10 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
     if (!was_down && is_down) {
         if (state->timeline_automation_mode && hit_clip >= 0 && hit_track >= 0) {
             const EngineClip* clip = &tracks[hit_track].clips[hit_clip];
+            if (engine_automation_target_is_instrument_param(state->automation_ui.target) &&
+                clip->kind != ENGINE_CLIP_KIND_MIDI) {
+                return;
+            }
             uint64_t frame_count = timeline_clip_frame_count(clip);
             if (frame_count > 0) {
                 double start_sec = (double)clip->timeline_start_frames / (double)sample_rate;

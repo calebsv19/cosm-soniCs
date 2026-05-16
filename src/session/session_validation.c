@@ -118,6 +118,19 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
         session_set_error(error_message, error_message_len, "loop end <= start");
         return false;
     }
+    if (doc->midi_editor.panel_mode < 0 || doc->midi_editor.panel_mode > 1) {
+        session_set_error(error_message, error_message_len,
+                          "invalid MIDI editor panel mode: %d",
+                          doc->midi_editor.panel_mode);
+        return false;
+    }
+    if (doc->midi_editor.instrument_active_group < 0 ||
+        doc->midi_editor.instrument_active_group >= engine_instrument_param_group_count()) {
+        session_set_error(error_message, error_message_len,
+                          "invalid MIDI instrument group: %d",
+                          doc->midi_editor.instrument_active_group);
+        return false;
+    }
     if (doc->track_count < 0) {
         session_set_error(error_message, error_message_len, "negative track count");
         return false;
@@ -143,6 +156,52 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
         if (track->fx_count > 0 && !track->fx) {
             session_set_error(error_message, error_message_len, "track %d fx array missing", t);
             return false;
+        }
+        if (track->midi_instrument_enabled &&
+            track->midi_instrument_preset != engine_instrument_preset_clamp(track->midi_instrument_preset)) {
+            session_set_error(error_message, error_message_len, "track %d midi instrument preset invalid", t);
+            return false;
+        }
+        if (track->midi_instrument_enabled) {
+            EngineInstrumentParams clamped =
+                engine_instrument_params_sanitize(track->midi_instrument_preset, track->midi_instrument_params);
+            bool params_valid = true;
+            for (int p = 0; p < ENGINE_INSTRUMENT_PARAM_COUNT; ++p) {
+                EngineInstrumentParamId param = (EngineInstrumentParamId)p;
+                if (engine_instrument_params_get(track->midi_instrument_params, param) !=
+                    engine_instrument_params_get(clamped, param)) {
+                    params_valid = false;
+                    break;
+                }
+            }
+            if (!params_valid) {
+                session_set_error(error_message, error_message_len, "track %d midi instrument params invalid", t);
+                return false;
+            }
+        }
+        if (track->midi_instrument_automation_lane_count < 0) {
+            session_set_error(error_message, error_message_len, "track %d midi automation lane count invalid", t);
+            return false;
+        }
+        if (track->midi_instrument_automation_lane_count > 0 && !track->midi_instrument_automation_lanes) {
+            session_set_error(error_message, error_message_len, "track %d midi automation lanes missing", t);
+            return false;
+        }
+        for (int l = 0; l < track->midi_instrument_automation_lane_count; ++l) {
+            const SessionAutomationLane* lane = &track->midi_instrument_automation_lanes[l];
+            if (lane->target < ENGINE_AUTOMATION_TARGET_INSTRUMENT_LEVEL ||
+                lane->target > ENGINE_AUTOMATION_TARGET_INSTRUMENT_VIBRATO_DEPTH) {
+                session_set_error(error_message, error_message_len, "track %d midi automation target invalid", t);
+                return false;
+            }
+            if (lane->point_count < 0) {
+                session_set_error(error_message, error_message_len, "track %d midi automation point count invalid", t);
+                return false;
+            }
+            if (lane->point_count > 0 && !lane->points) {
+                session_set_error(error_message, error_message_len, "track %d midi automation points missing", t);
+                return false;
+            }
         }
         for (int f = 0; f < track->fx_count; ++f) {
             const SessionFxInstance* fx = &track->fx[f];
@@ -207,10 +266,16 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
             if (clip->kind == ENGINE_CLIP_KIND_MIDI) {
                 EngineInstrumentParams clamped =
                     engine_instrument_params_sanitize(clip->instrument_preset, clip->instrument_params);
-                if (clip->instrument_params.level != clamped.level ||
-                    clip->instrument_params.tone != clamped.tone ||
-                    clip->instrument_params.attack_ms != clamped.attack_ms ||
-                    clip->instrument_params.release_ms != clamped.release_ms) {
+                bool params_valid = true;
+                for (int p = 0; p < ENGINE_INSTRUMENT_PARAM_COUNT; ++p) {
+                    EngineInstrumentParamId param = (EngineInstrumentParamId)p;
+                    if (engine_instrument_params_get(clip->instrument_params, param) !=
+                        engine_instrument_params_get(clamped, param)) {
+                        params_valid = false;
+                        break;
+                    }
+                }
+                if (!params_valid) {
                     session_set_error(error_message,
                                       error_message_len,
                                       "track %d clip %d instrument params invalid",

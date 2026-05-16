@@ -1,6 +1,7 @@
 #include "engine/engine_clips_automation_internal.h"
 
 #include "engine/engine_internal.h"
+#include "engine/instrument.h"
 #include "engine/sampler.h"
 
 #include <stdlib.h>
@@ -120,6 +121,35 @@ static EngineClip* engine_get_clip_mutable(Engine* engine, int track_index, int 
     return &track->clips[clip_index];
 }
 
+static void engine_clip_refresh_automation_sources(Engine* engine, int track_index, int clip_index, EngineClip* clip) {
+    if (!clip) {
+        return;
+    }
+    if (clip->sampler) {
+        engine_sampler_source_set_automation(clip->sampler, clip->automation_lanes, clip->automation_lane_count);
+    }
+    if (clip->instrument) {
+        EngineInstrumentPresetId preset = engine_clip_midi_effective_instrument_preset(engine, track_index, clip_index);
+        EngineInstrumentParams params = engine_clip_midi_effective_instrument_params(engine, track_index, clip_index);
+        const EngineAutomationLane* track_lanes = NULL;
+        int track_lane_count = 0;
+        if (engine_clip_midi_inherits_track_instrument(clip)) {
+            engine_track_midi_get_instrument_automation_lanes(engine, track_index, &track_lanes, &track_lane_count);
+        }
+        engine_instrument_source_set_midi_clip(clip->instrument,
+                                               clip->timeline_start_frames,
+                                               clip->duration_frames,
+                                               preset,
+                                               params,
+                                               clip->midi_notes.notes,
+                                               clip->midi_notes.note_count,
+                                               track_lanes,
+                                               track_lane_count,
+                                               clip->automation_lanes,
+                                               clip->automation_lane_count);
+    }
+}
+
 static bool engine_clip_ensure_automation_capacity(EngineClip* clip, int needed) {
     if (!clip) {
         return false;
@@ -190,6 +220,9 @@ bool engine_clip_ensure_automation_lane(Engine* engine,
     if (!clip) {
         return false;
     }
+    if (engine_automation_target_is_instrument_param(target) && clip->kind != ENGINE_CLIP_KIND_MIDI) {
+        return false;
+    }
     for (int i = 0; i < clip->automation_lane_count; ++i) {
         if (clip->automation_lanes[i].target == target) {
             if (out_lane) {
@@ -206,7 +239,7 @@ bool engine_clip_ensure_automation_lane(Engine* engine,
     if (out_lane) {
         *out_lane = lane;
     }
-    engine_sampler_source_set_automation(clip->sampler, clip->automation_lanes, clip->automation_lane_count);
+    engine_clip_refresh_automation_sources(engine, track_index, clip_index, clip);
     return true;
 }
 
@@ -228,9 +261,7 @@ bool engine_clip_add_automation_point(Engine* engine,
         return false;
     }
     EngineClip* clip = engine_get_clip_mutable(engine, track_index, clip_index);
-    if (clip && clip->sampler) {
-        engine_sampler_source_set_automation(clip->sampler, clip->automation_lanes, clip->automation_lane_count);
-    }
+    engine_clip_refresh_automation_sources(engine, track_index, clip_index, clip);
     return true;
 }
 
@@ -253,9 +284,7 @@ bool engine_clip_update_automation_point(Engine* engine,
         return false;
     }
     EngineClip* clip = engine_get_clip_mutable(engine, track_index, clip_index);
-    if (clip && clip->sampler) {
-        engine_sampler_source_set_automation(clip->sampler, clip->automation_lanes, clip->automation_lane_count);
-    }
+    engine_clip_refresh_automation_sources(engine, track_index, clip_index, clip);
     return true;
 }
 
@@ -275,9 +304,7 @@ bool engine_clip_remove_automation_point(Engine* engine,
         return false;
     }
     EngineClip* clip = engine_get_clip_mutable(engine, track_index, clip_index);
-    if (clip && clip->sampler) {
-        engine_sampler_source_set_automation(clip->sampler, clip->automation_lanes, clip->automation_lane_count);
-    }
+    engine_clip_refresh_automation_sources(engine, track_index, clip_index, clip);
     return true;
 }
 
@@ -298,9 +325,7 @@ bool engine_clip_set_automation_lane_points(Engine* engine,
         return false;
     }
     EngineClip* clip = engine_get_clip_mutable(engine, track_index, clip_index);
-    if (clip && clip->sampler) {
-        engine_sampler_source_set_automation(clip->sampler, clip->automation_lanes, clip->automation_lane_count);
-    }
+    engine_clip_refresh_automation_sources(engine, track_index, clip_index, clip);
     return true;
 }
 
@@ -319,8 +344,6 @@ bool engine_clip_set_automation_lanes(Engine* engine,
     if (!engine_clip_set_automation_lanes_internal(clip, lanes, lane_count)) {
         return false;
     }
-    if (clip->sampler) {
-        engine_sampler_source_set_automation(clip->sampler, clip->automation_lanes, clip->automation_lane_count);
-    }
+    engine_clip_refresh_automation_sources(engine, track_index, clip_index, clip);
     return true;
 }

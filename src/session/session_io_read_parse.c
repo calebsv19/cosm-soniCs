@@ -12,6 +12,9 @@ static SessionTrack* session_document_append_track(SessionDocument* doc) {
     doc->tracks = resized;
     SessionTrack* track = &doc->tracks[new_count - 1];
     memset(track, 0, sizeof(*track));
+    track->midi_instrument_enabled = false;
+    track->midi_instrument_preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+    track->midi_instrument_params = engine_instrument_default_params(track->midi_instrument_preset);
     track->eq.low_cut.enabled = false;
     track->eq.low_cut.freq_hz = 80.0f;
     track->eq.low_cut.slope = 12.0f;
@@ -29,6 +32,68 @@ static SessionTrack* session_document_append_track(SessionDocument* doc) {
     track->eq.bands[3].freq_hz = 8000.0f;
     doc->track_count = new_count;
     return track;
+}
+
+static bool parse_session_track_midi_instrument_preset(JsonReader* r, SessionTrack* track) {
+    if (!r || !track) {
+        return false;
+    }
+    json_skip_whitespace(r);
+    if (r->pos < r->length && r->data[r->pos] == '"') {
+        char preset_id[48];
+        if (!json_parse_string(r, preset_id, sizeof(preset_id))) {
+            return false;
+        }
+        EngineInstrumentPresetId preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+        if (engine_instrument_preset_from_id_string(preset_id, &preset)) {
+            track->midi_instrument_preset = preset;
+            track->midi_instrument_params = engine_instrument_default_params(preset);
+        }
+        return true;
+    }
+    double val;
+    if (!json_parse_number(r, &val)) {
+        return false;
+    }
+    track->midi_instrument_preset = engine_instrument_preset_clamp((EngineInstrumentPresetId)(int)val);
+    track->midi_instrument_params = engine_instrument_default_params(track->midi_instrument_preset);
+    return true;
+}
+
+static bool parse_session_track_midi_instrument_params(JsonReader* r, SessionTrack* track) {
+    if (!r || !track || !json_expect(r, '{')) {
+        return false;
+    }
+    EngineInstrumentParams params = track->midi_instrument_params;
+    while (true) {
+        json_skip_whitespace(r);
+        if (r->pos < r->length && r->data[r->pos] == '}') {
+            ++r->pos;
+            break;
+        }
+        char param_key[48];
+        if (!json_parse_string(r, param_key, sizeof(param_key)) || !json_expect(r, ':')) {
+            return false;
+        }
+        EngineInstrumentParamId param = ENGINE_INSTRUMENT_PARAM_LEVEL;
+        if (engine_instrument_param_from_id_string(param_key, &param)) {
+            double val = 0.0;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            params = engine_instrument_params_set(track->midi_instrument_preset, params, param, (float)val);
+        } else if (!json_skip_value(r)) {
+            return false;
+        }
+        json_skip_whitespace(r);
+        if (r->pos < r->length && r->data[r->pos] == ',') {
+            ++r->pos;
+            continue;
+        }
+    }
+    track->midi_instrument_params =
+        engine_instrument_params_sanitize(track->midi_instrument_preset, params);
+    return true;
 }
 
 // Appends a tempo event into the session document.
@@ -66,6 +131,51 @@ static bool session_document_append_time_signature_event(SessionDocument* doc, f
     doc->time_signature_events[new_count - 1].ts_num = ts_num;
     doc->time_signature_events[new_count - 1].ts_den = ts_den;
     doc->time_signature_event_count = new_count;
+    return true;
+}
+
+static bool parse_session_midi_editor(JsonReader* r, SessionDocument* doc) {
+    if (!r || !doc || !json_expect(r, '{')) {
+        return false;
+    }
+    while (true) {
+        json_skip_whitespace(r);
+        if (r->pos < r->length && r->data[r->pos] == '}') {
+            ++r->pos;
+            break;
+        }
+        char panel_key[64];
+        if (!json_parse_string(r, panel_key, sizeof(panel_key)) || !json_expect(r, ':')) {
+            return false;
+        }
+        if (strcmp(panel_key, "panel_mode") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            doc->midi_editor.panel_mode = (int)val;
+        } else if (strcmp(panel_key, "instrument_active_group") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            doc->midi_editor.instrument_active_group = (int)val;
+        } else {
+            if (!json_skip_value(r)) {
+                return false;
+            }
+        }
+        json_skip_whitespace(r);
+        if (r->pos < r->length && r->data[r->pos] == ',') {
+            ++r->pos;
+            continue;
+        }
+        if (r->pos < r->length && r->data[r->pos] == '}') {
+            ++r->pos;
+            break;
+        }
+        return false;
+    }
     return true;
 }
 
@@ -108,6 +218,24 @@ static bool parse_session_track(JsonReader* r, SessionTrack* track) {
             }
         } else if (strcmp(key, "solo") == 0) {
             if (!json_parse_bool(r, &track->solo)) {
+                return false;
+            }
+        } else if (strcmp(key, "midi_instrument_enabled") == 0) {
+            if (!json_parse_bool(r, &track->midi_instrument_enabled)) {
+                return false;
+            }
+        } else if (strcmp(key, "midi_instrument_preset") == 0) {
+            if (!parse_session_track_midi_instrument_preset(r, track)) {
+                return false;
+            }
+        } else if (strcmp(key, "midi_instrument_params") == 0) {
+            if (!parse_session_track_midi_instrument_params(r, track)) {
+                return false;
+            }
+        } else if (strcmp(key, "midi_instrument_automation") == 0) {
+            if (!parse_session_automation_lanes(r,
+                                                &track->midi_instrument_automation_lanes,
+                                                &track->midi_instrument_automation_lane_count)) {
                 return false;
             }
         } else if (strcmp(key, "eq_low_cut_enabled") == 0) {
@@ -644,6 +772,10 @@ bool parse_session_document(JsonReader* r, SessionDocument* doc) {
                 return false;
             }
             doc->selected_clip_index = (int)val;
+        } else if (strcmp(key, "midi_editor") == 0) {
+            if (!parse_session_midi_editor(r, doc)) {
+                return false;
+            }
         } else if (strcmp(key, "clip_inspector") == 0) {
             if (!json_expect(r, '{')) {
                 return false;

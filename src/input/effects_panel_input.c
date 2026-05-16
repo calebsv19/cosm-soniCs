@@ -906,6 +906,19 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
             } else {
                 SDL_Point pt = {state->mouse_x, state->mouse_y};
                 if (panel->view_mode == FX_PANEL_VIEW_LIST) {
+                    if (panel->track_snapshot.instrument_menu_open &&
+                        SDL_PointInRect(&pt, &layout.track_snapshot.instrument_menu_rect)) {
+                        int dy = event->wheel.y;
+                        if (event->wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {
+                            dy = -dy;
+                        }
+                        panel->track_snapshot.instrument_menu_scroll_row =
+                            midi_preset_browser_scroll_delta(&layout.track_snapshot.instrument_browser,
+                                                             panel->track_snapshot.instrument_menu_scroll_row,
+                                                             dy);
+                        effects_panel_compute_layout(state, &layout);
+                        return;
+                    }
                     if (panel->track_snapshot.list_scroll_max > 0.0f &&
                         SDL_PointInRect(&pt, &layout.track_snapshot.list_clip_rect)) {
                         int dy = event->wheel.y;

@@ -1,5 +1,6 @@
 #include "input/input_manager.h"
 
+#include "app/audio_recording.h"
 #include "app_state.h"
 #include "app/workspace_authoring/daw_workspace_authoring_host.h"
 #include "engine/engine.h"
@@ -33,8 +34,18 @@ static void handle_transport_controls(AppState* state, bool was_down, bool is_do
     }
     if (!was_down && is_down) {
         if (transport_ui_click_play(&state->transport_ui, state->mouse_x, state->mouse_y)) {
-            engine_transport_play(state->engine);
+            if (daw_audio_recording_is_active(&state->audio_recording) &&
+                engine_transport_is_playing(state->engine)) {
+                engine_transport_stop(state->engine);
+            } else {
+                (void)daw_audio_recording_drain_if_transport_playing(state);
+                engine_transport_play(state->engine);
+            }
         } else if (transport_ui_click_stop(&state->transport_ui, state->mouse_x, state->mouse_y)) {
+            if (daw_audio_recording_is_active(&state->audio_recording)) {
+                DawAudioRecordingResult result;
+                (void)daw_audio_recording_finish_timeline_capture(state, &result);
+            }
             engine_transport_stop(state->engine);
         }
     }
@@ -430,6 +441,7 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
             if (was_playing) {
                 engine_transport_stop(state->engine);
             } else {
+                (void)daw_audio_recording_drain_if_transport_playing(state);
                 engine_transport_play(state->engine);
             }
         }

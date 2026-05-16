@@ -1,5 +1,6 @@
 #include "input/timeline/timeline_input_keyboard.h"
 
+#include "app/audio_recording.h"
 #include "app_state.h"
 #include "engine/engine.h"
 #include "engine/sampler.h"
@@ -180,6 +181,30 @@ bool timeline_input_keyboard_handle_event(InputManager* manager, AppState* state
     }
 
     if ((mods & (KMOD_CTRL | KMOD_GUI | KMOD_ALT)) == 0) {
+        if (key == SDLK_r && event->key.repeat == 0) {
+            if (daw_audio_recording_is_active(&state->audio_recording)) {
+                DawAudioRecordingResult result;
+                (void)daw_audio_recording_finish_timeline_capture(state, &result);
+                if (result.inserted) {
+                    const EngineTrack* tracks = engine_get_tracks(state->engine);
+                    int track_count = engine_get_track_count(state->engine);
+                    if (tracks &&
+                        result.track_index >= 0 &&
+                        result.track_index < track_count &&
+                        result.clip_index >= 0 &&
+                        result.clip_index < tracks[result.track_index].clip_count) {
+                        inspector_input_show(state,
+                                             result.track_index,
+                                             result.clip_index,
+                                             &tracks[result.track_index].clips[result.clip_index]);
+                    }
+                    effects_panel_sync_from_engine(state);
+                }
+            } else {
+                (void)daw_audio_recording_begin_timeline_capture(state);
+            }
+            return true;
+        }
         if (key == SDLK_a) {
             state->timeline_automation_mode = !state->timeline_automation_mode;
             return true;

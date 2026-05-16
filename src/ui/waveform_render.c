@@ -97,3 +97,89 @@ bool waveform_render_view(SDL_Renderer* renderer,
     }
     return true;
 }
+
+bool waveform_render_samples_view(SDL_Renderer* renderer,
+                                  const AudioMediaClip* clip,
+                                  const SDL_Rect* rect,
+                                  uint64_t view_start_frame,
+                                  uint64_t view_frame_count,
+                                  SDL_Color color) {
+    if (!renderer || !clip || !clip->samples || !rect || clip->channels <= 0) {
+        return false;
+    }
+    if (rect->w <= 0 || rect->h <= 0 || view_frame_count == 0 || clip->frame_count == 0) {
+        return false;
+    }
+    if (view_start_frame >= clip->frame_count) {
+        return false;
+    }
+    uint64_t view_end_frame = view_start_frame + view_frame_count;
+    if (view_end_frame < view_start_frame || view_end_frame > clip->frame_count) {
+        view_end_frame = clip->frame_count;
+    }
+    if (view_end_frame <= view_start_frame) {
+        return false;
+    }
+
+    int mid_y = rect->y + rect->h / 2;
+    int amp = rect->h / 2 - 1;
+    if (amp < 1) {
+        amp = 1;
+    }
+
+    SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+    bool line_mode = view_frame_count <= (uint64_t)rect->w * 2u;
+    int prev_x = 0;
+    int prev_y = 0;
+    bool have_prev = false;
+    for (int px = 0; px < rect->w; ++px) {
+        uint64_t start = view_start_frame + ((uint64_t)px * view_frame_count) / (uint64_t)rect->w;
+        uint64_t end = view_start_frame + ((uint64_t)(px + 1) * view_frame_count) / (uint64_t)rect->w;
+        if (end <= start) {
+            end = start + 1;
+        }
+        if (start >= view_end_frame) {
+            break;
+        }
+        if (end > view_end_frame) {
+            end = view_end_frame;
+        }
+
+        float min_v = 1.0f;
+        float max_v = -1.0f;
+        for (uint64_t f = start; f < end; ++f) {
+            float sum = 0.0f;
+            uint64_t base = f * (uint64_t)clip->channels;
+            for (int ch = 0; ch < clip->channels; ++ch) {
+                sum += clip->samples[base + (uint64_t)ch];
+            }
+            float v = sum / (float)clip->channels;
+            if (v < -1.0f) v = -1.0f;
+            if (v > 1.0f) v = 1.0f;
+            if (v < min_v) min_v = v;
+            if (v > max_v) max_v = v;
+        }
+
+        int x = rect->x + px;
+        if (line_mode) {
+            float v = 0.5f * (min_v + max_v);
+            int y = mid_y - (int)llround((double)v * (double)amp);
+            if (have_prev) {
+                SDL_RenderDrawLine(renderer, prev_x, prev_y, x, y);
+            }
+            prev_x = x;
+            prev_y = y;
+            have_prev = true;
+        } else {
+            int y_top = mid_y - (int)llround((double)max_v * (double)amp);
+            int y_bot = mid_y - (int)llround((double)min_v * (double)amp);
+            if (y_top > y_bot) {
+                int tmp = y_top;
+                y_top = y_bot;
+                y_bot = tmp;
+            }
+            SDL_RenderDrawLine(renderer, x, y_top, x, y_bot);
+        }
+    }
+    return true;
+}

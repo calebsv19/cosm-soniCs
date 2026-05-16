@@ -19,9 +19,19 @@ Purpose: Translate SDL events and pointer state into engine/UI actions.
 - `effects_panel_input.c`
   - Initializes the master effects panel state, synchronises effect snapshots, and handles the category/effect overlay navigation (including scroll wheel support), slider drags, and delete interactions when the mixer rack is active.
 - `midi_editor_input.c`
-  - Captures lower-pane MIDI editor input and applies time-ruler playhead seek, editor-local hover-routed zoom/pan viewport controls, click-create, hover/click slop, selected-first drag-move, selected-first edge-resize, selected-group click-drag movement with click-release collapse, Shift-click multi-note selection, Shift-empty-grid marquee selection, immediate/group shift-drag velocity edits, Delete/Backspace, selected-set quantize, selected-note copy/paste/duplicate, snap-enabled quantized create/drag/resize/QWERTY timing, `R`-armed QWERTY note recording with undo snapshots, non-recording Test-mode QWERTY audition, default velocity/octave controls for QWERTY input, per-region instrument preset dropdown selection, and the explicit instrument-panel open affordance.
+  - Thin lower-pane MIDI editor event/update router. Owns instrument header clicks, grouped preset browser click/scroll routing, pointer/key dispatch order, and panel visibility transitions while delegating note selection, timing, commands, QWERTY capture, and gestures to focused sibling modules.
+- `midi_editor_input_selection.c`
+  - Owns selected MIDI region lookup, note snapshot/free helpers, selection masks, selection clearing, marquee/pending clear helpers, and note undo begin/commit/push helpers.
+- `midi_editor_input_timing.c`
+  - Owns MIDI editor frame helpers, quantize step/snap math, transport-relative frame mapping, time-ruler seek, horizontal clip-local viewport pan/zoom/fit helpers, modified-wheel pitch viewport scroll/zoom helpers, and selected-note pitch fit/recenter helpers used by the editor input router.
+- `midi_editor_input_commands.c`
+  - Owns selected-note quantize, Delete/Backspace note removal, copy/paste/duplicate, selected-pattern collection, and inserted-note selection remapping.
+- `midi_editor_input_qwerty.c`
+  - Owns QWERTY key-to-note mapping, active note slots, record/test toggles, audition note-off cleanup, default velocity/octave controls, and QWERTY event handling.
+- `midi_editor_input_gestures.c`
+  - Owns hover, marquee preview/commit, Shift-note pending state, note press slop, note create/drag/move/resize/velocity updates, selected-group velocity edits, and selected-group movement.
 - `midi_instrument_panel_input.c`
-  - Captures the selected MIDI region's instrument subview input, including return-to-notes routing, preset menu selection, and per-region Level/Tone/Attack/Release slider drags without mutating MIDI notes.
+  - Captures the selected MIDI region's instrument subview input, including return-to-notes routing, preset menu selection, parameter group tab selection, and per-region grouped knob drags by stable instrument parameter ID without mutating MIDI notes.
 - `timeline/`
   - Timeline drag helpers keep MIDI right-edge resizing bounded by existing note content and leave left-edge MIDI trim deferred until offset semantics are explicit.
 - `transport_input.c`

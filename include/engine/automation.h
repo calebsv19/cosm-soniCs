@@ -7,6 +7,18 @@
 typedef enum {
     ENGINE_AUTOMATION_TARGET_VOLUME = 0,
     ENGINE_AUTOMATION_TARGET_PAN,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_LEVEL,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_TONE,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_ATTACK_MS,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_RELEASE_MS,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_DECAY_MS,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_SUSTAIN,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_OSC_MIX,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_OSC2_DETUNE,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_SUB_MIX,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_DRIVE,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_VIBRATO_RATE,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_VIBRATO_DEPTH,
     ENGINE_AUTOMATION_TARGET_COUNT
 } EngineAutomationTarget;
 
@@ -47,3 +59,7 @@ bool engine_automation_lane_update_point(EngineAutomationLane* lane,
 bool engine_automation_lane_remove_point(EngineAutomationLane* lane, int point_index);
 // Evaluates the automation value at a frame using linear interpolation with baseline endpoints.
 float engine_automation_lane_eval(const EngineAutomationLane* lane, uint64_t frame, uint64_t clip_frames);
+// Returns true when the target controls a MIDI instrument parameter.
+bool engine_automation_target_is_instrument_param(EngineAutomationTarget target);
+// Returns a compact timeline label for the target.
+const char* engine_automation_target_display_label(EngineAutomationTarget target);

@@ -25,11 +25,23 @@ Notes:
 - Global shortcuts are disabled while editing tempo, library names, or track names. (`src/input/input_manager.c`, `handle_keyboard_shortcuts`)
 
 ## Timeline / Arrangement view
+- `R` — Arm or finish timeline audio recording on the selected/active track. Capture frames are appended only while transport is playing. (`src/input/timeline/timeline_input_keyboard.c`, `timeline_input_keyboard_handle_event`; `src/app/audio_recording.c`)
 - `A` — Toggle automation edit mode. (`src/input/timeline/timeline_input_keyboard.c`, `timeline_input_keyboard_handle_event`)
 - `G` — Toggle snap-to-grid. (`src/input/timeline/timeline_input_keyboard.c`, `timeline_input_keyboard_handle_event`)
 - `Ctrl/Cmd+C` — Copy selection. (`src/input/timeline/timeline_input_keyboard.c`, `timeline_input_keyboard_handle_event`)
 - `Ctrl/Cmd+V` — Paste selection. (`src/input/timeline/timeline_input_keyboard.c`, `timeline_input_keyboard_handle_event`)
 - `Ctrl/Cmd+D` — Duplicate selection. (`src/input/timeline/timeline_input_keyboard.c`, `timeline_input_keyboard_handle_event`)
+
+## MIDI editor
+- `R` — Toggle QWERTY MIDI note recording for the selected MIDI region. (`src/input/midi_editor_input_qwerty.c`, `midi_editor_handle_qwerty_event`)
+- `Z X C V B N M A W S E D F T G Y H U J K` — QWERTY MIDI note keys while record/test capture is active. (`src/input/midi_editor_input_qwerty.c`, `midi_editor_qwerty_note_for_key`)
+- `[` / `]` — Move QWERTY MIDI octave down/up. (`src/input/midi_editor_input_qwerty.c`, `midi_editor_handle_qwerty_event`)
+- `-` / `=` — Decrease/increase MIDI default velocity. (`src/input/midi_editor_input_qwerty.c`, `midi_editor_handle_qwerty_event`)
+- `Q` — Quantize selected MIDI notes. (`src/input/midi_editor_input_qwerty.c`, `midi_editor_handle_qwerty_event`)
+- `Delete` / `Backspace` — Delete selected MIDI note(s). (`src/input/midi_editor_input.c`, `midi_editor_input_handle_event`)
+- `Ctrl/Cmd+C` / `Ctrl/Cmd+V` / `Ctrl/Cmd+D` — Copy, paste, or duplicate selected MIDI note(s). (`src/input/midi_editor_input_commands.c`, `midi_editor_handle_clipboard_keydown`)
+- `Ctrl/Cmd+Left` / `Ctrl/Cmd+Right` — Move selected MIDI note group by the current quantize step. (`src/input/midi_editor_input_commands.c`, `midi_editor_handle_note_command_keydown`)
+- `Alt+Up` / `Alt+Down` — Transpose selected MIDI note group. (`src/input/midi_editor_input_commands.c`, `midi_editor_handle_note_command_keydown`)
 
 ### Track name editor (timeline header)
 - `Enter` — Commit rename. (`src/input/timeline/timeline_input_keyboard.c`, `timeline_input_keyboard_handle_event`)

@@ -17,7 +17,26 @@ void engine_track_init(EngineTrack* track) {
     track->solo = false;
     track->active = true;
     track->name[0] = '\0';
+    track->midi_instrument_enabled = false;
+    track->midi_instrument_preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+    track->midi_instrument_params = engine_instrument_default_params(track->midi_instrument_preset);
+    track->midi_instrument_automation_lanes = NULL;
+    track->midi_instrument_automation_lane_count = 0;
+    track->midi_instrument_automation_lane_capacity = 0;
     memset(&track->track_eq, 0, sizeof(track->track_eq));
+}
+
+static void engine_track_midi_clear_instrument_automation(EngineTrack* track) {
+    if (!track || !track->midi_instrument_automation_lanes) {
+        return;
+    }
+    for (int i = 0; i < track->midi_instrument_automation_lane_count; ++i) {
+        engine_automation_lane_free(&track->midi_instrument_automation_lanes[i]);
+    }
+    free(track->midi_instrument_automation_lanes);
+    track->midi_instrument_automation_lanes = NULL;
+    track->midi_instrument_automation_lane_count = 0;
+    track->midi_instrument_automation_lane_capacity = 0;
 }
 
 void engine_meter_reset_state(EngineMeterState* state) {
@@ -46,6 +65,10 @@ void engine_track_clear(Engine* engine, EngineTrack* track) {
     track->solo = false;
     track->active = true;
     track->name[0] = '\0';
+    track->midi_instrument_enabled = false;
+    track->midi_instrument_preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+    track->midi_instrument_params = engine_instrument_default_params(track->midi_instrument_preset);
+    engine_track_midi_clear_instrument_automation(track);
     engine_eq_free(&track->track_eq);
 }
 
@@ -301,10 +324,8 @@ bool engine_insert_track(Engine* engine, int track_index) {
                 SDL_UnlockMutex(engine->meter_mutex);
             }
         }
-        if (engine->scope_host.tracks) {
-            memmove(&engine->scope_host.tracks[track_index + 1],
-                    &engine->scope_host.tracks[track_index],
-                    (size_t)(engine->track_count - track_index) * sizeof(EngineFxScopeBank));
+        if (!engine_scope_insert_track_bank(engine, track_index)) {
+            return false;
         }
     }
     engine_track_init(&engine->tracks[track_index]);
@@ -447,12 +468,8 @@ bool engine_remove_track(Engine* engine, int track_index) {
                 SDL_UnlockMutex(engine->meter_mutex);
             }
         }
-        if (engine->scope_host.tracks) {
-            memmove(&engine->scope_host.tracks[track_index],
-                    &engine->scope_host.tracks[track_index + 1],
-                    (size_t)(engine->track_count - track_index - 1) * sizeof(EngineFxScopeBank));
-        }
     }
+    engine_scope_remove_track_bank(engine, track_index);
 
     engine->track_count--;
     if (engine->track_count < 0) {
@@ -515,7 +532,6 @@ bool engine_remove_track(Engine* engine, int track_index) {
         }
     }
 
-    engine_scope_reset_track_bank(engine, engine->track_count);
     engine_request_rebuild_sources(engine);
     return true;
 }
@@ -534,6 +550,124 @@ bool engine_track_set_name(Engine* engine, int track_index, const char* name) {
     } else {
         snprintf(track->name, sizeof(track->name), "Track %d", track_index + 1);
     }
+    return true;
+}
+
+bool engine_track_midi_get_instrument_automation_lanes(const Engine* engine,
+                                                       int track_index,
+                                                       const EngineAutomationLane** out_lanes,
+                                                       int* out_lane_count) {
+    if (out_lanes) {
+        *out_lanes = NULL;
+    }
+    if (out_lane_count) {
+        *out_lane_count = 0;
+    }
+    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+        return false;
+    }
+    const EngineTrack* track = &engine->tracks[track_index];
+    if (out_lanes) {
+        *out_lanes = track->midi_instrument_automation_lanes;
+    }
+    if (out_lane_count) {
+        *out_lane_count = track->midi_instrument_automation_lane_count;
+    }
+    return true;
+}
+
+bool engine_track_midi_set_instrument_automation_lanes(Engine* engine,
+                                                       int track_index,
+                                                       const EngineAutomationLane* lanes,
+                                                       int lane_count) {
+    EngineTrack* track = engine_get_track_mutable(engine, track_index);
+    if (!track || lane_count < 0 || (lane_count > 0 && !lanes)) {
+        return false;
+    }
+    for (int i = 0; i < lane_count; ++i) {
+        if (!engine_automation_target_is_instrument_param(lanes[i].target)) {
+            return false;
+        }
+    }
+    engine_track_midi_clear_instrument_automation(track);
+    if (lane_count <= 0) {
+        engine_request_rebuild_sources(engine);
+        return true;
+    }
+    track->midi_instrument_automation_lanes =
+        (EngineAutomationLane*)calloc((size_t)lane_count, sizeof(EngineAutomationLane));
+    if (!track->midi_instrument_automation_lanes) {
+        return false;
+    }
+    track->midi_instrument_automation_lane_capacity = lane_count;
+    track->midi_instrument_automation_lane_count = lane_count;
+    for (int i = 0; i < lane_count; ++i) {
+        engine_automation_lane_init(&track->midi_instrument_automation_lanes[i], lanes[i].target);
+        if (!engine_automation_lane_copy(&lanes[i], &track->midi_instrument_automation_lanes[i])) {
+            engine_track_midi_clear_instrument_automation(track);
+            return false;
+        }
+    }
+    engine_request_rebuild_sources(engine);
+    return true;
+}
+
+static bool engine_track_midi_ensure_instrument_automation_capacity(EngineTrack* track, int needed) {
+    if (!track) {
+        return false;
+    }
+    if (track->midi_instrument_automation_lane_capacity >= needed) {
+        return true;
+    }
+    int new_cap = track->midi_instrument_automation_lane_capacity == 0
+        ? 2
+        : track->midi_instrument_automation_lane_capacity * 2;
+    if (new_cap < needed) {
+        new_cap = needed;
+    }
+    EngineAutomationLane* lanes =
+        (EngineAutomationLane*)realloc(track->midi_instrument_automation_lanes,
+                                       sizeof(EngineAutomationLane) * (size_t)new_cap);
+    if (!lanes) {
+        return false;
+    }
+    track->midi_instrument_automation_lanes = lanes;
+    track->midi_instrument_automation_lane_capacity = new_cap;
+    return true;
+}
+
+bool engine_track_midi_set_instrument_automation_lane_points(Engine* engine,
+                                                             int track_index,
+                                                             EngineAutomationTarget target,
+                                                             const EngineAutomationPoint* points,
+                                                             int count) {
+    if (!engine_automation_target_is_instrument_param(target) || count < 0 || (count > 0 && !points)) {
+        return false;
+    }
+    EngineTrack* track = engine_get_track_mutable(engine, track_index);
+    if (!track) {
+        return false;
+    }
+    EngineAutomationLane* lane = NULL;
+    for (int i = 0; i < track->midi_instrument_automation_lane_count; ++i) {
+        if (track->midi_instrument_automation_lanes[i].target == target) {
+            lane = &track->midi_instrument_automation_lanes[i];
+            break;
+        }
+    }
+    if (!lane) {
+        if (!engine_track_midi_ensure_instrument_automation_capacity(
+                track,
+                track->midi_instrument_automation_lane_count + 1)) {
+            return false;
+        }
+        lane = &track->midi_instrument_automation_lanes[track->midi_instrument_automation_lane_count++];
+        engine_automation_lane_init(lane, target);
+    }
+    if (!engine_automation_lane_set_points(lane, points, count)) {
+        return false;
+    }
+    engine_request_rebuild_sources(engine);
     return true;
 }
 
@@ -574,6 +708,27 @@ bool engine_track_set_solo(Engine* engine, int track_index, bool solo) {
     }
     track->solo = solo;
     engine_request_rebuild_sources(engine);
+    return true;
+}
+
+bool engine_set_record_armed_track(Engine* engine, int track_index) {
+    if (!engine) {
+        return false;
+    }
+    if (track_index >= engine->track_count) {
+        return false;
+    }
+    if (track_index < 0) {
+        track_index = -1;
+    }
+    atomic_store_explicit(&engine->record_armed_track_index, track_index, memory_order_release);
+    if (!engine->device_started || !engine->worker_thread ||
+        !atomic_load_explicit(&engine->worker_running, memory_order_acquire)) {
+        atomic_store_explicit(&engine->rebuild_sources_pending, false, memory_order_release);
+        engine_rebuild_sources(engine);
+    } else {
+        engine_request_rebuild_sources(engine);
+    }
     return true;
 }
 

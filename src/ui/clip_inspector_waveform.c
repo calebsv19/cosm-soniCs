@@ -102,6 +102,9 @@ static void clip_inspector_draw_automation(SDL_Renderer* renderer,
     if (!renderer || !rect || !clip || rect->w <= 0 || rect->h <= 0 || view_frames == 0 || clip_frames == 0) {
         return;
     }
+    if (engine_automation_target_is_instrument_param(target) && clip->kind != ENGINE_CLIP_KIND_MIDI) {
+        return;
+    }
     const EngineAutomationLane* lane = NULL;
     for (int i = 0; i < clip->automation_lane_count; ++i) {
         if (clip->automation_lanes[i].target == target) {

@@ -113,6 +113,12 @@ int main(void) {
     expect(engine_transport_stop(engine), "transport stop failed");
     expect(!engine_transport_is_playing(engine), "transport should report stopped");
 
+    int inserted_track = engine_add_track(engine);
+    expect(inserted_track >= 1, "failed to add teardown track");
+    expect(engine_insert_track(engine, 0), "failed to insert teardown track");
+    expect(engine_remove_track(engine, 0), "failed to remove inserted teardown track");
+    expect(engine_remove_track(engine, inserted_track), "failed to remove teardown track");
+
     engine_destroy(engine);
     (void)unlink(clip_path);
     printf("engine_smoke_test: success\n");

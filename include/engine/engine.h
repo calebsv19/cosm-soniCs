@@ -101,6 +101,7 @@ struct EngineClip {
     struct EngineInstrumentSource* instrument;
     EngineInstrumentPresetId instrument_preset;
     EngineInstrumentParams instrument_params;
+    bool instrument_inherits_track;
     struct AudioMediaClip* media;
     EngineAudioSource* source;
     EngineMidiNoteList midi_notes;
@@ -131,6 +132,12 @@ struct EngineTrack {
     bool solo;
     bool active;
     char name[ENGINE_CLIP_NAME_MAX];
+    bool midi_instrument_enabled;
+    EngineInstrumentPresetId midi_instrument_preset;
+    EngineInstrumentParams midi_instrument_params;
+    EngineAutomationLane* midi_instrument_automation_lanes;
+    int midi_instrument_automation_lane_count;
+    int midi_instrument_automation_lane_capacity;
     EngineEqState track_eq;
 };
 
@@ -276,6 +283,29 @@ bool    engine_clip_set_automation_lanes(Engine* engine,
                                          int lane_count);
 bool    engine_duplicate_clip(Engine* engine, int track_index, int clip_index, uint64_t start_frame_offset, int* out_clip_index);
 bool    engine_track_set_name(Engine* engine, int track_index, const char* name);
+bool    engine_track_midi_instrument_enabled(const Engine* engine, int track_index);
+EngineInstrumentPresetId engine_track_midi_instrument_preset(const Engine* engine, int track_index);
+EngineInstrumentParams engine_track_midi_instrument_params(const Engine* engine, int track_index);
+bool    engine_track_midi_get_instrument_automation_lanes(const Engine* engine,
+                                                          int track_index,
+                                                          const EngineAutomationLane** out_lanes,
+                                                          int* out_lane_count);
+bool    engine_track_midi_set_instrument_preset(Engine* engine,
+                                                int track_index,
+                                                EngineInstrumentPresetId preset);
+bool    engine_track_midi_set_instrument_params(Engine* engine,
+                                                int track_index,
+                                                EngineInstrumentParams params);
+bool    engine_track_midi_set_instrument_enabled(Engine* engine, int track_index, bool enabled);
+bool    engine_track_midi_set_instrument_automation_lanes(Engine* engine,
+                                                          int track_index,
+                                                          const EngineAutomationLane* lanes,
+                                                          int lane_count);
+bool    engine_track_midi_set_instrument_automation_lane_points(Engine* engine,
+                                                                int track_index,
+                                                                EngineAutomationTarget target,
+                                                                const EngineAutomationPoint* points,
+                                                                int count);
 bool    engine_add_clip_segment(Engine* engine, int track_index, const EngineClip* source_clip,
                                 uint64_t source_relative_offset_frames,
                                 uint64_t segment_length_frames,
@@ -304,6 +334,17 @@ bool    engine_clip_midi_set_notes(Engine* engine,
 int     engine_clip_midi_note_count(const EngineClip* clip);
 const EngineMidiNote* engine_clip_midi_notes(const EngineClip* clip);
 EngineInstrumentPresetId engine_clip_midi_instrument_preset(const EngineClip* clip);
+bool    engine_clip_midi_inherits_track_instrument(const EngineClip* clip);
+bool    engine_clip_midi_set_inherits_track_instrument(Engine* engine,
+                                                       int track_index,
+                                                       int clip_index,
+                                                       bool inherits_track);
+EngineInstrumentPresetId engine_clip_midi_effective_instrument_preset(const Engine* engine,
+                                                                      int track_index,
+                                                                      int clip_index);
+EngineInstrumentParams engine_clip_midi_effective_instrument_params(const Engine* engine,
+                                                                    int track_index,
+                                                                    int clip_index);
 bool    engine_clip_midi_set_instrument_preset(Engine* engine,
                                                int track_index,
                                                int clip_index,
@@ -333,6 +374,7 @@ bool    engine_track_apply_no_overlap(Engine* engine,
 bool    engine_track_set_muted(Engine* engine, int track_index, bool muted);
 bool    engine_track_set_solo(Engine* engine, int track_index, bool solo);
 bool    engine_track_set_muted(Engine* engine, int track_index, bool muted);
+bool    engine_set_record_armed_track(Engine* engine, int track_index);
 bool    engine_track_set_gain(Engine* engine, int track_index, float gain);
 bool    engine_track_set_pan(Engine* engine, int track_index, float pan);
 bool    engine_set_master_eq_curve(Engine* engine, const EngineEqCurve* curve);

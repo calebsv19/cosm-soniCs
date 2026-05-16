@@ -236,6 +236,29 @@ bool engine_scope_ensure_track_capacity(Engine* engine, int required_tracks) {
     return true;
 }
 
+bool engine_scope_insert_track_bank(Engine* engine, int track_index) {
+    if (!engine || track_index < 0 || track_index > engine->track_count) {
+        return false;
+    }
+    if (!engine_scope_ensure_track_capacity(engine, engine->track_count + 1)) {
+        return false;
+    }
+    for (int i = 0; i < engine->scope_host.track_capacity; ++i) {
+        engine_scope_reset_track_bank(engine, i);
+    }
+    return true;
+}
+
+void engine_scope_remove_track_bank(Engine* engine, int track_index) {
+    if (!engine || !engine->scope_host.tracks ||
+        track_index < 0 || track_index >= engine->track_count) {
+        return;
+    }
+    for (int i = 0; i < engine->scope_host.track_capacity; ++i) {
+        engine_scope_reset_track_bank(engine, i);
+    }
+}
+
 // Routes scope tap samples from the effects manager into the scope host.
 static void engine_fx_scope_tap_callback(void* user,
                                          bool is_master,

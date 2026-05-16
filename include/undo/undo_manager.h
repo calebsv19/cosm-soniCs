@@ -44,6 +44,11 @@ typedef struct {
     EngineFadeCurve fade_in_curve;
     EngineFadeCurve fade_out_curve;
     float gain;
+    EngineInstrumentPresetId instrument_preset;
+    EngineInstrumentParams instrument_params;
+    bool instrument_inherits_track;
+    EngineMidiNote* midi_notes;
+    int midi_note_count;
 } UndoClipState;
 
 typedef struct {
@@ -146,6 +151,12 @@ typedef struct {
     bool muted_after;
     bool solo_before;
     bool solo_after;
+    bool midi_instrument_enabled_before;
+    bool midi_instrument_enabled_after;
+    EngineInstrumentPresetId midi_instrument_preset_before;
+    EngineInstrumentPresetId midi_instrument_preset_after;
+    EngineInstrumentParams midi_instrument_params_before;
+    EngineInstrumentParams midi_instrument_params_after;
 } UndoTrackSnapshotEdit;
 
 typedef struct {
@@ -206,3 +217,6 @@ bool undo_manager_can_undo(const UndoManager* manager);
 bool undo_manager_can_redo(const UndoManager* manager);
 bool undo_manager_undo(UndoManager* manager, struct AppState* state);
 bool undo_manager_redo(UndoManager* manager, struct AppState* state);
+bool undo_clip_state_from_engine_clip(const EngineClip* clip, int track_index, UndoClipState* out_state);
+bool undo_clip_state_clone(UndoClipState* dst, const UndoClipState* src);
+void undo_clip_state_clear(UndoClipState* state);

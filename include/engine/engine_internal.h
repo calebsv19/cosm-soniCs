@@ -189,6 +189,7 @@ struct Engine {
     atomic_bool worker_running;
     atomic_bool transport_playing;
     atomic_bool rebuild_sources_pending;
+    atomic_int record_armed_track_index;
     RingBuffer command_queue;
     SDL_threadID worker_thread_id; // Tracks the engine worker thread id for render-thread checks.
     bool render_warned_fxm_mutex; // Tracks if fxm_mutex render-thread warning has been emitted.
@@ -295,6 +296,10 @@ void engine_register_fx_scope_tap(Engine* engine);
 void engine_scope_write_gr(Engine* engine, bool is_master, int track_index, FxInstId id, float gr_db);
 // Ensures the scope host has capacity for the requested track count.
 bool engine_scope_ensure_track_capacity(Engine* engine, int required_tracks);
+// Clears transient scope bank samples when inserting a track before engine->track_count is incremented.
+bool engine_scope_insert_track_bank(Engine* engine, int track_index);
+// Clears transient scope bank samples when removing a track before engine->track_count is decremented.
+void engine_scope_remove_track_bank(Engine* engine, int track_index);
 // Allocates and initializes the scope host for the engine.
 bool engine_scope_host_init(Engine* engine, int track_capacity);
 // Releases resources owned by the engine scope host.

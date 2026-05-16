@@ -14,6 +14,7 @@ static SessionClip* session_track_append_clip(SessionTrack* track) {
     memset(clip, 0, sizeof(*clip));
     clip->instrument_preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
     clip->instrument_params = engine_instrument_default_params(clip->instrument_preset);
+    clip->instrument_inherits_track = false;
     track->clip_count = new_count;
     return clip;
 }
@@ -84,23 +85,13 @@ static bool parse_session_instrument_params(JsonReader* r, SessionClip* clip) {
         if (!json_parse_string(r, param_key, sizeof(param_key)) || !json_expect(r, ':')) {
             return false;
         }
-        double val = 0.0;
-        if (strcmp(param_key, "level") == 0 ||
-            strcmp(param_key, "tone") == 0 ||
-            strcmp(param_key, "attack_ms") == 0 ||
-            strcmp(param_key, "release_ms") == 0) {
+        EngineInstrumentParamId param = ENGINE_INSTRUMENT_PARAM_LEVEL;
+        if (engine_instrument_param_from_id_string(param_key, &param)) {
+            double val = 0.0;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
-            if (strcmp(param_key, "level") == 0) {
-                params.level = (float)val;
-            } else if (strcmp(param_key, "tone") == 0) {
-                params.tone = (float)val;
-            } else if (strcmp(param_key, "attack_ms") == 0) {
-                params.attack_ms = (float)val;
-            } else {
-                params.release_ms = (float)val;
-            }
+            params = engine_instrument_params_set(clip->instrument_preset, params, param, (float)val);
         } else if (!json_skip_value(r)) {
             return false;
         }
@@ -312,9 +303,8 @@ static bool parse_session_automation_points(JsonReader* r, SessionAutomationLane
     return true;
 }
 
-// Parses automation lanes into a clip.
-static bool parse_session_automation(JsonReader* r, SessionClip* clip) {
-    if (!r || !clip) {
+bool parse_session_automation_lanes(JsonReader* r, SessionAutomationLane** out_lanes, int* out_lane_count) {
+    if (!r || !out_lanes || !out_lane_count) {
         return false;
     }
     if (!json_expect(r, '[')) {
@@ -329,17 +319,17 @@ static bool parse_session_automation(JsonReader* r, SessionClip* clip) {
         if (!json_expect(r, '{')) {
             return false;
         }
-        int new_count = clip->automation_lane_count + 1;
-        SessionAutomationLane* resized = (SessionAutomationLane*)realloc(clip->automation_lanes,
+        int new_count = *out_lane_count + 1;
+        SessionAutomationLane* resized = (SessionAutomationLane*)realloc(*out_lanes,
                                                                          (size_t)new_count * sizeof(SessionAutomationLane));
         if (!resized) {
             return false;
         }
-        clip->automation_lanes = resized;
-        SessionAutomationLane* lane = &clip->automation_lanes[new_count - 1];
+        *out_lanes = resized;
+        SessionAutomationLane* lane = &(*out_lanes)[new_count - 1];
         memset(lane, 0, sizeof(*lane));
         lane->target = ENGINE_AUTOMATION_TARGET_VOLUME;
-        clip->automation_lane_count = new_count;
+        *out_lane_count = new_count;
         while (true) {
             json_skip_whitespace(r);
             if (r->pos < r->length && r->data[r->pos] == '}') {
@@ -387,6 +377,14 @@ static bool parse_session_automation(JsonReader* r, SessionClip* clip) {
         }
     }
     return true;
+}
+
+// Parses automation lanes into a clip.
+static bool parse_session_automation(JsonReader* r, SessionClip* clip) {
+    if (!r || !clip) {
+        return false;
+    }
+    return parse_session_automation_lanes(r, &clip->automation_lanes, &clip->automation_lane_count);
 }
 
 bool parse_session_track_clips(JsonReader* r, SessionTrack* track) {
@@ -487,6 +485,10 @@ bool parse_session_track_clips(JsonReader* r, SessionTrack* track) {
                 clip->fade_out_curve = (EngineFadeCurve)curve;
             } else if (strcmp(clip_key, "instrument_preset") == 0) {
                 if (!parse_session_instrument_preset(r, clip)) {
+                    return false;
+                }
+            } else if (strcmp(clip_key, "instrument_inherits_track") == 0) {
+                if (!json_parse_bool(r, &clip->instrument_inherits_track)) {
                     return false;
                 }
             } else if (strcmp(clip_key, "instrument_params") == 0) {

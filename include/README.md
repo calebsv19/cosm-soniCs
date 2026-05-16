@@ -5,6 +5,8 @@ Purpose: Public headers that expose the DAW engine, UI, and platform APIs.
 ## Files
 - `app_state.h`: Central structure describing UI panes, drag state, engine pointers, and shared runtime data.
 - `audio_device.h`: SDL-backed device wrapper (`audio_device_*` calls) that opens, starts, and stops the playback stream.
+- `audio_capture_device.h`: SDL-backed microphone/input wrapper (`audio_capture_device_*` calls) that opens default or named capture devices for future audio-region recording.
+- `app/audio_recording.h`: DAW-local recording coordinator that drains capture callback frames into a take buffer, finalizes recorded WAV files, and inserts them as normal audio clips.
 - `audio_queue.h`: Lock-free float ring buffer facade; see `audio_queue_*` helpers for pushing/pulling interleaved frames.
 - `audio/media_cache.h`: Simple decoded-audio cache so clips can share buffers (used by the engine when loading media).
 - `config.h`: Config loader surface with `config_set_defaults` and `config_load_file`.

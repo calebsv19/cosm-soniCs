@@ -189,6 +189,18 @@ EngineInstrumentPresetId engine_instrument_preset_clamp(EngineInstrumentPresetId
 
 const char* engine_instrument_preset_id_string(EngineInstrumentPresetId preset) {
     switch (engine_instrument_preset_clamp(preset)) {
+    case ENGINE_INSTRUMENT_PRESET_SYNTH_LAB:
+        return "synth_lab";
+    case ENGINE_INSTRUMENT_PRESET_SOFT_PAD:
+        return "soft_pad";
+    case ENGINE_INSTRUMENT_PRESET_PLUCK:
+        return "pluck";
+    case ENGINE_INSTRUMENT_PRESET_BRIGHT_LEAD:
+        return "bright_lead";
+    case ENGINE_INSTRUMENT_PRESET_WARM_KEYS:
+        return "warm_keys";
+    case ENGINE_INSTRUMENT_PRESET_SUB_DRONE:
+        return "sub_drone";
     case ENGINE_INSTRUMENT_PRESET_SOFT_SQUARE:
         return "soft_square";
     case ENGINE_INSTRUMENT_PRESET_SAW_LEAD:
@@ -203,6 +215,18 @@ const char* engine_instrument_preset_id_string(EngineInstrumentPresetId preset) 
 
 const char* engine_instrument_preset_display_name(EngineInstrumentPresetId preset) {
     switch (engine_instrument_preset_clamp(preset)) {
+    case ENGINE_INSTRUMENT_PRESET_SYNTH_LAB:
+        return "Custom Synth";
+    case ENGINE_INSTRUMENT_PRESET_SOFT_PAD:
+        return "Soft Pad";
+    case ENGINE_INSTRUMENT_PRESET_PLUCK:
+        return "Pluck";
+    case ENGINE_INSTRUMENT_PRESET_BRIGHT_LEAD:
+        return "Bright Lead";
+    case ENGINE_INSTRUMENT_PRESET_WARM_KEYS:
+        return "Warm Keys";
+    case ENGINE_INSTRUMENT_PRESET_SUB_DRONE:
+        return "Sub Drone";
     case ENGINE_INSTRUMENT_PRESET_SOFT_SQUARE:
         return "Soft Square";
     case ENGINE_INSTRUMENT_PRESET_SAW_LEAD:
@@ -212,6 +236,48 @@ const char* engine_instrument_preset_display_name(EngineInstrumentPresetId prese
     case ENGINE_INSTRUMENT_PRESET_PURE_SINE:
     default:
         return "Pure Sine";
+    }
+}
+
+EngineInstrumentPresetCategoryId engine_instrument_preset_category(EngineInstrumentPresetId preset) {
+    switch (engine_instrument_preset_clamp(preset)) {
+    case ENGINE_INSTRUMENT_PRESET_SIMPLE_BASS:
+    case ENGINE_INSTRUMENT_PRESET_SUB_DRONE:
+        return ENGINE_INSTRUMENT_PRESET_CATEGORY_BASS;
+    case ENGINE_INSTRUMENT_PRESET_SAW_LEAD:
+    case ENGINE_INSTRUMENT_PRESET_BRIGHT_LEAD:
+        return ENGINE_INSTRUMENT_PRESET_CATEGORY_LEAD;
+    case ENGINE_INSTRUMENT_PRESET_WARM_KEYS:
+        return ENGINE_INSTRUMENT_PRESET_CATEGORY_KEYS;
+    case ENGINE_INSTRUMENT_PRESET_SOFT_PAD:
+        return ENGINE_INSTRUMENT_PRESET_CATEGORY_PADS;
+    case ENGINE_INSTRUMENT_PRESET_PLUCK:
+        return ENGINE_INSTRUMENT_PRESET_CATEGORY_PLUCK;
+    case ENGINE_INSTRUMENT_PRESET_SOFT_SQUARE:
+    case ENGINE_INSTRUMENT_PRESET_SYNTH_LAB:
+    case ENGINE_INSTRUMENT_PRESET_PURE_SINE:
+    default:
+        return ENGINE_INSTRUMENT_PRESET_CATEGORY_BASIC;
+    }
+}
+
+const char* engine_instrument_preset_category_display_name(EngineInstrumentPresetCategoryId category) {
+    switch (category) {
+    case ENGINE_INSTRUMENT_PRESET_CATEGORY_BASIC:
+        return "Basic";
+    case ENGINE_INSTRUMENT_PRESET_CATEGORY_BASS:
+        return "Bass";
+    case ENGINE_INSTRUMENT_PRESET_CATEGORY_LEAD:
+        return "Lead";
+    case ENGINE_INSTRUMENT_PRESET_CATEGORY_KEYS:
+        return "Keys";
+    case ENGINE_INSTRUMENT_PRESET_CATEGORY_PADS:
+        return "Pads";
+    case ENGINE_INSTRUMENT_PRESET_CATEGORY_PLUCK:
+        return "Pluck";
+    case ENGINE_INSTRUMENT_PRESET_CATEGORY_COUNT:
+    default:
+        return "";
     }
 }
 
@@ -233,8 +299,34 @@ int engine_instrument_preset_count(void) {
     return ENGINE_INSTRUMENT_PRESET_COUNT;
 }
 
+int engine_instrument_preset_category_count(void) {
+    return ENGINE_INSTRUMENT_PRESET_CATEGORY_COUNT;
+}
+
 int engine_instrument_param_count(void) {
     return ENGINE_INSTRUMENT_PARAM_COUNT;
+}
+
+int engine_instrument_param_group_count(void) {
+    return ENGINE_INSTRUMENT_PARAM_GROUP_COUNT;
+}
+
+const char* engine_instrument_param_group_display_name(EngineInstrumentParamGroupId group) {
+    switch (group) {
+    case ENGINE_INSTRUMENT_PARAM_GROUP_OUTPUT:
+        return "Output";
+    case ENGINE_INSTRUMENT_PARAM_GROUP_OSCILLATOR:
+        return "Osc";
+    case ENGINE_INSTRUMENT_PARAM_GROUP_TONE:
+        return "Tone";
+    case ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE:
+        return "Env";
+    case ENGINE_INSTRUMENT_PARAM_GROUP_MOD:
+        return "Mod";
+    case ENGINE_INSTRUMENT_PARAM_GROUP_COUNT:
+    default:
+        return "";
+    }
 }
 
 bool engine_instrument_param_spec(EngineInstrumentParamId param, EngineInstrumentParamSpec* out_spec) {
@@ -243,16 +335,52 @@ bool engine_instrument_param_spec(EngineInstrumentParamId param, EngineInstrumen
     }
     switch (param) {
     case ENGINE_INSTRUMENT_PARAM_LEVEL:
-        *out_spec = (EngineInstrumentParamSpec){"level", "Level", "", 0.0f, 1.5f, 1.0f};
+        *out_spec = (EngineInstrumentParamSpec){"level", "Level", "", 0.0f, 1.5f, 1.0f,
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_OUTPUT, 0};
         return true;
     case ENGINE_INSTRUMENT_PARAM_TONE:
-        *out_spec = (EngineInstrumentParamSpec){"tone", "Tone", "", 0.0f, 1.0f, 0.5f};
+        *out_spec = (EngineInstrumentParamSpec){"tone", "Tone", "", 0.0f, 1.0f, 0.5f,
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_TONE, 0};
         return true;
     case ENGINE_INSTRUMENT_PARAM_ATTACK_MS:
-        *out_spec = (EngineInstrumentParamSpec){"attack_ms", "Attack", "ms", 0.0f, 250.0f, 4.0f};
+        *out_spec = (EngineInstrumentParamSpec){"attack_ms", "Attack", "ms", 0.0f, 250.0f, 4.0f,
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE, 0};
         return true;
     case ENGINE_INSTRUMENT_PARAM_RELEASE_MS:
-        *out_spec = (EngineInstrumentParamSpec){"release_ms", "Release", "ms", 0.0f, 500.0f, 18.0f};
+        *out_spec = (EngineInstrumentParamSpec){"release_ms", "Release", "ms", 0.0f, 500.0f, 18.0f,
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE, 3};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_DECAY_MS:
+        *out_spec = (EngineInstrumentParamSpec){"decay_ms", "Decay", "ms", 0.0f, 800.0f, 120.0f,
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE, 1};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_SUSTAIN:
+        *out_spec = (EngineInstrumentParamSpec){"sustain", "Sustain", "", 0.0f, 1.0f, 0.78f,
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE, 2};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_OSC_MIX:
+        *out_spec = (EngineInstrumentParamSpec){"osc_mix", "Osc Mix", "", 0.0f, 1.0f, 0.45f,
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_OSCILLATOR, 0};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_OSC2_DETUNE:
+        *out_spec = (EngineInstrumentParamSpec){"osc2_detune", "Detune", "ct", -24.0f, 24.0f, 7.0f,
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_OSCILLATOR, 1};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_SUB_MIX:
+        *out_spec = (EngineInstrumentParamSpec){"sub_mix", "Sub", "", 0.0f, 1.0f, 0.22f,
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_OSCILLATOR, 2};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_DRIVE:
+        *out_spec = (EngineInstrumentParamSpec){"drive", "Drive", "", 0.0f, 1.0f, 0.18f,
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_TONE, 1};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_VIBRATO_RATE:
+        *out_spec = (EngineInstrumentParamSpec){"vibrato_rate", "Rate", "Hz", 0.0f, 12.0f, 5.2f,
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_MOD, 0};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_VIBRATO_DEPTH:
+        *out_spec = (EngineInstrumentParamSpec){"vibrato_depth", "Depth", "ct", 0.0f, 60.0f, 0.0f,
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_MOD, 1};
         return true;
     case ENGINE_INSTRUMENT_PARAM_COUNT:
     default:
@@ -260,9 +388,150 @@ bool engine_instrument_param_spec(EngineInstrumentParamId param, EngineInstrumen
     }
 }
 
-EngineInstrumentParams engine_instrument_default_params(EngineInstrumentPresetId preset) {
+bool engine_instrument_param_from_id_string(const char* id, EngineInstrumentParamId* out_param) {
+    if (!id || !out_param) {
+        return false;
+    }
+    for (int i = 0; i < ENGINE_INSTRUMENT_PARAM_COUNT; ++i) {
+        EngineInstrumentParamSpec spec = {0};
+        if (engine_instrument_param_spec((EngineInstrumentParamId)i, &spec) &&
+            spec.id && strcmp(id, spec.id) == 0) {
+            *out_param = (EngineInstrumentParamId)i;
+            return true;
+        }
+    }
+    return false;
+}
+
+int engine_instrument_preset_param_count(EngineInstrumentPresetId preset) {
     (void)preset;
-    return (EngineInstrumentParams){1.0f, 0.5f, 4.0f, 18.0f};
+    return ENGINE_INSTRUMENT_PARAM_COUNT;
+}
+
+bool engine_instrument_preset_param_id_at(EngineInstrumentPresetId preset,
+                                          int index,
+                                          EngineInstrumentParamId* out_param) {
+    (void)preset;
+    if (!out_param || index < 0 || index >= ENGINE_INSTRUMENT_PARAM_COUNT) {
+        return false;
+    }
+    *out_param = (EngineInstrumentParamId)index;
+    return true;
+}
+
+EngineInstrumentParams engine_instrument_default_params(EngineInstrumentPresetId preset) {
+    EngineInstrumentParams params = {
+        .level = 1.0f,
+        .tone = 0.5f,
+        .attack_ms = 4.0f,
+        .release_ms = 18.0f,
+        .decay_ms = 120.0f,
+        .sustain = 1.0f,
+        .osc_mix = 0.0f,
+        .osc2_detune = 0.0f,
+        .sub_mix = 0.0f,
+        .drive = 0.0f,
+        .vibrato_rate = 5.2f,
+        .vibrato_depth = 0.0f
+    };
+    switch (engine_instrument_preset_clamp(preset)) {
+    case ENGINE_INSTRUMENT_PRESET_SAW_LEAD:
+        params.level = 0.72f;
+        params.tone = 0.64f;
+        params.attack_ms = 4.0f;
+        params.release_ms = 60.0f;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SIMPLE_BASS:
+        params.level = 0.86f;
+        params.tone = 0.30f;
+        params.attack_ms = 8.0f;
+        params.release_ms = 100.0f;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SYNTH_LAB:
+        params.level = 0.72f;
+        params.tone = 0.54f;
+        params.attack_ms = 8.0f;
+        params.decay_ms = 180.0f;
+        params.sustain = 0.68f;
+        params.release_ms = 140.0f;
+        params.osc_mix = 0.42f;
+        params.osc2_detune = 5.0f;
+        params.sub_mix = 0.16f;
+        params.drive = 0.12f;
+        params.vibrato_rate = 5.2f;
+        params.vibrato_depth = 4.0f;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SOFT_PAD:
+        params.level = 0.62f;
+        params.tone = 0.44f;
+        params.attack_ms = 160.0f;
+        params.decay_ms = 420.0f;
+        params.sustain = 0.86f;
+        params.release_ms = 420.0f;
+        params.osc_mix = 0.22f;
+        params.osc2_detune = 4.0f;
+        params.sub_mix = 0.10f;
+        params.drive = 0.02f;
+        params.vibrato_depth = 3.0f;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_PLUCK:
+        params.level = 0.72f;
+        params.tone = 0.58f;
+        params.attack_ms = 2.0f;
+        params.decay_ms = 150.0f;
+        params.sustain = 0.14f;
+        params.release_ms = 110.0f;
+        params.osc_mix = 0.28f;
+        params.osc2_detune = 2.0f;
+        params.drive = 0.04f;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_BRIGHT_LEAD:
+        params.level = 0.64f;
+        params.tone = 0.72f;
+        params.attack_ms = 3.0f;
+        params.decay_ms = 150.0f;
+        params.sustain = 0.66f;
+        params.release_ms = 150.0f;
+        params.osc_mix = 0.64f;
+        params.osc2_detune = 7.0f;
+        params.sub_mix = 0.04f;
+        params.drive = 0.14f;
+        params.vibrato_depth = 5.0f;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_WARM_KEYS:
+        params.level = 0.70f;
+        params.tone = 0.38f;
+        params.attack_ms = 12.0f;
+        params.decay_ms = 240.0f;
+        params.sustain = 0.58f;
+        params.release_ms = 220.0f;
+        params.osc_mix = 0.14f;
+        params.osc2_detune = -3.0f;
+        params.sub_mix = 0.08f;
+        params.drive = 0.03f;
+        params.vibrato_depth = 1.5f;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SUB_DRONE:
+        params.level = 0.60f;
+        params.tone = 0.22f;
+        params.attack_ms = 120.0f;
+        params.decay_ms = 520.0f;
+        params.sustain = 0.92f;
+        params.release_ms = 480.0f;
+        params.osc_mix = 0.10f;
+        params.osc2_detune = -5.0f;
+        params.sub_mix = 0.70f;
+        params.drive = 0.06f;
+        params.vibrato_rate = 2.2f;
+        params.vibrato_depth = 2.0f;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_PURE_SINE:
+    case ENGINE_INSTRUMENT_PRESET_SOFT_SQUARE:
+    case ENGINE_INSTRUMENT_PRESET_COUNT:
+    default:
+        break;
+    }
+    return params;
 }
 
 EngineInstrumentParams engine_instrument_params_sanitize(EngineInstrumentPresetId preset,
@@ -276,6 +545,22 @@ EngineInstrumentParams engine_instrument_params_sanitize(EngineInstrumentPresetI
     if (params.attack_ms > 250.0f) params.attack_ms = 250.0f;
     if (params.release_ms < 0.0f) params.release_ms = 0.0f;
     if (params.release_ms > 500.0f) params.release_ms = 500.0f;
+    if (params.decay_ms < 0.0f) params.decay_ms = 0.0f;
+    if (params.decay_ms > 800.0f) params.decay_ms = 800.0f;
+    if (params.sustain < 0.0f) params.sustain = 0.0f;
+    if (params.sustain > 1.0f) params.sustain = 1.0f;
+    if (params.osc_mix < 0.0f) params.osc_mix = 0.0f;
+    if (params.osc_mix > 1.0f) params.osc_mix = 1.0f;
+    if (params.osc2_detune < -24.0f) params.osc2_detune = -24.0f;
+    if (params.osc2_detune > 24.0f) params.osc2_detune = 24.0f;
+    if (params.sub_mix < 0.0f) params.sub_mix = 0.0f;
+    if (params.sub_mix > 1.0f) params.sub_mix = 1.0f;
+    if (params.drive < 0.0f) params.drive = 0.0f;
+    if (params.drive > 1.0f) params.drive = 1.0f;
+    if (params.vibrato_rate < 0.0f) params.vibrato_rate = 0.0f;
+    if (params.vibrato_rate > 12.0f) params.vibrato_rate = 12.0f;
+    if (params.vibrato_depth < 0.0f) params.vibrato_depth = 0.0f;
+    if (params.vibrato_depth > 60.0f) params.vibrato_depth = 60.0f;
     return params;
 }
 
@@ -289,6 +574,22 @@ float engine_instrument_params_get(EngineInstrumentParams params, EngineInstrume
         return params.attack_ms;
     case ENGINE_INSTRUMENT_PARAM_RELEASE_MS:
         return params.release_ms;
+    case ENGINE_INSTRUMENT_PARAM_DECAY_MS:
+        return params.decay_ms;
+    case ENGINE_INSTRUMENT_PARAM_SUSTAIN:
+        return params.sustain;
+    case ENGINE_INSTRUMENT_PARAM_OSC_MIX:
+        return params.osc_mix;
+    case ENGINE_INSTRUMENT_PARAM_OSC2_DETUNE:
+        return params.osc2_detune;
+    case ENGINE_INSTRUMENT_PARAM_SUB_MIX:
+        return params.sub_mix;
+    case ENGINE_INSTRUMENT_PARAM_DRIVE:
+        return params.drive;
+    case ENGINE_INSTRUMENT_PARAM_VIBRATO_RATE:
+        return params.vibrato_rate;
+    case ENGINE_INSTRUMENT_PARAM_VIBRATO_DEPTH:
+        return params.vibrato_depth;
     case ENGINE_INSTRUMENT_PARAM_COUNT:
     default:
         return 0.0f;
@@ -312,6 +613,30 @@ EngineInstrumentParams engine_instrument_params_set(EngineInstrumentPresetId pre
     case ENGINE_INSTRUMENT_PARAM_RELEASE_MS:
         params.release_ms = value;
         break;
+    case ENGINE_INSTRUMENT_PARAM_DECAY_MS:
+        params.decay_ms = value;
+        break;
+    case ENGINE_INSTRUMENT_PARAM_SUSTAIN:
+        params.sustain = value;
+        break;
+    case ENGINE_INSTRUMENT_PARAM_OSC_MIX:
+        params.osc_mix = value;
+        break;
+    case ENGINE_INSTRUMENT_PARAM_OSC2_DETUNE:
+        params.osc2_detune = value;
+        break;
+    case ENGINE_INSTRUMENT_PARAM_SUB_MIX:
+        params.sub_mix = value;
+        break;
+    case ENGINE_INSTRUMENT_PARAM_DRIVE:
+        params.drive = value;
+        break;
+    case ENGINE_INSTRUMENT_PARAM_VIBRATO_RATE:
+        params.vibrato_rate = value;
+        break;
+    case ENGINE_INSTRUMENT_PARAM_VIBRATO_DEPTH:
+        params.vibrato_depth = value;
+        break;
     case ENGINE_INSTRUMENT_PARAM_COUNT:
     default:
         break;
@@ -326,6 +651,121 @@ EngineInstrumentPresetId engine_clip_midi_instrument_preset(const EngineClip* cl
 EngineInstrumentParams engine_clip_midi_instrument_params(const EngineClip* clip) {
     return clip ? engine_instrument_params_sanitize(clip->instrument_preset, clip->instrument_params)
                 : engine_instrument_default_params(ENGINE_INSTRUMENT_PRESET_PURE_SINE);
+}
+
+bool engine_clip_midi_inherits_track_instrument(const EngineClip* clip) {
+    return clip ? clip->instrument_inherits_track : false;
+}
+
+bool engine_track_midi_instrument_enabled(const Engine* engine, int track_index) {
+    (void)engine;
+    (void)track_index;
+    return false;
+}
+
+EngineInstrumentPresetId engine_track_midi_instrument_preset(const Engine* engine, int track_index) {
+    (void)engine;
+    (void)track_index;
+    return ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+}
+
+EngineInstrumentParams engine_track_midi_instrument_params(const Engine* engine, int track_index) {
+    (void)engine;
+    (void)track_index;
+    return engine_instrument_default_params(ENGINE_INSTRUMENT_PRESET_PURE_SINE);
+}
+
+bool engine_track_midi_set_instrument_preset(Engine* engine,
+                                             int track_index,
+                                             EngineInstrumentPresetId preset) {
+    (void)engine;
+    (void)track_index;
+    (void)preset;
+    return true;
+}
+
+bool engine_track_midi_set_instrument_params(Engine* engine,
+                                             int track_index,
+                                             EngineInstrumentParams params) {
+    (void)engine;
+    (void)track_index;
+    (void)params;
+    return true;
+}
+
+bool engine_track_midi_set_instrument_enabled(Engine* engine, int track_index, bool enabled) {
+    (void)engine;
+    (void)track_index;
+    (void)enabled;
+    return true;
+}
+
+bool engine_track_midi_get_instrument_automation_lanes(const Engine* engine,
+                                                       int track_index,
+                                                       const EngineAutomationLane** out_lanes,
+                                                       int* out_lane_count) {
+    (void)engine;
+    (void)track_index;
+    if (out_lanes) {
+        *out_lanes = NULL;
+    }
+    if (out_lane_count) {
+        *out_lane_count = 0;
+    }
+    return true;
+}
+
+bool engine_track_midi_set_instrument_automation_lanes(Engine* engine,
+                                                       int track_index,
+                                                       const EngineAutomationLane* lanes,
+                                                       int lane_count) {
+    (void)engine;
+    (void)track_index;
+    (void)lanes;
+    (void)lane_count;
+    return true;
+}
+
+bool engine_track_midi_set_instrument_automation_lane_points(Engine* engine,
+                                                             int track_index,
+                                                             EngineAutomationTarget target,
+                                                             const EngineAutomationPoint* points,
+                                                             int count) {
+    (void)engine;
+    (void)track_index;
+    (void)target;
+    (void)points;
+    (void)count;
+    return true;
+}
+
+bool engine_clip_midi_set_inherits_track_instrument(Engine* engine,
+                                                    int track_index,
+                                                    int clip_index,
+                                                    bool inherits_track) {
+    (void)engine;
+    (void)track_index;
+    (void)clip_index;
+    (void)inherits_track;
+    return true;
+}
+
+EngineInstrumentPresetId engine_clip_midi_effective_instrument_preset(const Engine* engine,
+                                                                      int track_index,
+                                                                      int clip_index) {
+    (void)engine;
+    (void)track_index;
+    (void)clip_index;
+    return ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+}
+
+EngineInstrumentParams engine_clip_midi_effective_instrument_params(const Engine* engine,
+                                                                    int track_index,
+                                                                    int clip_index) {
+    (void)engine;
+    (void)track_index;
+    (void)clip_index;
+    return engine_instrument_default_params(ENGINE_INSTRUMENT_PRESET_PURE_SINE);
 }
 
 bool engine_clip_midi_set_instrument_preset(Engine* engine,
@@ -515,6 +955,216 @@ const TimeSignatureEvent* time_signature_map_event_at_beat(const TimeSignatureMa
     return NULL;
 }
 
+static bool write_replaced_file(const char* source_path,
+                                const char* target_path,
+                                const char* needle,
+                                const char* replacement) {
+    FILE* source = fopen(source_path, "rb");
+    if (!source) {
+        return false;
+    }
+    if (fseek(source, 0, SEEK_END) != 0) {
+        fclose(source);
+        return false;
+    }
+    long size = ftell(source);
+    if (size < 0 || fseek(source, 0, SEEK_SET) != 0) {
+        fclose(source);
+        return false;
+    }
+    char* data = (char*)malloc((size_t)size + 1u);
+    if (!data) {
+        fclose(source);
+        return false;
+    }
+    size_t read_count = fread(data, 1, (size_t)size, source);
+    fclose(source);
+    if (read_count != (size_t)size) {
+        free(data);
+        return false;
+    }
+    data[size] = '\0';
+
+    char* match = strstr(data, needle);
+    if (!match) {
+        free(data);
+        return false;
+    }
+    size_t prefix_len = (size_t)(match - data);
+    size_t needle_len = strlen(needle);
+    size_t replacement_len = strlen(replacement);
+    size_t suffix_len = (size_t)size - prefix_len - needle_len;
+    size_t out_len = prefix_len + replacement_len + suffix_len;
+    char* out = (char*)malloc(out_len + 1u);
+    if (!out) {
+        free(data);
+        return false;
+    }
+    memcpy(out, data, prefix_len);
+    memcpy(out + prefix_len, replacement, replacement_len);
+    memcpy(out + prefix_len + replacement_len, match + needle_len, suffix_len);
+    out[out_len] = '\0';
+
+    FILE* target = fopen(target_path, "wb");
+    if (!target) {
+        free(out);
+        free(data);
+        return false;
+    }
+    size_t write_count = fwrite(out, 1, out_len, target);
+    fclose(target);
+    free(out);
+    free(data);
+    return write_count == out_len;
+}
+
+static int run_factory_preset_session_matrix_test(void) {
+    const char* path = "build/tests/factory_presets_session.json";
+    SessionDocument doc;
+    session_document_init(&doc);
+    doc.engine.sample_rate = 48000;
+    doc.engine.block_size = 128;
+    doc.track_count = 1;
+    doc.tracks = (SessionTrack*)calloc(1, sizeof(SessionTrack));
+    if (!doc.tracks) {
+        SDL_Log("session_serialization_test: failed to allocate preset matrix track");
+        session_document_free(&doc);
+        return 20;
+    }
+    SessionTrack* track = &doc.tracks[0];
+    strncpy(track->name, "Factory Presets", sizeof(track->name) - 1);
+    track->gain = 1.0f;
+    track->midi_instrument_enabled = true;
+    track->midi_instrument_preset = ENGINE_INSTRUMENT_PRESET_SOFT_PAD;
+    track->midi_instrument_params = engine_instrument_default_params(track->midi_instrument_preset);
+    track->midi_instrument_params.level = 0.61f;
+    track->midi_instrument_params.tone = 0.37f;
+    track->clip_count = ENGINE_INSTRUMENT_PRESET_COUNT;
+    track->clips = (SessionClip*)calloc((size_t)track->clip_count, sizeof(SessionClip));
+    if (!track->clips) {
+        SDL_Log("session_serialization_test: failed to allocate preset matrix clips");
+        session_document_free(&doc);
+        return 21;
+    }
+
+    for (int i = 0; i < track->clip_count; ++i) {
+        EngineInstrumentPresetId preset = (EngineInstrumentPresetId)i;
+        SessionClip* clip = &track->clips[i];
+        clip->kind = ENGINE_CLIP_KIND_MIDI;
+        snprintf(clip->name, sizeof(clip->name), "Preset %d", i);
+        clip->start_frame = (uint64_t)i * 48000u;
+        clip->duration_frames = 48000;
+        clip->fade_in_curve = ENGINE_FADE_CURVE_LINEAR;
+        clip->fade_out_curve = ENGINE_FADE_CURVE_LINEAR;
+        clip->gain = 1.0f;
+        clip->instrument_preset = preset;
+        clip->instrument_params = engine_instrument_default_params(preset);
+        clip->instrument_inherits_track = (i == 0);
+        clip->instrument_params.level = 0.50f + 0.03f * (float)i;
+        clip->instrument_params.tone = 0.20f + 0.04f * (float)i;
+        clip->instrument_params.attack_ms = 2.0f + (float)i;
+        clip->instrument_params.release_ms = 40.0f + 3.0f * (float)i;
+        clip->midi_note_count = 1;
+        clip->midi_notes = (EngineMidiNote*)calloc(1, sizeof(EngineMidiNote));
+        if (!clip->midi_notes) {
+            SDL_Log("session_serialization_test: failed to allocate preset matrix note");
+            session_document_free(&doc);
+            return 22;
+        }
+        clip->midi_notes[0] = (EngineMidiNote){0, 12000, (uint8_t)(48 + i), 0.7f};
+    }
+
+    if (!session_document_write_file(&doc, path)) {
+        SDL_Log("session_serialization_test: failed to write preset matrix");
+        session_document_free(&doc);
+        return 23;
+    }
+
+    SessionDocument loaded;
+    session_document_init(&loaded);
+    if (!session_document_read_file(path, &loaded)) {
+        SDL_Log("session_serialization_test: failed to read preset matrix");
+        session_document_free(&doc);
+        session_document_free(&loaded);
+        return 24;
+    }
+    if (loaded.track_count != 1 ||
+        loaded.tracks[0].clip_count != ENGINE_INSTRUMENT_PRESET_COUNT) {
+        SDL_Log("session_serialization_test: preset matrix count mismatch");
+        session_document_free(&doc);
+        session_document_free(&loaded);
+        return 25;
+    }
+    if (!loaded.tracks[0].midi_instrument_enabled ||
+        loaded.tracks[0].midi_instrument_preset != ENGINE_INSTRUMENT_PRESET_SOFT_PAD ||
+        fabsf(loaded.tracks[0].midi_instrument_params.level - 0.61f) > 0.01f ||
+        fabsf(loaded.tracks[0].midi_instrument_params.tone - 0.37f) > 0.01f) {
+        SDL_Log("session_serialization_test: track MIDI instrument default mismatch");
+        session_document_free(&doc);
+        session_document_free(&loaded);
+        return 26;
+    }
+    for (int i = 0; i < ENGINE_INSTRUMENT_PRESET_COUNT; ++i) {
+        const SessionClip* clip = &loaded.tracks[0].clips[i];
+        if (clip->kind != ENGINE_CLIP_KIND_MIDI ||
+            clip->instrument_preset != (EngineInstrumentPresetId)i ||
+            clip->instrument_inherits_track != (i == 0) ||
+            fabsf(clip->instrument_params.level - (0.50f + 0.03f * (float)i)) > 0.01f ||
+            fabsf(clip->instrument_params.tone - (0.20f + 0.04f * (float)i)) > 0.01f ||
+            fabsf(clip->instrument_params.attack_ms - (2.0f + (float)i)) > 0.01f ||
+            fabsf(clip->instrument_params.release_ms - (40.0f + 3.0f * (float)i)) > 0.01f ||
+            clip->midi_note_count != 1 ||
+            !clip->midi_notes ||
+            clip->midi_notes[0].note != (uint8_t)(48 + i)) {
+            SDL_Log("session_serialization_test: preset matrix clip %d mismatch", i);
+            session_document_free(&doc);
+            session_document_free(&loaded);
+            return 27;
+        }
+    }
+    session_document_free(&doc);
+    session_document_free(&loaded);
+    return 0;
+}
+
+static int run_unknown_preset_fallback_test(void) {
+    const char* path = "build/tests/sample_session_unknown_preset.json";
+    if (!write_replaced_file(kTestOutputPath, path, "\"saw_lead\"", "\"future_missing_preset\"")) {
+        SDL_Log("session_serialization_test: failed to write unknown preset fixture");
+        return 30;
+    }
+
+    SessionDocument loaded;
+    session_document_init(&loaded);
+    if (!session_document_read_file(path, &loaded)) {
+        SDL_Log("session_serialization_test: failed to read unknown preset fixture");
+        session_document_free(&loaded);
+        return 31;
+    }
+    if (loaded.track_count != 1 || loaded.tracks[0].clip_count != 2) {
+        SDL_Log("session_serialization_test: unknown preset fixture count mismatch");
+        session_document_free(&loaded);
+        return 32;
+    }
+    const SessionClip* clip = &loaded.tracks[0].clips[1];
+    if (clip->kind != ENGINE_CLIP_KIND_MIDI ||
+        clip->instrument_preset != ENGINE_INSTRUMENT_PRESET_PURE_SINE ||
+        fabsf(clip->instrument_params.level - 0.82f) > 0.01f ||
+        fabsf(clip->instrument_params.tone - 0.73f) > 0.01f ||
+        fabsf(clip->instrument_params.attack_ms - 12.0f) > 0.01f ||
+        fabsf(clip->instrument_params.release_ms - 120.0f) > 0.01f ||
+        clip->midi_note_count != 2 ||
+        !clip->midi_notes ||
+        clip->midi_notes[0].note != 60 ||
+        clip->midi_notes[1].note != 64) {
+        SDL_Log("session_serialization_test: unknown preset fallback mismatch");
+        session_document_free(&loaded);
+        return 33;
+    }
+    session_document_free(&loaded);
+    return 0;
+}
+
 int main(void) {
     if (mkdir("build", 0755) != 0 && errno != EEXIST) {
         SDL_Log("session_serialization_test: failed to create build directory");
@@ -551,6 +1201,10 @@ int main(void) {
     doc.timeline.vertical_scale = 1.0f;
     doc.timeline.show_all_grid_lines = false;
     doc.timeline.playhead_frame = 0;
+    doc.selected_track_index = 0;
+    doc.selected_clip_index = 1;
+    doc.midi_editor.panel_mode = 1;
+    doc.midi_editor.instrument_active_group = ENGINE_INSTRUMENT_PARAM_GROUP_MOD;
 
     doc.layout.transport_ratio = 0.3f;
     doc.layout.library_ratio = 0.25f;
@@ -577,6 +1231,30 @@ int main(void) {
     track->gain = 0.8f;
     track->muted = false;
     track->solo = false;
+    track->midi_instrument_enabled = true;
+    track->midi_instrument_preset = ENGINE_INSTRUMENT_PRESET_SOFT_PAD;
+    track->midi_instrument_params = engine_instrument_default_params(track->midi_instrument_preset);
+    track->midi_instrument_params.level = 0.66f;
+    track->midi_instrument_automation_lane_count = 1;
+    track->midi_instrument_automation_lanes = (SessionAutomationLane*)calloc(1, sizeof(SessionAutomationLane));
+    if (!track->midi_instrument_automation_lanes) {
+        SDL_Log("session_serialization_test: failed to allocate track MIDI automation lanes");
+        session_document_free(&doc);
+        return 2;
+    }
+    track->midi_instrument_automation_lanes[0].target = ENGINE_AUTOMATION_TARGET_INSTRUMENT_LEVEL;
+    track->midi_instrument_automation_lanes[0].point_count = 2;
+    track->midi_instrument_automation_lanes[0].points =
+        (SessionAutomationPoint*)calloc(2, sizeof(SessionAutomationPoint));
+    if (!track->midi_instrument_automation_lanes[0].points) {
+        SDL_Log("session_serialization_test: failed to allocate track MIDI automation points");
+        session_document_free(&doc);
+        return 2;
+    }
+    track->midi_instrument_automation_lanes[0].points[0].frame = 0;
+    track->midi_instrument_automation_lanes[0].points[0].value = -0.4f;
+    track->midi_instrument_automation_lanes[0].points[1].frame = 192000;
+    track->midi_instrument_automation_lanes[0].points[1].value = 0.35f;
     track->clip_count = 2;
     track->clips = (SessionClip*)calloc(2, sizeof(SessionClip));
     if (!track->clips) {
@@ -626,7 +1304,19 @@ int main(void) {
     midi_clip->fade_out_curve = ENGINE_FADE_CURVE_LINEAR;
     midi_clip->gain = 0.75f;
     midi_clip->instrument_preset = ENGINE_INSTRUMENT_PRESET_SAW_LEAD;
-    midi_clip->instrument_params = (EngineInstrumentParams){0.82f, 0.73f, 12.0f, 120.0f};
+    midi_clip->instrument_params = engine_instrument_default_params(midi_clip->instrument_preset);
+    midi_clip->instrument_params.level = 0.82f;
+    midi_clip->instrument_params.tone = 0.73f;
+    midi_clip->instrument_params.attack_ms = 12.0f;
+    midi_clip->instrument_params.release_ms = 120.0f;
+    midi_clip->instrument_params.decay_ms = 180.0f;
+    midi_clip->instrument_params.sustain = 0.64f;
+    midi_clip->instrument_params.osc_mix = 0.55f;
+    midi_clip->instrument_params.osc2_detune = 9.0f;
+    midi_clip->instrument_params.sub_mix = 0.20f;
+    midi_clip->instrument_params.drive = 0.33f;
+    midi_clip->instrument_params.vibrato_rate = 5.5f;
+    midi_clip->instrument_params.vibrato_depth = 11.0f;
     midi_clip->midi_note_count = 2;
     midi_clip->midi_notes = (EngineMidiNote*)calloc(2, sizeof(EngineMidiNote));
     if (!midi_clip->midi_notes) {
@@ -636,6 +1326,25 @@ int main(void) {
     }
     midi_clip->midi_notes[0] = (EngineMidiNote){0, 24000, 60, 0.9f};
     midi_clip->midi_notes[1] = (EngineMidiNote){48000, 12000, 64, 0.6f};
+    midi_clip->automation_lane_count = 1;
+    midi_clip->automation_lanes = (SessionAutomationLane*)calloc(1, sizeof(SessionAutomationLane));
+    if (!midi_clip->automation_lanes) {
+        SDL_Log("session_serialization_test: failed to allocate MIDI automation lanes");
+        session_document_free(&doc);
+        return 2;
+    }
+    midi_clip->automation_lanes[0].target = ENGINE_AUTOMATION_TARGET_INSTRUMENT_TONE;
+    midi_clip->automation_lanes[0].point_count = 2;
+    midi_clip->automation_lanes[0].points = (SessionAutomationPoint*)calloc(2, sizeof(SessionAutomationPoint));
+    if (!midi_clip->automation_lanes[0].points) {
+        SDL_Log("session_serialization_test: failed to allocate MIDI automation points");
+        session_document_free(&doc);
+        return 2;
+    }
+    midi_clip->automation_lanes[0].points[0].frame = 0;
+    midi_clip->automation_lanes[0].points[0].value = -0.25f;
+    midi_clip->automation_lanes[0].points[1].frame = 96000;
+    midi_clip->automation_lanes[0].points[1].value = 0.5f;
 
     SDL_Log("session_serialization_test: writing %s", kTestOutputPath);
     bool ok = session_document_write_file(&doc, kTestOutputPath);
@@ -684,8 +1393,32 @@ int main(void) {
         SDL_Log("session_serialization_test: engine logging flags mismatch");
         return 8;
     }
+    if (loaded.selected_track_index != 0 ||
+        loaded.selected_clip_index != 1 ||
+        loaded.midi_editor.panel_mode != 1 ||
+        loaded.midi_editor.instrument_active_group != ENGINE_INSTRUMENT_PARAM_GROUP_MOD) {
+        session_document_free(&doc);
+        session_document_free(&loaded);
+        SDL_Log("session_serialization_test: MIDI editor view state mismatch");
+        return 8;
+    }
     SessionTrack* lt = &loaded.tracks[0];
     SessionClip* lc = &lt->clips[0];
+    if (!lt->midi_instrument_enabled ||
+        lt->midi_instrument_preset != ENGINE_INSTRUMENT_PRESET_SOFT_PAD ||
+        fabsf(lt->midi_instrument_params.level - 0.66f) > 0.01f ||
+        lt->midi_instrument_automation_lane_count != 1 ||
+        !lt->midi_instrument_automation_lanes ||
+        lt->midi_instrument_automation_lanes[0].target != ENGINE_AUTOMATION_TARGET_INSTRUMENT_LEVEL ||
+        lt->midi_instrument_automation_lanes[0].point_count != 2 ||
+        !lt->midi_instrument_automation_lanes[0].points ||
+        lt->midi_instrument_automation_lanes[0].points[1].frame != 192000 ||
+        fabsf(lt->midi_instrument_automation_lanes[0].points[1].value - 0.35f) > 0.01f) {
+        session_document_free(&doc);
+        session_document_free(&loaded);
+        SDL_Log("session_serialization_test: track MIDI automation mismatch");
+        return 9;
+    }
     if (lc->kind != ENGINE_CLIP_KIND_AUDIO ||
         strcmp(lt->name, "Test Track") != 0 || strcmp(lc->name, "Test Clip") != 0 ||
         strcmp(lc->media_path, "assets/audio/test.wav") != 0 || lc->duration_frames != 48000 ||
@@ -716,11 +1449,26 @@ int main(void) {
         fabsf(lm->instrument_params.tone - 0.73f) > 0.01f ||
         fabsf(lm->instrument_params.attack_ms - 12.0f) > 0.01f ||
         fabsf(lm->instrument_params.release_ms - 120.0f) > 0.01f ||
+        fabsf(lm->instrument_params.decay_ms - 180.0f) > 0.01f ||
+        fabsf(lm->instrument_params.sustain - 0.64f) > 0.01f ||
+        fabsf(lm->instrument_params.osc_mix - 0.55f) > 0.01f ||
+        fabsf(lm->instrument_params.osc2_detune - 9.0f) > 0.01f ||
+        fabsf(lm->instrument_params.sub_mix - 0.20f) > 0.01f ||
+        fabsf(lm->instrument_params.drive - 0.33f) > 0.01f ||
+        fabsf(lm->instrument_params.vibrato_rate - 5.5f) > 0.01f ||
+        fabsf(lm->instrument_params.vibrato_depth - 11.0f) > 0.01f ||
         lm->midi_note_count != 2 ||
         !lm->midi_notes ||
         lm->midi_notes[0].note != 60 ||
         lm->midi_notes[1].note != 64 ||
-        fabsf(lm->midi_notes[0].velocity - 0.9f) > 0.01f) {
+        fabsf(lm->midi_notes[0].velocity - 0.9f) > 0.01f ||
+        lm->automation_lane_count != 1 ||
+        !lm->automation_lanes ||
+        lm->automation_lanes[0].target != ENGINE_AUTOMATION_TARGET_INSTRUMENT_TONE ||
+        lm->automation_lanes[0].point_count != 2 ||
+        !lm->automation_lanes[0].points ||
+        lm->automation_lanes[0].points[1].frame != 96000 ||
+        fabsf(lm->automation_lanes[0].points[1].value - 0.5f) > 0.01f) {
         session_document_free(&doc);
         session_document_free(&loaded);
         SDL_Log("session_serialization_test: MIDI clip mismatch");
@@ -745,6 +1493,15 @@ int main(void) {
     if (size <= 0) {
         SDL_Log("session_serialization_test: output file empty");
         return 12;
+    }
+
+    int factory_result = run_factory_preset_session_matrix_test();
+    if (factory_result != 0) {
+        return factory_result;
+    }
+    int fallback_result = run_unknown_preset_fallback_test();
+    if (fallback_result != 0) {
+        return fallback_result;
     }
 
     SDL_Log("session_serialization_test: success (%ld bytes)", size);

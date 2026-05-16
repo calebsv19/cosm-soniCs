@@ -3,6 +3,7 @@
 #include "app_state.h"
 #include "engine/engine.h"
 #include "ui/effects_panel.h"
+#include "ui/midi_preset_browser.h"
 #include "undo/undo_manager.h"
 
 #include <math.h>
@@ -14,6 +15,52 @@ static float clampf(float v, float lo, float hi) {
 }
 
 static bool snapshot_state_equal(const UndoTrackSnapshotEdit* edit);
+
+static bool snapshot_instrument_params_equal(EngineInstrumentParams a, EngineInstrumentParams b) {
+    for (int i = 0; i < ENGINE_INSTRUMENT_PARAM_COUNT; ++i) {
+        EngineInstrumentParamId param = (EngineInstrumentParamId)i;
+        if (fabsf(engine_instrument_params_get(a, param) -
+                  engine_instrument_params_get(b, param)) >= 0.0001f) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void snapshot_copy_before_to_after(UndoTrackSnapshotEdit* edit) {
+    if (!edit) {
+        return;
+    }
+    edit->gain_after = edit->gain_before;
+    edit->pan_after = edit->pan_before;
+    edit->muted_after = edit->muted_before;
+    edit->solo_after = edit->solo_before;
+    edit->midi_instrument_enabled_after = edit->midi_instrument_enabled_before;
+    edit->midi_instrument_preset_after = edit->midi_instrument_preset_before;
+    edit->midi_instrument_params_after = edit->midi_instrument_params_before;
+}
+
+static void snapshot_capture_after(AppState* state, UndoTrackSnapshotEdit* edit) {
+    if (!state || !edit || !state->engine || edit->track_index < 0) {
+        return;
+    }
+    const EngineTrack* tracks = engine_get_tracks(state->engine);
+    int track_count = engine_get_track_count(state->engine);
+    if (!tracks || edit->track_index >= track_count) {
+        return;
+    }
+    const EngineTrack* track = &tracks[edit->track_index];
+    edit->gain_after = track->gain;
+    edit->pan_after = track->pan;
+    edit->muted_after = track->muted;
+    edit->solo_after = track->solo;
+    edit->midi_instrument_enabled_after =
+        engine_track_midi_instrument_enabled(state->engine, edit->track_index);
+    edit->midi_instrument_preset_after =
+        engine_track_midi_instrument_preset(state->engine, edit->track_index);
+    edit->midi_instrument_params_after =
+        engine_track_midi_instrument_params(state->engine, edit->track_index);
+}
 
 // Updates the effects list scroll position based on a thumb drag gesture.
 static void apply_list_scroll(AppState* state,
@@ -120,15 +167,9 @@ static void toggle_mute(AppState* state) {
             cmd.data.track_snapshot_edit.muted_before = tracks[track_index].muted;
             cmd.data.track_snapshot_edit.solo_before = tracks[track_index].solo;
             engine_track_set_muted(state->engine, track_index, !tracks[track_index].muted);
-            const EngineTrack* updated = engine_get_tracks(state->engine);
-            if (updated && track_index >= 0) {
-                cmd.data.track_snapshot_edit.gain_after = updated[track_index].gain;
-                cmd.data.track_snapshot_edit.pan_after = updated[track_index].pan;
-                cmd.data.track_snapshot_edit.muted_after = updated[track_index].muted;
-                cmd.data.track_snapshot_edit.solo_after = updated[track_index].solo;
-                if (!snapshot_state_equal(&cmd.data.track_snapshot_edit)) {
-                    undo_manager_push(&state->undo, &cmd);
-                }
+            snapshot_capture_after(state, &cmd.data.track_snapshot_edit);
+            if (!snapshot_state_equal(&cmd.data.track_snapshot_edit)) {
+                undo_manager_push(&state->undo, &cmd);
             }
         }
     } else {
@@ -153,15 +194,9 @@ static void toggle_solo(AppState* state) {
             cmd.data.track_snapshot_edit.muted_before = tracks[track_index].muted;
             cmd.data.track_snapshot_edit.solo_before = tracks[track_index].solo;
             engine_track_set_solo(state->engine, track_index, !tracks[track_index].solo);
-            const EngineTrack* updated = engine_get_tracks(state->engine);
-            if (updated && track_index >= 0) {
-                cmd.data.track_snapshot_edit.gain_after = updated[track_index].gain;
-                cmd.data.track_snapshot_edit.pan_after = updated[track_index].pan;
-                cmd.data.track_snapshot_edit.muted_after = updated[track_index].muted;
-                cmd.data.track_snapshot_edit.solo_after = updated[track_index].solo;
-                if (!snapshot_state_equal(&cmd.data.track_snapshot_edit)) {
-                    undo_manager_push(&state->undo, &cmd);
-                }
+            snapshot_capture_after(state, &cmd.data.track_snapshot_edit);
+            if (!snapshot_state_equal(&cmd.data.track_snapshot_edit)) {
+                undo_manager_push(&state->undo, &cmd);
             }
         }
     } else {
@@ -188,6 +223,12 @@ static bool snapshot_capture_state(AppState* state, UndoTrackSnapshotEdit* out_e
     out_edit->pan_before = track->pan;
     out_edit->muted_before = track->muted;
     out_edit->solo_before = track->solo;
+    out_edit->midi_instrument_enabled_before =
+        engine_track_midi_instrument_enabled(state->engine, track_index);
+    out_edit->midi_instrument_preset_before =
+        engine_track_midi_instrument_preset(state->engine, track_index);
+    out_edit->midi_instrument_params_before =
+        engine_track_midi_instrument_params(state->engine, track_index);
     return true;
 }
 
@@ -198,7 +239,11 @@ static bool snapshot_state_equal(const UndoTrackSnapshotEdit* edit) {
     return fabsf(edit->gain_before - edit->gain_after) < 0.0001f &&
            fabsf(edit->pan_before - edit->pan_after) < 0.0001f &&
            edit->muted_before == edit->muted_after &&
-           edit->solo_before == edit->solo_after;
+           edit->solo_before == edit->solo_after &&
+           edit->midi_instrument_enabled_before == edit->midi_instrument_enabled_after &&
+           edit->midi_instrument_preset_before == edit->midi_instrument_preset_after &&
+           snapshot_instrument_params_equal(edit->midi_instrument_params_before,
+                                            edit->midi_instrument_params_after);
 }
 
 bool effects_panel_track_snapshot_handle_mouse_down(AppState* state,
@@ -213,6 +258,52 @@ bool effects_panel_track_snapshot_handle_mouse_down(AppState* state,
     SDL_Point pt = {event->button.x, event->button.y};
     const EffectsPanelTrackSnapshotLayout* snap = &layout->track_snapshot;
     EffectsPanelTrackSnapshotState* snap_state = &state->effects_panel.track_snapshot;
+
+    if (snap_state->instrument_menu_open) {
+        EngineInstrumentPresetId clicked_preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+        if (midi_preset_browser_preset_at(&snap->instrument_browser, pt.x, pt.y, &clicked_preset)) {
+                int track_index = -1;
+                if (resolve_target_track(state, &track_index)) {
+                    UndoCommand cmd = {0};
+                    cmd.type = UNDO_CMD_TRACK_SNAPSHOT;
+                    if (snapshot_capture_state(state, &cmd.data.track_snapshot_edit)) {
+                        engine_track_midi_set_instrument_preset(state->engine, track_index, clicked_preset);
+                        snapshot_capture_after(state, &cmd.data.track_snapshot_edit);
+                        if (!snapshot_state_equal(&cmd.data.track_snapshot_edit)) {
+                            undo_manager_push(&state->undo, &cmd);
+                        }
+                    }
+                }
+                snap_state->instrument_menu_open = false;
+                snap_state->instrument_menu_scroll_row = 0;
+                snap_state->instrument_menu_expanded_category = -1;
+                return true;
+        }
+        EngineInstrumentPresetCategoryId clicked_category = ENGINE_INSTRUMENT_PRESET_CATEGORY_BASIC;
+        if (midi_preset_browser_category_at(&snap->instrument_browser, pt.x, pt.y, &clicked_category)) {
+            int current = snap_state->instrument_menu_expanded_category;
+            snap_state->instrument_menu_expanded_category =
+                current == (int)clicked_category ? -1 : (int)clicked_category;
+            snap_state->instrument_menu_scroll_row = 0;
+            return true;
+        }
+        if (SDL_PointInRect(&pt, &snap->instrument_menu_rect)) {
+            return true;
+        }
+        if (!SDL_PointInRect(&pt, &snap->instrument_button_rect)) {
+            snap_state->instrument_menu_open = false;
+            return true;
+        }
+    }
+
+    if (SDL_PointInRect(&pt, &snap->instrument_button_rect)) {
+        snap_state->instrument_menu_open = !snap_state->instrument_menu_open;
+        if (snap_state->instrument_menu_open) {
+            snap_state->instrument_menu_scroll_row = 0;
+            snap_state->instrument_menu_expanded_category = -1;
+        }
+        return true;
+    }
 
     if (SDL_PointInRect(&pt, &snap->eq_rect)) {
         Uint32 now = SDL_GetTicks();
@@ -232,10 +323,7 @@ bool effects_panel_track_snapshot_handle_mouse_down(AppState* state,
         UndoCommand cmd = {0};
         cmd.type = UNDO_CMD_TRACK_SNAPSHOT;
         if (snapshot_capture_state(state, &cmd.data.track_snapshot_edit)) {
-            cmd.data.track_snapshot_edit.gain_after = cmd.data.track_snapshot_edit.gain_before;
-            cmd.data.track_snapshot_edit.pan_after = cmd.data.track_snapshot_edit.pan_before;
-            cmd.data.track_snapshot_edit.muted_after = cmd.data.track_snapshot_edit.muted_before;
-            cmd.data.track_snapshot_edit.solo_after = cmd.data.track_snapshot_edit.solo_before;
+            snapshot_copy_before_to_after(&cmd.data.track_snapshot_edit);
             undo_manager_begin_drag(&state->undo, &cmd);
         }
         snap_state->dragging = true;
@@ -249,10 +337,7 @@ bool effects_panel_track_snapshot_handle_mouse_down(AppState* state,
         UndoCommand cmd = {0};
         cmd.type = UNDO_CMD_TRACK_SNAPSHOT;
         if (snapshot_capture_state(state, &cmd.data.track_snapshot_edit)) {
-            cmd.data.track_snapshot_edit.gain_after = cmd.data.track_snapshot_edit.gain_before;
-            cmd.data.track_snapshot_edit.pan_after = cmd.data.track_snapshot_edit.pan_before;
-            cmd.data.track_snapshot_edit.muted_after = cmd.data.track_snapshot_edit.muted_before;
-            cmd.data.track_snapshot_edit.solo_after = cmd.data.track_snapshot_edit.solo_before;
+            snapshot_copy_before_to_after(&cmd.data.track_snapshot_edit);
             undo_manager_begin_drag(&state->undo, &cmd);
         }
         snap_state->dragging = true;
@@ -311,17 +396,10 @@ bool effects_panel_track_snapshot_handle_mouse_up(AppState* state, const SDL_Eve
         if (cmd->type == UNDO_CMD_TRACK_SNAPSHOT) {
             int track_index = -1;
             if (resolve_target_track(state, &track_index)) {
-                const EngineTrack* tracks = engine_get_tracks(state->engine);
-                if (tracks && track_index >= 0) {
-                    const EngineTrack* track = &tracks[track_index];
-                    cmd->data.track_snapshot_edit.gain_after = track->gain;
-                    cmd->data.track_snapshot_edit.pan_after = track->pan;
-                    cmd->data.track_snapshot_edit.muted_after = track->muted;
-                    cmd->data.track_snapshot_edit.solo_after = track->solo;
-                    if (!snapshot_state_equal(&cmd->data.track_snapshot_edit)) {
-                        undo_manager_commit_drag(&state->undo, cmd);
-                        return true;
-                    }
+                snapshot_capture_after(state, &cmd->data.track_snapshot_edit);
+                if (!snapshot_state_equal(&cmd->data.track_snapshot_edit)) {
+                    undo_manager_commit_drag(&state->undo, cmd);
+                    return true;
                 }
             }
         }

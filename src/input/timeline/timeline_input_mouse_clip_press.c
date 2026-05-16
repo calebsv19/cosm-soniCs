@@ -15,26 +15,7 @@
 #include "ui/layout.h"
 
 #include <SDL2/SDL.h>
-
-static bool clip_state_from_clip(const EngineClip* clip, int track_index, UndoClipState* out_state) {
-    if (!clip || !out_state) {
-        return false;
-    }
-    out_state->kind = engine_clip_get_kind(clip);
-    out_state->sampler = clip->sampler;
-    out_state->creation_index = clip->creation_index;
-    out_state->track_index = track_index;
-    out_state->start_frame = clip->timeline_start_frames;
-    out_state->offset_frames = clip->offset_frames;
-    out_state->duration_frames = clip->duration_frames;
-    out_state->fade_in_frames = clip->fade_in_frames;
-    out_state->fade_out_frames = clip->fade_out_frames;
-    out_state->gain = clip->gain;
-    if (out_state->duration_frames == 0 && clip->sampler) {
-        out_state->duration_frames = engine_sampler_get_frame_count(clip->sampler);
-    }
-    return true;
-}
+#include <string.h>
 
 static void timeline_drag_begin_undo(AppState* state,
                                      const EngineTrack* track,
@@ -47,11 +28,16 @@ static void timeline_drag_begin_undo(AppState* state,
     if (!multi_move) {
         UndoCommand cmd = {0};
         cmd.type = UNDO_CMD_CLIP_TRANSFORM;
-        if (!clip_state_from_clip(&track->clips[clip_index], track_index, &cmd.data.clip_transform.before)) {
+        if (!undo_clip_state_from_engine_clip(&track->clips[clip_index], track_index, &cmd.data.clip_transform.before)) {
             return;
         }
-        cmd.data.clip_transform.after = cmd.data.clip_transform.before;
+        if (!undo_clip_state_clone(&cmd.data.clip_transform.after, &cmd.data.clip_transform.before)) {
+            undo_clip_state_clear(&cmd.data.clip_transform.before);
+            return;
+        }
         undo_manager_begin_drag(&state->undo, &cmd);
+        undo_clip_state_clear(&cmd.data.clip_transform.before);
+        undo_clip_state_clear(&cmd.data.clip_transform.after);
         return;
     }
     int count = state->selection_count;
@@ -72,9 +58,12 @@ static void timeline_drag_begin_undo(AppState* state,
         if (!sel_track || entry.clip_index < 0 || entry.clip_index >= sel_track->clip_count) {
             continue;
         }
-        if (clip_state_from_clip(&sel_track->clips[entry.clip_index], entry.track_index, &before[filled])) {
-            after[filled] = before[filled];
-            filled++;
+        if (undo_clip_state_from_engine_clip(&sel_track->clips[entry.clip_index], entry.track_index, &before[filled])) {
+            if (undo_clip_state_clone(&after[filled], &before[filled])) {
+                filled++;
+            } else {
+                undo_clip_state_clear(&before[filled]);
+            }
         }
     }
     if (filled <= 0) {
@@ -86,6 +75,10 @@ static void timeline_drag_begin_undo(AppState* state,
     cmd.data.multi_clip_transform.before = before;
     cmd.data.multi_clip_transform.after = after;
     undo_manager_begin_drag(&state->undo, &cmd);
+    for (int i = 0; i < filled; ++i) {
+        undo_clip_state_clear(&before[i]);
+        undo_clip_state_clear(&after[i]);
+    }
 }
 
 static void timeline_drag_begin_ripple_undo(AppState* state,
@@ -116,9 +109,12 @@ static void timeline_drag_begin_ripple_undo(AppState* state,
         return;
     }
     int filled = 0;
-    if (clip_state_from_clip(&track->clips[anchor_clip_index], track_index, &before[filled])) {
-        after[filled] = before[filled];
-        filled++;
+    if (undo_clip_state_from_engine_clip(&track->clips[anchor_clip_index], track_index, &before[filled])) {
+        if (undo_clip_state_clone(&after[filled], &before[filled])) {
+            filled++;
+        } else {
+            undo_clip_state_clear(&before[filled]);
+        }
     }
     for (int i = 0; i < drag->ripple_target_count && filled < total; ++i) {
         EngineSamplerSource* sampler = drag->ripple_targets[i];
@@ -136,9 +132,12 @@ static void timeline_drag_begin_ripple_undo(AppState* state,
         if (clip_index < 0 || clip_index >= track->clip_count) {
             continue;
         }
-        if (clip_state_from_clip(&track->clips[clip_index], track_index, &before[filled])) {
-            after[filled] = before[filled];
-            filled++;
+        if (undo_clip_state_from_engine_clip(&track->clips[clip_index], track_index, &before[filled])) {
+            if (undo_clip_state_clone(&after[filled], &before[filled])) {
+                filled++;
+            } else {
+                undo_clip_state_clear(&before[filled]);
+            }
         }
     }
     if (filled <= 0) {
@@ -152,6 +151,10 @@ static void timeline_drag_begin_ripple_undo(AppState* state,
     cmd.data.multi_clip_transform.before = before;
     cmd.data.multi_clip_transform.after = after;
     undo_manager_begin_drag(&state->undo, &cmd);
+    for (int i = 0; i < filled; ++i) {
+        undo_clip_state_clear(&before[i]);
+        undo_clip_state_clear(&after[i]);
+    }
     SDL_free(before);
     SDL_free(after);
 }
@@ -258,7 +261,7 @@ bool timeline_input_mouse_handle_clip_press(InputManager* manager,
         drag->active = true;
         bool fade_left = !midi_clip && hit_left && !hit_right && alt_held;
         bool fade_right = !midi_clip && hit_right && !hit_left && alt_held;
-        drag->trimming_left = !midi_clip && hit_left && !hit_right && !alt_held;
+        drag->trimming_left = hit_left && !hit_right && !alt_held;
         drag->trimming_right = hit_right && !hit_left && !alt_held;
         drag->adjusting_fade_in = fade_left;
         drag->adjusting_fade_out = fade_right;
@@ -290,6 +293,22 @@ bool timeline_input_mouse_handle_clip_press(InputManager* manager,
         drag->clip_total_frames = engine_clip_get_total_frames(state->engine, hit_track, hit_clip);
         if (drag->clip_total_frames == 0) {
             drag->clip_total_frames = drag->initial_offset_frames + drag->initial_duration_frames;
+        }
+        if (drag->initial_midi_notes) {
+            SDL_free(drag->initial_midi_notes);
+            drag->initial_midi_notes = NULL;
+        }
+        drag->initial_midi_note_count = 0;
+        if (midi_clip) {
+            int note_count = engine_clip_midi_note_count(clip);
+            const EngineMidiNote* notes = engine_clip_midi_notes(clip);
+            if (note_count > 0 && notes) {
+                drag->initial_midi_notes = (EngineMidiNote*)SDL_malloc(sizeof(EngineMidiNote) * (size_t)note_count);
+                if (drag->initial_midi_notes) {
+                    memcpy(drag->initial_midi_notes, notes, sizeof(EngineMidiNote) * (size_t)note_count);
+                    drag->initial_midi_note_count = note_count;
+                }
+            }
         }
         drag->initial_fade_in_frames = clip->fade_in_frames;
         drag->initial_fade_out_frames = clip->fade_out_frames;

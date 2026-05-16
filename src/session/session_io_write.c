@@ -144,6 +144,40 @@ static void json_write_float(FILE* file, float value) {
     fprintf(file, "%.6f", corrected);
 }
 
+static void session_write_automation_lanes(FILE* file,
+                                           const SessionAutomationLane* lanes,
+                                           int lane_count,
+                                           int indent) {
+    for (int l = 0; l < lane_count; ++l) {
+        const SessionAutomationLane* lane = &lanes[l];
+        json_write_indent(file, indent);
+        fprintf(file, "{\n");
+        json_write_indent(file, indent + 1);
+        fprintf(file, "\"target\": %d,\n", (int)lane->target);
+        json_write_indent(file, indent + 1);
+        fprintf(file, "\"points\": [\n");
+        for (int p = 0; p < lane->point_count; ++p) {
+            const SessionAutomationPoint* point = &lane->points[p];
+            json_write_indent(file, indent + 2);
+            fprintf(file, "{ \"frame\": %" PRIu64 ", \"value\": ", point->frame);
+            json_write_float(file, point->value);
+            fprintf(file, " }");
+            if (p + 1 < lane->point_count) {
+                fprintf(file, ",");
+            }
+            fprintf(file, "\n");
+        }
+        json_write_indent(file, indent + 1);
+        fprintf(file, "]\n");
+        json_write_indent(file, indent);
+        fprintf(file, "}");
+        if (l + 1 < lane_count) {
+            fprintf(file, ",");
+        }
+        fprintf(file, "\n");
+    }
+}
+
 static const char* session_clip_kind_to_string(EngineClipKind kind) {
     switch (kind) {
         case ENGINE_CLIP_KIND_MIDI:
@@ -307,6 +341,15 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     fprintf(file, "\"selected_track_index\": %d,\n", doc->selected_track_index);
     json_write_indent(file, 1);
     fprintf(file, "\"selected_clip_index\": %d,\n", doc->selected_clip_index);
+
+    json_write_indent(file, 1);
+    fprintf(file, "\"midi_editor\": {\n");
+    json_write_indent(file, 2);
+    fprintf(file, "\"panel_mode\": %d,\n", doc->midi_editor.panel_mode);
+    json_write_indent(file, 2);
+    fprintf(file, "\"instrument_active_group\": %d\n", doc->midi_editor.instrument_active_group);
+    json_write_indent(file, 1);
+    fprintf(file, "},\n");
 
     json_write_indent(file, 1);
     fprintf(file, "\"clip_inspector\": {\n");
@@ -510,6 +553,42 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
         json_write_indent(file, 3);
         fprintf(file, "\"solo\": %s,\n", track->solo ? "true" : "false");
         json_write_indent(file, 3);
+        fprintf(file, "\"midi_instrument_enabled\": %s,\n", track->midi_instrument_enabled ? "true" : "false");
+        json_write_indent(file, 3);
+        EngineInstrumentPresetId track_preset = engine_instrument_preset_clamp(track->midi_instrument_preset);
+        fprintf(file, "\"midi_instrument_preset\": ");
+        json_write_string(file, engine_instrument_preset_id_string(track_preset));
+        fprintf(file, ",\n");
+        json_write_indent(file, 3);
+        EngineInstrumentParams track_params = engine_instrument_params_sanitize(track_preset,
+                                                                                track->midi_instrument_params);
+        fprintf(file, "\"midi_instrument_params\": {");
+        int written_track_params = 0;
+        int track_param_count = engine_instrument_param_count();
+        for (int p = 0; p < track_param_count; ++p) {
+            EngineInstrumentParamSpec spec = {0};
+            EngineInstrumentParamId param = (EngineInstrumentParamId)p;
+            if (!engine_instrument_param_spec(param, &spec) || !spec.id) {
+                continue;
+            }
+            if (written_track_params > 0) {
+                fprintf(file, ", ");
+            }
+            json_write_string(file, spec.id);
+            fprintf(file, ": ");
+            json_write_float(file, engine_instrument_params_get(track_params, param));
+            ++written_track_params;
+        }
+        fprintf(file, "},\n");
+        json_write_indent(file, 3);
+        fprintf(file, "\"midi_instrument_automation\": [\n");
+        session_write_automation_lanes(file,
+                                       track->midi_instrument_automation_lanes,
+                                       track->midi_instrument_automation_lane_count,
+                                       4);
+        json_write_indent(file, 3);
+        fprintf(file, "],\n");
+        json_write_indent(file, 3);
         fprintf(file, "\"eq_low_cut_enabled\": %s,\n", track->eq.low_cut.enabled ? "true" : "false");
         json_write_indent(file, 3);
         fprintf(file, "\"eq_low_cut_freq\": ");
@@ -586,48 +665,31 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
             json_write_string(file, engine_instrument_preset_id_string(clip->instrument_preset));
             fprintf(file, ",\n");
             json_write_indent(file, 5);
+            fprintf(file, "\"instrument_inherits_track\": %s,\n", clip->instrument_inherits_track ? "true" : "false");
+            json_write_indent(file, 5);
             EngineInstrumentParams params = engine_instrument_params_sanitize(clip->instrument_preset,
                                                                               clip->instrument_params);
             fprintf(file, "\"instrument_params\": {");
-            fprintf(file, "\"level\": ");
-            json_write_float(file, params.level);
-            fprintf(file, ", \"tone\": ");
-            json_write_float(file, params.tone);
-            fprintf(file, ", \"attack_ms\": ");
-            json_write_float(file, params.attack_ms);
-            fprintf(file, ", \"release_ms\": ");
-            json_write_float(file, params.release_ms);
+            int written_params = 0;
+            int instrument_param_count = engine_instrument_param_count();
+            for (int p = 0; p < instrument_param_count; ++p) {
+                EngineInstrumentParamSpec spec = {0};
+                EngineInstrumentParamId param = (EngineInstrumentParamId)p;
+                if (!engine_instrument_param_spec(param, &spec) || !spec.id) {
+                    continue;
+                }
+                if (written_params > 0) {
+                    fprintf(file, ", ");
+                }
+                json_write_string(file, spec.id);
+                fprintf(file, ": ");
+                json_write_float(file, engine_instrument_params_get(params, param));
+                ++written_params;
+            }
             fprintf(file, "},\n");
             json_write_indent(file, 5);
             fprintf(file, "\"automation\": [\n");
-            for (int l = 0; l < clip->automation_lane_count; ++l) {
-                const SessionAutomationLane* lane = &clip->automation_lanes[l];
-                json_write_indent(file, 6);
-                fprintf(file, "{\n");
-                json_write_indent(file, 7);
-                fprintf(file, "\"target\": %d,\n", (int)lane->target);
-                json_write_indent(file, 7);
-                fprintf(file, "\"points\": [\n");
-                for (int p = 0; p < lane->point_count; ++p) {
-                    const SessionAutomationPoint* point = &lane->points[p];
-                    json_write_indent(file, 8);
-                    fprintf(file, "{ \"frame\": %" PRIu64 ", \"value\": ", point->frame);
-                    json_write_float(file, point->value);
-                    fprintf(file, " }");
-                    if (p + 1 < lane->point_count) {
-                        fprintf(file, ",");
-                    }
-                    fprintf(file, "\n");
-                }
-                json_write_indent(file, 7);
-                fprintf(file, "]\n");
-                json_write_indent(file, 6);
-                fprintf(file, "}");
-                if (l + 1 < clip->automation_lane_count) {
-                    fprintf(file, ",");
-                }
-                fprintf(file, "\n");
-            }
+            session_write_automation_lanes(file, clip->automation_lanes, clip->automation_lane_count, 6);
             json_write_indent(file, 5);
             fprintf(file, "],\n");
             json_write_indent(file, 5);

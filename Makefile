@@ -93,6 +93,7 @@ APP_SRCS := \
 	$(SRC_DIR)/core/loop/daw_mainthread_kernel.c \
 	$(SRC_DIR)/core/loop/daw_render_invalidation.c \
 	$(SRC_DIR)/app/daw_app_main.c \
+	$(SRC_DIR)/app/audio_recording.c \
 	$(SRC_DIR)/app/bounce_region.c \
 	$(SRC_DIR)/app/main_bounce.c \
 	$(SRC_DIR)/app/main_loop_policy.c \
@@ -100,6 +101,7 @@ APP_SRCS := \
 	$(SRC_DIR)/config/config.c \
 	$(SRC_DIR)/config/data_paths.c \
 	$(SRC_DIR)/audio/device_sdl.c \
+	$(SRC_DIR)/audio/audio_capture_device_sdl.c \
 	$(SRC_DIR)/audio/audio_queue.c \
 	$(SRC_DIR)/audio/ringbuf.c \
 	$(SRC_DIR)/audio/media_clip.c \
@@ -180,6 +182,8 @@ APP_SRCS := \
 	$(SRC_DIR)/ui/clip_inspector_controls.c \
 	$(SRC_DIR)/ui/clip_inspector_waveform.c \
 	$(SRC_DIR)/ui/midi_editor.c \
+	$(SRC_DIR)/ui/midi_editor_pitch_view.c \
+	$(SRC_DIR)/ui/midi_preset_browser.c \
 	$(SRC_DIR)/ui/midi_instrument_panel.c \
 	$(SRC_DIR)/ui/effects_panel/panel.c \
 	$(SRC_DIR)/ui/effects_panel/sync.c \
@@ -221,6 +225,7 @@ APP_SRCS := \
 	$(SRC_DIR)/input/timeline/timeline_input_mouse_scroll.c \
 	$(SRC_DIR)/input/timeline/timeline_clip_helpers.c \
 	$(SRC_DIR)/input/timeline/timeline_midi_region.c \
+	$(SRC_DIR)/input/timeline/timeline_midi_trim.c \
 	$(SRC_DIR)/input/timeline/timeline_snap.c \
 	$(SRC_DIR)/input/timeline/timeline_selection.c \
 	$(SRC_DIR)/input/timeline/timeline_drag.c \
@@ -230,6 +235,11 @@ APP_SRCS := \
 	$(SRC_DIR)/input/inspector_input_numeric_edit.c \
 	$(SRC_DIR)/input/inspector_fade_input.c \
 	$(SRC_DIR)/input/midi_editor_input.c \
+	$(SRC_DIR)/input/midi_editor_input_selection.c \
+	$(SRC_DIR)/input/midi_editor_input_timing.c \
+	$(SRC_DIR)/input/midi_editor_input_commands.c \
+	$(SRC_DIR)/input/midi_editor_input_qwerty.c \
+	$(SRC_DIR)/input/midi_editor_input_gestures.c \
 	$(SRC_DIR)/input/midi_instrument_panel_input.c \
 	$(SRC_DIR)/input/transport_input.c \
 	$(SRC_DIR)/input/effects_panel_input.c \
@@ -544,6 +554,18 @@ WORKSPACE_AUTHORING_HOST_TEST_SRCS := \
 
 WORKSPACE_AUTHORING_HOST_TEST_BIN := $(TEST_BUILD_ROOT)/daw_workspace_authoring_host_test
 
+AUDIO_CAPTURE_DEVICE_TEST_SRCS := \
+	tests/audio_capture_device_test.c
+
+AUDIO_CAPTURE_DEVICE_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(AUDIO_CAPTURE_DEVICE_TEST_SRCS))
+AUDIO_CAPTURE_DEVICE_TEST_BIN := $(TEST_BUILD_ROOT)/audio_capture_device_test
+
+AUDIO_RECORDING_TEST_SRCS := \
+	tests/audio_recording_test.c
+
+AUDIO_RECORDING_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(AUDIO_RECORDING_TEST_SRCS))
+AUDIO_RECORDING_TEST_BIN := $(TEST_BUILD_ROOT)/audio_recording_test
+
 # Keep legacy app tests wired to the full non-main app object set so link coverage
 # stays in lock-step with engine/runtime refactors.
 APP_OBJS_NO_MAIN := $(filter-out $(APP_OBJ_DIR)/src/app/main.o,$(APP_OBJS))
@@ -564,7 +586,9 @@ PACK_CONTRACT_TEST_DEPS := $(PACK_CONTRACT_TEST_OBJS:.o=.d)
 LAYOUT_SWEEP_TEST_DEPS := $(LAYOUT_SWEEP_TEST_OBJS:.o=.d)
 DATA_PATH_CONTRACT_TEST_DEPS := $(DATA_PATH_CONTRACT_TEST_OBJS:.o=.d)
 ENGINE_TEST_SUPPORT_DEPS := $(ENGINE_TEST_SUPPORT_OBJS:.o=.d)
-ALL_DEPS := $(APP_DEPS) $(TIMER_HUD_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(TIMELINE_CONTRACT_TEST_DEPS) $(MIDI_MODEL_TEST_DEPS) $(MIDI_INSTRUMENT_RENDER_TEST_DEPS) $(TIMELINE_MIDI_REGION_TEST_DEPS) $(MIDI_EDITOR_SHELL_TEST_DEPS) $(SMOKE_TEST_DEPS) $(PACK_CONTRACT_TEST_DEPS) $(LAYOUT_SWEEP_TEST_DEPS) $(DATA_PATH_CONTRACT_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
+AUDIO_CAPTURE_DEVICE_TEST_DEPS := $(AUDIO_CAPTURE_DEVICE_TEST_OBJS:.o=.d)
+AUDIO_RECORDING_TEST_DEPS := $(AUDIO_RECORDING_TEST_OBJS:.o=.d)
+ALL_DEPS := $(APP_DEPS) $(TIMER_HUD_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(TIMELINE_CONTRACT_TEST_DEPS) $(MIDI_MODEL_TEST_DEPS) $(MIDI_INSTRUMENT_RENDER_TEST_DEPS) $(TIMELINE_MIDI_REGION_TEST_DEPS) $(MIDI_EDITOR_SHELL_TEST_DEPS) $(SMOKE_TEST_DEPS) $(PACK_CONTRACT_TEST_DEPS) $(LAYOUT_SWEEP_TEST_DEPS) $(DATA_PATH_CONTRACT_TEST_DEPS) $(AUDIO_CAPTURE_DEVICE_TEST_DEPS) $(AUDIO_RECORDING_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
 
 STABLE_TEST_TARGETS := \
 	test-pack-contract \
@@ -580,6 +604,8 @@ STABLE_TEST_TARGETS := \
 	test-midi-instrument-render \
 	test-timeline-midi-region \
 	test-midi-editor-shell \
+	test-audio-capture-device \
+	test-audio-recording \
 	test-data-path-contract \
 	test-workspace-authoring-host \
 	test-library-copy-vs-reference-contract
@@ -591,7 +617,7 @@ LEGACY_TEST_TARGETS := \
 	test-smoke \
 	test-shared-theme-font-adapter
 
-.PHONY: all clean run run-ide-theme run-headless-smoke visual-harness package-build-lane package-desktop package-desktop-smoke package-desktop-self-test package-desktop-copy-desktop package-desktop-sync package-desktop-open package-desktop-remove package-desktop-refresh release-contract release-clean release-build release-build-internal release-bundle-audit release-bundle-audit-internal release-sign release-sign-internal release-verify release-verify-internal release-verify-signed release-verify-signed-internal release-notarize release-notarize-internal release-staple release-staple-internal release-verify-notarized release-verify-notarized-internal release-artifact release-artifact-internal release-distribute release-distribute-internal release-desktop-refresh release-desktop-refresh-internal loop-gates loop-gates-strict test test-stable test-legacy test-session test-cache test-overlap test-timeline-contract test-midi-model test-midi-instrument-render test-timeline-midi-region test-midi-editor-shell test-smoke test-kitviz-adapter test-waveform-pack-warmstart test-pack-contract test-trace-contract test-trace-async-contract test-kitviz-fx-preview-adapter test-kitviz-meter-adapter test-shared-theme-font-adapter test-layout-sweep test-data-path-contract test-workspace-authoring-host test-library-copy-vs-reference-contract
+.PHONY: all clean run run-ide-theme run-headless-smoke visual-harness package-build-lane package-desktop package-desktop-smoke package-desktop-self-test package-desktop-copy-desktop package-desktop-sync package-desktop-open package-desktop-remove package-desktop-refresh release-contract release-clean release-build release-build-internal release-bundle-audit release-bundle-audit-internal release-sign release-sign-internal release-verify release-verify-internal release-verify-signed release-verify-signed-internal release-notarize release-notarize-internal release-staple release-staple-internal release-verify-notarized release-verify-notarized-internal release-artifact release-artifact-internal release-distribute release-distribute-internal release-desktop-refresh release-desktop-refresh-internal loop-gates loop-gates-strict test test-stable test-legacy test-session test-cache test-overlap test-timeline-contract test-midi-model test-midi-instrument-render test-timeline-midi-region test-midi-editor-shell test-audio-capture-device test-audio-recording test-smoke test-kitviz-adapter test-waveform-pack-warmstart test-pack-contract test-trace-contract test-trace-async-contract test-kitviz-fx-preview-adapter test-kitviz-meter-adapter test-shared-theme-font-adapter test-layout-sweep test-data-path-contract test-workspace-authoring-host test-library-copy-vs-reference-contract
 
 FORCE:
 
@@ -1027,6 +1053,20 @@ test-midi-editor-shell: $(MIDI_EDITOR_SHELL_TEST_BIN)
 $(MIDI_EDITOR_SHELL_TEST_BIN): $(MIDI_EDITOR_SHELL_TEST_OBJS) $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
 	@mkdir -p "$(dir $@)"
 	$(HOST_CC) $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(MIDI_EDITOR_SHELL_TEST_OBJS) $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+test-audio-capture-device: $(AUDIO_CAPTURE_DEVICE_TEST_BIN)
+	$(AUDIO_CAPTURE_DEVICE_TEST_BIN)
+
+$(AUDIO_CAPTURE_DEVICE_TEST_BIN): $(AUDIO_CAPTURE_DEVICE_TEST_OBJS) $(APP_OBJ_DIR)/src/audio/audio_capture_device_sdl.o
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
+
+test-audio-recording: $(AUDIO_RECORDING_TEST_BIN)
+	$(AUDIO_RECORDING_TEST_BIN)
+
+$(AUDIO_RECORDING_TEST_BIN): $(AUDIO_RECORDING_TEST_OBJS) $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(AUDIO_RECORDING_TEST_OBJS) $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
 
 test-smoke: $(SMOKE_TEST_BIN)
 	$(SMOKE_TEST_BIN)

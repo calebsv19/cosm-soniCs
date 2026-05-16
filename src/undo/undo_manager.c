@@ -3,6 +3,7 @@
 
 #include "app_state.h"
 #include "engine/engine.h"
+#include "engine/sampler.h"
 #include "input/timeline_drag.h"
 #include "input/library_input.h"
 #include "ui/effects_panel.h"
@@ -297,6 +298,63 @@ static void midi_notes_clear(EngineMidiNote** notes, int* note_count) {
     *note_count = 0;
 }
 
+void undo_clip_state_clear(UndoClipState* state) {
+    if (!state) {
+        return;
+    }
+    midi_notes_clear(&state->midi_notes, &state->midi_note_count);
+}
+
+bool undo_clip_state_clone(UndoClipState* dst, const UndoClipState* src) {
+    if (!dst || !src) {
+        return false;
+    }
+    *dst = *src;
+    dst->midi_notes = NULL;
+    dst->midi_note_count = 0;
+    return midi_notes_clone(&dst->midi_notes,
+                            &dst->midi_note_count,
+                            src->midi_notes,
+                            src->midi_note_count);
+}
+
+bool undo_clip_state_from_engine_clip(const EngineClip* clip,
+                                      int track_index,
+                                      UndoClipState* out_state) {
+    if (!clip || !out_state) {
+        return false;
+    }
+    memset(out_state, 0, sizeof(*out_state));
+    out_state->kind = engine_clip_get_kind(clip);
+    out_state->sampler = clip->sampler;
+    out_state->creation_index = clip->creation_index;
+    out_state->track_index = track_index;
+    out_state->start_frame = clip->timeline_start_frames;
+    out_state->offset_frames = clip->offset_frames;
+    out_state->duration_frames = clip->duration_frames;
+    out_state->fade_in_frames = clip->fade_in_frames;
+    out_state->fade_out_frames = clip->fade_out_frames;
+    out_state->fade_in_curve = clip->fade_in_curve;
+    out_state->fade_out_curve = clip->fade_out_curve;
+    out_state->gain = clip->gain;
+    out_state->instrument_preset = engine_clip_midi_instrument_preset(clip);
+    out_state->instrument_params = engine_clip_midi_instrument_params(clip);
+    out_state->instrument_inherits_track = engine_clip_midi_inherits_track_instrument(clip);
+    if (out_state->duration_frames == 0 && clip->sampler) {
+        out_state->duration_frames = engine_sampler_get_frame_count(clip->sampler);
+    }
+    if (out_state->kind == ENGINE_CLIP_KIND_MIDI) {
+        if (!midi_notes_clone(&out_state->midi_notes,
+                              &out_state->midi_note_count,
+                              engine_clip_midi_notes(clip),
+                              engine_clip_midi_note_count(clip))) {
+            undo_clip_state_clear(out_state);
+            return false;
+        }
+    }
+    return true;
+}
+
 static void tempo_events_clear(TempoEvent** events, int* event_count) {
     if (!events || !*events || !event_count) {
         return;
@@ -346,7 +404,15 @@ bool undo_command_clone(UndoCommand* dst, const UndoCommand* src) {
     dst->type = src->type;
     switch (src->type) {
         case UNDO_CMD_CLIP_TRANSFORM:
-            dst->data.clip_transform = src->data.clip_transform;
+            if (!undo_clip_state_clone(&dst->data.clip_transform.before,
+                                       &src->data.clip_transform.before)) {
+                return false;
+            }
+            if (!undo_clip_state_clone(&dst->data.clip_transform.after,
+                                       &src->data.clip_transform.after)) {
+                undo_clip_state_clear(&dst->data.clip_transform.before);
+                return false;
+            }
             return true;
         case UNDO_CMD_CLIP_ADD_REMOVE:
             dst->data.clip_add_remove = src->data.clip_add_remove;
@@ -378,8 +444,21 @@ bool undo_command_clone(UndoCommand* dst, const UndoCommand* src) {
                 mdst->count = 0;
                 return false;
             }
-            memcpy(mdst->before, msrc->before, sizeof(UndoClipState) * (size_t)msrc->count);
-            memcpy(mdst->after, msrc->after, sizeof(UndoClipState) * (size_t)msrc->count);
+            for (int i = 0; i < msrc->count; ++i) {
+                if (!undo_clip_state_clone(&mdst->before[i], &msrc->before[i]) ||
+                    !undo_clip_state_clone(&mdst->after[i], &msrc->after[i])) {
+                    for (int j = 0; j <= i; ++j) {
+                        undo_clip_state_clear(&mdst->before[j]);
+                        undo_clip_state_clear(&mdst->after[j]);
+                    }
+                    free(mdst->before);
+                    free(mdst->after);
+                    mdst->before = NULL;
+                    mdst->after = NULL;
+                    mdst->count = 0;
+                    return false;
+                }
+            }
             return true;
         }
         case UNDO_CMD_AUTOMATION_EDIT: {
@@ -569,6 +648,10 @@ static bool apply_clip_add_remove(AppState* state, UndoClipAddRemove* edit, bool
                                                    edit->track_index,
                                                    new_index,
                                                    edit->clip.instrument_params);
+            engine_clip_midi_set_inherits_track_instrument(state->engine,
+                                                           edit->track_index,
+                                                           new_index,
+                                                           edit->clip.instrument_inherits_track);
             for (int n = 0; n < edit->clip.midi_note_count; ++n) {
                 engine_clip_midi_add_note(state->engine,
                                           edit->track_index,
@@ -692,8 +775,53 @@ static bool apply_clip_state(AppState* state, const UndoClipState* target) {
     if (final_track < 0 || final_clip < 0) {
         return false;
     }
-    engine_clip_set_region(state->engine, final_track, final_clip,
-                           target->offset_frames, target->duration_frames);
+    bool is_midi = target->kind == ENGINE_CLIP_KIND_MIDI;
+    if (is_midi) {
+        const EngineTrack* tracks = engine_get_tracks(state->engine);
+        int track_count = engine_get_track_count(state->engine);
+        if (!tracks || final_track < 0 || final_track >= track_count) {
+            return false;
+        }
+        const EngineTrack* track = &tracks[final_track];
+        if (!track || final_clip < 0 || final_clip >= track->clip_count) {
+            return false;
+        }
+        const uint64_t current_duration = track->clips[final_clip].duration_frames;
+        if (target->duration_frames < current_duration) {
+            if (!engine_clip_midi_set_notes(state->engine,
+                                            final_track,
+                                            final_clip,
+                                            target->midi_notes,
+                                            target->midi_note_count)) {
+                return false;
+            }
+            if (!engine_clip_set_region(state->engine,
+                                        final_track,
+                                        final_clip,
+                                        0,
+                                        target->duration_frames)) {
+                return false;
+            }
+        } else {
+            if (!engine_clip_set_region(state->engine,
+                                        final_track,
+                                        final_clip,
+                                        0,
+                                        target->duration_frames)) {
+                return false;
+            }
+            if (!engine_clip_midi_set_notes(state->engine,
+                                            final_track,
+                                            final_clip,
+                                            target->midi_notes,
+                                            target->midi_note_count)) {
+                return false;
+            }
+        }
+    } else {
+        engine_clip_set_region(state->engine, final_track, final_clip,
+                               target->offset_frames, target->duration_frames);
+    }
     engine_clip_set_timeline_start(state->engine, final_track, final_clip,
                                    target->start_frame, NULL);
     engine_clip_set_fades(state->engine, final_track, final_clip,
@@ -704,6 +832,20 @@ static bool apply_clip_state(AppState* state, const UndoClipState* target) {
                                 target->fade_in_curve,
                                 target->fade_out_curve);
     engine_clip_set_gain(state->engine, final_track, final_clip, target->gain);
+    if (is_midi) {
+        engine_clip_midi_set_instrument_preset(state->engine,
+                                               final_track,
+                                               final_clip,
+                                               target->instrument_preset);
+        engine_clip_midi_set_instrument_params(state->engine,
+                                               final_track,
+                                               final_clip,
+                                               target->instrument_params);
+        engine_clip_midi_set_inherits_track_instrument(state->engine,
+                                                       final_track,
+                                                       final_clip,
+                                                       target->instrument_inherits_track);
+    }
     return true;
 }
 
@@ -728,6 +870,12 @@ static bool apply_track_snapshot(AppState* state, const UndoTrackSnapshotEdit* e
     float pan = apply_after ? edit->pan_after : edit->pan_before;
     bool muted = apply_after ? edit->muted_after : edit->muted_before;
     bool solo = apply_after ? edit->solo_after : edit->solo_before;
+    bool midi_enabled = apply_after ? edit->midi_instrument_enabled_after
+                                    : edit->midi_instrument_enabled_before;
+    EngineInstrumentPresetId midi_preset = apply_after ? edit->midi_instrument_preset_after
+                                                       : edit->midi_instrument_preset_before;
+    EngineInstrumentParams midi_params = apply_after ? edit->midi_instrument_params_after
+                                                     : edit->midi_instrument_params_before;
     if (edit->is_master) {
         return false;
     }
@@ -738,6 +886,11 @@ static bool apply_track_snapshot(AppState* state, const UndoTrackSnapshotEdit* e
     engine_track_set_pan(state->engine, edit->track_index, pan);
     engine_track_set_muted(state->engine, edit->track_index, muted);
     engine_track_set_solo(state->engine, edit->track_index, solo);
+    engine_track_midi_set_instrument_enabled(state->engine, edit->track_index, midi_enabled);
+    if (midi_enabled) {
+        engine_track_midi_set_instrument_preset(state->engine, edit->track_index, midi_preset);
+        engine_track_midi_set_instrument_params(state->engine, edit->track_index, midi_params);
+    }
     state->effects_panel.track_snapshot.gain = gain;
     state->effects_panel.track_snapshot.pan = pan;
     state->effects_panel.track_snapshot.muted = muted;
@@ -786,6 +939,17 @@ static bool apply_session_track(AppState* state, int track_index, const SessionT
     engine_track_set_pan(state->engine, track_index, track->pan);
     engine_track_set_muted(state->engine, track_index, track->muted);
     engine_track_set_solo(state->engine, track_index, track->solo);
+    engine_track_midi_set_instrument_enabled(state->engine,
+                                             track_index,
+                                             track->midi_instrument_enabled);
+    if (track->midi_instrument_enabled) {
+        engine_track_midi_set_instrument_preset(state->engine,
+                                                track_index,
+                                                track->midi_instrument_preset);
+        engine_track_midi_set_instrument_params(state->engine,
+                                                track_index,
+                                                track->midi_instrument_params);
+    }
 
     if (state->effects_panel.eq_curve_tracks &&
         track_index < state->effects_panel.eq_curve_tracks_count) {
@@ -839,6 +1003,10 @@ static bool apply_session_track(AppState* state, int track_index, const SessionT
                                                    track_index,
                                                    clip_index,
                                                    clip->instrument_params);
+            engine_clip_midi_set_inherits_track_instrument(state->engine,
+                                                           track_index,
+                                                           clip_index,
+                                                           clip->instrument_inherits_track);
         }
         for (int n = 0; n < clip->midi_note_count; ++n) {
             engine_clip_midi_add_note(state->engine, track_index, clip_index, clip->midi_notes[n], NULL);
@@ -1152,7 +1320,15 @@ void undo_command_destroy(UndoCommand* cmd) {
         return;
     }
     switch (cmd->type) {
+        case UNDO_CMD_CLIP_TRANSFORM:
+            undo_clip_state_clear(&cmd->data.clip_transform.before);
+            undo_clip_state_clear(&cmd->data.clip_transform.after);
+            break;
         case UNDO_CMD_MULTI_CLIP_TRANSFORM:
+            for (int i = 0; i < cmd->data.multi_clip_transform.count; ++i) {
+                undo_clip_state_clear(&cmd->data.multi_clip_transform.before[i]);
+                undo_clip_state_clear(&cmd->data.multi_clip_transform.after[i]);
+            }
             free(cmd->data.multi_clip_transform.before);
             free(cmd->data.multi_clip_transform.after);
             cmd->data.multi_clip_transform.before = NULL;

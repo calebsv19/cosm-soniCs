@@ -1,4 +1,5 @@
 #include "ui/transport.h"
+#include "app/audio_recording.h"
 #include "app_state.h"
 #include "ui/timeline_view.h"
 #include "time/tempo.h"
@@ -524,8 +525,9 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
 
     render_button(renderer, &ui->load_rect, ui->load_hovered, false, "LOAD", &theme);
     render_button(renderer, &ui->save_rect, ui->save_hovered, false, "SAVE", &theme);
-    render_button(renderer, &ui->play_rect, ui->play_hovered, is_playing, "PLAY", &theme);
-    render_button(renderer, &ui->stop_rect, ui->stop_hovered, !is_playing, "STOP", &theme);
+    bool recording = state && daw_audio_recording_is_active(&state->audio_recording);
+    render_button(renderer, &ui->play_rect, ui->play_hovered, is_playing || recording, recording ? "REC" : "PLAY", &theme);
+    render_button(renderer, &ui->stop_rect, ui->stop_hovered, !is_playing && !recording, "STOP", &theme);
 
     SDL_Color track_bg = theme.slider_track;
     SDL_Color track_border = theme.timeline_border;

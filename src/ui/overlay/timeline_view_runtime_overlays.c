@@ -1,11 +1,14 @@
 #include "ui/timeline_view_runtime_overlays.h"
 
+#include "app/audio_recording.h"
+#include "audio/media_clip.h"
 #include "engine/engine.h"
 #include "ui/font.h"
 #include "ui/render_utils.h"
 #include "ui/timeline_view.h"
 #include "ui/timeline_view_controls.h"
 #include "ui/timeline_view_grid.h"
+#include "ui/waveform_render.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -40,6 +43,150 @@ static void timeline_draw_text_in_rect_clipped(SDL_Renderer* renderer,
                          color,
                          scale,
                          max_w);
+}
+
+static void timeline_view_draw_audio_recording_preview(SDL_Renderer* renderer,
+                                                       AppState* state,
+                                                       const TimelineTheme* theme,
+                                                       uint64_t playhead_frame,
+                                                       int sample_rate,
+                                                       float window_start,
+                                                       float window_end,
+                                                       int content_left,
+                                                       int content_width,
+                                                       int track_y,
+                                                       int track_height,
+                                                       int track_spacing,
+                                                       int track_count,
+                                                       float pixels_per_second) {
+    if (!renderer || !state || !theme || sample_rate <= 0 || content_width <= 0 ||
+        !daw_audio_recording_is_active(&state->audio_recording)) {
+        return;
+    }
+
+    const DawAudioRecordingState* recording = &state->audio_recording;
+    int target_track = recording->target_track_index;
+    if (target_track < 0 || target_track >= track_count) {
+        return;
+    }
+
+    uint64_t frame_count = 0;
+    AudioMediaClip take_view = {0};
+    bool have_waveform = daw_audio_recording_take_clip_view(recording, &take_view);
+    if (have_waveform) {
+        frame_count = take_view.frame_count;
+    } else if (playhead_frame > recording->start_frame) {
+        frame_count = playhead_frame - recording->start_frame;
+    }
+    if (frame_count == 0) {
+        frame_count = (uint64_t)sample_rate / 20u;
+        if (frame_count == 0) {
+            frame_count = 1;
+        }
+    }
+
+    double start_sec = (double)recording->start_frame / (double)sample_rate;
+    double end_sec = start_sec + (double)frame_count / (double)sample_rate;
+    double visible_start_sec = start_sec > (double)window_start ? start_sec : (double)window_start;
+    double visible_end_sec = end_sec < (double)window_end ? end_sec : (double)window_end;
+    if (visible_end_sec <= visible_start_sec) {
+        return;
+    }
+
+    int clip_x = content_left + (int)round((visible_start_sec - (double)window_start) * pixels_per_second);
+    int clip_w = (int)round((visible_end_sec - visible_start_sec) * pixels_per_second);
+    if (clip_w < 8) {
+        clip_w = 8;
+    }
+    if (clip_x < content_left) {
+        int delta = content_left - clip_x;
+        clip_x = content_left;
+        clip_w -= delta;
+    }
+    int content_right = content_left + content_width;
+    if (clip_x + clip_w > content_right) {
+        clip_w = content_right - clip_x;
+    }
+    if (clip_w <= 0) {
+        return;
+    }
+
+    int lane_top = track_y + target_track * (track_height + track_spacing);
+    SDL_Rect preview_rect = {0, 0, 0, 0};
+    timeline_view_compute_lane_clip_rect(lane_top, track_height, clip_x, clip_w, &preview_rect);
+    if (preview_rect.w <= 0 || preview_rect.h <= 0) {
+        return;
+    }
+
+    ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_Color fill = theme->clip_fill;
+    fill.r = (Uint8)lroundf((float)fill.r * 0.72f + (float)theme->playhead.r * 0.28f);
+    fill.g = (Uint8)lroundf((float)fill.g * 0.72f + (float)theme->playhead.g * 0.28f);
+    fill.b = (Uint8)lroundf((float)fill.b * 0.72f + (float)theme->playhead.b * 0.28f);
+    fill.a = 190;
+    SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
+    SDL_RenderFillRect(renderer, &preview_rect);
+
+    SDL_Color border = theme->playhead;
+    border.a = 230;
+    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+    SDL_RenderDrawRect(renderer, &preview_rect);
+
+    int text_h = ui_font_line_height(1.0f);
+    int label_pad_y = text_h / 6;
+    if (label_pad_y < 2) {
+        label_pad_y = 2;
+    }
+    SDL_Color text = theme->clip_text;
+    timeline_draw_text_in_rect_clipped(renderer,
+                                       &preview_rect,
+                                       "Recording...",
+                                       text,
+                                       6,
+                                       label_pad_y,
+                                       1.0f);
+
+    if (have_waveform) {
+        SDL_Rect wave_rect = preview_rect;
+        wave_rect.y += text_h + 5;
+        wave_rect.h -= text_h + 8;
+        if (wave_rect.h < 8) {
+            wave_rect = preview_rect;
+            wave_rect.y += 3;
+            wave_rect.h -= 6;
+        }
+        if (wave_rect.w > 0 && wave_rect.h > 0) {
+            uint64_t view_start_frame = 0;
+            double local_offset_sec = visible_start_sec - start_sec;
+            if (local_offset_sec > 0.0) {
+                view_start_frame = (uint64_t)llround(local_offset_sec * (double)sample_rate);
+            }
+            if (view_start_frame > take_view.frame_count) {
+                view_start_frame = take_view.frame_count;
+            }
+            uint64_t view_frame_count = (uint64_t)llround((visible_end_sec - visible_start_sec) *
+                                                          (double)sample_rate);
+            if (view_frame_count == 0) {
+                view_frame_count = 1;
+            }
+            if (view_start_frame + view_frame_count > take_view.frame_count) {
+                view_frame_count = take_view.frame_count > view_start_frame
+                                       ? take_view.frame_count - view_start_frame
+                                       : 0;
+            }
+            if (view_frame_count > 0) {
+                SDL_Color wave = theme->waveform;
+                wave.a = 235;
+                (void)waveform_render_samples_view(renderer,
+                                                   &take_view,
+                                                   &wave_rect,
+                                                   view_start_frame,
+                                                   view_frame_count,
+                                                   wave);
+            }
+        }
+    }
+    ui_set_blend_mode(renderer, SDL_BLENDMODE_NONE);
 }
 
 void timeline_view_render_runtime_overlays(SDL_Renderer* renderer,
@@ -79,6 +226,21 @@ void timeline_view_render_runtime_overlays(SDL_Renderer* renderer,
     int timeline_bottom = track_y + (track_count > 0
                                       ? (track_count * (track_height + track_spacing)) - track_spacing
                                       : track_height);
+    timeline_view_draw_audio_recording_preview(renderer,
+                                               state,
+                                               theme,
+                                               playhead_frame,
+                                               sample_rate,
+                                               window_start,
+                                               window_end,
+                                               content_left,
+                                               content_width,
+                                               track_y,
+                                               track_height,
+                                               track_spacing,
+                                               track_count,
+                                               pixels_per_second);
+
     SDL_SetRenderDrawColor(renderer, theme->playhead.r, theme->playhead.g, theme->playhead.b, theme->playhead.a);
     SDL_RenderDrawLine(renderer, playhead_x, track_y - 8, playhead_x, timeline_bottom + 8);
 

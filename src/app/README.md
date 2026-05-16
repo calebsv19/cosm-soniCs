@@ -22,3 +22,4 @@ Purpose: Application bootstrap and SDL event loop integration.
     - `make -C daw loop-gates` (default profile, inconclusive => exit 2)
     - `make -C daw loop-gates-strict` (strict profile, inconclusive => failure exit)
   - `main`: Loads config, restores the last session from `config/last_session.json` (or seeds defaults), initialises UI subsystems, configures wake-loop policy, runs the SDL framework loop, and auto-saves the session on shutdown.
+- `audio_recording.c`: DAW-local audio recording coordinator. It owns the capture queue drain, in-memory take buffer, WAV finalization path, media registry registration, and normal audio-clip insertion while leaving shortcut/UI policy to input modules.

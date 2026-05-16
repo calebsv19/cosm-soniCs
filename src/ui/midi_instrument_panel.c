@@ -12,10 +12,10 @@
 #include <string.h>
 
 enum {
-    MIDI_INSTRUMENT_PANEL_MARGIN = 12,
+    MIDI_INSTRUMENT_PANEL_MARGIN = 10,
     MIDI_INSTRUMENT_PANEL_HEADER_HEIGHT = 30,
-    MIDI_INSTRUMENT_PANEL_MIN_PARAM_HEIGHT = 70,
-    MIDI_INSTRUMENT_PANEL_PARAM_HEIGHT = 84
+    MIDI_INSTRUMENT_PANEL_MIN_PARAM_HEIGHT = 58,
+    MIDI_INSTRUMENT_PANEL_PARAM_HEIGHT = 76
 };
 
 static int instrument_panel_max_int(int a, int b) {
@@ -157,38 +157,20 @@ static void instrument_panel_draw_button(SDL_Renderer* renderer,
 
 static void instrument_panel_draw_preset_menu(SDL_Renderer* renderer,
                                               const MidiInstrumentPanelLayout* layout,
-                                              const EngineClip* clip,
+                                              const AppState* state,
+                                              const MidiEditorSelection* selection,
                                               const DawThemePalette* theme) {
-    if (!renderer || !layout || !clip || !theme ||
+    if (!renderer || !layout || !state || !selection || !selection->clip || !theme ||
         !instrument_panel_rect_valid(&layout->preset_menu_rect)) {
         return;
     }
-    EngineInstrumentPresetId active_preset = engine_clip_midi_instrument_preset(clip);
-    instrument_panel_draw_rect(renderer, layout->preset_menu_rect, theme->control_fill, true);
-    for (int i = 0; i < layout->preset_menu_item_count; ++i) {
-        SDL_Rect item = layout->preset_menu_item_rects[i];
-        if (!instrument_panel_rect_valid(&item)) {
-            continue;
-        }
-        EngineInstrumentPresetId preset = engine_instrument_preset_clamp((EngineInstrumentPresetId)i);
-        bool active = preset == active_preset;
-        if (active) {
-            instrument_panel_draw_rect(renderer,
-                                       item,
-                                       instrument_panel_color_mix(theme->accent_primary, theme->control_fill, 1, 2),
-                                       true);
-        }
-        instrument_panel_draw_rect(renderer, item, active ? theme->text_primary : theme->control_border, false);
-        int text_h = ui_font_line_height(0.9f);
-        ui_draw_text_clipped(renderer,
-                             item.x + 8,
-                             item.y + instrument_panel_max_int(0, (item.h - text_h) / 2),
-                             engine_instrument_preset_display_name(preset),
-                             active ? theme->text_primary : theme->text_muted,
-                             0.9f,
-                             item.w - 12);
-    }
-    instrument_panel_draw_rect(renderer, layout->preset_menu_rect, theme->pane_border, false);
+    EngineInstrumentPresetId preset = engine_clip_midi_effective_instrument_preset(state->engine,
+                                                                                   selection->track_index,
+                                                                                   selection->clip_index);
+    midi_preset_browser_draw(renderer,
+                             &layout->preset_browser,
+                             preset,
+                             theme);
 }
 
 bool midi_instrument_panel_should_render(const AppState* state) {
@@ -237,7 +219,9 @@ void midi_instrument_panel_compute_layout(const AppState* state, MidiInstrumentP
     MidiEditorSelection selection = {0};
     EngineInstrumentPresetId preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
     if (midi_editor_get_selection(state, &selection)) {
-        preset = engine_clip_midi_instrument_preset(selection.clip);
+        preset = engine_clip_midi_effective_instrument_preset(state->engine,
+                                                              selection.track_index,
+                                                              selection.clip_index);
     }
     char preset_label[80];
     snprintf(preset_label,
@@ -276,45 +260,78 @@ void midi_instrument_panel_compute_layout(const AppState* state, MidiInstrumentP
     }
     layout->summary_rect = (SDL_Rect){summary_x, content.y, summary_w, header_h};
 
-    int menu_items = engine_instrument_preset_count();
-    if (menu_items > ENGINE_INSTRUMENT_PRESET_COUNT) {
-        menu_items = ENGINE_INSTRUMENT_PRESET_COUNT;
-    }
-    if (menu_items < 0) {
-        menu_items = 0;
-    }
-    layout->preset_menu_item_count = menu_items;
-    int item_h = instrument_panel_max_int(24, ui_font_line_height(0.9f) + 10);
-    layout->preset_menu_rect = (SDL_Rect){layout->preset_button_rect.x,
-                                          layout->preset_button_rect.y + layout->preset_button_rect.h + 4,
-                                          layout->preset_button_rect.w,
-                                          item_h * menu_items};
     int menu_bottom = content.y + content.h;
-    if (layout->preset_menu_rect.y + layout->preset_menu_rect.h > menu_bottom) {
-        layout->preset_menu_rect.h = instrument_panel_max_int(0, menu_bottom - layout->preset_menu_rect.y);
+    midi_preset_browser_compute_layout(layout->preset_button_rect,
+                                       menu_bottom,
+                                       state ? state->midi_editor_ui.instrument_menu_scroll_row : 0,
+                                       state ? (EngineInstrumentPresetCategoryId)state->midi_editor_ui.instrument_menu_expanded_category
+                                             : ENGINE_INSTRUMENT_PRESET_CATEGORY_COUNT,
+                                       &layout->preset_browser);
+    layout->preset_menu_rect = layout->preset_browser.menu_rect;
+    layout->preset_menu_item_count = engine_instrument_preset_count();
+    if (layout->preset_menu_item_count > ENGINE_INSTRUMENT_PRESET_COUNT) {
+        layout->preset_menu_item_count = ENGINE_INSTRUMENT_PRESET_COUNT;
     }
-    for (int i = 0; i < menu_items; ++i) {
-        SDL_Rect item = {layout->preset_menu_rect.x,
-                         layout->preset_menu_rect.y + item_h * i,
-                         layout->preset_menu_rect.w,
-                         item_h};
-        if (item.y + item.h > layout->preset_menu_rect.y + layout->preset_menu_rect.h) {
-            item.h = instrument_panel_max_int(0, layout->preset_menu_rect.y + layout->preset_menu_rect.h - item.y);
-        }
-        layout->preset_menu_item_rects[i] = item;
+    if (layout->preset_menu_item_count < 0) {
+        layout->preset_menu_item_count = 0;
+    }
+    for (int i = 0; i < ENGINE_INSTRUMENT_PRESET_COUNT; ++i) {
+        layout->preset_menu_item_rects[i] =
+            midi_preset_browser_rect_for_preset(&layout->preset_browser, (EngineInstrumentPresetId)i);
     }
 
-    int body_y = content.y + header_h + 10;
+    int group_count = engine_instrument_param_group_count();
+    if (group_count > ENGINE_INSTRUMENT_PARAM_GROUP_COUNT) {
+        group_count = ENGINE_INSTRUMENT_PARAM_GROUP_COUNT;
+    }
+    if (group_count < 0) {
+        group_count = 0;
+    }
+    layout->group_tab_count = group_count;
+    EngineInstrumentParamGroupId active_group = state
+        ? state->midi_editor_ui.instrument_active_group
+        : ENGINE_INSTRUMENT_PARAM_GROUP_OUTPUT;
+    if (active_group < 0 || active_group >= ENGINE_INSTRUMENT_PARAM_GROUP_COUNT) {
+        active_group = ENGINE_INSTRUMENT_PARAM_GROUP_OUTPUT;
+    }
+    layout->active_group = active_group;
+
+    int group_y = content.y + header_h + 6;
+    int group_h = instrument_panel_max_int(22, ui_font_line_height(0.8f) + 8);
+    if (group_y + group_h > content.y + content.h) {
+        group_h = instrument_panel_max_int(0, content.y + content.h - group_y);
+    }
+    int group_gap = 6;
+    int group_x = content.x;
+    for (int i = 0; i < group_count; ++i) {
+        const char* group_name = engine_instrument_param_group_display_name((EngineInstrumentParamGroupId)i);
+        int tab_w = ui_measure_text_width(group_name, 0.8f) + 18;
+        if (tab_w < 56) {
+            tab_w = 56;
+        }
+        if (group_x + tab_w > content.x + content.w) {
+            tab_w = instrument_panel_max_int(0, content.x + content.w - group_x);
+        }
+        layout->group_tab_rects[i] = (SDL_Rect){group_x, group_y, tab_w, group_h};
+        group_x += tab_w + group_gap;
+    }
+
+    int body_y = group_y + group_h + 6;
     int body_h = content.y + content.h - body_y;
     if (body_h < 0) {
         body_h = 0;
     }
-    int param_count = engine_instrument_param_count();
-    if (param_count > ENGINE_INSTRUMENT_PARAM_COUNT) {
-        param_count = ENGINE_INSTRUMENT_PARAM_COUNT;
-    }
-    if (param_count < 0) {
-        param_count = 0;
+    int preset_param_count = engine_instrument_preset_param_count(preset);
+    int param_count = 0;
+    for (int i = 0; i < preset_param_count && param_count < ENGINE_INSTRUMENT_PARAM_COUNT; ++i) {
+        EngineInstrumentParamId param = ENGINE_INSTRUMENT_PARAM_LEVEL;
+        EngineInstrumentParamSpec spec = {0};
+        if (!engine_instrument_preset_param_id_at(preset, i, &param) ||
+            !engine_instrument_param_spec(param, &spec) ||
+            spec.group != active_group) {
+            continue;
+        }
+        layout->param_ids[param_count++] = param;
     }
     layout->instrument_param_count = param_count;
 
@@ -342,14 +359,20 @@ void midi_instrument_panel_compute_layout(const AppState* state, MidiInstrumentP
     if (param_h < MIDI_INSTRUMENT_PANEL_MIN_PARAM_HEIGHT && body_h >= MIDI_INSTRUMENT_PANEL_MIN_PARAM_HEIGHT) {
         param_h = MIDI_INSTRUMENT_PANEL_MIN_PARAM_HEIGHT;
     }
-    int scope_h = body_h - param_h - 10;
+    int scope_gap = body_h >= 130 ? 10 : 6;
+    int compact_scope_min_h = 40;
+    if (body_h >= MIDI_INSTRUMENT_PANEL_MIN_PARAM_HEIGHT + scope_gap + compact_scope_min_h &&
+        body_h - param_h - scope_gap < compact_scope_min_h) {
+        param_h = body_h - scope_gap - compact_scope_min_h;
+    }
+    int scope_h = body_h - param_h - scope_gap;
     if (param_h < MIDI_INSTRUMENT_PANEL_MIN_PARAM_HEIGHT) {
         param_h = body_h;
         scope_h = 0;
     }
     layout->param_grid_rect = (SDL_Rect){content.x, body_y, content.w, param_h};
     if (scope_h > 0) {
-        layout->scope_rect = (SDL_Rect){content.x, body_y + param_h + 10, content.w, scope_h};
+        layout->scope_rect = (SDL_Rect){content.x, body_y + param_h + scope_gap, content.w, scope_h};
     }
 
     int widget_w = columns > 0 ? (layout->param_grid_rect.w - widget_gap * (columns - 1)) / columns : 0;
@@ -439,6 +462,15 @@ static float instrument_panel_preset_wave(EngineInstrumentPresetId preset, float
     float sine = sinf(phase * pi * 2.0f);
     float harmonic = sinf(phase * pi * 4.0f) * tone * 0.30f;
     switch (engine_instrument_preset_clamp(preset)) {
+    case ENGINE_INSTRUMENT_PRESET_SYNTH_LAB: {
+        float saw = phase * 2.0f - 1.0f;
+        float detuned = sinf((phase * (1.0f + tone * 0.08f)) * pi * 2.0f);
+        float sub = sinf(phase * pi) * 0.55f;
+        return sine * (1.0f - tone * 0.38f) +
+               saw * tone * 0.50f +
+               detuned * tone * 0.24f +
+               sub * tone * 0.20f;
+    }
     case ENGINE_INSTRUMENT_PRESET_SOFT_SQUARE: {
         float square = sine >= 0.0f ? 1.0f : -1.0f;
         return sine * (0.72f - tone * 0.28f) + square * (0.28f + tone * 0.28f);
@@ -451,10 +483,51 @@ static float instrument_panel_preset_wave(EngineInstrumentPresetId preset, float
         float folded = phase < 0.5f ? phase * 4.0f - 1.0f : 3.0f - phase * 4.0f;
         return sine * 0.70f + folded * (0.22f + tone * 0.18f);
     }
+    case ENGINE_INSTRUMENT_PRESET_SOFT_PAD: {
+        float detuned = sinf((phase * (1.0f + tone * 0.05f)) * pi * 2.0f);
+        float sub = sinf(phase * pi) * 0.22f;
+        return sine * 0.64f + detuned * (0.24f + tone * 0.12f) + sub * tone;
+    }
+    case ENGINE_INSTRUMENT_PRESET_PLUCK: {
+        float triangle = phase < 0.5f ? phase * 4.0f - 1.0f : 3.0f - phase * 4.0f;
+        return triangle * (0.54f + tone * 0.24f) + sine * (0.30f - tone * 0.08f);
+    }
+    case ENGINE_INSTRUMENT_PRESET_BRIGHT_LEAD: {
+        float saw = phase * 2.0f - 1.0f;
+        float square = sine >= 0.0f ? 1.0f : -1.0f;
+        return saw * (0.68f + tone * 0.20f) + square * tone * 0.22f + harmonic;
+    }
+    case ENGINE_INSTRUMENT_PRESET_WARM_KEYS: {
+        float rounded = tanhf(sine * (1.0f + tone * 1.8f));
+        return rounded * 0.72f + harmonic * 0.55f;
+    }
+    case ENGINE_INSTRUMENT_PRESET_SUB_DRONE: {
+        float sub = sinf(phase * pi) * 0.85f;
+        return sub + sine * (0.18f + tone * 0.18f);
+    }
     case ENGINE_INSTRUMENT_PRESET_PURE_SINE:
     case ENGINE_INSTRUMENT_PRESET_COUNT:
     default:
         return sine + harmonic;
+    }
+}
+
+static bool instrument_panel_preset_uses_synth_envelope(EngineInstrumentPresetId preset) {
+    switch (engine_instrument_preset_clamp(preset)) {
+    case ENGINE_INSTRUMENT_PRESET_SYNTH_LAB:
+    case ENGINE_INSTRUMENT_PRESET_SOFT_PAD:
+    case ENGINE_INSTRUMENT_PRESET_PLUCK:
+    case ENGINE_INSTRUMENT_PRESET_BRIGHT_LEAD:
+    case ENGINE_INSTRUMENT_PRESET_WARM_KEYS:
+    case ENGINE_INSTRUMENT_PRESET_SUB_DRONE:
+        return true;
+    case ENGINE_INSTRUMENT_PRESET_PURE_SINE:
+    case ENGINE_INSTRUMENT_PRESET_SOFT_SQUARE:
+    case ENGINE_INSTRUMENT_PRESET_SAW_LEAD:
+    case ENGINE_INSTRUMENT_PRESET_SIMPLE_BASS:
+    case ENGINE_INSTRUMENT_PRESET_COUNT:
+    default:
+        return false;
     }
 }
 
@@ -470,6 +543,28 @@ static float instrument_panel_envelope_at(float t, float attack_ms, float releas
         return release_w > 0.0f ? (1.0f - t) / release_w : 0.0f;
     }
     return 1.0f;
+}
+
+static float instrument_panel_adsr_envelope_at(float t, const EngineInstrumentParams* params) {
+    if (!params) {
+        return 1.0f;
+    }
+    float attack = 0.02f + instrument_panel_clamp_float(params->attack_ms / 250.0f, 0.0f, 1.0f) * 0.24f;
+    float decay = 0.04f + instrument_panel_clamp_float(params->decay_ms / 800.0f, 0.0f, 1.0f) * 0.22f;
+    float release = 0.03f + instrument_panel_clamp_float(params->release_ms / 500.0f, 0.0f, 1.0f) * 0.28f;
+    float sustain = instrument_panel_clamp_float(params->sustain, 0.0f, 1.0f);
+    if (t < attack) {
+        return attack > 0.0f ? t / attack : 1.0f;
+    }
+    if (t < attack + decay) {
+        float dt = decay > 0.0f ? (t - attack) / decay : 1.0f;
+        return 1.0f + (sustain - 1.0f) * dt;
+    }
+    if (t > 1.0f - release) {
+        float rt = release > 0.0f ? (1.0f - t) / release : 0.0f;
+        return sustain * instrument_panel_clamp_float(rt, 0.0f, 1.0f);
+    }
+    return sustain;
 }
 
 static void instrument_panel_draw_preview(SDL_Renderer* renderer,
@@ -510,7 +605,9 @@ static void instrument_panel_draw_preview(SDL_Renderer* renderer,
     int last_bottom_y = mid_y;
     for (int i = 0; i <= plot.w; ++i) {
         float t = plot.w > 0 ? (float)i / (float)plot.w : 0.0f;
-        float env = instrument_panel_envelope_at(t, params.attack_ms, params.release_ms);
+        float env = instrument_panel_preset_uses_synth_envelope(preset)
+            ? instrument_panel_adsr_envelope_at(t, &params)
+            : instrument_panel_envelope_at(t, params.attack_ms, params.release_ms);
         int x = plot.x + i;
         int top_y = mid_y - (int)((float)amp_px * env + 0.5f);
         int bottom_y = mid_y + (int)((float)amp_px * env + 0.5f);
@@ -529,8 +626,19 @@ static void instrument_panel_draw_preview(SDL_Renderer* renderer,
     int last_y = mid_y;
     for (int i = 0; i <= plot.w; ++i) {
         float t = plot.w > 0 ? (float)i / (float)plot.w : 0.0f;
-        float env = instrument_panel_envelope_at(t, params.attack_ms, params.release_ms);
-        float sample = instrument_panel_preset_wave(preset, t * cycles, tone);
+        float env = instrument_panel_preset_uses_synth_envelope(preset)
+            ? instrument_panel_adsr_envelope_at(t, &params)
+            : instrument_panel_envelope_at(t, params.attack_ms, params.release_ms);
+        float preview_phase = t * cycles;
+        if (instrument_panel_preset_uses_synth_envelope(preset)) {
+            preview_phase += sinf(t * params.vibrato_rate * 6.28318530718f) *
+                             (params.vibrato_depth / 1200.0f);
+        }
+        float sample = instrument_panel_preset_wave(preset, preview_phase, tone);
+        if (instrument_panel_preset_uses_synth_envelope(preset)) {
+            sample += sinf(t * cycles * 3.14159265358979323846f) * params.sub_mix * 0.30f;
+            sample = tanhf(sample * (1.0f + params.drive * 2.0f));
+        }
         sample = instrument_panel_clamp_float(sample, -1.15f, 1.15f);
         int x = plot.x + i;
         int y = mid_y - (int)(sample * env * (float)amp_px);
@@ -613,10 +721,14 @@ void midi_instrument_panel_render(SDL_Renderer* renderer,
                          layout->summary_rect.w);
 
     char preset_label[80];
+    EngineInstrumentPresetId preset = engine_clip_midi_effective_instrument_preset(state->engine,
+                                                                                   selection.track_index,
+                                                                                   selection.clip_index);
+    bool inherits_track = engine_clip_midi_inherits_track_instrument(selection.clip);
     snprintf(preset_label,
              sizeof(preset_label),
-             "Preset: %s",
-             engine_instrument_preset_display_name(engine_clip_midi_instrument_preset(selection.clip)));
+             inherits_track ? "Preset: %s (Track)" : "Preset: %s",
+             engine_instrument_preset_display_name(preset));
     instrument_panel_draw_button(renderer,
                                  layout->preset_button_rect,
                                  preset_label,
@@ -624,14 +736,30 @@ void midi_instrument_panel_render(SDL_Renderer* renderer,
                                  &theme);
     instrument_panel_draw_button(renderer, layout->notes_button_rect, "Notes", false, &theme);
 
-    EngineInstrumentParams params = engine_clip_midi_instrument_params(selection.clip);
+    for (int i = 0; i < layout->group_tab_count; ++i) {
+        SDL_Rect tab = layout->group_tab_rects[i];
+        if (!instrument_panel_rect_valid(&tab)) {
+            continue;
+        }
+        bool active = (EngineInstrumentParamGroupId)i == layout->active_group;
+        instrument_panel_draw_button(renderer,
+                                     tab,
+                                     engine_instrument_param_group_display_name((EngineInstrumentParamGroupId)i),
+                                     active,
+                                     &theme);
+    }
+
+    EngineInstrumentParams params = engine_clip_midi_effective_instrument_params(state->engine,
+                                                                                 selection.track_index,
+                                                                                 selection.clip_index);
     instrument_panel_draw_rect(renderer,
                                layout->param_grid_rect,
                                instrument_panel_color_mix(theme.control_fill, theme.inspector_fill, 1, 2),
                                true);
     for (int i = 0; i < layout->instrument_param_count; ++i) {
         EngineInstrumentParamSpec spec = {0};
-        if (!engine_instrument_param_spec((EngineInstrumentParamId)i, &spec)) {
+        EngineInstrumentParamId param = layout->param_ids[i];
+        if (!engine_instrument_param_spec(param, &spec)) {
             continue;
         }
         SDL_Rect widget = layout->param_widget_rects[i];
@@ -641,7 +769,7 @@ void midi_instrument_panel_render(SDL_Renderer* renderer,
         if (!instrument_panel_rect_valid(&widget) || !instrument_panel_rect_valid(&knob)) {
             continue;
         }
-        float value = engine_instrument_params_get(params, (EngineInstrumentParamId)i);
+        float value = engine_instrument_params_get(params, param);
         float denom = spec.max_value - spec.min_value;
         float t = denom > 0.0f ? (value - spec.min_value) / denom : 0.0f;
         if (t < 0.0f) t = 0.0f;
@@ -664,11 +792,11 @@ void midi_instrument_panel_render(SDL_Renderer* renderer,
 
     instrument_panel_draw_preview(renderer,
                                   layout->scope_rect,
-                                  engine_clip_midi_instrument_preset(selection.clip),
+                                  preset,
                                   params,
                                   &theme);
 
     if (state->midi_editor_ui.instrument_menu_open) {
-        instrument_panel_draw_preset_menu(renderer, layout, selection.clip, &theme);
+        instrument_panel_draw_preset_menu(renderer, layout, state, &selection, &theme);
     }
 }

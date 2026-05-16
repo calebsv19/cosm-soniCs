@@ -1,6 +1,6 @@
 # DAW Current Truth
 
-Last updated: 2026-05-04
+Last updated: 2026-05-15
 
 ## Program Identity
 - Repository directory: `daw/`
@@ -15,6 +15,10 @@ Last updated: 2026-05-04
 - Release/desktop packaging lanes are complete through the shared target-contract flow.
 - Intel `x86_64` packaging passed local gates after launcher runtime shader-lane hardening.
 - Public release version is now `0.2.0`.
+- MIDI regions are first-class engine/session objects with timeline creation/selection, piano-roll editing, QWERTY audition/recording, note clipboard/duplicate commands, quantize, velocity editing, bounce-to-WAV, and session round-trip coverage.
+- Built-in MIDI instruments now use grouped factory presets, per-region overrides, track-level instrument defaults, and instrument parameter automation for region-local and inherited track-level lanes.
+- Audio recording now has a DAW-local SDL capture wrapper and recording coordinator that arms from timeline `R`, captures only while transport is moving, previews the active waveform, finalizes to `recordings/recording*.wav`, and inserts the result as a normal undoable/session-persisted audio clip on the selected track.
+- The current mixed-track model still allows audio and MIDI regions on the same track; hard audio-vs-MIDI track typing remains future work.
 
 ## Structure
 - Required lanes: `docs/`, `src/`, `include/`, `tests/`, `build/`
@@ -50,7 +54,8 @@ Last updated: 2026-05-04
 - Temp/runtime generated lanes remain ignored and normalized.
 
 ## Current Boundary
-- Preserve seam decomposition stability and data-path contract correctness while closing the remaining manual Intel launch proof step.
+- Preserve seam decomposition stability and data-path contract correctness while expanding MIDI/audio features.
+- Manual packaged-app proof remains important for microphone capture, selected-track recording, live waveform preview, and empty-solo record-target gating.
 - Keep launcher/runtime shader-copy hardening aligned with the packaged Vulkan/runtime contract.
 
 ## History and Deep Lane References

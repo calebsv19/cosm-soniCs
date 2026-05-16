@@ -2,6 +2,7 @@
 #include "config.h"
 #include "daw/daw_app_main.h"
 #include "daw/data_paths.h"
+#include "app/audio_recording.h"
 #include "app/main_bounce.h"
 #include "app/main_loop_policy.h"
 #include "app/workspace_authoring/daw_workspace_authoring_host.h"
@@ -369,6 +370,9 @@ static void handle_update(AppContext* ctx) {
     if (state->bounce_active) {
         return;
     }
+    if (daw_audio_recording_is_active(&state->audio_recording)) {
+        (void)daw_audio_recording_drain_if_transport_playing(state);
+    }
     DawUpdateDerivation update_derivation = {
         .layout_changed = ui_ensure_layout(state, ctx->window, ctx->renderer),
         .invalidation_reason_bits = DAW_RENDER_INVALIDATION_LAYOUT | DAW_RENDER_INVALIDATION_RESIZE
@@ -654,6 +658,7 @@ int daw_app_main_legacy(void) {
     state.inspector.waveform.use_kit_viz_waveform = true;
     waveform_cache_init(&state.waveform_cache);
     undo_manager_init(&state.undo);
+    daw_audio_recording_init(&state.audio_recording);
     daw_workspace_authoring_host_reset(&state.workspace_authoring);
     media_registry_init(&state.media_registry, "config/library_index.json");
     media_registry_load(&state.media_registry);
@@ -868,6 +873,7 @@ int daw_app_main_legacy(void) {
     if (daw_workspace_authoring_host_active(&state.workspace_authoring)) {
         (void)daw_workspace_authoring_host_cancel(&state.workspace_authoring);
     }
+    daw_audio_recording_cancel(&state.audio_recording);
     daw_shared_theme_save_persisted();
     daw_shared_font_save_persisted();
     daw_shared_font_zoom_save_persisted();
@@ -887,6 +893,7 @@ int daw_app_main_legacy(void) {
     timer_hud_shutdown_session();
     waveform_cache_shutdown(&state.waveform_cache);
     undo_manager_free(&state.undo);
+    daw_audio_recording_free(&state.audio_recording);
     tempo_map_free(&state.tempo_map);
     time_signature_map_free(&state.time_signature_map);
     media_registry_shutdown(&state.media_registry);

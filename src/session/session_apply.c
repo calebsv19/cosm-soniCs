@@ -55,6 +55,56 @@ static void session_apply_data_paths(AppState* state, const SessionDocument* doc
     daw_data_paths_apply_runtime_policy(&state->data_paths);
 }
 
+static bool session_selected_clip_is_midi(const AppState* state) {
+    if (!state || !state->engine ||
+        state->selected_track_index < 0 ||
+        state->selected_clip_index < 0) {
+        return false;
+    }
+    int track_count = engine_get_track_count(state->engine);
+    if (state->selected_track_index >= track_count) {
+        return false;
+    }
+    const EngineTrack* tracks = engine_get_tracks(state->engine);
+    if (!tracks) {
+        return false;
+    }
+    const EngineTrack* track = &tracks[state->selected_track_index];
+    if (state->selected_clip_index >= track->clip_count) {
+        return false;
+    }
+    return engine_clip_get_kind(&track->clips[state->selected_clip_index]) == ENGINE_CLIP_KIND_MIDI;
+}
+
+static void session_apply_midi_editor_state(AppState* state, const SessionDocument* doc) {
+    if (!state || !doc) {
+        return;
+    }
+    state->midi_editor_ui.panel_mode = MIDI_REGION_PANEL_EDITOR;
+    state->midi_editor_ui.instrument_menu_open = false;
+    state->midi_editor_ui.instrument_menu_scroll_row = 0;
+    state->midi_editor_ui.instrument_menu_expanded_category = -1;
+    state->midi_editor_ui.instrument_param_drag_active = false;
+    state->midi_editor_ui.instrument_param_drag_index = -1;
+    state->midi_editor_ui.instrument_param_drag_start_y = 0;
+    state->midi_editor_ui.instrument_param_drag_start_value = 0.0f;
+
+    if (doc->midi_editor.instrument_active_group >= 0 &&
+        doc->midi_editor.instrument_active_group < engine_instrument_param_group_count()) {
+        state->midi_editor_ui.instrument_active_group =
+            (EngineInstrumentParamGroupId)doc->midi_editor.instrument_active_group;
+    } else {
+        state->midi_editor_ui.instrument_active_group = ENGINE_INSTRUMENT_PARAM_GROUP_OUTPUT;
+    }
+
+    if (doc->midi_editor.panel_mode == MIDI_REGION_PANEL_INSTRUMENT &&
+        session_selected_clip_is_midi(state)) {
+        state->midi_editor_ui.panel_mode = MIDI_REGION_PANEL_INSTRUMENT;
+        state->midi_editor_ui.qwerty_record_armed = false;
+        state->midi_editor_ui.qwerty_test_enabled = false;
+    }
+}
+
 static float clamp_ratio(float value) {
     if (value < 0.0f) return 0.0f;
     if (value > 1.0f) return 1.0f;
@@ -376,6 +426,27 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
         engine_track_set_pan(state->engine, track_index, track_doc->pan);
         engine_track_set_muted(state->engine, track_index, track_doc->muted);
         engine_track_set_solo(state->engine, track_index, track_doc->solo);
+        if (track_doc->midi_instrument_enabled) {
+            engine_track_midi_set_instrument_preset(state->engine,
+                                                    track_index,
+                                                    track_doc->midi_instrument_preset);
+            engine_track_midi_set_instrument_params(state->engine,
+                                                    track_index,
+                                                    track_doc->midi_instrument_params);
+        }
+        if (track_doc->midi_instrument_automation_lanes &&
+            track_doc->midi_instrument_automation_lane_count > 0) {
+            for (int l = 0; l < track_doc->midi_instrument_automation_lane_count; ++l) {
+                const SessionAutomationLane* lane = &track_doc->midi_instrument_automation_lanes[l];
+                engine_track_midi_set_instrument_automation_lane_points(state->engine,
+                                                                        track_index,
+                                                                        lane->target,
+                                                                        (const EngineAutomationPoint*)lane->points,
+                                                                        lane->point_count);
+            }
+        } else {
+            engine_track_midi_set_instrument_automation_lanes(state->engine, track_index, NULL, 0);
+        }
         if (state->effects_panel.eq_curve_tracks && t < state->effects_panel.eq_curve_tracks_count) {
             eq_curve_from_session(&state->effects_panel.eq_curve_tracks[t], &track_doc->eq);
             if (state->engine) {
@@ -407,6 +478,10 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
                                                        track_index,
                                                        clip_index,
                                                        clip_doc->instrument_params);
+                engine_clip_midi_set_inherits_track_instrument(state->engine,
+                                                               track_index,
+                                                               clip_index,
+                                                               clip_doc->instrument_inherits_track);
                 if (clip_doc->offset_frames != 0 || clip_doc->duration_frames != 0) {
                     engine_clip_set_region(state->engine,
                                            track_index,
@@ -546,6 +621,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
         state->selected_track_index = 0;
         state->selected_clip_index = doc->tracks[0].clip_count > 0 ? 0 : -1;
     }
+    session_apply_midi_editor_state(state, doc);
 
     if (doc->clip_inspector.visible &&
         doc->clip_inspector.track_index >= 0 &&

@@ -359,7 +359,9 @@ void midi_editor_compute_layout(const AppState* state, MidiEditorLayout* layout)
     EngineInstrumentPresetId preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
     bool has_selection = midi_editor_get_selection(state, &selection);
     if (has_selection) {
-        preset = engine_clip_midi_instrument_preset(selection.clip);
+        preset = engine_clip_midi_effective_instrument_preset(state->engine,
+                                                              selection.track_index,
+                                                              selection.clip_index);
         midi_editor_resolve_viewport(state,
                                      &selection,
                                      &layout->view_start_frame,
@@ -395,32 +397,24 @@ void midi_editor_compute_layout(const AppState* state, MidiEditorLayout* layout)
                                                 button_y,
                                                 instrument_w,
                                                 button_h};
-    int menu_items = engine_instrument_preset_count();
-    if (menu_items > ENGINE_INSTRUMENT_PRESET_COUNT) {
-        menu_items = ENGINE_INSTRUMENT_PRESET_COUNT;
-    }
-    if (menu_items < 0) {
-        menu_items = 0;
-    }
-    layout->instrument_menu_item_count = menu_items;
-    int item_h = midi_editor_max_int(24, ui_font_line_height(0.9f) + 10);
-    layout->instrument_menu_rect = (SDL_Rect){layout->instrument_button_rect.x,
-                                              layout->instrument_button_rect.y + layout->instrument_button_rect.h + 4,
-                                              layout->instrument_button_rect.w,
-                                              item_h * menu_items};
     int menu_bottom = content.y + content.h;
-    if (layout->instrument_menu_rect.y + layout->instrument_menu_rect.h > menu_bottom) {
-        layout->instrument_menu_rect.h = midi_editor_max_int(0, menu_bottom - layout->instrument_menu_rect.y);
+    midi_preset_browser_compute_layout(layout->instrument_button_rect,
+                                       menu_bottom,
+                                       state ? state->midi_editor_ui.instrument_menu_scroll_row : 0,
+                                       state ? (EngineInstrumentPresetCategoryId)state->midi_editor_ui.instrument_menu_expanded_category
+                                             : ENGINE_INSTRUMENT_PRESET_CATEGORY_COUNT,
+                                       &layout->instrument_browser);
+    layout->instrument_menu_rect = layout->instrument_browser.menu_rect;
+    layout->instrument_menu_item_count = engine_instrument_preset_count();
+    if (layout->instrument_menu_item_count > ENGINE_INSTRUMENT_PRESET_COUNT) {
+        layout->instrument_menu_item_count = ENGINE_INSTRUMENT_PRESET_COUNT;
     }
-    for (int i = 0; i < menu_items; ++i) {
-        SDL_Rect item = {layout->instrument_menu_rect.x,
-                         layout->instrument_menu_rect.y + item_h * i,
-                         layout->instrument_menu_rect.w,
-                         item_h};
-        if (item.y + item.h > layout->instrument_menu_rect.y + layout->instrument_menu_rect.h) {
-            item.h = midi_editor_max_int(0, layout->instrument_menu_rect.y + layout->instrument_menu_rect.h - item.y);
-        }
-        layout->instrument_menu_item_rects[i] = item;
+    if (layout->instrument_menu_item_count < 0) {
+        layout->instrument_menu_item_count = 0;
+    }
+    for (int i = 0; i < ENGINE_INSTRUMENT_PRESET_COUNT; ++i) {
+        layout->instrument_menu_item_rects[i] =
+            midi_preset_browser_rect_for_preset(&layout->instrument_browser, (EngineInstrumentPresetId)i);
     }
 
     int title_w = ui_measure_text_width("MIDI Editor", 1.0f) + 12;
@@ -508,10 +502,14 @@ void midi_editor_compute_layout(const AppState* state, MidiEditorLayout* layout)
     if (rows < 1) {
         rows = 1;
     }
-    layout->key_row_count = rows;
-    if (rows < 12) {
-        layout->highest_note = 60 + rows - 1;
+    int top_note = layout->highest_note;
+    if (has_selection) {
+        midi_editor_resolve_pitch_viewport(state, &selection, rows, &top_note, &rows);
+    } else {
+        midi_editor_resolve_pitch_viewport(state, NULL, rows, &top_note, &rows);
     }
+    layout->key_row_count = rows;
+    layout->highest_note = top_note;
     layout->lowest_note = layout->highest_note - rows + 1;
     int row_h = rows > 0 ? layout->grid_rect.h / rows : 0;
     int remainder = rows > 0 ? layout->grid_rect.h % rows : 0;
@@ -566,31 +564,10 @@ static void midi_editor_draw_instrument_menu(SDL_Renderer* renderer,
         !midi_editor_rect_valid(&layout->instrument_menu_rect)) {
         return;
     }
-    SDL_Color fill = midi_editor_color_mix(theme->control_fill, theme->inspector_fill, 3, 1);
-    SDL_Color active_fill = midi_editor_color_mix(theme->accent_primary, theme->control_fill, 1, 2);
-    EngineInstrumentPresetId selected = engine_clip_midi_instrument_preset(selection->clip);
-    midi_editor_draw_rect(renderer, layout->instrument_menu_rect, fill, true);
-    for (int i = 0; i < layout->instrument_menu_item_count; ++i) {
-        SDL_Rect item = layout->instrument_menu_item_rects[i];
-        if (!midi_editor_rect_valid(&item)) {
-            continue;
-        }
-        EngineInstrumentPresetId preset = (EngineInstrumentPresetId)i;
-        bool active = engine_instrument_preset_clamp(preset) == selected;
-        if (active) {
-            midi_editor_draw_rect(renderer, item, active_fill, true);
-        }
-        midi_editor_draw_rect(renderer, item, active ? theme->text_primary : theme->control_border, false);
-        int text_h = ui_font_line_height(0.9f);
-        ui_draw_text_clipped(renderer,
-                             item.x + 8,
-                             item.y + midi_editor_max_int(0, (item.h - text_h) / 2),
-                             engine_instrument_preset_display_name(preset),
-                             active ? theme->text_primary : theme->text_muted,
-                             0.9f,
-                             item.w - 12);
-    }
-    midi_editor_draw_rect(renderer, layout->instrument_menu_rect, theme->pane_border, false);
+    EngineInstrumentPresetId selected = engine_clip_midi_effective_instrument_preset(state->engine,
+                                                                                    selection->track_index,
+                                                                                    selection->clip_index);
+    midi_preset_browser_draw(renderer, &layout->instrument_browser, selected, theme);
 }
 
 static SDL_Color midi_editor_velocity_color(float velocity) {
@@ -632,12 +609,8 @@ bool midi_editor_note_rect(const MidiEditorLayout* layout,
     if (!layout || !note || clip_frames == 0 || !midi_editor_rect_valid(&layout->grid_rect)) {
         return false;
     }
-    if (note->note < layout->lowest_note || note->note > layout->highest_note) {
-        return false;
-    }
-
-    int row = layout->highest_note - (int)note->note;
-    if (row < 0 || row >= layout->key_row_count) {
+    int row = 0;
+    if (!midi_editor_pitch_note_to_row(layout, (int)note->note, &row)) {
         return false;
     }
     SDL_Rect lane = layout->key_lane_rects[row];
@@ -789,19 +762,16 @@ bool midi_editor_point_to_note_frame(const MidiEditorLayout* layout,
     if (row < 0) {
         return false;
     }
-    int note = layout->highest_note - row;
-    if (note < ENGINE_MIDI_NOTE_MIN) {
-        note = ENGINE_MIDI_NOTE_MIN;
-    }
-    if (note > ENGINE_MIDI_NOTE_MAX) {
-        note = ENGINE_MIDI_NOTE_MAX;
+    uint8_t note = 0;
+    if (!midi_editor_pitch_row_to_note(layout, row, &note)) {
+        return false;
     }
     uint64_t frame = 0;
     if (!midi_editor_point_to_frame(layout, clip_frames, x, &frame)) {
         return false;
     }
     if (out_note) {
-        *out_note = (uint8_t)note;
+        *out_note = note;
     }
     if (out_frame) {
         *out_frame = frame;
@@ -1043,10 +1013,14 @@ void midi_editor_render(SDL_Renderer* renderer, const AppState* state, const Mid
     }
 
     char instrument_label[64];
+    EngineInstrumentPresetId preset = engine_clip_midi_effective_instrument_preset(state->engine,
+                                                                                   selection.track_index,
+                                                                                   selection.clip_index);
+    bool inherits_track = engine_clip_midi_inherits_track_instrument(selection.clip);
     snprintf(instrument_label,
              sizeof(instrument_label),
-             "Instrument: %s",
-             engine_instrument_preset_display_name(engine_clip_midi_instrument_preset(selection.clip)));
+             inherits_track ? "Instrument: %s (Track)" : "Instrument: %s",
+             engine_instrument_preset_display_name(preset));
     midi_editor_draw_button(renderer,
                             layout->instrument_button_rect,
                             instrument_label,
@@ -1221,9 +1195,15 @@ void midi_editor_render(SDL_Renderer* renderer, const AppState* state, const Mid
 
     if (midi_editor_rect_valid(&layout->footer_rect)) {
         char footer[128];
+        char low_label[8];
+        char high_label[8];
+        snprintf(low_label, sizeof(low_label), "%s%d", midi_editor_pitch_label(layout->lowest_note), layout->lowest_note / 12 - 1);
+        snprintf(high_label, sizeof(high_label), "%s%d", midi_editor_pitch_label(layout->highest_note), layout->highest_note / 12 - 1);
         snprintf(footer,
                  sizeof(footer),
-                 "Visible C3-B4  Q quantize, Q-/Q+ grid, [ ] octave, -/+ velocity  View %llu-%llu / %llu frames",
+                 "Visible %s-%s  Q quantize, Q-/Q+ grid, [ ] octave, -/+ velocity  View %llu-%llu / %llu frames",
+                 low_label,
+                 high_label,
                  (unsigned long long)layout->view_start_frame,
                  (unsigned long long)layout->view_end_frame,
                  (unsigned long long)clip_frames);

@@ -17,3 +17,11 @@ bool waveform_render_view(SDL_Renderer* renderer,
                           uint64_t view_start_frame,
                           uint64_t view_frame_count,
                           SDL_Color color);
+
+// Renders a transient waveform directly from sample memory without caching.
+bool waveform_render_samples_view(SDL_Renderer* renderer,
+                                  const AudioMediaClip* clip,
+                                  const SDL_Rect* rect,
+                                  uint64_t view_start_frame,
+                                  uint64_t view_frame_count,
+                                  SDL_Color color);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/engine.h"
+#include "ui/midi_preset_browser.h"
 
 #include <SDL2/SDL.h>
 #include <stdbool.h>
@@ -24,6 +25,7 @@ typedef struct {
     SDL_Rect instrument_panel_button_rect;
     SDL_Rect instrument_menu_rect;
     SDL_Rect instrument_menu_item_rects[ENGINE_INSTRUMENT_PRESET_COUNT];
+    MidiPresetBrowserLayout instrument_browser;
     SDL_Rect test_button_rect;
     SDL_Rect quantize_button_rect;
     SDL_Rect quantize_down_button_rect;
@@ -71,6 +73,20 @@ typedef struct {
 bool midi_editor_get_selection(const struct AppState* state, MidiEditorSelection* out_selection);
 bool midi_editor_should_render(const struct AppState* state);
 void midi_editor_compute_layout(const struct AppState* state, MidiEditorLayout* layout);
+void midi_editor_store_pitch_viewport(struct AppState* state,
+                                      const MidiEditorSelection* selection,
+                                      int top_note,
+                                      int row_count);
+void midi_editor_fit_pitch_viewport(struct AppState* state,
+                                    const MidiEditorSelection* selection,
+                                    int row_count);
+bool midi_editor_resolve_pitch_viewport(const struct AppState* state,
+                                        const MidiEditorSelection* selection,
+                                        int row_capacity,
+                                        int* out_top_note,
+                                        int* out_row_count);
+bool midi_editor_pitch_note_to_row(const MidiEditorLayout* layout, int note, int* out_row);
+bool midi_editor_pitch_row_to_note(const MidiEditorLayout* layout, int row, uint8_t* out_note);
 bool midi_editor_note_rect(const MidiEditorLayout* layout,
                            const EngineMidiNote* note,
                            uint64_t clip_frames,
