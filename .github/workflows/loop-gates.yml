@@ -7,7 +7,9 @@ on:
       - 'src/**'
       - 'include/**'
       - 'SDLApp/**'
+      - 'make/**'
       - 'tools/run_loop_gates.sh'
+      - 'tools/desktop_release_target_contract.sh'
       - 'Makefile'
       - '.github/workflows/loop-gates.yml'
 

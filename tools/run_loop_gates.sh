@@ -14,6 +14,13 @@ HEADLESS="${HEADLESS:-0}"
 mkdir -p "$LOG_DIR"
 
 if [[ ! -x "$APP_BIN" ]]; then
+  fallback_bin="$(find "$ROOT_DIR/build/targets" -path "*/toolchains/*/bin/daw_app" -type f 2>/dev/null | sort | head -n 1)"
+  if [[ -n "$fallback_bin" && -x "$fallback_bin" ]]; then
+    APP_BIN="$fallback_bin"
+  fi
+fi
+
+if [[ ! -x "$APP_BIN" ]]; then
   echo "[GateHarness] app binary not found/executable: $APP_BIN"
   echo "[GateHarness] build first: make -C $ROOT_DIR"
   exit 1
