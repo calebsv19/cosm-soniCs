@@ -15,6 +15,7 @@ CORE_KERNEL_LIB_SRC := $(CORE_KERNEL_DIR)/build/libcore_kernel.a
 CORE_TRACE_LIB_SRC := $(CORE_TRACE_DIR)/build/libcore_trace.a
 KIT_VIZ_LIB_SRC := $(KIT_VIZ_DIR)/build/libkit_viz.a
 KIT_RENDER_LIB_SRC := $(KIT_RENDER_DIR)/build/vk/libkit_render.a
+KIT_UI_LIB_SRC := $(KIT_UI_DIR)/build/libkit_ui.a
 KIT_WORKSPACE_AUTHORING_LIB_SRC := $(KIT_WORKSPACE_AUTHORING_DIR)/build/libkit_workspace_authoring.a
 VK_RENDERER_LIB_SRC := $(VK_RENDERER_DIR)/build/lib/libvkrenderer.a
 
@@ -35,6 +36,7 @@ CORE_KERNEL_LIB := $(SHARED_BUILD_DIR)/libcore_kernel.a
 CORE_TRACE_LIB := $(SHARED_BUILD_DIR)/libcore_trace.a
 KIT_VIZ_LIB := $(SHARED_BUILD_DIR)/libkit_viz.a
 KIT_RENDER_LIB := $(SHARED_BUILD_DIR)/libkit_render.a
+KIT_UI_LIB := $(SHARED_BUILD_DIR)/libkit_ui.a
 KIT_WORKSPACE_AUTHORING_LIB := $(SHARED_BUILD_DIR)/libkit_workspace_authoring.a
 VK_RENDERER_LIB := $(SHARED_BUILD_DIR)/libvkrenderer.a
 
@@ -56,5 +58,6 @@ APP_SHARED_LIBS := \
 	$(CORE_BASE_LIB) \
 	$(KIT_VIZ_LIB) \
 	$(KIT_RENDER_LIB) \
+	$(KIT_UI_LIB) \
 	$(KIT_WORKSPACE_AUTHORING_LIB) \
 	$(VK_RENDERER_LIB)

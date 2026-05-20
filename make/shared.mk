@@ -18,4 +18,5 @@ CORE_KERNEL_DIR := $(SHARED_ROOT)/core/core_kernel
 CORE_TRACE_DIR := $(SHARED_ROOT)/core/core_trace
 KIT_VIZ_DIR := $(SHARED_ROOT)/kit/kit_viz
 KIT_RENDER_DIR := $(SHARED_ROOT)/kit/kit_render
+KIT_UI_DIR := $(SHARED_ROOT)/kit/kit_ui
 KIT_WORKSPACE_AUTHORING_DIR := $(SHARED_ROOT)/kit/kit_workspace_authoring

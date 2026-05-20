@@ -641,18 +641,27 @@ void ui_layout_update_zones(AppState* state) {
 
     int library_edge = library.x + library.w;
     int content_top = transport.y + transport.h;
+    int library_resize_top = content_top;
+    {
+        const Pane* library_pane = ui_layout_get_pane(state, 3);
+        int library_header_h = ui_layout_pane_header_height(library_pane);
+        int library_content_top = library.y + library_header_h;
+        if (library_content_top > library_resize_top) {
+            library_resize_top = library_content_top;
+        }
+    }
     int content_height = state->window_height - content_top;
     if (content_height < 0) content_height = 0;
 
     // Vertical zone between library and timeline/mixer
-    if (library.w > 0 && content_height > 0) {
+    if (library.w > 0 && state->window_height - library_resize_top > 0) {
         int left = library_edge - thickness / 2;
         if (left < 0) left = 0;
         if (left + thickness > state->window_width) {
             left = state->window_width - thickness;
         }
         runtime->zones[idx++] = (UIResizeZone){
-            .rect = {left, content_top, thickness, content_height},
+            .rect = {left, library_resize_top, thickness, state->window_height - library_resize_top},
             .target = UI_RESIZE_LIBRARY
         };
     }

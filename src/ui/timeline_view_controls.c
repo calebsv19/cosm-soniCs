@@ -1,5 +1,6 @@
 #include "ui/timeline_view_controls.h"
 
+#include "ui/daw_ui_button.h"
 #include "ui/font.h"
 #include "ui/timeline_view.h"
 
@@ -118,6 +119,24 @@ static int timeline_button_width(const char* label, int min_width) {
         width = min_width;
     }
     return width;
+}
+
+static void timeline_theme_to_button_palette(const TimelineTheme* theme,
+                                             DawThemePalette* out_palette) {
+    if (!out_palette) {
+        return;
+    }
+    *out_palette = (DawThemePalette){0};
+    if (!theme) {
+        return;
+    }
+    out_palette->control_fill = theme->button_fill;
+    out_palette->control_active_fill = theme->button_hover_fill;
+    out_palette->control_hover_fill = theme->button_hover_fill;
+    out_palette->control_border = theme->button_border;
+    out_palette->pane_highlight_border = theme->clip_border_selected;
+    out_palette->text_primary = theme->text;
+    out_palette->text_muted = theme->text_muted;
 }
 
 int timeline_view_controls_compute_layout(int timeline_x,
@@ -393,29 +412,40 @@ void timeline_view_draw_button(SDL_Renderer* renderer,
                                bool hovered,
                                bool enabled,
                                const TimelineTheme* theme) {
-    if (!renderer || !rect || !label) {
+    DawThemePalette palette = {0};
+    DawUiButtonSpec spec = {0};
+    DawUiButtonStyle style = {0};
+    SDL_Color text_color;
+    int scale = 1;
+    int text_w;
+    int text_h;
+    int text_x;
+    int text_y;
+
+    if (!renderer || !rect || !label || rect->w <= 0 || rect->h <= 0) {
         return;
     }
-    SDL_Color base = theme ? theme->button_fill : (SDL_Color){50, 58, 70, 255};
-    SDL_Color disabled = theme ? theme->button_disabled_fill : (SDL_Color){34, 36, 40, 255};
-    SDL_Color border = theme ? theme->button_border : (SDL_Color){90, 95, 110, 255};
-    SDL_Color text = theme ? theme->text : (SDL_Color){220, 220, 230, 255};
-    SDL_Color text_disabled = theme ? theme->text_muted : (SDL_Color){140, 140, 150, 255};
+    timeline_theme_to_button_palette(theme, &palette);
+    if (!enabled) {
+        palette.control_fill = theme ? theme->button_disabled_fill : (SDL_Color){34, 36, 40, 255};
+        palette.control_active_fill = palette.control_fill;
+        palette.control_hover_fill = palette.control_fill;
+    }
+    daw_ui_button_spec_init(&spec, label);
+    spec.state.hovered = hovered && enabled;
+    spec.state.disabled = !enabled;
+    if (daw_ui_button_style_resolve(&palette, &spec, &style) != 0) {
+        return;
+    }
+    if (daw_ui_button_draw_frame(renderer, rect, &style) != 0) {
+        return;
+    }
 
-    SDL_Color fill = enabled ? base : disabled;
-    SDL_Color border_color = hovered && enabled && theme ? theme->clip_border_selected : border;
-    SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
-    SDL_RenderFillRect(renderer, rect);
-
-    SDL_SetRenderDrawColor(renderer, border_color.r, border_color.g, border_color.b, border_color.a);
-    SDL_RenderDrawRect(renderer, rect);
-
-    SDL_Color text_color = enabled ? text : text_disabled;
-    int scale = 1;
-    int text_w = timeline_label_width_cached(label);
-    int text_h = ui_font_line_height(scale);
-    int text_x = rect->x + (rect->w - text_w) / 2;
-    int text_y = rect->y + (rect->h - text_h) / 2;
+    text_color = (SDL_Color){style.text.r, style.text.g, style.text.b, style.text.a};
+    text_w = timeline_label_width_cached(label);
+    text_h = ui_font_line_height(scale);
+    text_x = rect->x + (rect->w - text_w) / 2;
+    text_y = rect->y + (rect->h - text_h) / 2;
     ui_draw_text(renderer, text_x, text_y, label, text_color, scale);
 }
 

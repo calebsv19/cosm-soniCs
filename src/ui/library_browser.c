@@ -3,6 +3,7 @@
 #include "audio/media_clip.h"
 #include "audio/media_registry.h"
 #include "engine/engine.h"
+#include "ui/daw_ui_button.h"
 #include "ui/font.h"
 #include "ui/render_utils.h"
 #include "ui/shared_theme_font_adapter.h"
@@ -70,6 +71,38 @@ static const char* library_basename_from_path(const char* path) {
 
 static bool library_rect_contains(const SDL_Rect* rect, int x, int y) {
     return rect && x >= rect->x && x < rect->x + rect->w && y >= rect->y && y < rect->y + rect->h;
+}
+
+static void library_draw_mode_button(SDL_Renderer* renderer,
+                                     const SDL_Rect* rect,
+                                     const char* label,
+                                     bool active,
+                                     const DawThemePalette* theme) {
+    DawUiButtonSpec spec = {0};
+    DawUiButtonStyle style = {0};
+    SDL_Color text;
+    int text_y;
+    if (!renderer || !rect || rect->w <= 0 || rect->h <= 0 || !label || !theme) {
+        return;
+    }
+    daw_ui_button_spec_init(&spec, label);
+    spec.state.selected = active;
+    spec.state.focused = active;
+    if (daw_ui_button_style_resolve(theme, &spec, &style) != 0) {
+        return;
+    }
+    if (daw_ui_button_draw_frame(renderer, rect, &style) != 0) {
+        return;
+    }
+    text = (SDL_Color){style.text.r, style.text.g, style.text.b, style.text.a};
+    text_y = rect->y + (rect->h - ui_font_line_height(1.0f)) / 2;
+    ui_draw_text_clipped(renderer,
+                         rect->x + 8,
+                         text_y,
+                         label,
+                         text,
+                         1.0f,
+                         rect->w - 12);
 }
 
 static SDL_Rect library_source_button_rect(const SDL_Rect* rect) {
@@ -176,41 +209,24 @@ void library_browser_render_header_controls(const LibraryBrowser* browser,
                                             SDL_Renderer* renderer,
                                             const SDL_Rect* header_rect) {
     DawThemePalette theme = {0};
-    SDL_Color text_color;
-    SDL_Color highlight_color;
-    SDL_Color selected_color;
     SDL_Rect source_button;
     SDL_Rect project_button;
-    SDL_Rect mode_button;
     if (!browser || !renderer || !header_rect || header_rect->w <= 0 || header_rect->h <= 0) {
         return;
     }
     resolve_library_theme(&theme);
-    text_color = theme.text_primary;
-    highlight_color = theme.control_hover_fill;
-    selected_color = theme.selection_fill;
     source_button = library_source_button_rect(header_rect);
     project_button = library_project_button_rect(header_rect);
-    mode_button = browser->panel_mode == LIBRARY_PANEL_MODE_SOURCE ? source_button : project_button;
-    SDL_SetRenderDrawColor(renderer, highlight_color.r, highlight_color.g, highlight_color.b, 100);
-    SDL_RenderFillRect(renderer, &mode_button);
-    SDL_SetRenderDrawColor(renderer, selected_color.r, selected_color.g, selected_color.b, selected_color.a);
-    SDL_RenderDrawRect(renderer, &source_button);
-    SDL_RenderDrawRect(renderer, &project_button);
-    ui_draw_text_clipped(renderer,
-                         source_button.x + 8,
-                         source_button.y + 3,
-                         "SOURCE",
-                         text_color,
-                         1.0f,
-                         source_button.w - 12);
-    ui_draw_text_clipped(renderer,
-                         project_button.x + 8,
-                         project_button.y + 3,
-                         "IN PROJECT",
-                         text_color,
-                         1.0f,
-                         project_button.w - 12);
+    library_draw_mode_button(renderer,
+                             &source_button,
+                             "SOURCE",
+                             browser->panel_mode == LIBRARY_PANEL_MODE_SOURCE,
+                             &theme);
+    library_draw_mode_button(renderer,
+                             &project_button,
+                             "IN PROJECT",
+                             browser->panel_mode == LIBRARY_PANEL_MODE_IN_PROJECT,
+                             &theme);
 }
 
 bool library_browser_hit_test_mode_button(const LibraryBrowser* browser,

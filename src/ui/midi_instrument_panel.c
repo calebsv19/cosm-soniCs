@@ -1,6 +1,7 @@
 #include "ui/midi_instrument_panel.h"
 
 #include "app_state.h"
+#include "ui/daw_ui_button.h"
 #include "ui/font.h"
 #include "ui/layout.h"
 #include "ui/midi_editor.h"
@@ -135,22 +136,32 @@ static void instrument_panel_draw_button(SDL_Renderer* renderer,
                                          const char* label,
                                          bool active,
                                          const DawThemePalette* theme) {
+    DawUiButtonSpec spec = {0};
+    DawUiButtonStyle style = {0};
+    SDL_Color text;
+    int text_h;
+    int text_y;
+
     if (!renderer || !theme || !instrument_panel_rect_valid(&rect)) {
         return;
     }
-    SDL_Color fill = active
-        ? instrument_panel_color_mix(theme->accent_primary, theme->control_fill, 1, 2)
-        : theme->control_fill;
-    SDL_Color border = active ? theme->text_primary : theme->control_border;
-    instrument_panel_draw_rect(renderer, rect, fill, true);
-    instrument_panel_draw_rect(renderer, rect, border, false);
-    int text_h = ui_font_line_height(0.8f);
-    int text_y = rect.y + instrument_panel_max_int(0, (rect.h - text_h) / 2);
+    daw_ui_button_spec_init(&spec, label ? label : "");
+    spec.state.selected = active;
+    spec.state.focused = active;
+    if (daw_ui_button_style_resolve(theme, &spec, &style) != 0) {
+        return;
+    }
+    if (daw_ui_button_draw_frame(renderer, &rect, &style) != 0) {
+        return;
+    }
+    text = (SDL_Color){style.text.r, style.text.g, style.text.b, style.text.a};
+    text_h = ui_font_line_height(0.8f);
+    text_y = rect.y + instrument_panel_max_int(0, (rect.h - text_h) / 2);
     ui_draw_text_clipped(renderer,
                          rect.x + 7,
                          text_y,
                          label ? label : "",
-                         active ? theme->text_primary : theme->text_muted,
+                         text,
                          0.8f,
                          rect.w - 12);
 }

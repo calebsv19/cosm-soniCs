@@ -106,6 +106,7 @@ APP_SRCS := \
 	$(SRC_DIR)/ui/font_bridge.c \
 	$(SRC_DIR)/ui/shared_theme_font_adapter.c \
 	$(SRC_DIR)/ui/text_draw.c \
+	$(SRC_DIR)/ui/daw_ui_button.c \
 	$(SRC_DIR)/ui/transport.c \
 	$(SRC_DIR)/ui/clip_inspector.c \
 	$(SRC_DIR)/ui/clip_inspector_controls.c \

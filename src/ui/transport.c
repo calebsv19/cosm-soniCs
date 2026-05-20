@@ -5,6 +5,7 @@
 #include "time/tempo.h"
 
 #include "ui/font.h"
+#include "ui/daw_ui_button.h"
 #include "ui/shared_theme_font_adapter.h"
 
 #include <string.h>
@@ -433,27 +434,36 @@ static void render_button(SDL_Renderer* renderer,
                           bool active,
                           const char* label,
                           const DawThemePalette* palette) {
-    SDL_Color fill = palette ? palette->control_fill : (SDL_Color){60, 60, 70, 255};
-    SDL_Color border = palette ? palette->control_border : (SDL_Color){120, 120, 128, 255};
-    SDL_Color text = palette ? palette->text_primary : (SDL_Color){220, 220, 230, 255};
-    if (active && palette) {
-        fill = palette->control_active_fill;
-        border = palette->pane_highlight_border;
-    } else if (hovered && palette) {
-        border = palette->pane_highlight_border;
-    }
-
-    SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
-    SDL_RenderFillRect(renderer, rect);
-
-    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-    SDL_RenderDrawRect(renderer, rect);
-
+    DawUiButtonSpec spec;
+    DawUiButtonStyle style;
+    SDL_Color text;
+    SDL_Color fill;
     const int scale = 1;
     int text_pad = 4;
-    int text_height = ui_font_line_height(scale);
-    int text_y = rect->y + (rect->h - text_height) / 2;
-    int text_max_w = rect->w - text_pad * 2;
+    int text_height = 0;
+    int text_y = 0;
+    int text_max_w = 0;
+
+    if (!renderer || !rect || !label || !palette) {
+        return;
+    }
+    daw_ui_button_spec_init(&spec, label);
+    spec.state.selected = active ? 1 : 0;
+    spec.state.focused = active ? 1 : 0;
+    spec.state.hovered = hovered ? 1 : 0;
+    if (daw_ui_button_style_resolve(palette, &spec, &style) != 0 ||
+        daw_ui_button_draw_frame(renderer, rect, &style) != 0) {
+        return;
+    }
+
+    fill = (SDL_Color){style.fill.r, style.fill.g, style.fill.b, style.fill.a};
+    text = (SDL_Color){style.text.r, style.text.g, style.text.b, style.text.a};
+    if ((text.r == fill.r && text.g == fill.g && text.b == fill.b) || text.a == 0u) {
+        text = palette->text_primary;
+    }
+    text_height = ui_font_line_height(scale);
+    text_y = rect->y + (rect->h - text_height) / 2;
+    text_max_w = rect->w - text_pad * 2;
     if (text_max_w < 1) {
         text_max_w = 1;
     }
