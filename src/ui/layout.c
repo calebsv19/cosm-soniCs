@@ -158,6 +158,7 @@ static void render_single_pane(SDL_Renderer* renderer, const Pane* pane) {
         return;
     }
     SDL_Color fill = pane->fill_color;
+    SDL_Color divider = use_shared_theme ? theme_palette.pane_border : pane->border_color;
     SDL_Color border = use_shared_theme ? theme_palette.pane_border : pane->border_color;
     if (pane->highlighted) {
         if (use_shared_theme) {
@@ -189,7 +190,7 @@ static void render_single_pane(SDL_Renderer* renderer, const Pane* pane) {
                      title_color,
                      1.0f);
         if (content_rect.h > 0) {
-            SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+            SDL_SetRenderDrawColor(renderer, divider.r, divider.g, divider.b, divider.a);
             SDL_RenderDrawLine(renderer,
                                pane->rect.x,
                                content_rect.y,
