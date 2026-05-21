@@ -26,4 +26,5 @@ bool project_manager_new(struct AppState* state);
 bool project_manager_post_load(struct AppState* state);
 bool project_manager_list(struct AppState* state, ProjectInfo* out_items, int max_items, int* out_count);
 bool project_manager_get_info(const char* path, ProjectInfo* out_info);
+bool project_manager_last_project_path(const struct AppState* state, char* out_path, size_t out_len);
 bool project_manager_last_session_path(const struct AppState* state, char* out_path, size_t out_len);

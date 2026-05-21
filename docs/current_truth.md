@@ -1,10 +1,10 @@
-# DAW Current Truth
+# soniCs Current Truth
 
-Last updated: 2026-05-15
+Last updated: 2026-05-21
 
 ## Program Identity
 - Repository directory: `daw/`
-- Public product name: `DAW (Alpha)`
+- Public product name: `soniCs`
 - Primary runtime entry:
   - `src/app/main.c` -> `daw_app_main_run()`
   - wrapper shell: `include/daw/daw_app_main.h`, `src/app/daw_app_main.c`
@@ -30,12 +30,26 @@ Last updated: 2026-05-15
 - Explicit runtime roots are active (`input_root`, `output_root`, `library_copy_root`).
 - Runtime path persistence is normalized in runtime config lanes.
 - Ingest-mode and library copy-vs-reference contract is explicit and test-covered.
+- Startup reopen order is explicit:
+  1. `<output_root>/projects/last_project.txt`
+     (legacy fallback: `config/projects/last_project.txt`)
+  2. `<output_root>/last_session.json`
+     (legacy fallback: `config/last_session.json`)
+  3. `config/templates/public_default_project.json`
+  4. fresh in-memory bootstrap
+- Media-placement roots are also ordered explicitly:
+  - imported/source browsing resolves from `input_root`
+  - session and recording persistence resolve under `output_root`
+  - library copy targets resolve under `library_copy_root` before falling back
+    to `output_root`
 
 ## Verification Contract
 - Build/harness:
   - `make -C daw clean && make -C daw all`
-  - `make -C daw run-headless-smoke`
-  - `make -C daw visual-harness`
+  - `make -C daw run-headless-smoke`:
+    aggregate non-interactive smoke coverage
+  - `make -C daw visual-harness`:
+    build-only readiness; does not execute the interactive DAW shell
 - Stable tests:
   - `make -C daw test-stable`
 - Legacy tests:

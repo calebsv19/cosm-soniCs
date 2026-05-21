@@ -1,7 +1,9 @@
-# DAW Docs Index
+# soniCs Docs Index
 
-Start here for DAW public documentation.
+Start here for soniCs public documentation.
 Last audited: 2026-05-15.
+
+Repository and source-level identifiers still use `daw`.
 
 ## Scaffold State
 - `docs/current_truth.md`: current scaffold/runtime state and verification snapshot.
@@ -9,8 +11,10 @@ Last audited: 2026-05-15.
 - Intel `x86_64` packaging/runtime hardening is active in the current truth and desktop packaging docs.
 - MIDI/instrument and audio-recording state is summarized in current truth and future intent; detailed implementation history stays in the private DAW planning lane.
 - migration-friendly verification gates:
-  - `make -C daw run-headless-smoke`
-  - `make -C daw visual-harness`
+  - `make -C daw run-headless-smoke`:
+    aggregate non-interactive smoke coverage
+  - `make -C daw visual-harness`:
+    build-only visual readiness, not an unattended runtime pass
   - `make -C daw test-stable`
   - `make -C daw test-legacy`
 

@@ -46,11 +46,22 @@ static void resolve_projects_dir(const AppState* state, char* out_path, size_t o
 }
 
 static void resolve_last_path_file(const AppState* state, char* out_path, size_t out_len) {
+    if (!project_manager_last_project_path(state, out_path, out_len)) {
+        path_copy(out_path, out_len, kLegacyLastPathFile);
+    }
+}
+
+bool project_manager_last_project_path(const AppState* state, char* out_path, size_t out_len) {
     char projects_dir[SESSION_PATH_MAX];
+    if (!out_path || out_len == 0) {
+        return false;
+    }
     resolve_projects_dir(state, projects_dir, sizeof(projects_dir));
     if (snprintf(out_path, out_len, "%s/last_project.txt", projects_dir) >= (int)out_len) {
         path_copy(out_path, out_len, kLegacyLastPathFile);
+        return false;
     }
+    return true;
 }
 
 bool project_manager_last_session_path(const AppState* state, char* out_path, size_t out_len) {

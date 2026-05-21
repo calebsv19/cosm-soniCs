@@ -1,7 +1,8 @@
-# DAW (Alpha)
+# soniCs
 
-A C-based desktop digital audio workstation prototype built with SDL2 and a shared Vulkan renderer.
-This repository is an early public baseline intended for real-world testing and iterative improvement.
+`soniCs` is a C-based desktop digital audio workstation built with SDL2 and a shared Vulkan renderer.
+
+The repository and source-level program key remain `daw`.
 
 ## Current State
 
@@ -19,10 +20,16 @@ This repository is an early public baseline intended for real-world testing and 
 - Track mute/solo handling and core timeline/track interaction loop.
 - Effects panel and parameter control path for the current built-in effects set.
 - Session/project persistence with deterministic startup fallback:
-  1. `config/projects/last_project.txt`
-  2. `config/last_session.json`
+  1. `<output_root>/projects/last_project.txt`
+     (legacy fallback: `config/projects/last_project.txt`)
+  2. `<output_root>/last_session.json`
+     (legacy fallback: `config/last_session.json`)
   3. `config/templates/public_default_project.json`
   4. fresh in-memory bootstrap
+- Runtime roots are explicit and persisted with the session contract:
+  - `input_root`
+  - `output_root`
+  - `library_copy_root`
 - Runtime diagnostics toggles for engine/cache/timing logging.
 - Target-aware desktop packaging and Intel `x86_64` release artifact flow for `soniCs`.
 

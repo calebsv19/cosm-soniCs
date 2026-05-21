@@ -195,6 +195,29 @@ static void test_output_root_session_resolution(void) {
     }
 }
 
+static void test_output_root_last_project_resolution(void) {
+    AppState state = {0};
+    char path[SESSION_PATH_MAX];
+
+    snprintf(state.data_paths.output_root, sizeof(state.data_paths.output_root), "/tmp/daw_contract_output");
+    if (!project_manager_last_project_path(&state, path, sizeof(path))) {
+        failf("project_manager_last_project_path failed", "output-root case");
+        return;
+    }
+    if (strcmp(path, "/tmp/daw_contract_output/projects/last_project.txt") != 0) {
+        failf("last project path not rooted in output_root/projects", path);
+    }
+
+    state.data_paths.output_root[0] = '\0';
+    if (!project_manager_last_project_path(&state, path, sizeof(path))) {
+        failf("project_manager_last_project_path failed", "legacy fallback case");
+        return;
+    }
+    if (strcmp(path, "config/projects/last_project.txt") != 0) {
+        failf("legacy last-project fallback mismatch", path);
+    }
+}
+
 static void test_source_contract_guards(void) {
     const char* library_input_path = "src/input/library_input.c";
     const char* timeline_drop_path = "src/input/timeline/timeline_drop.c";
@@ -216,6 +239,7 @@ static void test_source_contract_guards(void) {
 int main(void) {
     test_roundtrip_and_recovery();
     test_output_root_session_resolution();
+    test_output_root_last_project_resolution();
     test_source_contract_guards();
     if (g_failures != 0) {
         fprintf(stderr, "daw_data_path_contract_test: failed (%d)\n", g_failures);
