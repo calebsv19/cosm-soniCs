@@ -77,6 +77,7 @@ static void library_draw_mode_button(SDL_Renderer* renderer,
                                      const SDL_Rect* rect,
                                      const char* label,
                                      bool active,
+                                     bool hovered,
                                      const DawThemePalette* theme) {
     DawUiButtonSpec spec = {0};
     DawUiButtonStyle style = {0};
@@ -88,6 +89,7 @@ static void library_draw_mode_button(SDL_Renderer* renderer,
     daw_ui_button_spec_init(&spec, label);
     spec.state.selected = active;
     spec.state.focused = active;
+    spec.state.hovered = hovered;
     if (daw_ui_button_style_resolve(theme, &spec, &style) != 0) {
         return;
     }
@@ -179,6 +181,7 @@ void library_browser_init(LibraryBrowser* browser, const char* directory) {
     browser->hovered_project_index = -1;
     browser->selected_project_index = -1;
     browser->panel_mode = LIBRARY_PANEL_MODE_SOURCE;
+    browser->hovered_mode = LIBRARY_HEADER_HOVER_NONE;
     library_safe_copy(browser->status_line, sizeof(browser->status_line), "No files loaded");
     browser->editing = false;
     browser->edit_index = -1;
@@ -196,6 +199,7 @@ void library_browser_set_mode(LibraryBrowser* browser, LibraryPanelMode mode) {
     browser->panel_mode = mode;
     browser->hovered_index = -1;
     browser->hovered_project_index = -1;
+    browser->hovered_mode = LIBRARY_HEADER_HOVER_NONE;
 }
 
 LibraryPanelMode library_browser_mode(const LibraryBrowser* browser) {
@@ -221,11 +225,13 @@ void library_browser_render_header_controls(const LibraryBrowser* browser,
                              &source_button,
                              "SOURCE",
                              browser->panel_mode == LIBRARY_PANEL_MODE_SOURCE,
+                             browser->hovered_mode == LIBRARY_HEADER_HOVER_SOURCE,
                              &theme);
     library_draw_mode_button(renderer,
                              &project_button,
                              "IN PROJECT",
                              browser->panel_mode == LIBRARY_PANEL_MODE_IN_PROJECT,
+                             browser->hovered_mode == LIBRARY_HEADER_HOVER_IN_PROJECT,
                              &theme);
 }
 

@@ -40,6 +40,7 @@ APP_SRCS := \
 	$(SRC_DIR)/export/daw_pack_export.c \
 	$(SRC_DIR)/export/daw_trace_export.c \
 	$(SRC_DIR)/export/daw_trace_export_async.c \
+	$(SRC_DIR)/engine/engine_core_commands.c \
 	$(SRC_DIR)/engine/audio_source.c \
 	$(SRC_DIR)/engine/engine_core.c \
 	$(SRC_DIR)/engine/engine_io.c \
@@ -47,6 +48,7 @@ APP_SRCS := \
 	$(SRC_DIR)/engine/engine_transport.c \
 	$(SRC_DIR)/engine/engine_tracks.c \
 	$(SRC_DIR)/engine/engine_clips.c \
+	$(SRC_DIR)/engine/engine_clips_midi.c \
 	$(SRC_DIR)/engine/engine_clips_automation.c \
 	$(SRC_DIR)/engine/engine_clips_no_overlap.c \
 	$(SRC_DIR)/engine/midi.c \
@@ -72,6 +74,7 @@ APP_SRCS := \
 	$(SRC_DIR)/session/session_io_read.c \
 	$(SRC_DIR)/session/session_io_json.c \
 	$(SRC_DIR)/session/session_io_read_parse.c \
+	$(SRC_DIR)/session/session_io_read_parse_document.c \
 	$(SRC_DIR)/session/session_io_read_parse_engine.c \
 	$(SRC_DIR)/session/session_io_read_parse_effects_panel.c \
 	$(SRC_DIR)/session/session_io_read_parse_master_fx.c \
@@ -80,6 +83,7 @@ APP_SRCS := \
 	$(SRC_DIR)/session/session_apply.c \
 	$(SRC_DIR)/session/project_manager.c \
 	$(SRC_DIR)/undo/undo_manager.c \
+	$(SRC_DIR)/undo/undo_manager_clone.c \
 	$(SRC_DIR)/undo/undo_manager_stack.c \
 	$(SRC_DIR)/app/workspace_authoring/daw_workspace_authoring_host.c \
 	$(SRC_DIR)/app/workspace_authoring/daw_workspace_authoring_overlay.c \
@@ -112,6 +116,7 @@ APP_SRCS := \
 	$(SRC_DIR)/ui/clip_inspector_controls.c \
 	$(SRC_DIR)/ui/clip_inspector_waveform.c \
 	$(SRC_DIR)/ui/midi_editor.c \
+	$(SRC_DIR)/ui/midi_editor_render.c \
 	$(SRC_DIR)/ui/midi_editor_pitch_view.c \
 	$(SRC_DIR)/ui/midi_preset_browser.c \
 	$(SRC_DIR)/ui/midi_instrument_panel.c \
@@ -173,6 +178,7 @@ APP_SRCS := \
 	$(SRC_DIR)/input/midi_instrument_panel_input.c \
 	$(SRC_DIR)/input/transport_input.c \
 	$(SRC_DIR)/input/effects_panel_input.c \
+	$(SRC_DIR)/input/effects_panel_input_scroll.c \
 	$(SRC_DIR)/input/effects_panel_input_helpers.c \
 	$(SRC_DIR)/input/effects_panel_eq_detail_input.c \
 	$(SRC_DIR)/input/effects_panel_track_snapshot.c \

@@ -17,6 +17,12 @@ typedef enum {
     LIBRARY_PANEL_MODE_IN_PROJECT = 1
 } LibraryPanelMode;
 
+typedef enum {
+    LIBRARY_HEADER_HOVER_NONE = -1,
+    LIBRARY_HEADER_HOVER_SOURCE = LIBRARY_PANEL_MODE_SOURCE,
+    LIBRARY_HEADER_HOVER_IN_PROJECT = LIBRARY_PANEL_MODE_IN_PROJECT
+} LibraryHeaderHoverMode;
+
 typedef struct {
     char name[LIBRARY_NAME_MAX];
     float duration_seconds;
@@ -41,6 +47,7 @@ typedef struct {
     int hovered_project_index;
     int selected_project_index;
     LibraryPanelMode panel_mode;
+    LibraryHeaderHoverMode hovered_mode;
     char status_line[LIBRARY_STATUS_MAX];
     bool editing;
     int edit_index;

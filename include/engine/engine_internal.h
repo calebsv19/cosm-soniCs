@@ -284,6 +284,7 @@ bool engine_post_command(Engine* engine, const EngineCommand* cmd);
 void engine_rebuild_sources(Engine* engine);
 // Queues a source rebuild on the worker thread when running, otherwise rebuilds immediately.
 bool engine_request_rebuild_sources(Engine* engine);
+void engine_process_commands(Engine* engine);
 // Resets a meter state to silence and clears clip hold.
 void engine_meter_reset_state(EngineMeterState* state);
 // Clears all per-FX meter banks for the current engine state.
@@ -335,6 +336,7 @@ void engine_spectrogram_update_fx(Engine* engine,
                                   int frames,
                                   int channels);
 void engine_clip_destroy(Engine* engine, EngineClip* clip);
+bool engine_midi_notes_fit_duration(const EngineMidiNoteList* notes, uint64_t duration_frames);
 void engine_midi_audition_apply_note_on(Engine* engine,
                                         int track_index,
                                         EngineInstrumentPresetId preset,

@@ -681,10 +681,11 @@ void ui_layout_update_zones(AppState* state) {
         };
     }
 
-    // Corner at transport/library intersection
+    // Corner at transport/library intersection, kept entirely below the
+    // library header so header controls do not compete with resize capture.
     if (library.w > 0 && transport.h > 0) {
         int cx = library_edge - corner_size / 2;
-        int cy = content_top - corner_size / 2;
+        int cy = library_resize_top;
         runtime->zones[idx++] = (UIResizeZone){
             .rect = {cx, cy, corner_size, corner_size},
             .target = UI_RESIZE_CORNER_TOP
@@ -736,23 +737,50 @@ bool ui_layout_handle_pointer(AppState* state, Uint32 prev_buttons, Uint32 curr_
     bool curr_down = (curr_buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
 
     if (!prev_down && curr_down && !runtime->drag.active) {
+        bool library_header_control_hit = false;
         UIResizeTarget target = UI_RESIZE_NONE;
         SDL_Point p = {mouse_x, mouse_y};
-        // Prefer corner zones first.
-        for (int i = 0; i < runtime->zone_count; ++i) {
-            if (runtime->zones[i].target == UI_RESIZE_CORNER_TOP || runtime->zones[i].target == UI_RESIZE_CORNER_BOTTOM) {
-                if (SDL_PointInRect(&p, &runtime->zones[i].rect)) {
-                    target = runtime->zones[i].target;
-                    break;
+        {
+            const Pane* library_pane = ui_layout_get_pane(state, 3);
+            if (library_pane) {
+                SDL_Rect header_rect = library_pane->rect;
+                LibraryPanelMode mode = LIBRARY_PANEL_MODE_SOURCE;
+                int header_h = ui_layout_pane_header_height(library_pane);
+                if (header_h < 0) {
+                    header_h = 0;
+                }
+                if (header_h < header_rect.h) {
+                    header_rect.h = header_h;
+                }
+                if (header_rect.h > 0 &&
+                    library_browser_hit_test_mode_button(&state->library,
+                                                         &header_rect,
+                                                         mouse_x,
+                                                         mouse_y,
+                                                         &mode)) {
+                    library_header_control_hit = true;
                 }
             }
         }
-        if (target == UI_RESIZE_NONE) {
+        if (library_header_control_hit) {
+            target = UI_RESIZE_NONE;
+        } else {
+        // Prefer corner zones first.
             for (int i = 0; i < runtime->zone_count; ++i) {
-                if (runtime->zones[i].target != UI_RESIZE_CORNER_TOP && runtime->zones[i].target != UI_RESIZE_CORNER_BOTTOM) {
+                if (runtime->zones[i].target == UI_RESIZE_CORNER_TOP || runtime->zones[i].target == UI_RESIZE_CORNER_BOTTOM) {
                     if (SDL_PointInRect(&p, &runtime->zones[i].rect)) {
                         target = runtime->zones[i].target;
                         break;
+                    }
+                }
+            }
+            if (target == UI_RESIZE_NONE) {
+                for (int i = 0; i < runtime->zone_count; ++i) {
+                    if (runtime->zones[i].target != UI_RESIZE_CORNER_TOP && runtime->zones[i].target != UI_RESIZE_CORNER_BOTTOM) {
+                        if (SDL_PointInRect(&p, &runtime->zones[i].rect)) {
+                            target = runtime->zones[i].target;
+                            break;
+                        }
                     }
                 }
             }
@@ -875,13 +903,36 @@ bool ui_layout_handle_pointer(AppState* state, Uint32 prev_buttons, Uint32 curr_
 }
 
 void ui_layout_handle_hover(AppState* state, int mouse_x, int mouse_y) {
+    SDL_Rect header_rect;
+    int header_hit = 0;
     if (!state) {
         return;
     }
     const Pane* library = ui_layout_get_pane(state, 3);
     if (!library) {
         state->library.hovered_index = -1;
+        state->library.hovered_project_index = -1;
+        state->library.hovered_mode = LIBRARY_HEADER_HOVER_NONE;
         return;
+    }
+    header_rect = library->rect;
+    {
+        int header_h = ui_layout_pane_header_height(library);
+        if (header_h < 0) {
+            header_h = 0;
+        }
+        if (header_h < header_rect.h) {
+            header_rect.h = header_h;
+        }
+    }
+    state->library.hovered_mode = LIBRARY_HEADER_HOVER_NONE;
+    if (header_rect.h > 0 &&
+        library_browser_hit_test_mode_button(&state->library,
+                                             &header_rect,
+                                             mouse_x,
+                                             mouse_y,
+                                             (LibraryPanelMode*)&header_hit)) {
+        state->library.hovered_mode = (LibraryHeaderHoverMode)header_hit;
     }
     SDL_Rect content_rect = ui_layout_pane_content_rect(library);
     int hit = library_browser_hit_test(&state->library, &content_rect, mouse_x, mouse_y);

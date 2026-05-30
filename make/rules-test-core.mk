@@ -28,6 +28,7 @@ $(TEST_BIN): $(TEST_OBJS) \
 	$(APP_OBJ_DIR)/src/session/session_io_read.o \
 	$(APP_OBJ_DIR)/src/session/session_io_json.o \
 	$(APP_OBJ_DIR)/src/session/session_io_read_parse.o \
+	$(APP_OBJ_DIR)/src/session/session_io_read_parse_document.o \
 	$(APP_OBJ_DIR)/src/session/session_io_read_parse_engine.o \
 	$(APP_OBJ_DIR)/src/session/session_io_read_parse_effects_panel.o \
 	$(APP_OBJ_DIR)/src/session/session_io_read_parse_master_fx.o \
