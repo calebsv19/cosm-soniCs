@@ -125,7 +125,7 @@ release-verify-signed-internal: release-verify-internal
 release-notarize:
 	@$(MAKE) BUILD_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" PACKAGE_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" release-notarize-internal
 
-release-notarize-internal: release-sign-internal
+release-notarize-internal: release-verify-signed-internal
 	@test -n "$(APPLE_NOTARY_PROFILE)" || (echo "Missing APPLE_NOTARY_PROFILE"; exit 1)
 	@mkdir -p "$(RELEASE_DIR)"
 	@ditto -c -k --keepParent "$(PACKAGE_APP_DIR)" "$(RELEASE_APP_ZIP)"
@@ -136,7 +136,7 @@ release-notarize-internal: release-sign-internal
 release-staple:
 	@$(MAKE) BUILD_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" PACKAGE_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" release-staple-internal
 
-release-staple-internal:
+release-staple-internal: release-notarize-internal
 	@attempt=1; \
 	while [ $$attempt -le $(STAPLE_MAX_ATTEMPTS) ]; do \
 		if xcrun stapler staple "$(PACKAGE_APP_DIR)" && xcrun stapler validate "$(PACKAGE_APP_DIR)"; then \
@@ -161,7 +161,7 @@ release-verify-notarized-internal: release-staple-internal
 release-artifact:
 	@$(MAKE) BUILD_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" PACKAGE_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" release-artifact-internal
 
-release-artifact-internal: release-verify-internal
+release-artifact-internal: release-verify-notarized-internal
 	@mkdir -p "$(RELEASE_DIR)"
 	@ditto -c -k --keepParent "$(PACKAGE_APP_DIR)" "$(RELEASE_APP_ZIP)"
 	@shasum -a 256 "$(RELEASE_APP_ZIP)" > "$(RELEASE_APP_ZIP).sha256"
@@ -178,8 +178,11 @@ release-artifact-internal: release-verify-internal
 		echo "version=$(RELEASE_VERSION)"; \
 		echo "channel=$(RELEASE_CHANNEL)"; \
 		echo "bundle_id=$(RELEASE_BUNDLE_ID)"; \
+		echo "signed=1"; \
+		echo "notarized=1"; \
 		echo "zip=$(RELEASE_APP_ZIP)"; \
 		echo "sha256=$$(cut -d' ' -f1 "$(RELEASE_APP_ZIP).sha256")"; \
+		echo "notary_json=$(RELEASE_DIR)/notary_submit.json"; \
 	} > "$(RELEASE_MANIFEST)"
 	@echo "release-artifact complete: $(RELEASE_APP_ZIP)"
 
