@@ -16,6 +16,7 @@ include make/rules-runtime.mk
 include make/package-macos.mk
 include make/release.mk
 include make/rules-test-core.mk
+include make/rules-memory-check.mk
 include make/rules-test-adapters.mk
 include make/rules-loop.mk
 
