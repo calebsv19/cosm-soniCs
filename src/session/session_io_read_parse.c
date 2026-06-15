@@ -390,6 +390,12 @@ bool parse_session_document(JsonReader* r, SessionDocument* doc) {
             if (!parse_session_document_timeline(r, doc)) {
                 return false;
             }
+        } else if (strcmp(key, "active_track_index") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            doc->active_track_index = (int)val;
         } else if (strcmp(key, "selected_track_index") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
@@ -402,6 +408,10 @@ bool parse_session_document(JsonReader* r, SessionDocument* doc) {
                 return false;
             }
             doc->selected_clip_index = (int)val;
+        } else if (strcmp(key, "selection") == 0) {
+            if (!parse_session_document_selection(r, doc)) {
+                return false;
+            }
         } else if (strcmp(key, "midi_editor") == 0) {
             if (!parse_session_midi_editor(r, doc)) {
                 return false;

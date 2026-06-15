@@ -11,11 +11,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SESSION_DOCUMENT_VERSION 23
+#define SESSION_DOCUMENT_VERSION 24
 #define SESSION_PATH_MAX 512
 #define SESSION_NAME_MAX 128
 #define SESSION_FX_NAME_MAX 64
 #define SESSION_MEDIA_ID_MAX 33
+#define SESSION_TIMELINE_SELECTION_MAX 256
 
 // Captures serialized automation point data for session persistence.
 typedef struct {
@@ -66,6 +67,10 @@ typedef struct {
     float vertical_scale;
     bool show_all_grid_lines;
     bool view_in_beats;
+    bool snap_enabled;
+    bool automation_mode;
+    bool automation_labels_enabled;
+    bool tempo_overlay_enabled;
     int follow_mode;
     uint64_t playhead_frame;
 } SessionTimelineView;
@@ -73,6 +78,17 @@ typedef struct {
 typedef struct {
     int panel_mode;
     int instrument_active_group;
+    int quantize_division;
+    float default_velocity;
+    int qwerty_octave_offset;
+    int viewport_track_index;
+    int viewport_clip_index;
+    uint64_t viewport_start_frame;
+    uint64_t viewport_span_frames;
+    int pitch_viewport_track_index;
+    int pitch_viewport_clip_index;
+    int pitch_viewport_top_note;
+    int pitch_viewport_row_count;
 } SessionMidiEditorState;
 
 typedef struct {
@@ -120,6 +136,7 @@ typedef struct {
 typedef struct {
     char directory[SESSION_PATH_MAX];
     int selected_index;
+    int panel_mode;
 } SessionLibraryState;
 
 typedef struct {
@@ -201,6 +218,11 @@ typedef struct {
 } SessionTimeSignatureEvent;
 
 typedef struct {
+    int track_index;
+    int clip_index;
+} SessionTimelineSelectionEntry;
+
+typedef struct {
     uint32_t version;
     EngineRuntimeConfig engine;
     SessionTempo tempo;
@@ -210,8 +232,11 @@ typedef struct {
     int time_signature_event_count;
     SessionLoopState loop;
     SessionTimelineView timeline;
+    int active_track_index;
     int selected_track_index;
     int selected_clip_index;
+    int selection_count;
+    SessionTimelineSelectionEntry selection[SESSION_TIMELINE_SELECTION_MAX];
     SessionMidiEditorState midi_editor;
     SessionEffectsPanelState effects_panel;
     SessionClipInspectorState clip_inspector;

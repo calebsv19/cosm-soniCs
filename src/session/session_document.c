@@ -127,11 +127,24 @@ void session_document_init(SessionDocument* doc) {
     doc->tempo.ts_num = 4;
     doc->tempo.ts_den = 4;
     doc->timeline.view_in_beats = false;
+    doc->timeline.snap_enabled = true;
+    doc->timeline.automation_mode = false;
+    doc->timeline.automation_labels_enabled = false;
+    doc->timeline.tempo_overlay_enabled = false;
     doc->timeline.follow_mode = TIMELINE_FOLLOW_JUMP;
+    doc->active_track_index = -1;
     doc->selected_track_index = -1;
     doc->selected_clip_index = -1;
     doc->midi_editor.panel_mode = 0;
     doc->midi_editor.instrument_active_group = 0;
+    doc->midi_editor.quantize_division = 16;
+    doc->midi_editor.default_velocity = 0.8f;
+    doc->midi_editor.viewport_track_index = -1;
+    doc->midi_editor.viewport_clip_index = -1;
+    doc->midi_editor.pitch_viewport_track_index = -1;
+    doc->midi_editor.pitch_viewport_clip_index = -1;
+    doc->midi_editor.pitch_viewport_top_note = 71;
+    doc->midi_editor.pitch_viewport_row_count = 24;
     doc->effects_panel.view_mode = 0;
     doc->effects_panel.selected_index = -1;
     doc->effects_panel.open_index = -1;
@@ -390,12 +403,36 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
     out_doc->timeline.vertical_scale = state->timeline_vertical_scale;
     out_doc->timeline.show_all_grid_lines = state->timeline_show_all_grid_lines;
     out_doc->timeline.view_in_beats = state->timeline_view_in_beats;
+    out_doc->timeline.snap_enabled = state->timeline_snap_enabled;
+    out_doc->timeline.automation_mode = state->timeline_automation_mode;
+    out_doc->timeline.automation_labels_enabled = state->timeline_automation_labels_enabled;
+    out_doc->timeline.tempo_overlay_enabled = state->timeline_tempo_overlay_enabled;
     out_doc->timeline.follow_mode = (int)state->timeline_follow_mode;
     out_doc->timeline.playhead_frame = out_doc->transport_frame;
+    out_doc->active_track_index = state->active_track_index;
     out_doc->selected_track_index = state->selected_track_index;
     out_doc->selected_clip_index = state->selected_clip_index;
+    out_doc->selection_count = state->selection_count;
+    if (out_doc->selection_count > SESSION_TIMELINE_SELECTION_MAX) {
+        out_doc->selection_count = SESSION_TIMELINE_SELECTION_MAX;
+    }
+    for (int i = 0; i < out_doc->selection_count; ++i) {
+        out_doc->selection[i].track_index = state->selection[i].track_index;
+        out_doc->selection[i].clip_index = state->selection[i].clip_index;
+    }
     out_doc->midi_editor.panel_mode = (int)state->midi_editor_ui.panel_mode;
     out_doc->midi_editor.instrument_active_group = (int)state->midi_editor_ui.instrument_active_group;
+    out_doc->midi_editor.quantize_division = state->midi_editor_ui.quantize_division;
+    out_doc->midi_editor.default_velocity = state->midi_editor_ui.default_velocity;
+    out_doc->midi_editor.qwerty_octave_offset = state->midi_editor_ui.qwerty_octave_offset;
+    out_doc->midi_editor.viewport_track_index = state->midi_editor_ui.viewport_track_index;
+    out_doc->midi_editor.viewport_clip_index = state->midi_editor_ui.viewport_clip_index;
+    out_doc->midi_editor.viewport_start_frame = state->midi_editor_ui.viewport_start_frame;
+    out_doc->midi_editor.viewport_span_frames = state->midi_editor_ui.viewport_span_frames;
+    out_doc->midi_editor.pitch_viewport_track_index = state->midi_editor_ui.pitch_viewport_track_index;
+    out_doc->midi_editor.pitch_viewport_clip_index = state->midi_editor_ui.pitch_viewport_clip_index;
+    out_doc->midi_editor.pitch_viewport_top_note = state->midi_editor_ui.pitch_viewport_top_note;
+    out_doc->midi_editor.pitch_viewport_row_count = state->midi_editor_ui.pitch_viewport_row_count;
     EffectsPanelState* panel = &((AppState*)state)->effects_panel;
     session_store_active_eq_curve(panel);
     const EqCurveState* master_curve = &panel->eq_curve_master;
@@ -430,8 +467,11 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
     out_doc->layout.library_ratio = state->layout_runtime.library_ratio;
     out_doc->layout.mixer_ratio = state->layout_runtime.mixer_ratio;
 
-    copy_string(out_doc->library.directory, sizeof(out_doc->library.directory), state->library.directory);
+    copy_string(out_doc->library.directory,
+                sizeof(out_doc->library.directory),
+                daw_data_paths_library_root(&state->data_paths));
     out_doc->library.selected_index = state->library.selected_index;
+    out_doc->library.panel_mode = (int)state->library.panel_mode;
     copy_string(out_doc->data_paths.input_root,
                 sizeof(out_doc->data_paths.input_root),
                 state->data_paths.input_root);

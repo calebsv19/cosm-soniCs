@@ -1,4 +1,5 @@
 #include "session.h"
+#include "ui/library_browser.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -129,6 +130,15 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
         session_set_error(error_message, error_message_len,
                           "invalid MIDI instrument group: %d",
                           doc->midi_editor.instrument_active_group);
+        return false;
+    }
+    if (doc->selection_count < 0 || doc->selection_count > SESSION_TIMELINE_SELECTION_MAX) {
+        session_set_error(error_message, error_message_len, "invalid selection count: %d", doc->selection_count);
+        return false;
+    }
+    if (doc->library.panel_mode < LIBRARY_PANEL_MODE_SOURCE ||
+        doc->library.panel_mode > LIBRARY_PANEL_MODE_IN_PROJECT) {
+        session_set_error(error_message, error_message_len, "invalid library panel mode: %d", doc->library.panel_mode);
         return false;
     }
     if (doc->track_count < 0) {

@@ -331,6 +331,16 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     json_write_indent(file, 2);
     fprintf(file, "\"view_in_beats\": %s,\n", doc->timeline.view_in_beats ? "true" : "false");
     json_write_indent(file, 2);
+    fprintf(file, "\"snap_enabled\": %s,\n", doc->timeline.snap_enabled ? "true" : "false");
+    json_write_indent(file, 2);
+    fprintf(file, "\"automation_mode\": %s,\n", doc->timeline.automation_mode ? "true" : "false");
+    json_write_indent(file, 2);
+    fprintf(file, "\"automation_labels_enabled\": %s,\n",
+            doc->timeline.automation_labels_enabled ? "true" : "false");
+    json_write_indent(file, 2);
+    fprintf(file, "\"tempo_overlay_enabled\": %s,\n",
+            doc->timeline.tempo_overlay_enabled ? "true" : "false");
+    json_write_indent(file, 2);
     fprintf(file, "\"follow_mode\": %d,\n", doc->timeline.follow_mode);
     json_write_indent(file, 2);
     fprintf(file, "\"playhead_frame\": %" PRIu64 "\n", doc->timeline.playhead_frame);
@@ -338,16 +348,54 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     fprintf(file, "},\n");
 
     json_write_indent(file, 1);
+    fprintf(file, "\"active_track_index\": %d,\n", doc->active_track_index);
+    json_write_indent(file, 1);
     fprintf(file, "\"selected_track_index\": %d,\n", doc->selected_track_index);
     json_write_indent(file, 1);
     fprintf(file, "\"selected_clip_index\": %d,\n", doc->selected_clip_index);
+    json_write_indent(file, 1);
+    fprintf(file, "\"selection\": [\n");
+    for (int i = 0; i < doc->selection_count; ++i) {
+        json_write_indent(file, 2);
+        fprintf(file,
+                "{\"track_index\": %d, \"clip_index\": %d}%s\n",
+                doc->selection[i].track_index,
+                doc->selection[i].clip_index,
+                (i + 1 < doc->selection_count) ? "," : "");
+    }
+    json_write_indent(file, 1);
+    fprintf(file, "],\n");
 
     json_write_indent(file, 1);
     fprintf(file, "\"midi_editor\": {\n");
     json_write_indent(file, 2);
     fprintf(file, "\"panel_mode\": %d,\n", doc->midi_editor.panel_mode);
     json_write_indent(file, 2);
-    fprintf(file, "\"instrument_active_group\": %d\n", doc->midi_editor.instrument_active_group);
+    fprintf(file, "\"instrument_active_group\": %d,\n", doc->midi_editor.instrument_active_group);
+    json_write_indent(file, 2);
+    fprintf(file, "\"quantize_division\": %d,\n", doc->midi_editor.quantize_division);
+    json_write_indent(file, 2);
+    fprintf(file, "\"default_velocity\": ");
+    json_write_float(file, doc->midi_editor.default_velocity);
+    fprintf(file, ",\n");
+    json_write_indent(file, 2);
+    fprintf(file, "\"qwerty_octave_offset\": %d,\n", doc->midi_editor.qwerty_octave_offset);
+    json_write_indent(file, 2);
+    fprintf(file, "\"viewport_track_index\": %d,\n", doc->midi_editor.viewport_track_index);
+    json_write_indent(file, 2);
+    fprintf(file, "\"viewport_clip_index\": %d,\n", doc->midi_editor.viewport_clip_index);
+    json_write_indent(file, 2);
+    fprintf(file, "\"viewport_start_frame\": %" PRIu64 ",\n", doc->midi_editor.viewport_start_frame);
+    json_write_indent(file, 2);
+    fprintf(file, "\"viewport_span_frames\": %" PRIu64 ",\n", doc->midi_editor.viewport_span_frames);
+    json_write_indent(file, 2);
+    fprintf(file, "\"pitch_viewport_track_index\": %d,\n", doc->midi_editor.pitch_viewport_track_index);
+    json_write_indent(file, 2);
+    fprintf(file, "\"pitch_viewport_clip_index\": %d,\n", doc->midi_editor.pitch_viewport_clip_index);
+    json_write_indent(file, 2);
+    fprintf(file, "\"pitch_viewport_top_note\": %d,\n", doc->midi_editor.pitch_viewport_top_note);
+    json_write_indent(file, 2);
+    fprintf(file, "\"pitch_viewport_row_count\": %d\n", doc->midi_editor.pitch_viewport_row_count);
     json_write_indent(file, 1);
     fprintf(file, "},\n");
 
@@ -453,7 +501,9 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     json_write_string(file, doc->library.directory);
     fprintf(file, ",\n");
     json_write_indent(file, 2);
-    fprintf(file, "\"selected_index\": %d\n", doc->library.selected_index);
+    fprintf(file, "\"selected_index\": %d,\n", doc->library.selected_index);
+    json_write_indent(file, 2);
+    fprintf(file, "\"panel_mode\": %d\n", doc->library.panel_mode);
     json_write_indent(file, 1);
     fprintf(file, "},\n");
 

@@ -96,6 +96,16 @@ static void session_apply_midi_editor_state(AppState* state, const SessionDocume
     } else {
         state->midi_editor_ui.instrument_active_group = ENGINE_INSTRUMENT_PARAM_GROUP_OUTPUT;
     }
+    state->midi_editor_ui.quantize_division = doc->midi_editor.quantize_division > 0
+                                                  ? doc->midi_editor.quantize_division
+                                                  : 16;
+    state->midi_editor_ui.default_velocity = doc->midi_editor.default_velocity;
+    if (state->midi_editor_ui.default_velocity < 0.0f) {
+        state->midi_editor_ui.default_velocity = 0.0f;
+    } else if (state->midi_editor_ui.default_velocity > 1.0f) {
+        state->midi_editor_ui.default_velocity = 1.0f;
+    }
+    state->midi_editor_ui.qwerty_octave_offset = doc->midi_editor.qwerty_octave_offset;
 
     if (doc->midi_editor.panel_mode == MIDI_REGION_PANEL_INSTRUMENT &&
         session_selected_clip_is_midi(state)) {
@@ -198,6 +208,92 @@ static void clear_pending_track_fx(AppState* state) {
     state->pending_track_fx_dirty = false;
 }
 
+static bool session_resolve_clip_creation_index(const AppState* state,
+                                                int track_index,
+                                                int clip_index,
+                                                uint64_t* out_creation_index) {
+    if (!state || !state->engine || !out_creation_index) {
+        return false;
+    }
+    int track_count = engine_get_track_count(state->engine);
+    const EngineTrack* tracks = engine_get_tracks(state->engine);
+    if (!tracks || track_index < 0 || track_index >= track_count) {
+        return false;
+    }
+    const EngineTrack* track = &tracks[track_index];
+    if (clip_index < 0 || clip_index >= track->clip_count) {
+        return false;
+    }
+    *out_creation_index = track->clips[clip_index].creation_index;
+    return true;
+}
+
+static void session_restore_timeline_selection(AppState* state, const SessionDocument* doc) {
+    if (!state || !doc) {
+        return;
+    }
+    state->selection_count = 0;
+    if (!state->engine || doc->selection_count <= 0) {
+        return;
+    }
+    int track_count = engine_get_track_count(state->engine);
+    const EngineTrack* tracks = engine_get_tracks(state->engine);
+    if (!tracks) {
+        return;
+    }
+    for (int i = 0; i < doc->selection_count && state->selection_count < TIMELINE_MAX_SELECTION; ++i) {
+        int track_index = doc->selection[i].track_index;
+        int clip_index = doc->selection[i].clip_index;
+        if (track_index < 0 || track_index >= track_count) {
+            continue;
+        }
+        if (clip_index < 0 || clip_index >= tracks[track_index].clip_count) {
+            continue;
+        }
+        state->selection[state->selection_count].track_index = track_index;
+        state->selection[state->selection_count].clip_index = clip_index;
+        state->selection_count++;
+    }
+}
+
+static void session_restore_midi_editor_viewports(AppState* state, const SessionDocument* doc) {
+    uint64_t creation_index = 0;
+    if (!state || !doc) {
+        return;
+    }
+    state->midi_editor_ui.viewport_track_index = doc->midi_editor.viewport_track_index;
+    state->midi_editor_ui.viewport_clip_index = doc->midi_editor.viewport_clip_index;
+    state->midi_editor_ui.viewport_start_frame = doc->midi_editor.viewport_start_frame;
+    state->midi_editor_ui.viewport_span_frames = doc->midi_editor.viewport_span_frames;
+    if (session_resolve_clip_creation_index(state,
+                                            doc->midi_editor.viewport_track_index,
+                                            doc->midi_editor.viewport_clip_index,
+                                            &creation_index)) {
+        state->midi_editor_ui.viewport_clip_creation_index = creation_index;
+    } else {
+        state->midi_editor_ui.viewport_track_index = -1;
+        state->midi_editor_ui.viewport_clip_index = -1;
+        state->midi_editor_ui.viewport_clip_creation_index = 0;
+        state->midi_editor_ui.viewport_start_frame = 0;
+        state->midi_editor_ui.viewport_span_frames = 0;
+    }
+
+    state->midi_editor_ui.pitch_viewport_track_index = doc->midi_editor.pitch_viewport_track_index;
+    state->midi_editor_ui.pitch_viewport_clip_index = doc->midi_editor.pitch_viewport_clip_index;
+    state->midi_editor_ui.pitch_viewport_top_note = doc->midi_editor.pitch_viewport_top_note;
+    state->midi_editor_ui.pitch_viewport_row_count = doc->midi_editor.pitch_viewport_row_count;
+    if (session_resolve_clip_creation_index(state,
+                                            doc->midi_editor.pitch_viewport_track_index,
+                                            doc->midi_editor.pitch_viewport_clip_index,
+                                            &creation_index)) {
+        state->midi_editor_ui.pitch_viewport_clip_creation_index = creation_index;
+    } else {
+        state->midi_editor_ui.pitch_viewport_track_index = -1;
+        state->midi_editor_ui.pitch_viewport_clip_index = -1;
+        state->midi_editor_ui.pitch_viewport_clip_creation_index = 0;
+    }
+}
+
 bool session_apply_document(AppState* state, const SessionDocument* doc) {
     if (!state || !doc) {
         return false;
@@ -232,6 +328,10 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     state->timeline_vertical_scale = doc->timeline.vertical_scale;
     state->timeline_show_all_grid_lines = doc->timeline.show_all_grid_lines;
     state->timeline_view_in_beats = doc->timeline.view_in_beats;
+    state->timeline_snap_enabled = doc->timeline.snap_enabled;
+    state->timeline_automation_mode = doc->timeline.automation_mode;
+    state->timeline_automation_labels_enabled = doc->timeline.automation_labels_enabled;
+    state->timeline_tempo_overlay_enabled = doc->timeline.tempo_overlay_enabled;
     state->timeline_follow_mode = (TimelineFollowMode)doc->timeline.follow_mode;
     if (state->timeline_follow_mode < TIMELINE_FOLLOW_OFF ||
         state->timeline_follow_mode > TIMELINE_FOLLOW_SMOOTH) {
@@ -330,15 +430,23 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     }
 
     session_apply_data_paths(state, doc);
-    const char* library_root = doc->library.directory[0]
-                                   ? doc->library.directory
-                                   : daw_data_paths_library_root(&state->data_paths);
+    bool doc_has_input_root = doc->version >= 17 && doc->data_paths.input_root[0] != '\0';
+    const char* library_root = doc_has_input_root
+                                   ? state->data_paths.input_root
+                                   : (doc->library.directory[0]
+                                          ? doc->library.directory
+                                          : daw_data_paths_library_root(&state->data_paths));
     library_browser_init(&state->library, library_root);
     library_browser_scan(&state->library, &state->media_registry);
     if (doc->library.selected_index >= 0 && doc->library.selected_index < state->library.count) {
         state->library.selected_index = doc->library.selected_index;
     } else {
         state->library.selected_index = state->library.count > 0 ? 0 : -1;
+    }
+    if (doc->library.panel_mode == LIBRARY_PANEL_MODE_IN_PROJECT) {
+        state->library.panel_mode = LIBRARY_PANEL_MODE_IN_PROJECT;
+    } else {
+        state->library.panel_mode = LIBRARY_PANEL_MODE_SOURCE;
     }
 
     state->active_track_index = -1;
@@ -608,7 +716,11 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
 
     if (!selected_from_clip && doc->selected_track_index >= 0 && doc->selected_track_index < doc->track_count) {
         state->selected_track_index = doc->selected_track_index;
-        state->active_track_index = doc->selected_track_index;
+        if (doc->active_track_index >= 0 && doc->active_track_index < doc->track_count) {
+            state->active_track_index = doc->active_track_index;
+        } else {
+            state->active_track_index = doc->selected_track_index;
+        }
         int clip_count = doc->tracks[doc->selected_track_index].clip_count;
         if (doc->selected_clip_index >= 0 && doc->selected_clip_index < clip_count) {
             state->selected_clip_index = doc->selected_clip_index;
@@ -621,7 +733,19 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
         state->selected_track_index = 0;
         state->selected_clip_index = doc->tracks[0].clip_count > 0 ? 0 : -1;
     }
+    if (state->active_track_index < 0) {
+        state->active_track_index = state->selected_track_index;
+    }
+    session_restore_timeline_selection(state, doc);
     session_apply_midi_editor_state(state, doc);
+    if (session_selected_clip_is_midi(state)) {
+        state->midi_editor_ui.selected_track_index = state->selected_track_index;
+        state->midi_editor_ui.selected_clip_index = state->selected_clip_index;
+    } else {
+        state->midi_editor_ui.selected_track_index = -1;
+        state->midi_editor_ui.selected_clip_index = -1;
+    }
+    session_restore_midi_editor_viewports(state, doc);
 
     if (doc->clip_inspector.visible &&
         doc->clip_inspector.track_index >= 0 &&

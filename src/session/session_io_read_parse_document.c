@@ -309,6 +309,22 @@ bool parse_session_document_timeline(JsonReader* r, SessionDocument* doc) {
             if (!json_parse_bool(r, &doc->timeline.view_in_beats)) {
                 return false;
             }
+        } else if (strcmp(timeline_key, "snap_enabled") == 0) {
+            if (!json_parse_bool(r, &doc->timeline.snap_enabled)) {
+                return false;
+            }
+        } else if (strcmp(timeline_key, "automation_mode") == 0) {
+            if (!json_parse_bool(r, &doc->timeline.automation_mode)) {
+                return false;
+            }
+        } else if (strcmp(timeline_key, "automation_labels_enabled") == 0) {
+            if (!json_parse_bool(r, &doc->timeline.automation_labels_enabled)) {
+                return false;
+            }
+        } else if (strcmp(timeline_key, "tempo_overlay_enabled") == 0) {
+            if (!json_parse_bool(r, &doc->timeline.tempo_overlay_enabled)) {
+                return false;
+            }
         } else if (strcmp(timeline_key, "follow_mode") == 0) {
             if (!json_parse_number(r, &val)) {
                 return false;
@@ -362,6 +378,72 @@ bool parse_session_midi_editor(JsonReader* r, SessionDocument* doc) {
                 return false;
             }
             doc->midi_editor.instrument_active_group = (int)val;
+        } else if (strcmp(panel_key, "quantize_division") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            doc->midi_editor.quantize_division = (int)val;
+        } else if (strcmp(panel_key, "default_velocity") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            doc->midi_editor.default_velocity = (float)val;
+        } else if (strcmp(panel_key, "qwerty_octave_offset") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            doc->midi_editor.qwerty_octave_offset = (int)val;
+        } else if (strcmp(panel_key, "viewport_track_index") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            doc->midi_editor.viewport_track_index = (int)val;
+        } else if (strcmp(panel_key, "viewport_clip_index") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            doc->midi_editor.viewport_clip_index = (int)val;
+        } else if (strcmp(panel_key, "viewport_start_frame") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            doc->midi_editor.viewport_start_frame = (uint64_t)(val < 0 ? 0 : val);
+        } else if (strcmp(panel_key, "viewport_span_frames") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            doc->midi_editor.viewport_span_frames = (uint64_t)(val < 0 ? 0 : val);
+        } else if (strcmp(panel_key, "pitch_viewport_track_index") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            doc->midi_editor.pitch_viewport_track_index = (int)val;
+        } else if (strcmp(panel_key, "pitch_viewport_clip_index") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            doc->midi_editor.pitch_viewport_clip_index = (int)val;
+        } else if (strcmp(panel_key, "pitch_viewport_top_note") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            doc->midi_editor.pitch_viewport_top_note = (int)val;
+        } else if (strcmp(panel_key, "pitch_viewport_row_count") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            doc->midi_editor.pitch_viewport_row_count = (int)val;
         } else if (!json_skip_value(r)) {
             return false;
         }
@@ -481,6 +563,66 @@ bool parse_session_document_layout(JsonReader* r, SessionDocument* doc) {
     return true;
 }
 
+bool parse_session_document_selection(JsonReader* r, SessionDocument* doc) {
+    if (!r || !doc || !json_expect(r, '[')) {
+        return false;
+    }
+    doc->selection_count = 0;
+    while (true) {
+        json_skip_whitespace(r);
+        if (r->pos < r->length && r->data[r->pos] == ']') {
+            ++r->pos;
+            break;
+        }
+        if (!json_expect(r, '{')) {
+            return false;
+        }
+        SessionTimelineSelectionEntry entry = {-1, -1};
+        while (true) {
+            json_skip_whitespace(r);
+            if (r->pos < r->length && r->data[r->pos] == '}') {
+                ++r->pos;
+                break;
+            }
+            char key[64];
+            double val;
+            if (!json_parse_string(r, key, sizeof(key)) || !json_expect(r, ':') ||
+                !json_parse_number(r, &val)) {
+                return false;
+            }
+            if (strcmp(key, "track_index") == 0) {
+                entry.track_index = (int)val;
+            } else if (strcmp(key, "clip_index") == 0) {
+                entry.clip_index = (int)val;
+            }
+            json_skip_whitespace(r);
+            if (r->pos < r->length && r->data[r->pos] == ',') {
+                ++r->pos;
+                continue;
+            }
+            if (r->pos < r->length && r->data[r->pos] == '}') {
+                ++r->pos;
+                break;
+            }
+            return false;
+        }
+        if (doc->selection_count < SESSION_TIMELINE_SELECTION_MAX) {
+            doc->selection[doc->selection_count++] = entry;
+        }
+        json_skip_whitespace(r);
+        if (r->pos < r->length && r->data[r->pos] == ',') {
+            ++r->pos;
+            continue;
+        }
+        if (r->pos < r->length && r->data[r->pos] == ']') {
+            ++r->pos;
+            break;
+        }
+        return false;
+    }
+    return true;
+}
+
 bool parse_session_document_library(JsonReader* r, SessionDocument* doc) {
     if (!r || !doc || !json_expect(r, '{')) {
         return false;
@@ -505,6 +647,12 @@ bool parse_session_document_library(JsonReader* r, SessionDocument* doc) {
                 return false;
             }
             doc->library.selected_index = (int)val;
+        } else if (strcmp(lib_key, "panel_mode") == 0) {
+            double val;
+            if (!json_parse_number(r, &val)) {
+                return false;
+            }
+            doc->library.panel_mode = (int)val;
         } else if (!json_skip_value(r)) {
             return false;
         }

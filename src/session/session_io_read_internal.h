@@ -33,6 +33,7 @@ bool parse_session_document_clip_inspector(JsonReader* r, SessionDocument* doc);
 bool parse_session_document_layout(JsonReader* r, SessionDocument* doc);
 bool parse_session_document_library(JsonReader* r, SessionDocument* doc);
 bool parse_session_document_data_paths(JsonReader* r, SessionDocument* doc);
+bool parse_session_document_selection(JsonReader* r, SessionDocument* doc);
 bool parse_session_automation_lanes(JsonReader* r, SessionAutomationLane** out_lanes, int* out_lane_count);
 bool parse_session_track_clips(JsonReader* r, SessionTrack* track);
 bool parse_session_track_fx(JsonReader* r, SessionTrack* track);

@@ -1,5 +1,7 @@
 #include "session.h"
+#include "daw/data_paths.h"
 #include "engine/engine.h"
+#include "ui/library_browser.h"
 
 #include <SDL2/SDL.h>
 
@@ -13,11 +15,16 @@
 
 static const char* kTestOutputPath = "build/tests/sample_session.json";
 
-typedef struct LibraryBrowser LibraryBrowser;
-
 const EngineRuntimeConfig* engine_get_config(const Engine* engine) {
     (void)engine;
     return NULL;
+}
+
+const char* daw_data_paths_library_root(const DawDataPaths* paths) {
+    if (paths && paths->input_root[0] != '\0') {
+        return paths->input_root;
+    }
+    return DAW_DATA_PATH_DEFAULT_INPUT_ROOT;
 }
 
 bool engine_transport_is_playing(const Engine* engine) {
@@ -931,12 +938,16 @@ bool engine_fx_master_set_enabled(Engine* engine, FxInstId id, bool enabled) {
 }
 
 void library_browser_init(LibraryBrowser* browser, const char* directory) {
-    (void)browser;
     (void)directory;
+    if (!browser) {
+        return;
+    }
+    SDL_zero(*browser);
 }
 
-void library_browser_scan(LibraryBrowser* browser) {
+void library_browser_scan(LibraryBrowser* browser, MediaRegistry* registry) {
     (void)browser;
+    (void)registry;
 }
 
 void tempo_state_clamp(TempoState* tempo) {
@@ -1200,19 +1211,47 @@ int main(void) {
     doc.timeline.visible_seconds = 8.0f;
     doc.timeline.vertical_scale = 1.0f;
     doc.timeline.show_all_grid_lines = false;
+    doc.timeline.snap_enabled = true;
+    doc.timeline.automation_mode = true;
+    doc.timeline.automation_labels_enabled = true;
+    doc.timeline.tempo_overlay_enabled = true;
     doc.timeline.playhead_frame = 0;
+    doc.active_track_index = 0;
     doc.selected_track_index = 0;
     doc.selected_clip_index = 1;
+    doc.selection_count = 2;
+    doc.selection[0].track_index = 0;
+    doc.selection[0].clip_index = 0;
+    doc.selection[1].track_index = 0;
+    doc.selection[1].clip_index = 1;
     doc.midi_editor.panel_mode = 1;
     doc.midi_editor.instrument_active_group = ENGINE_INSTRUMENT_PARAM_GROUP_MOD;
+    doc.midi_editor.quantize_division = 32;
+    doc.midi_editor.default_velocity = 0.67f;
+    doc.midi_editor.qwerty_octave_offset = -1;
+    doc.midi_editor.viewport_track_index = 0;
+    doc.midi_editor.viewport_clip_index = 1;
+    doc.midi_editor.viewport_start_frame = 24000;
+    doc.midi_editor.viewport_span_frames = 72000;
+    doc.midi_editor.pitch_viewport_track_index = 0;
+    doc.midi_editor.pitch_viewport_clip_index = 1;
+    doc.midi_editor.pitch_viewport_top_note = 84;
+    doc.midi_editor.pitch_viewport_row_count = 18;
 
     doc.layout.transport_ratio = 0.3f;
     doc.layout.library_ratio = 0.25f;
     doc.layout.mixer_ratio = 0.45f;
 
-    strncpy(doc.library.directory, "assets/audio", sizeof(doc.library.directory) - 1);
+    strncpy(doc.library.directory, "/tmp/daw_media", sizeof(doc.library.directory) - 1);
     doc.library.directory[sizeof(doc.library.directory) - 1] = '\0';
     doc.library.selected_index = 0;
+    doc.library.panel_mode = LIBRARY_PANEL_MODE_IN_PROJECT;
+    strncpy(doc.data_paths.input_root, "/tmp/daw_media", sizeof(doc.data_paths.input_root) - 1);
+    doc.data_paths.input_root[sizeof(doc.data_paths.input_root) - 1] = '\0';
+    strncpy(doc.data_paths.output_root, "build/tests/session-output", sizeof(doc.data_paths.output_root) - 1);
+    doc.data_paths.output_root[sizeof(doc.data_paths.output_root) - 1] = '\0';
+    strncpy(doc.data_paths.library_copy_root, "build/tests/library-copy", sizeof(doc.data_paths.library_copy_root) - 1);
+    doc.data_paths.library_copy_root[sizeof(doc.data_paths.library_copy_root) - 1] = '\0';
 
     doc.transport_playing = false;
     doc.transport_frame = 0;
@@ -1393,13 +1432,44 @@ int main(void) {
         SDL_Log("session_serialization_test: engine logging flags mismatch");
         return 8;
     }
-    if (loaded.selected_track_index != 0 ||
+    if (loaded.active_track_index != 0 ||
+        loaded.selected_track_index != 0 ||
         loaded.selected_clip_index != 1 ||
         loaded.midi_editor.panel_mode != 1 ||
-        loaded.midi_editor.instrument_active_group != ENGINE_INSTRUMENT_PARAM_GROUP_MOD) {
+        loaded.midi_editor.instrument_active_group != ENGINE_INSTRUMENT_PARAM_GROUP_MOD ||
+        loaded.midi_editor.quantize_division != 32 ||
+        fabsf(loaded.midi_editor.default_velocity - 0.67f) > 0.01f ||
+        loaded.midi_editor.qwerty_octave_offset != -1 ||
+        loaded.midi_editor.viewport_track_index != 0 ||
+        loaded.midi_editor.viewport_clip_index != 1 ||
+        loaded.midi_editor.viewport_start_frame != 24000 ||
+        loaded.midi_editor.viewport_span_frames != 72000 ||
+        loaded.midi_editor.pitch_viewport_track_index != 0 ||
+        loaded.midi_editor.pitch_viewport_clip_index != 1 ||
+        loaded.midi_editor.pitch_viewport_top_note != 84 ||
+        loaded.midi_editor.pitch_viewport_row_count != 18) {
         session_document_free(&doc);
         session_document_free(&loaded);
         SDL_Log("session_serialization_test: MIDI editor view state mismatch");
+        return 8;
+    }
+    if (!loaded.timeline.snap_enabled ||
+        !loaded.timeline.automation_mode ||
+        !loaded.timeline.automation_labels_enabled ||
+        !loaded.timeline.tempo_overlay_enabled ||
+        loaded.selection_count != 2 ||
+        loaded.selection[0].track_index != 0 ||
+        loaded.selection[0].clip_index != 0 ||
+        loaded.selection[1].track_index != 0 ||
+        loaded.selection[1].clip_index != 1 ||
+        strcmp(loaded.library.directory, "/tmp/daw_media") != 0 ||
+        loaded.library.panel_mode != LIBRARY_PANEL_MODE_IN_PROJECT ||
+        strcmp(loaded.data_paths.input_root, "/tmp/daw_media") != 0 ||
+        strcmp(loaded.data_paths.output_root, "build/tests/session-output") != 0 ||
+        strcmp(loaded.data_paths.library_copy_root, "build/tests/library-copy") != 0) {
+        session_document_free(&doc);
+        session_document_free(&loaded);
+        SDL_Log("session_serialization_test: session UI/path state mismatch");
         return 8;
     }
     SessionTrack* lt = &loaded.tracks[0];

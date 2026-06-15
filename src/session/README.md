@@ -10,10 +10,11 @@ Purpose: Session persistence helpers that translate between the live `AppState`/
 - `time_signature_map`: Ordered time signature change list in beats (`beat`, `ts_num`, `ts_den`).
 - `transport_playing` / `transport_frame`: Whether playback was active and the current frame.
 - `loop`: Loop enabled flag plus start/end frames.
-- `timeline`: Visible seconds, window start offset, vertical scale, grid visibility, and playhead frame.
-- `midi_editor`: Selected MIDI-region lower-pane state, including note-editor vs instrument-panel mode and the active instrument parameter group tab.
+- `timeline`: Visible seconds, window start offset, vertical scale, grid visibility, playhead frame, and the snap/automation/tempo-overlay UI toggles used by the main timeline.
+- `midi_editor`: Selected MIDI-region lower-pane state, including note-editor vs instrument-panel mode, the active instrument parameter group tab, quantize/default-velocity controls, and stored time/pitch viewport positions.
 - `layout`: Split ratios for transport/library/mixer panes.
-- `library`: Root directory for the asset browser and currently selected index.
+- `library`: Root directory for the asset browser, current panel mode, and currently selected index.
+- `active_track_index` / `selected_track_index` / `selected_clip_index` / `selection[]`: Active track focus plus multi-clip selection state.
 - `tracks[]`: Ordered list of tracks with name, gain, mute/solo flags, optional MIDI instrument defaults (`midi_instrument_enabled`, `midi_instrument_preset`, named-key `midi_instrument_params`), and optional track-level MIDI instrument automation (`midi_instrument_automation`) for inherited MIDI regions.
   - `clips[]`: Per-track clips with `kind`, asset path when audio-backed, clip name, gain, start/duration/offset frames, and selection flag.
     - Each clip also persists `fade_in_frames` / `fade_out_frames` (in samples) plus `fade_in_curve` / `fade_out_curve`.
