@@ -98,6 +98,72 @@ void timeline_selection_set_single(AppState* state, int track_index, int clip_in
     timeline_selection_add(state, track_index, clip_index);
 }
 
+void timeline_selection_set_primary(AppState* state, int track_index, int clip_index) {
+    if (!state) {
+        return;
+    }
+    state->selected_track_index = track_index;
+    state->selected_clip_index = clip_index;
+    state->active_track_index = track_index;
+    state->timeline_drop_track_index = track_index;
+}
+
+void timeline_selection_set_selected_clip(AppState* state, int track_index, int clip_index) {
+    if (!state) {
+        return;
+    }
+    state->selected_track_index = track_index;
+    state->selected_clip_index = clip_index;
+}
+
+void timeline_selection_set_track_focus(AppState* state, int track_index) {
+    if (!state) {
+        return;
+    }
+    state->active_track_index = track_index;
+    state->selected_track_index = track_index;
+    state->timeline_drop_track_index = track_index;
+}
+
+void timeline_selection_restore_clear(AppState* state) {
+    if (!state) {
+        return;
+    }
+    state->selection_count = 0;
+    state->selected_track_index = -1;
+    state->selected_clip_index = -1;
+    state->active_track_index = -1;
+}
+
+void timeline_selection_restore_clear_entries(AppState* state) {
+    if (!state) {
+        return;
+    }
+    state->selection_count = 0;
+}
+
+void timeline_selection_restore_primary(AppState* state,
+                                        int selected_track_index,
+                                        int selected_clip_index,
+                                        int active_track_index) {
+    if (!state) {
+        return;
+    }
+    state->selected_track_index = selected_track_index;
+    state->selected_clip_index = selected_clip_index;
+    state->active_track_index = active_track_index;
+}
+
+bool timeline_selection_restore_append_entry(AppState* state, int track_index, int clip_index) {
+    if (!state || state->selection_count >= TIMELINE_MAX_SELECTION) {
+        return false;
+    }
+    state->selection[state->selection_count].track_index = track_index;
+    state->selection[state->selection_count].clip_index = clip_index;
+    state->selection_count++;
+    return true;
+}
+
 void timeline_selection_update_index(AppState* state, int track_index, int old_clip_index, int new_clip_index) {
     if (!state) {
         return;

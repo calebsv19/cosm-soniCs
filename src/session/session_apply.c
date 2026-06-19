@@ -2,12 +2,14 @@
 #include "app_state.h"
 #include "daw/data_paths.h"
 #include "engine/engine.h"
+#include "input/timeline_selection.h"
 #include "ui/effects_panel.h"
 #include "ui/library_browser.h"
 #include "ui/timeline_view.h"
 #include "input/inspector_input.h"
 #include "time/tempo.h"
 #include "effects/param_utils.h"
+#include "input/midi_editor_input.h"
 
 #include <string.h>
 
@@ -232,7 +234,7 @@ static void session_restore_timeline_selection(AppState* state, const SessionDoc
     if (!state || !doc) {
         return;
     }
-    state->selection_count = 0;
+    timeline_selection_restore_clear_entries(state);
     if (!state->engine || doc->selection_count <= 0) {
         return;
     }
@@ -241,7 +243,7 @@ static void session_restore_timeline_selection(AppState* state, const SessionDoc
     if (!tracks) {
         return;
     }
-    for (int i = 0; i < doc->selection_count && state->selection_count < TIMELINE_MAX_SELECTION; ++i) {
+    for (int i = 0; i < doc->selection_count; ++i) {
         int track_index = doc->selection[i].track_index;
         int clip_index = doc->selection[i].clip_index;
         if (track_index < 0 || track_index >= track_count) {
@@ -250,9 +252,9 @@ static void session_restore_timeline_selection(AppState* state, const SessionDoc
         if (clip_index < 0 || clip_index >= tracks[track_index].clip_count) {
             continue;
         }
-        state->selection[state->selection_count].track_index = track_index;
-        state->selection[state->selection_count].clip_index = clip_index;
-        state->selection_count++;
+        if (!timeline_selection_restore_append_entry(state, track_index, clip_index)) {
+            break;
+        }
     }
 }
 
@@ -449,9 +451,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
         state->library.panel_mode = LIBRARY_PANEL_MODE_SOURCE;
     }
 
-    state->active_track_index = -1;
-    state->selected_track_index = -1;
-    state->selected_clip_index = -1;
+    timeline_selection_restore_clear(state);
     bool selected_from_clip = false;
 
     // Tempo: apply document values with clamping and align sample rate to current engine config.
@@ -618,9 +618,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
                     }
                 }
                 if (clip_doc->selected && state->selected_track_index == -1) {
-                    state->selected_track_index = track_index;
-                    state->selected_clip_index = clip_index;
-                    state->active_track_index = track_index;
+                    timeline_selection_restore_primary(state, track_index, clip_index, track_index);
                     selected_from_clip = true;
                 }
                 continue;
@@ -693,9 +691,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
                 }
             }
             if (clip_doc->selected && state->selected_track_index == -1) {
-                state->selected_track_index = track_index;
-                state->selected_clip_index = clip_index;
-                state->active_track_index = track_index;
+                timeline_selection_restore_primary(state, track_index, clip_index, track_index);
                 selected_from_clip = true;
             }
         }
@@ -715,35 +711,41 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     }
 
     if (!selected_from_clip && doc->selected_track_index >= 0 && doc->selected_track_index < doc->track_count) {
-        state->selected_track_index = doc->selected_track_index;
+        int active_track_index = doc->selected_track_index;
         if (doc->active_track_index >= 0 && doc->active_track_index < doc->track_count) {
-            state->active_track_index = doc->active_track_index;
-        } else {
-            state->active_track_index = doc->selected_track_index;
+            active_track_index = doc->active_track_index;
         }
         int clip_count = doc->tracks[doc->selected_track_index].clip_count;
+        int selected_clip_index = -1;
         if (doc->selected_clip_index >= 0 && doc->selected_clip_index < clip_count) {
-            state->selected_clip_index = doc->selected_clip_index;
-        } else {
-            state->selected_clip_index = -1;
+            selected_clip_index = doc->selected_clip_index;
         }
+        timeline_selection_restore_primary(state, doc->selected_track_index, selected_clip_index, active_track_index);
     }
     if (state->selected_track_index == -1 && doc->track_count > 0) {
-        state->active_track_index = 0;
-        state->selected_track_index = 0;
-        state->selected_clip_index = doc->tracks[0].clip_count > 0 ? 0 : -1;
+        timeline_selection_restore_primary(state, 0, doc->tracks[0].clip_count > 0 ? 0 : -1, 0);
     }
     if (state->active_track_index < 0) {
-        state->active_track_index = state->selected_track_index;
+        timeline_selection_restore_primary(state,
+                                           state->selected_track_index,
+                                           state->selected_clip_index,
+                                           state->selected_track_index);
     }
     session_restore_timeline_selection(state, doc);
     session_apply_midi_editor_state(state, doc);
     if (session_selected_clip_is_midi(state)) {
-        state->midi_editor_ui.selected_track_index = state->selected_track_index;
-        state->midi_editor_ui.selected_clip_index = state->selected_clip_index;
+        uint64_t clip_creation_index = 0;
+        const EngineTrack* tracks = engine_get_tracks(state->engine);
+        if (tracks) {
+            const EngineTrack* track = &tracks[state->selected_track_index];
+            clip_creation_index = track->clips[state->selected_clip_index].creation_index;
+        }
+        midi_editor_input_set_selected_clip(state,
+                                            state->selected_track_index,
+                                            state->selected_clip_index,
+                                            clip_creation_index);
     } else {
-        state->midi_editor_ui.selected_track_index = -1;
-        state->midi_editor_ui.selected_clip_index = -1;
+        midi_editor_input_clear_selected_clip(state);
     }
     session_restore_midi_editor_viewports(state, doc);
 

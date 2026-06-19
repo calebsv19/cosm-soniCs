@@ -18,8 +18,12 @@ Purpose: Application bootstrap and SDL event loop integration.
   - Loop diagnostics JSON mode: `DAW_LOOP_DIAG_FORMAT=json` (or `DAW_LOOP_DIAG_JSON=1`) emits schema-1 `LoopDiag` lines for cross-program sleep/wake calibration parity.
   - Gate harness: run `daw/tools/run_loop_gates.sh` to execute all gate scenarios and emit a summarized `pass/fail/inconclusive` report with scenario logs.
     - headless validation: set `HEADLESS=1` for no-display/no-swapchain loop gate checks.
+  - Visual artifact proof: `DAW_VISUAL_ARTIFACT_ONCE=1` requests a first-frame
+    capture and exits after the artifact is written or fails.
   - Quick commands:
     - `make -C daw loop-gates` (default profile, inconclusive => exit 2)
     - `make -C daw loop-gates-strict` (strict profile, inconclusive => failure exit)
   - `main`: Loads config, restores the last session from `config/last_session.json` (or seeds defaults), initialises UI subsystems, configures wake-loop policy, runs the SDL framework loop, and auto-saves the session on shutdown.
+- `visual_artifact_proof.c`: Env-gated one-shot first-frame capture used by the
+  R6 `visual-artifact` target.
 - `audio_recording.c`: DAW-local audio recording coordinator. It owns the capture queue drain, in-memory take buffer, WAV finalization path, media registry registration, and normal audio-clip insertion while leaving shortcut/UI policy to input modules.

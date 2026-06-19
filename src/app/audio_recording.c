@@ -6,20 +6,13 @@
 #include "daw/data_paths.h"
 #include "engine/engine.h"
 #include "engine/sampler.h"
+#include "input/timeline_selection.h"
 #include "undo/undo_manager.h"
 
 #include <SDL2/SDL.h>
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>
-
-#if defined(_WIN32)
-#include <direct.h>
-#else
-#include <unistd.h>
-#endif
 
 #define DAW_AUDIO_RECORDING_QUEUE_SECONDS 10u
 #define DAW_AUDIO_RECORDING_DRAIN_FRAMES 4096u
@@ -35,54 +28,14 @@ static void daw_audio_recording_set_status(DawAudioRecordingState* recording, co
     SDL_strlcpy(recording->status_message, message, sizeof(recording->status_message));
 }
 
-static bool recording_path_exists(const char* path) {
-    struct stat st;
-    return path && path[0] != '\0' && stat(path, &st) == 0;
-}
-
-static bool recording_path_is_directory(const char* path) {
-    struct stat st;
-    return path && path[0] != '\0' && stat(path, &st) == 0 && S_ISDIR(st.st_mode);
-}
-
-static bool recording_ensure_directory_recursive(const char* path) {
-    if (!path || path[0] == '\0') {
-        return false;
-    }
-    char temp[SESSION_PATH_MAX];
-    SDL_strlcpy(temp, path, sizeof(temp));
-    for (char* p = temp + 1; *p; ++p) {
-        if (*p == '/' || *p == '\\') {
-            char hold = *p;
-            *p = '\0';
-#if defined(_WIN32)
-            _mkdir(temp);
-#else
-            mkdir(temp, 0755);
-#endif
-            *p = hold;
-        }
-    }
-#if defined(_WIN32)
-    if (_mkdir(temp) == 0 || errno == EEXIST) {
-        return true;
-    }
-#else
-    if (mkdir(temp, 0755) == 0 || errno == EEXIST) {
-        return true;
-    }
-#endif
-    return recording_path_is_directory(path);
-}
-
 static const char* daw_audio_recording_root(const AppState* state) {
     if (!state) {
         return DAW_DATA_PATH_DEFAULT_LIBRARY_COPY_ROOT;
     }
-    if (state->data_paths.library_copy_root[0] != '\0') {
+    if (daw_data_path_is_safe_write_root(state->data_paths.library_copy_root)) {
         return state->data_paths.library_copy_root;
     }
-    if (state->data_paths.output_root[0] != '\0') {
+    if (daw_data_path_is_safe_write_root(state->data_paths.output_root)) {
         return state->data_paths.output_root;
     }
     return DAW_DATA_PATH_DEFAULT_LIBRARY_COPY_ROOT;
@@ -270,7 +223,7 @@ bool daw_audio_recording_next_path(const AppState* state, char* out, size_t len)
     if (snprintf(dir, sizeof(dir), "%s/recordings", root) >= (int)sizeof(dir)) {
         return false;
     }
-    if (!recording_ensure_directory_recursive(dir)) {
+    if (!daw_data_path_ensure_directory_recursive(dir)) {
         return false;
     }
     for (int i = 0; i < 10000; ++i) {
@@ -283,7 +236,7 @@ bool daw_audio_recording_next_path(const AppState* state, char* out, size_t len)
         if (snprintf(out, len, "%s/%s", dir, name) >= (int)len) {
             return false;
         }
-        if (!recording_path_exists(out)) {
+        if (!daw_data_path_exists(out)) {
             return true;
         }
     }
@@ -296,11 +249,15 @@ bool daw_audio_recording_begin_take(AppState* state,
                                     uint64_t start_frame,
                                     const AudioDeviceSpec* desired) {
     if (!state || !state->engine || track_index < 0 || track_index >= engine_get_track_count(state->engine)) {
+        SDL_Log("audio_recording: begin_take failed reason=invalid_state track=%d track_count=%d",
+                track_index,
+                (state && state->engine) ? engine_get_track_count(state->engine) : -1);
         return false;
     }
     DawAudioRecordingState* recording = &state->audio_recording;
     if (daw_audio_recording_is_active(recording)) {
         daw_audio_recording_set_status(recording, "Audio recording is already active.");
+        SDL_Log("audio_recording: begin_take failed reason=already_active track=%d", track_index);
         return false;
     }
 
@@ -321,6 +278,10 @@ bool daw_audio_recording_begin_take(AppState* state,
     uint64_t queue_frames = (uint64_t)spec.sample_rate * DAW_AUDIO_RECORDING_QUEUE_SECONDS;
     if (!daw_audio_recording_prepare_queue(recording, spec.channels, queue_frames)) {
         recording->status = DAW_AUDIO_RECORDING_ERROR;
+        SDL_Log("audio_recording: begin_take failed reason=queue_prepare sample_rate=%d channels=%d queue_frames=%llu",
+                spec.sample_rate,
+                spec.channels,
+                (unsigned long long)queue_frames);
         return false;
     }
 
@@ -336,6 +297,12 @@ bool daw_audio_recording_begin_take(AppState* state,
     recording->status = DAW_AUDIO_RECORDING_ACTIVE;
     (void)engine_set_record_armed_track(state->engine, track_index);
     daw_audio_recording_set_status(recording, "Audio recording active.");
+    SDL_Log("audio_recording: begin_take ok track=%d start_frame=%llu sample_rate=%d channels=%d queue_frames=%llu",
+            track_index,
+            (unsigned long long)start_frame,
+            spec.sample_rate,
+            spec.channels,
+            (unsigned long long)queue_frames);
     return true;
 }
 
@@ -350,6 +317,7 @@ bool daw_audio_recording_begin_capture(AppState* state,
     DawAudioRecordingState* recording = &state->audio_recording;
     if (daw_audio_recording_is_active(recording)) {
         daw_audio_recording_set_status(recording, "Audio recording is already active.");
+        SDL_Log("audio_recording: begin_capture failed reason=already_active track=%d", track_index);
         return false;
     }
 
@@ -357,6 +325,13 @@ bool daw_audio_recording_begin_capture(AppState* state,
     if (state->runtime_cfg.sample_rate > 0 && (!desired || desired->sample_rate <= 0)) {
         want.sample_rate = state->runtime_cfg.sample_rate;
     }
+    SDL_Log("audio_recording: begin_capture request track=%d start_frame=%llu device=%s sample_rate=%d channels=%d block_size=%d",
+            track_index,
+            (unsigned long long)start_frame,
+            (device_name && device_name[0] != '\0') ? device_name : "default",
+            want.sample_rate,
+            want.channels,
+            want.block_size);
     if (!audio_capture_device_open(&recording->capture_device,
                                    device_name,
                                    &want,
@@ -364,12 +339,16 @@ bool daw_audio_recording_begin_capture(AppState* state,
                                    recording)) {
         recording->status = DAW_AUDIO_RECORDING_ERROR;
         daw_audio_recording_set_status(recording, audio_capture_device_last_error(&recording->capture_device));
+        SDL_Log("audio_recording: begin_capture failed stage=open track=%d reason=%s",
+                track_index,
+                audio_capture_device_last_error(&recording->capture_device));
         return false;
     }
     recording->capture_device_open = true;
 
     AudioDeviceSpec have = recording->capture_device.spec;
     if (!daw_audio_recording_begin_take(state, track_index, start_frame, &have)) {
+        SDL_Log("audio_recording: begin_capture failed stage=begin_take track=%d", track_index);
         audio_capture_device_close(&recording->capture_device);
         recording->capture_device_open = false;
         return false;
@@ -378,11 +357,20 @@ bool daw_audio_recording_begin_capture(AppState* state,
     if (!audio_capture_device_start(&recording->capture_device)) {
         recording->status = DAW_AUDIO_RECORDING_ERROR;
         daw_audio_recording_set_status(recording, audio_capture_device_last_error(&recording->capture_device));
+        SDL_Log("audio_recording: begin_capture failed stage=start track=%d reason=%s",
+                track_index,
+                audio_capture_device_last_error(&recording->capture_device));
         audio_capture_device_close(&recording->capture_device);
         recording->capture_device_open = false;
         return false;
     }
     recording->capture_device_started = true;
+    SDL_Log("audio_recording: begin_capture ok track=%d device=%s sample_rate=%d channels=%d block_size=%d",
+            track_index,
+            recording->capture_device.name,
+            recording->capture_device.spec.sample_rate,
+            recording->capture_device.spec.channels,
+            recording->capture_device.spec.block_size);
     return true;
 }
 
@@ -393,6 +381,7 @@ bool daw_audio_recording_begin_timeline_capture(AppState* state) {
     int track_index = daw_audio_recording_resolve_timeline_track(state);
     if (track_index < 0) {
         daw_audio_recording_set_status(&state->audio_recording, "Select a timeline track before recording.");
+        SDL_Log("audio_recording: begin_timeline_capture failed reason=no_track_focus");
         return false;
     }
     AudioDeviceSpec desired = audio_capture_device_default_spec();
@@ -405,12 +394,13 @@ bool daw_audio_recording_begin_timeline_capture(AppState* state) {
     desired.channels = 1;
     uint64_t start_frame = engine_get_transport_frame(state->engine);
     if (!daw_audio_recording_begin_capture(state, track_index, start_frame, NULL, &desired)) {
+        SDL_Log("audio_recording: begin_timeline_capture failed track=%d start_frame=%llu",
+                track_index,
+                (unsigned long long)start_frame);
         return false;
     }
     state->audio_recording.transport_started_by_recording = false;
-    state->active_track_index = track_index;
-    state->selected_track_index = track_index;
-    state->timeline_drop_track_index = track_index;
+    timeline_selection_set_track_focus(state, track_index);
     return true;
 }
 
@@ -424,6 +414,7 @@ bool daw_audio_recording_finish_timeline_capture(AppState* state, DawAudioRecord
         (void)engine_transport_stop(state->engine);
     }
     if (!ok) {
+        SDL_Log("audio_recording: finish_timeline_capture failed stop_transport=%d", stop_transport ? 1 : 0);
         daw_audio_recording_cancel(&state->audio_recording);
         return false;
     }
@@ -522,6 +513,7 @@ bool daw_audio_recording_finish(AppState* state, DawAudioRecordingResult* out_re
     DawAudioRecordingState* recording = &state->audio_recording;
     if (!daw_audio_recording_is_active(recording)) {
         daw_audio_recording_set_status(recording, "No active audio recording to finish.");
+        SDL_Log("audio_recording: finish failed reason=not_active");
         return false;
     }
     if (recording->capture_device_started) {
@@ -533,6 +525,9 @@ bool daw_audio_recording_finish(AppState* state, DawAudioRecordingResult* out_re
     if (recording->take_frame_count == 0 || !recording->take_frames) {
         recording->status = DAW_AUDIO_RECORDING_ERROR;
         daw_audio_recording_set_status(recording, "Audio recording produced no frames.");
+        SDL_Log("audio_recording: finish failed reason=no_frames track=%d dropped_frames=%llu",
+                recording->target_track_index,
+                (unsigned long long)atomic_load_explicit(&recording->dropped_frames, memory_order_relaxed));
         return false;
     }
 
@@ -540,6 +535,9 @@ bool daw_audio_recording_finish(AppState* state, DawAudioRecordingResult* out_re
     if (!daw_audio_recording_next_path(state, path, sizeof(path))) {
         recording->status = DAW_AUDIO_RECORDING_ERROR;
         daw_audio_recording_set_status(recording, "Failed to allocate audio recording output path.");
+        SDL_Log("audio_recording: finish failed reason=output_path track=%d root=%s",
+                recording->target_track_index,
+                daw_audio_recording_root(state));
         return false;
     }
     if (!wav_write_pcm16_dithered(path,
@@ -550,6 +548,11 @@ bool daw_audio_recording_finish(AppState* state, DawAudioRecordingResult* out_re
                                   0xA23u)) {
         recording->status = DAW_AUDIO_RECORDING_ERROR;
         daw_audio_recording_set_status(recording, "Failed to write recorded audio WAV.");
+        SDL_Log("audio_recording: finish failed reason=wav_write path=%s frames=%llu sample_rate=%d channels=%d",
+                path,
+                (unsigned long long)recording->take_frame_count,
+                recording->sample_rate,
+                recording->channels);
         return false;
     }
 
@@ -571,17 +574,14 @@ bool daw_audio_recording_finish(AppState* state, DawAudioRecordingResult* out_re
                                           &clip_index)) {
         recording->status = DAW_AUDIO_RECORDING_ERROR;
         daw_audio_recording_set_status(recording, "Failed to insert recorded audio clip.");
+        SDL_Log("audio_recording: finish failed reason=insert_clip track=%d path=%s",
+                recording->target_track_index,
+                path);
         return false;
     }
     daw_audio_recording_push_insert_undo(state, recording->target_track_index, clip_index);
 
-    state->selection_count = 1;
-    state->selection[0].track_index = recording->target_track_index;
-    state->selection[0].clip_index = clip_index;
-    state->active_track_index = recording->target_track_index;
-    state->selected_track_index = recording->target_track_index;
-    state->selected_clip_index = clip_index;
-    state->timeline_drop_track_index = recording->target_track_index;
+    timeline_selection_set_single(state, recording->target_track_index, clip_index);
 
     if (out_result) {
         out_result->inserted = true;
@@ -594,6 +594,14 @@ bool daw_audio_recording_finish(AppState* state, DawAudioRecordingResult* out_re
     }
 
     SDL_strlcpy(recording->pending_path, path, sizeof(recording->pending_path));
+    SDL_Log("audio_recording: finish ok track=%d clip=%d path=%s frames=%llu sample_rate=%d channels=%d dropped_frames=%llu",
+            recording->target_track_index,
+            clip_index,
+            path,
+            (unsigned long long)recording->take_frame_count,
+            recording->sample_rate,
+            recording->channels,
+            (unsigned long long)atomic_load_explicit(&recording->dropped_frames, memory_order_relaxed));
     daw_audio_recording_cancel(recording);
     daw_audio_recording_set_status(recording, "Audio recording finished.");
     return true;
@@ -602,6 +610,21 @@ bool daw_audio_recording_finish(AppState* state, DawAudioRecordingResult* out_re
 void daw_audio_recording_cancel(DawAudioRecordingState* recording) {
     if (!recording) {
         return;
+    }
+    bool finishing_successfully = recording->pending_path[0] != '\0';
+    bool had_state = !finishing_successfully &&
+                     (recording->status == DAW_AUDIO_RECORDING_ACTIVE ||
+                      recording->capture_device_started ||
+                      recording->capture_device_open ||
+                      recording->take_frame_count > 0);
+    if (had_state) {
+        SDL_Log("audio_recording: cancel status=%d track=%d frames=%llu dropped_frames=%llu capture_open=%d capture_started=%d",
+                (int)recording->status,
+                recording->target_track_index,
+                (unsigned long long)recording->take_frame_count,
+                (unsigned long long)atomic_load_explicit(&recording->dropped_frames, memory_order_relaxed),
+                recording->capture_device_open ? 1 : 0,
+                recording->capture_device_started ? 1 : 0);
     }
     if (recording->record_armed_engine) {
         (void)engine_set_record_armed_track(recording->record_armed_engine, -1);

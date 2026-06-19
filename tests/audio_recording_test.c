@@ -84,6 +84,26 @@ static void test_next_path_creates_recordings_directory(void) {
     cleanup_state(&state);
 }
 
+static void test_next_path_rejects_unsafe_library_copy_root(void) {
+    AppState state;
+    char temp_dir[] = "tmp/audio_recording_safe_root_XXXXXX";
+    prepare_state(&state, temp_dir);
+
+    char safe_output[SESSION_PATH_MAX];
+    snprintf(safe_output, sizeof(safe_output), "%s", state.data_paths.output_root);
+    snprintf(state.data_paths.library_copy_root,
+             sizeof(state.data_paths.library_copy_root),
+             "/tmp/daw_recording.app/Contents/library_copy");
+
+    char path[SESSION_PATH_MAX];
+    assert(daw_audio_recording_next_path(&state, path, sizeof(path)));
+    assert(strstr(path, ".app/Contents") == NULL);
+    assert(strstr(path, safe_output) == path);
+    assert(strstr(path, "/recordings/recording.wav") != NULL);
+
+    cleanup_state(&state);
+}
+
 static void test_synthetic_take_writes_wav_and_inserts_audio_clip(void) {
     AppState state;
     char temp_dir[] = "tmp/audio_recording_take_XXXXXX";
@@ -174,6 +194,53 @@ static void test_synthetic_take_writes_wav_and_inserts_audio_clip(void) {
     cleanup_state(&state);
 }
 
+static void test_empty_take_finish_reports_error_and_cancel_resets(void) {
+    AppState state;
+    char temp_dir[] = "tmp/audio_recording_empty_take_XXXXXX";
+    prepare_state(&state, temp_dir);
+
+    AudioDeviceSpec spec = {
+        .sample_rate = 48000,
+        .block_size = 128,
+        .channels = 1
+    };
+    int record_track = engine_add_track(state.engine);
+    assert(record_track == 1);
+    state.selected_track_index = record_track;
+    state.selected_clip_index = -1;
+    state.selection_count = 0;
+    assert(daw_audio_recording_begin_take(&state, record_track, 1200, &spec));
+    assert(daw_audio_recording_is_active(&state.audio_recording));
+    assert(state.audio_recording.target_track_index == record_track);
+    assert(state.audio_recording.queue_ready);
+    assert(state.audio_recording.take_frame_count == 0);
+
+    DawAudioRecordingResult result;
+    assert(!daw_audio_recording_finish(&state, &result));
+    assert(!result.inserted);
+    assert(result.track_index == -1);
+    assert(result.clip_index == -1);
+    assert(state.audio_recording.status == DAW_AUDIO_RECORDING_ERROR);
+    assert(strstr(daw_audio_recording_status_message(&state.audio_recording), "no frames") != NULL);
+
+    const EngineTrack* tracks = engine_get_tracks(state.engine);
+    assert(tracks != NULL);
+    assert(tracks[record_track].clip_count == 0);
+    assert(state.selected_track_index == record_track);
+    assert(state.selected_clip_index == -1);
+    assert(state.selection_count == 0);
+
+    daw_audio_recording_cancel(&state.audio_recording);
+    assert(state.audio_recording.status == DAW_AUDIO_RECORDING_IDLE);
+    assert(!state.audio_recording.queue_ready);
+    assert(state.audio_recording.take_frames == NULL);
+    assert(state.audio_recording.take_frame_count == 0);
+    assert(state.audio_recording.target_track_index == -1);
+    assert(!daw_audio_recording_is_active(&state.audio_recording));
+
+    cleanup_state(&state);
+}
+
 static void test_record_armed_solo_track_gates_backing_audio(void) {
     AppState state;
     char temp_dir[] = "tmp/audio_recording_solo_XXXXXX";
@@ -223,7 +290,9 @@ static void test_record_armed_solo_track_gates_backing_audio(void) {
 
 int main(void) {
     test_next_path_creates_recordings_directory();
+    test_next_path_rejects_unsafe_library_copy_root();
     test_synthetic_take_writes_wav_and_inserts_audio_clip();
+    test_empty_take_finish_reports_error_and_cancel_resets();
     test_record_armed_solo_track_gates_backing_audio();
     puts("audio_recording_test: success");
     return 0;

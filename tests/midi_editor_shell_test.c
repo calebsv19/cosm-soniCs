@@ -10,76 +10,48 @@
 #include "ui/layout.h"
 #include "ui/midi_editor.h"
 #include "ui/midi_instrument_panel.h"
-#include "undo/undo_manager.h"
+
+#include "test_rect_geometry.h"
+#include "test_assert.h"
+#include "test_midi_editor_harness.h"
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
-static void fail(const char* message) {
-    fprintf(stderr, "midi_editor_shell_test: %s\n", message);
-    exit(1);
-}
-
-static void expect(int condition, const char* message) {
-    if (!condition) {
-        fail(message);
-    }
-}
-
-static bool rect_has_positive_size(const SDL_Rect* rect) {
-    return rect && rect->w > 0 && rect->h > 0;
-}
-
-static bool rect_contains_rect(const SDL_Rect* outer, const SDL_Rect* inner) {
-    if (!outer || !inner) {
-        return false;
-    }
-    return inner->x >= outer->x &&
-           inner->y >= outer->y &&
-           inner->x + inner->w <= outer->x + outer->w &&
-           inner->y + inner->h <= outer->y + outer->h;
-}
-
-static bool rects_overlap_strict(const SDL_Rect* a, const SDL_Rect* b) {
-    if (!rect_has_positive_size(a) || !rect_has_positive_size(b)) {
-        return false;
-    }
-    return a->x < b->x + b->w &&
-           a->x + a->w > b->x &&
-           a->y < b->y + b->h &&
-           a->y + a->h > b->y;
-}
-
-static void state_init(AppState* state, EngineRuntimeConfig* cfg) {
-    memset(state, 0, sizeof(*state));
-    config_set_defaults(cfg);
-    cfg->sample_rate = 48000;
-    state->runtime_cfg = *cfg;
-    state->engine = engine_create(cfg);
-    expect(state->engine != NULL, "engine_create failed");
-    undo_manager_init(&state->undo);
-    state->tempo = tempo_state_default(cfg->sample_rate);
-    tempo_map_init(&state->tempo_map, cfg->sample_rate);
-    time_signature_map_init(&state->time_signature_map);
-    ui_init_panes(state);
-    effects_panel_init(state);
-    ui_layout_panes(state, 1280, 800);
-    state->selected_track_index = -1;
-    state->selected_clip_index = -1;
-    state->active_track_index = 0;
-}
-
-static void state_destroy(AppState* state) {
-    undo_manager_free(&state->undo);
-    time_signature_map_free(&state->time_signature_map);
-    tempo_map_free(&state->tempo_map);
-    engine_destroy(state->engine);
-    state->engine = NULL;
-}
+#define fail(message) daw_test_fail("midi_editor_shell_test", (message))
+#define expect(condition, message) daw_test_expect("midi_editor_shell_test", (condition), (message))
+#define state_init(state, cfg) daw_midi_editor_test_state_init("midi_editor_shell_test", (state), (cfg))
+#define state_destroy(state) daw_midi_editor_test_state_destroy((state))
+#define dispatch_mouse_button(manager, state, type, x, y) \
+    daw_midi_editor_test_dispatch_mouse_button("midi_editor_shell_test", (manager), (state), (type), (x), (y))
+#define dispatch_mouse_motion(manager, state, x, y) \
+    daw_midi_editor_test_dispatch_mouse_motion("midi_editor_shell_test", (manager), (state), (x), (y))
+#define dispatch_mouse_wheel(manager, state, x, y, wheel_y) \
+    daw_midi_editor_test_dispatch_mouse_wheel("midi_editor_shell_test", (manager), (state), (x), (y), (wheel_y))
+#define dispatch_instrument_mouse_button(manager, state, type, x, y) \
+    daw_midi_editor_test_dispatch_instrument_mouse_button("midi_editor_shell_test", (manager), (state), (type), (x), (y))
+#define dispatch_instrument_mouse_motion(manager, state, x, y) \
+    daw_midi_editor_test_dispatch_instrument_mouse_motion("midi_editor_shell_test", (manager), (state), (x), (y))
+#define dispatch_key(manager, state, key) \
+    daw_midi_editor_test_dispatch_key("midi_editor_shell_test", (manager), (state), (key))
+#define dispatch_key_event(manager, state, type, key) \
+    daw_midi_editor_test_dispatch_key_event("midi_editor_shell_test", (manager), (state), (type), (key))
+#define dispatch_key_with_mod(manager, state, key, mod) \
+    daw_midi_editor_test_dispatch_key_with_mod("midi_editor_shell_test", (manager), (state), (key), (mod))
+#define dispatch_command_key(manager, state, key) \
+    daw_midi_editor_test_dispatch_command_key("midi_editor_shell_test", (manager), (state), (key))
+#define handle_key_with_mod(manager, state, key, mod) \
+    daw_midi_editor_test_handle_key_with_mod((manager), (state), (key), (mod))
+#define dispatch_wheel_with_mod(manager, state, mouse_x, mouse_y, wheel_y, mod) \
+    daw_midi_editor_test_dispatch_wheel_with_mod("midi_editor_shell_test", \
+                                                (manager), \
+                                                (state), \
+                                                (mouse_x), \
+                                                (mouse_y), \
+                                                (wheel_y), \
+                                                (mod))
 
 static void validate_layout(const AppState* state, const MidiEditorLayout* layout) {
     const Pane* pane = ui_layout_get_pane(state, 2);
@@ -341,138 +313,6 @@ static void test_midi_selection_routes_editor_shell(void) {
            "MIDI editor should not capture outside lower pane");
 
     state_destroy(&state);
-}
-
-static void dispatch_mouse_button(InputManager* manager,
-                                  AppState* state,
-                                  Uint32 type,
-                                  int x,
-                                  int y) {
-    SDL_Event event;
-    memset(&event, 0, sizeof(event));
-    event.type = type;
-    event.button.button = SDL_BUTTON_LEFT;
-    event.button.x = x;
-    event.button.y = y;
-    expect(midi_editor_input_handle_event(manager, state, &event), "MIDI editor mouse event not consumed");
-}
-
-static void dispatch_mouse_motion(InputManager* manager, AppState* state, int x, int y) {
-    SDL_Event event;
-    memset(&event, 0, sizeof(event));
-    event.type = SDL_MOUSEMOTION;
-    event.motion.x = x;
-    event.motion.y = y;
-    expect(midi_editor_input_handle_event(manager, state, &event), "MIDI editor motion event not consumed");
-}
-
-static void dispatch_mouse_wheel(InputManager* manager, AppState* state, int x, int y, int wheel_y) {
-    SDL_Event event;
-    memset(&event, 0, sizeof(event));
-    state->mouse_x = x;
-    state->mouse_y = y;
-    event.type = SDL_MOUSEWHEEL;
-    event.wheel.y = wheel_y;
-    expect(midi_editor_input_handle_event(manager, state, &event), "MIDI editor wheel event not consumed");
-}
-
-static void dispatch_instrument_mouse_button(InputManager* manager,
-                                             AppState* state,
-                                             Uint32 type,
-                                             int x,
-                                             int y) {
-    SDL_Event event;
-    memset(&event, 0, sizeof(event));
-    event.type = type;
-    event.button.button = SDL_BUTTON_LEFT;
-    event.button.x = x;
-    event.button.y = y;
-    expect(midi_instrument_panel_input_handle_event(manager, state, &event),
-           "MIDI instrument panel mouse event not consumed");
-}
-
-static void dispatch_instrument_mouse_motion(InputManager* manager, AppState* state, int x, int y) {
-    SDL_Event event;
-    memset(&event, 0, sizeof(event));
-    event.type = SDL_MOUSEMOTION;
-    event.motion.x = x;
-    event.motion.y = y;
-    expect(midi_instrument_panel_input_handle_event(manager, state, &event),
-           "MIDI instrument panel motion event not consumed");
-}
-
-static void dispatch_instrument_mouse_wheel(InputManager* manager, AppState* state, int x, int y, int wheel_y) {
-    SDL_Event event;
-    memset(&event, 0, sizeof(event));
-    state->mouse_x = x;
-    state->mouse_y = y;
-    event.type = SDL_MOUSEWHEEL;
-    event.wheel.y = wheel_y;
-    expect(midi_instrument_panel_input_handle_event(manager, state, &event),
-           "MIDI instrument panel wheel event not consumed");
-}
-
-static void dispatch_key(InputManager* manager, AppState* state, SDL_Keycode key) {
-    SDL_Event event;
-    memset(&event, 0, sizeof(event));
-    event.type = SDL_KEYDOWN;
-    event.key.keysym.sym = key;
-    expect(midi_editor_input_handle_event(manager, state, &event), "MIDI editor key event not consumed");
-}
-
-static void dispatch_key_event(InputManager* manager, AppState* state, Uint32 type, SDL_Keycode key) {
-    SDL_Event event;
-    memset(&event, 0, sizeof(event));
-    event.type = type;
-    event.key.keysym.sym = key;
-    event.key.repeat = 0;
-    expect(midi_editor_input_handle_event(manager, state, &event), "MIDI editor key event not consumed");
-}
-
-static void dispatch_command_key(InputManager* manager, AppState* state, SDL_Keycode key) {
-    SDL_Keymod old_mods = SDL_GetModState();
-    SDL_SetModState((SDL_Keymod)(old_mods | KMOD_CTRL));
-    dispatch_key(manager, state, key);
-    SDL_SetModState(old_mods);
-}
-
-static void dispatch_key_with_mod(InputManager* manager, AppState* state, SDL_Keycode key, SDL_Keymod mod) {
-    SDL_Keymod old_mods = SDL_GetModState();
-    SDL_SetModState((SDL_Keymod)(old_mods | mod));
-    dispatch_key(manager, state, key);
-    SDL_SetModState(old_mods);
-}
-
-static bool handle_key_with_mod(InputManager* manager, AppState* state, SDL_Keycode key, SDL_Keymod mod) {
-    SDL_Event event;
-    memset(&event, 0, sizeof(event));
-    event.type = SDL_KEYDOWN;
-    event.key.keysym.sym = key;
-    event.key.keysym.mod = mod;
-    event.key.repeat = 0;
-    SDL_Keymod old_mods = SDL_GetModState();
-    SDL_SetModState((SDL_Keymod)(old_mods | mod));
-    bool consumed = midi_editor_input_handle_event(manager, state, &event);
-    SDL_SetModState(old_mods);
-    return consumed;
-}
-
-static void dispatch_wheel_with_mod(InputManager* manager,
-                                    AppState* state,
-                                    int mouse_x,
-                                    int mouse_y,
-                                    int wheel_y,
-                                    SDL_Keymod mod) {
-    SDL_Keymod old_mods = SDL_GetModState();
-    SDL_SetModState((SDL_Keymod)(old_mods | mod));
-    state->mouse_x = mouse_x;
-    state->mouse_y = mouse_y;
-    SDL_Event event;
-    memset(&event, 0, sizeof(event));
-    event.type = SDL_MOUSEWHEEL;
-    event.wheel.y = wheel_y;
-    expect(midi_editor_input_handle_event(manager, state, &event), "MIDI editor wheel event not consumed");
-    SDL_SetModState(old_mods);
 }
 
 static void test_midi_editor_create_delete_and_undo(void) {

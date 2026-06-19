@@ -17,12 +17,14 @@ PACKAGE_APP_ICONSET_SRC ?= $(PACKAGE_LOCAL_ICON_DIR)/$(PACKAGE_APP_ICON_NAME).ic
 PACKAGE_BUNDLED_ICON_PATH := $(PACKAGE_RESOURCES_DIR)/$(PACKAGE_APP_ICON_FILE)
 DESKTOP_APP_DIR ?= $(HOME)/Desktop/$(PACKAGE_APP_NAME)
 PACKAGE_ADHOC_SIGN_IDENTITY ?= -
+PACKAGE_DESTRUCTIVE_DESTINATION_GUARD := tools/packaging/macos/guard-destructive-destination.sh
 
 package-build-lane:
 	@$(MAKE) BUILD_TOOLCHAIN="$(PACKAGE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" "$(PACKAGE_BIN)"
 
 package-desktop: package-build-lane
 	@echo "Preparing desktop package..."
+	@"$(PACKAGE_DESTRUCTIVE_DESTINATION_GUARD)" package_app "$(PACKAGE_APP_DIR)" "$(PACKAGE_APP_NAME)"
 	@rm -rf "$(PACKAGE_APP_DIR)"
 	@mkdir -p "$(PACKAGE_MACOS_DIR)" "$(PACKAGE_RESOURCES_DIR)" "$(PACKAGE_FRAMEWORKS_DIR)"
 	@cp "$(PACKAGE_INFO_PLIST_SRC)" "$(PACKAGE_CONTENTS_DIR)/Info.plist"
@@ -39,9 +41,14 @@ package-desktop: package-build-lane
 		echo "warning: no app icon source found at $(PACKAGE_APP_ICON_SRC) or $(PACKAGE_APP_ICONSET_SRC)"; \
 	fi
 	@PACKAGE_DEP_SEARCH_ROOTS="$(TARGET_DEP_SEARCH_ROOTS)" "$(PACKAGE_DYLIB_BUNDLER)" "$(PACKAGE_MACOS_DIR)/daw-bin" "$(PACKAGE_FRAMEWORKS_DIR)"
-	@mkdir -p "$(PACKAGE_RESOURCES_DIR)/config" "$(PACKAGE_RESOURCES_DIR)/assets" "$(PACKAGE_RESOURCES_DIR)/include" "$(PACKAGE_RESOURCES_DIR)/shared/assets" "$(PACKAGE_RESOURCES_DIR)/vk_renderer" "$(PACKAGE_RESOURCES_DIR)/shaders"
-	@cp -R config/. "$(PACKAGE_RESOURCES_DIR)/config/"
-	@cp -R assets/audio "$(PACKAGE_RESOURCES_DIR)/assets/"
+	@mkdir -p "$(PACKAGE_RESOURCES_DIR)/config/templates" "$(PACKAGE_RESOURCES_DIR)/assets/audio" "$(PACKAGE_RESOURCES_DIR)/include" "$(PACKAGE_RESOURCES_DIR)/shared/assets" "$(PACKAGE_RESOURCES_DIR)/vk_renderer" "$(PACKAGE_RESOURCES_DIR)/shaders"
+	@cp config/engine.cfg "$(PACKAGE_RESOURCES_DIR)/config/engine.cfg"
+	@cp config/timer_hud_settings.json "$(PACKAGE_RESOURCES_DIR)/config/timer_hud_settings.json"
+	@cp config/theme_preset.txt "$(PACKAGE_RESOURCES_DIR)/config/theme_preset.txt"
+	@cp config/font_zoom_step.txt "$(PACKAGE_RESOURCES_DIR)/config/font_zoom_step.txt"
+	@cp config/README.md "$(PACKAGE_RESOURCES_DIR)/config/README.md"
+	@cp config/templates/public_default_project.json "$(PACKAGE_RESOURCES_DIR)/config/templates/public_default_project.json"
+	@cp assets/audio/README.md "$(PACKAGE_RESOURCES_DIR)/assets/audio/README.md"
 	@cp -R include/fonts "$(PACKAGE_RESOURCES_DIR)/include/"
 	@cp -R "$(SHARED_ROOT)/assets/fonts" "$(PACKAGE_RESOURCES_DIR)/shared/assets/"
 	@cp -R "$(VK_RENDERER_DIR)/shaders" "$(PACKAGE_RESOURCES_DIR)/vk_renderer/"
@@ -63,10 +70,17 @@ package-desktop-smoke: package-desktop
 	@test -f "$(PACKAGE_FRAMEWORKS_DIR)/libvulkan.1.dylib" || (echo "Missing bundled libvulkan"; exit 1)
 	@test -f "$(PACKAGE_FRAMEWORKS_DIR)/libMoltenVK.dylib" || (echo "Missing bundled libMoltenVK"; exit 1)
 	@test -f "$(PACKAGE_RESOURCES_DIR)/config/engine.cfg" || (echo "Missing config/engine.cfg"; exit 1)
+	@test -f "$(PACKAGE_RESOURCES_DIR)/config/templates/public_default_project.json" || (echo "Missing public default project template"; exit 1)
+	@test ! -e "$(PACKAGE_RESOURCES_DIR)/config/runtime" || (echo "Bundled generated config/runtime"; exit 1)
+	@test ! -e "$(PACKAGE_RESOURCES_DIR)/config/last_session.json" || (echo "Bundled local last_session.json"; exit 1)
+	@test ! -e "$(PACKAGE_RESOURCES_DIR)/config/projects" || (echo "Bundled local project state"; exit 1)
+	@test ! -e "$(PACKAGE_RESOURCES_DIR)/config/library_index.json" || (echo "Bundled local library index"; exit 1)
 	@if [ -f "$(PACKAGE_APP_ICON_SRC)" ] || [ -d "$(PACKAGE_APP_ICONSET_SRC)" ]; then \
 		test -f "$(PACKAGE_BUNDLED_ICON_PATH)" || (echo "Missing bundled AppIcon.icns"; exit 1); \
 	fi
 	@test -f "$(PACKAGE_RESOURCES_DIR)/assets/audio/README.md" || (echo "Missing bundled audio README"; exit 1)
+	@extra_audio="$$(find "$(PACKAGE_RESOURCES_DIR)/assets/audio" -type f ! -name README.md -print -quit)"; \
+	test -z "$$extra_audio" || (echo "Bundled local user audio: $$extra_audio"; exit 1)
 	@test -f "$(PACKAGE_RESOURCES_DIR)/include/fonts/Montserrat/Montserrat-Regular.ttf" || (echo "Missing bundled Montserrat"; exit 1)
 	@test -f "$(PACKAGE_RESOURCES_DIR)/vk_renderer/shaders/textured.vert.spv" || (echo "Missing bundled vk shaders"; exit 1)
 	@test -f "$(PACKAGE_RESOURCES_DIR)/shaders/textured.vert.spv" || (echo "Missing bundled runtime shader"; exit 1)
@@ -85,6 +99,7 @@ package-desktop-self-test: package-desktop-smoke
 
 package-desktop-copy-desktop: package-desktop
 	@mkdir -p "$$(dirname "$(DESKTOP_APP_DIR)")"
+	@"$(PACKAGE_DESTRUCTIVE_DESTINATION_GUARD)" desktop_app "$(DESKTOP_APP_DIR)" "$(PACKAGE_APP_NAME)"
 	@rm -rf "$(DESKTOP_APP_DIR)"
 	@ditto "$(PACKAGE_APP_DIR)" "$(DESKTOP_APP_DIR)"
 	@echo "Copied $(PACKAGE_APP_NAME) to $(DESKTOP_APP_DIR)"
@@ -96,11 +111,13 @@ package-desktop-open: package-desktop
 	@open "$(PACKAGE_APP_DIR)"
 
 package-desktop-remove:
+	@"$(PACKAGE_DESTRUCTIVE_DESTINATION_GUARD)" desktop_app "$(DESKTOP_APP_DIR)" "$(PACKAGE_APP_NAME)"
 	@rm -rf "$(DESKTOP_APP_DIR)"
 	@echo "Removed desktop copy at $(DESKTOP_APP_DIR)"
 
 package-desktop-refresh: package-desktop
 	@mkdir -p "$$(dirname "$(DESKTOP_APP_DIR)")"
+	@"$(PACKAGE_DESTRUCTIVE_DESTINATION_GUARD)" desktop_app "$(DESKTOP_APP_DIR)" "$(PACKAGE_APP_NAME)"
 	@rm -rf "$(DESKTOP_APP_DIR)"
 	@ditto "$(PACKAGE_APP_DIR)" "$(DESKTOP_APP_DIR)"
 	@echo "Refreshed $(PACKAGE_APP_NAME) at $(DESKTOP_APP_DIR)"

@@ -40,6 +40,7 @@ release-contract:
 	@echo "release-contract passed."
 
 release-clean:
+	@"$(PACKAGE_DESTRUCTIVE_DESTINATION_GUARD)" release_dir "$(RELEASE_DIR)" release
 	@rm -rf "$(RELEASE_DIR)"
 	@echo "release-clean complete."
 
@@ -68,6 +69,13 @@ release-bundle-audit-internal: release-build-internal
 	@"$(PACKAGE_MACOS_DIR)/daw-launcher" --print-config > "$(RELEASE_DIR)/print_config.txt"
 	@rg -q '^DAW_RUNTIME_DIR=' "$(RELEASE_DIR)/print_config.txt" || (echo "Missing DAW_RUNTIME_DIR in launcher config"; exit 1)
 	@rg -q '^VK_ICD_FILENAMES=' "$(RELEASE_DIR)/print_config.txt" || (echo "Missing VK_ICD_FILENAMES in launcher config"; exit 1)
+	@test ! -e "$(PACKAGE_RESOURCES_DIR)/config/runtime" || (echo "Release bundle includes generated config/runtime"; exit 1)
+	@test ! -e "$(PACKAGE_RESOURCES_DIR)/config/last_session.json" || (echo "Release bundle includes local last_session.json"; exit 1)
+	@test ! -e "$(PACKAGE_RESOURCES_DIR)/config/projects" || (echo "Release bundle includes local project state"; exit 1)
+	@test ! -e "$(PACKAGE_RESOURCES_DIR)/config/library_index.json" || (echo "Release bundle includes local library index"; exit 1)
+	@extra_audio="$$(find "$(PACKAGE_RESOURCES_DIR)/assets/audio" -type f ! -name README.md -print -quit)"; \
+	test -z "$$extra_audio" || (echo "Release bundle includes local user audio: $$extra_audio"; exit 1)
+	@! find "$(PACKAGE_APP_DIR)" -path '*/docs/private_program_docs/*' -print -quit | rg -q . || (echo "Release bundle includes private docs"; exit 1)
 	@echo "release-bundle-audit passed."
 
 release-sign:
@@ -197,6 +205,7 @@ release-desktop-refresh:
 
 release-desktop-refresh-internal: release-distribute-internal
 	@mkdir -p "$$(dirname "$(DESKTOP_APP_DIR)")"
+	@"$(PACKAGE_DESTRUCTIVE_DESTINATION_GUARD)" desktop_app "$(DESKTOP_APP_DIR)" "$(PACKAGE_APP_NAME)"
 	@rm -rf "$(DESKTOP_APP_DIR)"
 	@cp -R "$(PACKAGE_APP_DIR)" "$(DESKTOP_APP_DIR)"
 	@spctl --assess --type execute --verbose=2 "$(DESKTOP_APP_DIR)"

@@ -16,7 +16,7 @@
 #include <unistd.h>
 #endif
 
-static void daw_copy_path(char* dst, size_t dst_len, const char* src) {
+void daw_data_path_copy(char* dst, size_t dst_len, const char* src) {
     if (!dst || dst_len == 0) {
         return;
     }
@@ -48,7 +48,12 @@ static void trim_trailing(char* str) {
     }
 }
 
-static bool path_is_directory(const char* path) {
+bool daw_data_path_exists(const char* path) {
+    struct stat st;
+    return path && path[0] != '\0' && stat(path, &st) == 0;
+}
+
+bool daw_data_path_is_directory(const char* path) {
     struct stat st;
     if (!path || path[0] == '\0' || stat(path, &st) != 0) {
         return false;
@@ -56,12 +61,50 @@ static bool path_is_directory(const char* path) {
     return S_ISDIR(st.st_mode);
 }
 
-static bool ensure_directory_recursive(const char* path) {
+bool daw_data_path_is_regular_file(const char* path) {
+    struct stat st;
+    if (!path || path[0] == '\0' || stat(path, &st) != 0) {
+        return false;
+    }
+    return S_ISREG(st.st_mode);
+}
+
+static bool data_path_is_directory_with_errno(const char* path, int* out_errno) {
+    struct stat st;
+    if (out_errno) {
+        *out_errno = 0;
+    }
+    if (!path || path[0] == '\0') {
+        if (out_errno) {
+            *out_errno = EINVAL;
+        }
+        return false;
+    }
+    if (stat(path, &st) != 0) {
+        if (out_errno) {
+            *out_errno = errno;
+        }
+        return false;
+    }
+    if (!S_ISDIR(st.st_mode)) {
+        if (out_errno) {
+            *out_errno = ENOTDIR;
+        }
+        return false;
+    }
+    return true;
+}
+
+static const char* data_path_reason(int err) {
+    return err != 0 ? strerror(err) : "unavailable";
+}
+
+bool daw_data_path_ensure_directory_recursive(const char* path) {
     if (!path || path[0] == '\0') {
         return false;
     }
     char temp[SESSION_PATH_MAX];
-    daw_copy_path(temp, sizeof(temp), path);
+    daw_data_path_copy(temp, sizeof(temp), path);
     for (char* p = temp + 1; *p; ++p) {
         if (*p == '/' || *p == '\\') {
             char hold = *p;
@@ -83,7 +126,7 @@ static bool ensure_directory_recursive(const char* path) {
         return true;
     }
 #endif
-    return path_is_directory(path);
+    return daw_data_path_is_directory(path);
 }
 
 static bool parse_key_value_line(DawDataPaths* paths, char* line) {
@@ -112,15 +155,15 @@ static bool parse_key_value_line(DawDataPaths* paths, char* line) {
         return false;
     }
     if (strcmp(key, "input_root") == 0) {
-        daw_copy_path(paths->input_root, sizeof(paths->input_root), value);
+        daw_data_path_copy(paths->input_root, sizeof(paths->input_root), value);
         return true;
     }
     if (strcmp(key, "output_root") == 0) {
-        daw_copy_path(paths->output_root, sizeof(paths->output_root), value);
+        daw_data_path_copy(paths->output_root, sizeof(paths->output_root), value);
         return true;
     }
     if (strcmp(key, "library_copy_root") == 0) {
-        daw_copy_path(paths->library_copy_root, sizeof(paths->library_copy_root), value);
+        daw_data_path_copy(paths->library_copy_root, sizeof(paths->library_copy_root), value);
         return true;
     }
     return false;
@@ -132,7 +175,7 @@ static bool resolve_absolute_path(const char* path, char* out_abs, size_t out_le
     }
     out_abs[0] = '\0';
     if (path[0] == '/') {
-        daw_copy_path(out_abs, out_len, path);
+        daw_data_path_copy(out_abs, out_len, path);
         return true;
     }
     char cwd[SESSION_PATH_MAX];
@@ -145,7 +188,7 @@ static bool resolve_absolute_path(const char* path, char* out_abs, size_t out_le
     return true;
 }
 
-static bool path_targets_app_bundle_contents(const char* path) {
+bool daw_data_path_targets_app_bundle_contents(const char* path) {
     if (!path || path[0] == '\0') {
         return false;
     }
@@ -153,18 +196,42 @@ static bool path_targets_app_bundle_contents(const char* path) {
     if (!resolve_absolute_path(path, absolute, sizeof(absolute))) {
         return false;
     }
-    return strstr(absolute, ".app/Contents/") != NULL;
+    const char* marker = strstr(absolute, ".app/Contents");
+    if (!marker) {
+        return false;
+    }
+    char next = marker[strlen(".app/Contents")];
+    return next == '\0' || next == '/' || next == '\\';
+}
+
+bool daw_data_path_is_safe_write_root(const char* path) {
+    return path && path[0] != '\0' && !daw_data_path_targets_app_bundle_contents(path);
+}
+
+static bool apply_write_root_guard(const char* role, char* path, size_t path_len, const char* fallback) {
+    if (!path || path_len == 0) {
+        return false;
+    }
+    if (daw_data_path_is_safe_write_root(path)) {
+        return true;
+    }
+    SDL_Log("data_paths: role=%s path=%s write_root refused reason=inside_app_bundle_contents fallback=%s",
+            role ? role : "(none)",
+            path[0] != '\0' ? path : "(empty)",
+            fallback ? fallback : "(none)");
+    daw_data_path_copy(path, path_len, fallback);
+    return false;
 }
 
 void daw_data_paths_set_defaults(DawDataPaths* paths) {
     if (!paths) {
         return;
     }
-    daw_copy_path(paths->input_root, sizeof(paths->input_root), DAW_DATA_PATH_DEFAULT_INPUT_ROOT);
-    daw_copy_path(paths->output_root, sizeof(paths->output_root), DAW_DATA_PATH_DEFAULT_OUTPUT_ROOT);
-    daw_copy_path(paths->library_copy_root,
-                  sizeof(paths->library_copy_root),
-                  DAW_DATA_PATH_DEFAULT_LIBRARY_COPY_ROOT);
+    daw_data_path_copy(paths->input_root, sizeof(paths->input_root), DAW_DATA_PATH_DEFAULT_INPUT_ROOT);
+    daw_data_path_copy(paths->output_root, sizeof(paths->output_root), DAW_DATA_PATH_DEFAULT_OUTPUT_ROOT);
+    daw_data_path_copy(paths->library_copy_root,
+                       sizeof(paths->library_copy_root),
+                       DAW_DATA_PATH_DEFAULT_LIBRARY_COPY_ROOT);
 }
 
 const char* daw_data_paths_library_root(const DawDataPaths* paths) {
@@ -188,42 +255,70 @@ void daw_data_paths_apply_runtime_policy(DawDataPaths* paths) {
         return;
     }
     if (paths->input_root[0] == '\0') {
-        daw_copy_path(paths->input_root, sizeof(paths->input_root), DAW_DATA_PATH_DEFAULT_INPUT_ROOT);
+        daw_data_path_copy(paths->input_root, sizeof(paths->input_root), DAW_DATA_PATH_DEFAULT_INPUT_ROOT);
         SDL_Log("data_paths: input_root empty -> using default %s", paths->input_root);
     }
     if (paths->output_root[0] == '\0') {
-        daw_copy_path(paths->output_root, sizeof(paths->output_root), DAW_DATA_PATH_DEFAULT_OUTPUT_ROOT);
+        daw_data_path_copy(paths->output_root, sizeof(paths->output_root), DAW_DATA_PATH_DEFAULT_OUTPUT_ROOT);
         SDL_Log("data_paths: output_root empty -> using default %s", paths->output_root);
     }
     if (paths->library_copy_root[0] == '\0') {
-        daw_copy_path(paths->library_copy_root,
-                      sizeof(paths->library_copy_root),
-                      DAW_DATA_PATH_DEFAULT_LIBRARY_COPY_ROOT);
+        daw_data_path_copy(paths->library_copy_root,
+                           sizeof(paths->library_copy_root),
+                           DAW_DATA_PATH_DEFAULT_LIBRARY_COPY_ROOT);
         SDL_Log("data_paths: library_copy_root empty -> using default %s", paths->library_copy_root);
     }
 
-    if (!path_is_directory(paths->input_root)) {
-        SDL_Log("data_paths: input_root missing/unreadable (%s), falling back to %s",
+    apply_write_root_guard("output_root",
+                           paths->output_root,
+                           sizeof(paths->output_root),
+                           DAW_DATA_PATH_DEFAULT_OUTPUT_ROOT);
+    apply_write_root_guard("library_copy_root",
+                           paths->library_copy_root,
+                           sizeof(paths->library_copy_root),
+                           DAW_DATA_PATH_DEFAULT_LIBRARY_COPY_ROOT);
+
+    int input_errno = 0;
+    if (!data_path_is_directory_with_errno(paths->input_root, &input_errno)) {
+        SDL_Log("data_paths: role=input_root path=%s unavailable reason=%s fallback=%s",
                 paths->input_root,
+                data_path_reason(input_errno),
                 DAW_DATA_PATH_DEFAULT_INPUT_ROOT);
-        daw_copy_path(paths->input_root, sizeof(paths->input_root), DAW_DATA_PATH_DEFAULT_INPUT_ROOT);
+        daw_data_path_copy(paths->input_root, sizeof(paths->input_root), DAW_DATA_PATH_DEFAULT_INPUT_ROOT);
     }
-    if (!path_is_directory(paths->output_root) && !ensure_directory_recursive(paths->output_root)) {
-        SDL_Log("data_paths: output_root unavailable (%s), falling back to %s",
+
+    int output_errno = 0;
+    if (!data_path_is_directory_with_errno(paths->output_root, &output_errno)) {
+        errno = 0;
+        bool output_prepared = daw_data_path_ensure_directory_recursive(paths->output_root);
+        int prepare_errno = errno;
+        if (!output_prepared) {
+            SDL_Log("data_paths: role=output_root path=%s unavailable reason=%s prepare_reason=%s fallback=%s",
                 paths->output_root,
+                data_path_reason(output_errno),
+                data_path_reason(prepare_errno),
                 DAW_DATA_PATH_DEFAULT_OUTPUT_ROOT);
-        daw_copy_path(paths->output_root, sizeof(paths->output_root), DAW_DATA_PATH_DEFAULT_OUTPUT_ROOT);
-        ensure_directory_recursive(paths->output_root);
+            daw_data_path_copy(paths->output_root, sizeof(paths->output_root), DAW_DATA_PATH_DEFAULT_OUTPUT_ROOT);
+            daw_data_path_ensure_directory_recursive(paths->output_root);
+        }
     }
-    if (!path_is_directory(paths->library_copy_root) &&
-        !ensure_directory_recursive(paths->library_copy_root)) {
-        SDL_Log("data_paths: library_copy_root unavailable (%s), falling back to %s",
+
+    int library_errno = 0;
+    if (!data_path_is_directory_with_errno(paths->library_copy_root, &library_errno)) {
+        errno = 0;
+        bool library_prepared = daw_data_path_ensure_directory_recursive(paths->library_copy_root);
+        int prepare_errno = errno;
+        if (!library_prepared) {
+            SDL_Log("data_paths: role=library_copy_root path=%s unavailable reason=%s prepare_reason=%s fallback=%s",
                 paths->library_copy_root,
+                data_path_reason(library_errno),
+                data_path_reason(prepare_errno),
                 DAW_DATA_PATH_DEFAULT_LIBRARY_COPY_ROOT);
-        daw_copy_path(paths->library_copy_root,
-                      sizeof(paths->library_copy_root),
-                      DAW_DATA_PATH_DEFAULT_LIBRARY_COPY_ROOT);
-        ensure_directory_recursive(paths->library_copy_root);
+            daw_data_path_copy(paths->library_copy_root,
+                               sizeof(paths->library_copy_root),
+                               DAW_DATA_PATH_DEFAULT_LIBRARY_COPY_ROOT);
+            daw_data_path_ensure_directory_recursive(paths->library_copy_root);
+        }
     }
 }
 
@@ -236,6 +331,9 @@ bool daw_data_paths_load_file(const char* path, DawDataPaths* out_paths) {
 
     FILE* file = fopen(path, "rb");
     if (!file) {
+        SDL_Log("data_paths: role=runtime_config path=%s open=read failed reason=%s",
+                path,
+                strerror(errno));
         return false;
     }
     char line[SESSION_PATH_MAX * 2];
@@ -252,30 +350,32 @@ bool daw_data_paths_save_file(const char* path, const DawDataPaths* paths) {
     if (!path || path[0] == '\0' || !paths) {
         return false;
     }
-    if (path_targets_app_bundle_contents(path)) {
-        SDL_Log("data_paths: refusing mutable write under app bundle contents: %s", path);
+    if (daw_data_path_targets_app_bundle_contents(path)) {
+        SDL_Log("data_paths: role=runtime_config path=%s open=write refused reason=inside_app_bundle_contents", path);
         return false;
     }
     char dirbuf[SESSION_PATH_MAX * 2];
-    daw_copy_path(dirbuf, sizeof(dirbuf), path);
+    daw_data_path_copy(dirbuf, sizeof(dirbuf), path);
     char* slash = strrchr(dirbuf, '/');
     if (slash) {
         *slash = '\0';
-        if (!ensure_directory_recursive(dirbuf)) {
-            SDL_Log("data_paths: failed to prepare runtime config dir %s", dirbuf);
+        if (!daw_data_path_ensure_directory_recursive(dirbuf)) {
+            SDL_Log("data_paths: role=runtime_config_dir path=%s prepare=write failed reason=%s",
+                    dirbuf,
+                    data_path_reason(errno));
             return false;
         }
     }
     FILE* file = fopen(path, "wb");
     if (!file) {
-        SDL_Log("data_paths: failed to open %s for write: %s", path, strerror(errno));
+        SDL_Log("data_paths: role=runtime_config path=%s open=write failed reason=%s", path, strerror(errno));
         return false;
     }
     fprintf(file, "input_root=%s\n", paths->input_root);
     fprintf(file, "output_root=%s\n", paths->output_root);
     fprintf(file, "library_copy_root=%s\n", paths->library_copy_root);
     if (fclose(file) != 0) {
-        SDL_Log("data_paths: failed to close %s after write", path);
+        SDL_Log("data_paths: role=runtime_config path=%s close=write failed reason=%s", path, strerror(errno));
         return false;
     }
     return true;

@@ -15,3 +15,5 @@ Purpose: Runtime configuration and fallback assets loaded during startup.
 
 Runtime-generated lane:
 - `runtime/data_paths.cfg`: persisted DAW data-root contract file (`input_root`, `output_root`, `library_copy_root`) used by P3 data-path onboarding.
+- `library_index.json`: local media-library registry generated from imported or
+  recorded audio. It is intentionally excluded from packaged public resources.

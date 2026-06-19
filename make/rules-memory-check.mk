@@ -10,6 +10,7 @@ MEMORY_CHECK_OBJ_DIR := $(TARGET_BUILD_ROOT)/toolchains/fisics/memory_check_obj
 MEMORY_CHECK_BIN := $(TARGET_BUILD_ROOT)/toolchains/fisics/bin/daw_memory_check_session_test
 MEMORY_CHECK_SRCS := \
 	tests/session_serialization_test.c \
+	tests/test_session_engine_stubs.c \
 	src/session/session_document.c \
 	src/session/session_validation.c \
 	src/session/session_io_write.c \

@@ -17,7 +17,7 @@
 #include "audio/media_registry.h"
 #include "ui/effects_panel_slot.h"
 #include "ui/timeline_waveform.h"
-#include "session/project_manager.h"
+#include "session/project_state.h"
 #include "time/tempo.h"
 #include "undo/undo_manager.h"
 #include "app/audio_recording.h"
@@ -575,28 +575,6 @@ typedef struct {
     SessionFxInstance fx[FX_MASTER_MAX];
     int fx_count;
 } PendingTrackFxEntry;
-
-typedef struct {
-    bool has_name;
-    char name[SESSION_NAME_MAX];
-    char path[SESSION_PATH_MAX];
-} ProjectState;
-
-typedef struct {
-    bool active;
-    char buffer[SESSION_NAME_MAX];
-    int cursor;
-} ProjectSavePrompt;
-
-typedef struct {
-    bool active;
-    ProjectInfo entries[64];
-    int count;
-    int selected_index;
-    float scroll_offset;
-    Uint32 last_click_ticks;
-    int last_click_index;
-} ProjectLoadModal;
 
 typedef enum {
     TEMPO_FOCUS_NONE = 0,

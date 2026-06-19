@@ -15,9 +15,10 @@ void midi_editor_select_note(AppState* state,
     if (!state || !selection || !selection->clip) {
         return;
     }
-    state->midi_editor_ui.selected_track_index = selection->track_index;
-    state->midi_editor_ui.selected_clip_index = selection->clip_index;
-    state->midi_editor_ui.selected_clip_creation_index = selection->clip->creation_index;
+    midi_editor_input_set_selected_clip(state,
+                                        selection->track_index,
+                                        selection->clip_index,
+                                        selection->clip->creation_index);
     state->midi_editor_ui.selected_note_index = note_index;
     memset(state->midi_editor_ui.selected_note_indices,
            0,
@@ -44,9 +45,10 @@ void midi_editor_toggle_note_selection(AppState* state,
         return;
     }
     if (!midi_editor_selection_matches_ui(state, selection)) {
-        state->midi_editor_ui.selected_track_index = selection->track_index;
-        state->midi_editor_ui.selected_clip_index = selection->clip_index;
-        state->midi_editor_ui.selected_clip_creation_index = selection->clip->creation_index;
+        midi_editor_input_set_selected_clip(state,
+                                            selection->track_index,
+                                            selection->clip_index,
+                                            selection->clip->creation_index);
         midi_editor_clear_note_selection(state);
     } else if (midi_editor_effective_selected_note_count(state, selection, note_count) == 1 &&
                state->midi_editor_ui.selected_note_index >= 0 &&
@@ -160,9 +162,10 @@ bool midi_editor_begin_marquee(AppState* state,
     if (!state || !selection || !selection->clip) {
         return false;
     }
-    state->midi_editor_ui.selected_track_index = selection->track_index;
-    state->midi_editor_ui.selected_clip_index = selection->clip_index;
-    state->midi_editor_ui.selected_clip_creation_index = selection->clip->creation_index;
+    midi_editor_input_set_selected_clip(state,
+                                        selection->track_index,
+                                        selection->clip_index,
+                                        selection->clip->creation_index);
     state->midi_editor_ui.marquee_active = true;
     state->midi_editor_ui.marquee_additive = additive;
     state->midi_editor_ui.marquee_start_x = x;

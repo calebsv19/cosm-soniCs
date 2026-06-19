@@ -5,6 +5,7 @@
 #include "app/audio_recording.h"
 #include "app/main_bounce.h"
 #include "app/main_loop_policy.h"
+#include "app/visual_artifact_proof.h"
 #include "app/workspace_authoring/daw_workspace_authoring_host.h"
 #include "app/workspace_authoring/daw_workspace_authoring_overlay.h"
 #include "engine/engine.h"
@@ -41,6 +42,7 @@
 #include <sys/stat.h>
 
 static void handle_render(AppContext* ctx);
+static void handle_render_with_visual_artifact(AppContext* ctx);
 
 typedef struct DawUpdateDerivation {
     bool layout_changed;
@@ -432,6 +434,9 @@ static bool daw_loop_should_render_now(AppContext* ctx, uint64_t now_ns) {
     if (!ctx) {
         return false;
     }
+    if (daw_visual_artifact_proof_should_force_render()) {
+        return true;
+    }
     state = (AppState*)ctx->userData;
     render_derivation = daw_derive_render_plan(ctx, state, now_ns);
     if (render_derivation.request_redraw &&
@@ -623,6 +628,11 @@ static void handle_render(AppContext* ctx) {
     g_last_render_present_ms = SDL_GetTicks64();
 }
 
+static void handle_render_with_visual_artifact(AppContext* ctx) {
+    daw_visual_artifact_proof_begin_frame(ctx);
+    handle_render(ctx);
+}
+
 int daw_app_main_legacy(void) {
     const int window_width = 1280;
     const int window_height = 720;
@@ -688,30 +698,71 @@ int daw_app_main_legacy(void) {
     daw_render_invalidation_init();
     project_manager_init(&state);
     project_manager_last_session_path(&state, last_session_path, sizeof(last_session_path));
+    char last_project_marker_path[SESSION_PATH_MAX];
+    project_manager_last_project_path(&state, last_project_marker_path, sizeof(last_project_marker_path));
 
     bool loaded_session = false;
     bool engine_started = false;
+    const char* restore_source = "none";
+    SDL_Log("startup_restore: begin last_project_marker=%s session=%s legacy_session=%s fallback=%s",
+            last_project_marker_path,
+            last_session_path,
+            legacy_last_session_path,
+            fallback_session_path);
+    SDL_Log("startup_restore: attempt source=last_project marker=%s", last_project_marker_path);
     if (project_manager_load_last(&state)) {
-        SDL_Log("Project restored from last saved project");
+        SDL_Log("startup_restore: result=loaded source=last_project marker=%s", last_project_marker_path);
         loaded_session = true;
+        restore_source = "last_project";
         engine_started = project_manager_post_load(&state);
-    } else if (session_load_from_file(&state, last_session_path)) {
-        SDL_Log("Session restored from %s", last_session_path);
+    } else {
+        SDL_Log("startup_restore: result=miss source=last_project marker=%s", last_project_marker_path);
+    }
+    if (!loaded_session) {
+        SDL_Log("startup_restore: attempt source=session path=%s", last_session_path);
+    }
+    if (!loaded_session && session_load_from_file(&state, last_session_path)) {
+        SDL_Log("startup_restore: result=loaded source=session path=%s", last_session_path);
         loaded_session = true;
+        restore_source = "session";
         engine_started = project_manager_post_load(&state);
-    } else if (strcmp(last_session_path, legacy_last_session_path) != 0 &&
-               session_load_from_file(&state, legacy_last_session_path)) {
-        SDL_Log("Session restored from legacy fallback %s", legacy_last_session_path);
+    } else if (!loaded_session) {
+        SDL_Log("startup_restore: result=miss source=session path=%s", last_session_path);
+    }
+    if (!loaded_session && strcmp(last_session_path, legacy_last_session_path) != 0) {
+        SDL_Log("startup_restore: attempt source=legacy_session path=%s", legacy_last_session_path);
+    }
+    if (!loaded_session &&
+        strcmp(last_session_path, legacy_last_session_path) != 0 &&
+        session_load_from_file(&state, legacy_last_session_path)) {
+        SDL_Log("startup_restore: result=loaded source=legacy_session path=%s", legacy_last_session_path);
         loaded_session = true;
+        restore_source = "legacy_session";
         engine_started = project_manager_post_load(&state);
-    } else if (session_load_from_file(&state, fallback_session_path)) {
-        SDL_Log("Fallback session restored from %s", fallback_session_path);
+    } else if (!loaded_session && strcmp(last_session_path, legacy_last_session_path) != 0) {
+        SDL_Log("startup_restore: result=miss source=legacy_session path=%s", legacy_last_session_path);
+    } else if (!loaded_session) {
+        SDL_Log("startup_restore: skipped source=legacy_session path=%s reason=matches_primary_session_path",
+                legacy_last_session_path);
+    }
+    if (!loaded_session) {
+        SDL_Log("startup_restore: attempt source=fallback_template path=%s", fallback_session_path);
+    }
+    if (!loaded_session && session_load_from_file(&state, fallback_session_path)) {
+        SDL_Log("startup_restore: result=loaded source=fallback_template path=%s", fallback_session_path);
         loaded_session = true;
+        restore_source = "fallback_template";
         engine_started = project_manager_post_load(&state);
         state.project.has_name = false;
         state.project.name[0] = '\0';
         state.project.path[0] = '\0';
+    } else if (!loaded_session) {
+        SDL_Log("startup_restore: result=miss source=fallback_template path=%s", fallback_session_path);
     }
+    SDL_Log("startup_restore: summary loaded=%s source=%s engine_started=%s",
+            loaded_session ? "yes" : "no",
+            restore_source,
+            engine_started ? "yes" : "no");
 
     if (!loaded_session) {
         SDL_Log("No previous session found; starting fresh");
@@ -832,7 +883,8 @@ int daw_app_main_legacy(void) {
     AppCallbacks callbacks = {
         .handleInput = handle_input,
         .handleUpdate = handle_update,
-        .handleRender = handle_render,
+        .handleRender = handle_render_with_visual_artifact,
+        .afterRender = daw_visual_artifact_proof_after_render,
         .handleBackgroundTick = daw_loop_background_tick,
         .hasImmediateWork = daw_loop_has_immediate_work,
         .computeWaitTimeoutMs = daw_loop_compute_wait_timeout_ms,
@@ -919,7 +971,7 @@ int daw_app_main_legacy(void) {
         engine_destroy(state.engine);
         state.engine = NULL;
     }
-    return 0;
+    return daw_visual_artifact_proof_exit_code();
 }
 
 int main(void) {

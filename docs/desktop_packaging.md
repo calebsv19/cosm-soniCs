@@ -2,7 +2,7 @@
 
 DAW (`soniCs`) supports standardized macOS app-bundle packaging and release notarization via Makefile targets.
 
-Last updated: 2026-05-04
+Last updated: 2026-06-19
 
 ## Local Desktop Package
 
@@ -22,7 +22,31 @@ make -C daw package-desktop-self-test
 make -C daw package-desktop-refresh
 ```
 
-`package-desktop-self-test` validates launcher/binary/plist lanes, packaged resource presence, and launcher runtime config output.
+`package-desktop-self-test` is the package proof lane for the R6 demo contract.
+It is separate from the first automated proof command,
+`make -C daw run-headless-smoke`.
+
+Expected success lines:
+
+```text
+self-test: ok
+package-desktop-self-test passed.
+```
+
+`package-desktop-self-test` validates launcher/binary/plist lanes, packaged
+resource presence, bundled public-resource hygiene, and launcher runtime config
+output. The packaged launcher may write runtime state under
+`~/Library/Application Support/DAW/runtime` and logs under
+`~/Library/Logs/DAW/launcher.log`, with tmp fallbacks; sandboxed agent runs may
+need approval for those launcher runtime writes.
+
+Package resources are allowlisted for public/default state. Bundled config
+includes the default engine/config support files and
+`config/templates/public_default_project.json`; generated runtime roots,
+`config/last_session.json`, local project state, and the local
+`config/library_index.json` media registry are excluded. Bundled audio includes
+only `assets/audio/README.md`, so ignored local user `.wav`/`.mp3` files under
+`assets/audio/` are not copied into `soniCs.app`.
 
 Optional icon inputs:
 
@@ -45,6 +69,12 @@ Default local icon store:
 - `daw/tools/packaging/macos/local_app_icon/AppIcon.iconset`
 
 Plain `make -C daw package-desktop-refresh` and `package-desktop-self-test` now look in that local store first. The local icon store is gitignored so refreshed icon copies do not dirty the normal repo worktree.
+
+Packaging removes are guarded before `rm -rf`: app-bundle destinations must
+resolve to the expected `soniCs.app` basename, and `release-clean` only removes
+the `release` basename. This keeps normal `DESKTOP_APP_DIR=/path/to/soniCs.app`
+overrides working while refusing root, parent-traversal, or parent-directory
+destinations.
 
 ## Release Distribution Pipeline
 
@@ -70,6 +100,11 @@ This runs:
 - `release-staple`
 - `release-verify-notarized`
 - `release-artifact`
+
+`release-bundle-audit` fails if generated runtime/session/project state, local
+library-index metadata, local user audio, private planning docs, non-portable
+local dylib linkage, or unresolved `@rpath` dylib linkage appear in the app
+bundle/audit outputs.
 
 Release outputs:
 - `build/release/soniCs-<version>-<platform>-<arch>-stable.zip`
@@ -106,6 +141,20 @@ Intel target note:
 open /Users/<user>/Desktop/soniCs.app
 tail -n 120 ~/Library/Logs/DAW/launcher.log
 ```
+
+Manual microphone proof remains an operator-run package validation lane, not an
+automated package gate. For the current R6 boundary, the checklist is:
+- launch the packaged `soniCs.app`
+- select and record-arm the intended audio track
+- validate record-armed solo routing
+- record with transport running, then pause/stop and confirm capture does not
+  append while transport is stopped
+- confirm live waveform preview and finished audio-clip insertion on the
+  selected/armed track
+
+The 2026-06-19 live packaged-app proof covered selected-track recording,
+record-armed solo setup, live waveform preview, and play/pause-gated capture.
+Follow-up feature work remains in the audio lane, not in package automation.
 
 Note:
 - a fresh clone will still need an `AppIcon.icns` copied into `tools/packaging/macos/local_app_icon/` before plain packaging picks it up, because that lane is intentionally ignored.

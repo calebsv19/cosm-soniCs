@@ -27,9 +27,10 @@ void midi_editor_select_matching_notes_after_set(AppState* state,
         return;
     }
     bool consumed[ENGINE_MIDI_NOTE_CAP] = {false};
-    state->midi_editor_ui.selected_track_index = selection->track_index;
-    state->midi_editor_ui.selected_clip_index = selection->clip_index;
-    state->midi_editor_ui.selected_clip_creation_index = selection->clip->creation_index;
+    midi_editor_input_set_selected_clip(state,
+                                        selection->track_index,
+                                        selection->clip_index,
+                                        selection->clip->creation_index);
     midi_editor_clear_note_selection(state);
     int bounded_note_count = note_count < ENGINE_MIDI_NOTE_CAP ? note_count : ENGINE_MIDI_NOTE_CAP;
     for (int i = 0; i < selected_count; ++i) {

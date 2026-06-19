@@ -426,10 +426,7 @@ void timeline_input_mouse_drag_update(InputManager* manager, AppState* state, bo
                     timeline_selection_add(state, rebuilt[i].track_index, rebuilt[i].clip_index);
                 }
                 if (rebuilt_count > 0) {
-                    state->selected_track_index = rebuilt[0].track_index;
-                    state->selected_clip_index = rebuilt[0].clip_index;
-                    state->active_track_index = rebuilt[0].track_index;
-                    state->timeline_drop_track_index = rebuilt[0].track_index;
+                    timeline_selection_set_primary(state, rebuilt[0].track_index, rebuilt[0].clip_index);
                     const EngineTrack* updated_tracks = engine_get_tracks(state->engine);
                     int updated_count = engine_get_track_count(state->engine);
                     if (updated_tracks && rebuilt[0].track_index >= 0 && rebuilt[0].track_index < updated_count) {

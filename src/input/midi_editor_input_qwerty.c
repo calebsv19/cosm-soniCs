@@ -232,9 +232,10 @@ bool midi_editor_begin_qwerty_note(AppState* state,
         .clip_creation_index = selection->clip->creation_index,
         .start_frame = start_frame
     };
-    state->midi_editor_ui.selected_track_index = selection->track_index;
-    state->midi_editor_ui.selected_clip_index = selection->clip_index;
-    state->midi_editor_ui.selected_clip_creation_index = selection->clip->creation_index;
+    midi_editor_input_set_selected_clip(state,
+                                        selection->track_index,
+                                        selection->clip_index,
+                                        selection->clip->creation_index);
     state->midi_editor_ui.selected_note_index = -1;
     return true;
 }

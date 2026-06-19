@@ -13,6 +13,8 @@ Purpose: Public headers that expose the DAW engine, UI, and platform APIs.
 - `engine.h`: High-level engine control/clip management API consumed by the UI.
 - `ringbuf.h`: Low-level single-producer/single-consumer ring buffer primitives used by the audio queue and engine commands.
 - `session.h`: Session document schema plus conversion helpers (`session_document_capture`, `session_document_write_file`, `session_document_read_file`, `session_apply_document`, `session_save_to_file`, `session_load_from_file`) used for Phase 7 persistence.
+- `session/project_state.h`: Project identity plus Save/Load Project modal state
+  structs used by `AppState`, `project_manager.*`, and `project_modal_input.*`.
 
 ## Subdirectories
 - `audio/`: Types for decoded media clips.

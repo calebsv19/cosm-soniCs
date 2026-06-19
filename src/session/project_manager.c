@@ -9,8 +9,8 @@
 
 #include <SDL2/SDL.h>
 #include <ctype.h>
-#include <errno.h>
 #include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -20,34 +20,21 @@ static const char* kLegacyProjectsDir = "config/projects";
 static const char* kLegacyLastPathFile = "config/projects/last_project.txt";
 static const char* kSessionFileName = "last_session.json";
 
-static void path_copy(char* dst, size_t dst_len, const char* src) {
-    if (!dst || dst_len == 0) {
-        return;
-    }
-    if (!src) {
-        dst[0] = '\0';
-        return;
-    }
-    size_t n = strnlen(src, dst_len - 1);
-    memmove(dst, src, n);
-    dst[n] = '\0';
-}
-
 static void resolve_projects_dir(const AppState* state, char* out_path, size_t out_len) {
     if (!out_path || out_len == 0) {
         return;
     }
-    if (state && state->data_paths.output_root[0]) {
+    if (state && daw_data_path_is_safe_write_root(state->data_paths.output_root)) {
         if (snprintf(out_path, out_len, "%s/projects", state->data_paths.output_root) < (int)out_len) {
             return;
         }
     }
-    path_copy(out_path, out_len, kLegacyProjectsDir);
+    daw_data_path_copy(out_path, out_len, kLegacyProjectsDir);
 }
 
 static void resolve_last_path_file(const AppState* state, char* out_path, size_t out_len) {
     if (!project_manager_last_project_path(state, out_path, out_len)) {
-        path_copy(out_path, out_len, kLegacyLastPathFile);
+        daw_data_path_copy(out_path, out_len, kLegacyLastPathFile);
     }
 }
 
@@ -58,7 +45,7 @@ bool project_manager_last_project_path(const AppState* state, char* out_path, si
     }
     resolve_projects_dir(state, projects_dir, sizeof(projects_dir));
     if (snprintf(out_path, out_len, "%s/last_project.txt", projects_dir) >= (int)out_len) {
-        path_copy(out_path, out_len, kLegacyLastPathFile);
+        daw_data_path_copy(out_path, out_len, kLegacyLastPathFile);
         return false;
     }
     return true;
@@ -68,31 +55,35 @@ bool project_manager_last_session_path(const AppState* state, char* out_path, si
     if (!out_path || out_len == 0) {
         return false;
     }
-    if (state && state->data_paths.output_root[0]) {
+    if (state && daw_data_path_is_safe_write_root(state->data_paths.output_root)) {
         if (snprintf(out_path, out_len, "%s/%s", state->data_paths.output_root, kSessionFileName) < (int)out_len) {
             return true;
         }
     }
-    path_copy(out_path, out_len, "config/last_session.json");
+    daw_data_path_copy(out_path, out_len, "config/last_session.json");
     return true;
 }
 
-static bool ensure_dir_exists(const char* path) {
+static const char* project_manager_reason(int err) {
+    return err != 0 ? strerror(err) : "unavailable";
+}
+
+static bool ensure_dir_exists(const char* role, const char* path) {
     if (!path || !path[0]) {
+        SDL_Log("project_manager: role=%s path=%s prepare=directory failed reason=%s",
+                role ? role : "(none)",
+                path ? path : "(null)",
+                strerror(EINVAL));
         return false;
     }
-#ifdef _WIN32
-    int res = _mkdir(path);
-#else
-    int res = mkdir(path, 0755);
-#endif
-    if (res == 0) {
+    errno = 0;
+    if (daw_data_path_ensure_directory_recursive(path)) {
         return true;
     }
-    if (errno == EEXIST) {
-        return true;
-    }
-    SDL_Log("project_manager: mkdir %s failed: %s", path, strerror(errno));
+    SDL_Log("project_manager: role=%s path=%s prepare=directory failed reason=%s",
+            role ? role : "(none)",
+            path,
+            project_manager_reason(errno));
     return false;
 }
 
@@ -138,7 +129,7 @@ static void append_extension(char* path, size_t len) {
 bool project_manager_init(AppState* state) {
     char projects_dir[SESSION_PATH_MAX];
     resolve_projects_dir(state, projects_dir, sizeof(projects_dir));
-    return ensure_dir_exists(projects_dir);
+    return ensure_dir_exists("projects_dir", projects_dir);
 }
 
 bool project_manager_remember_last(AppState* state, const char* path) {
@@ -151,23 +142,44 @@ bool project_manager_remember_last(AppState* state, const char* path) {
 
     resolve_projects_dir(state, projects_dir, sizeof(projects_dir));
     resolve_last_path_file(state, last_path_file, sizeof(last_path_file));
-    path_copy(legacy_projects_dir, sizeof(legacy_projects_dir), kLegacyProjectsDir);
+    daw_data_path_copy(legacy_projects_dir, sizeof(legacy_projects_dir), kLegacyProjectsDir);
 
-    if (!ensure_dir_exists(projects_dir)) {
+    if (!ensure_dir_exists("projects_dir", projects_dir)) {
         return false;
     }
     FILE* f = fopen(last_path_file, "wb");
     if (!f) {
-        SDL_Log("project_manager: failed to write %s: %s", last_path_file, strerror(errno));
+        SDL_Log("project_manager: role=last_project_marker path=%s open=write failed reason=%s",
+                last_path_file,
+                strerror(errno));
         return false;
     }
-    fputs(path, f);
-    fclose(f);
-    if (strcmp(projects_dir, legacy_projects_dir) != 0 && ensure_dir_exists(legacy_projects_dir)) {
+    if (fputs(path, f) < 0) {
+        SDL_Log("project_manager: role=last_project_marker path=%s write failed reason=%s",
+                last_path_file,
+                strerror(errno));
+        fclose(f);
+        return false;
+    }
+    if (fclose(f) != 0) {
+        SDL_Log("project_manager: role=last_project_marker path=%s close=write failed reason=%s",
+                last_path_file,
+                strerror(errno));
+        return false;
+    }
+    if (strcmp(projects_dir, legacy_projects_dir) != 0 && ensure_dir_exists("legacy_projects_dir", legacy_projects_dir)) {
         FILE* legacy = fopen(kLegacyLastPathFile, "wb");
         if (legacy) {
             fputs(path, legacy);
-            fclose(legacy);
+            if (fclose(legacy) != 0) {
+                SDL_Log("project_manager: role=legacy_last_project_marker path=%s close=write failed reason=%s",
+                        kLegacyLastPathFile,
+                        strerror(errno));
+            }
+        } else {
+            SDL_Log("project_manager: role=legacy_last_project_marker path=%s open=write failed reason=%s",
+                    kLegacyLastPathFile,
+                    strerror(errno));
         }
     }
     return true;
@@ -176,12 +188,21 @@ bool project_manager_remember_last(AppState* state, const char* path) {
 static bool read_last_path_file(const char* path, char* out, size_t out_len) {
     FILE* f = fopen(path, "rb");
     if (!f) {
+        SDL_Log("project_manager: role=last_project_marker path=%s open=read failed reason=%s",
+                path ? path : "(null)",
+                strerror(errno));
         return false;
     }
     size_t read = fread(out, 1, out_len - 1, f);
-    fclose(f);
+    if (fclose(f) != 0) {
+        SDL_Log("project_manager: role=last_project_marker path=%s close=read failed reason=%s",
+                path,
+                strerror(errno));
+        return false;
+    }
     if (read == 0) {
         out[0] = '\0';
+        SDL_Log("project_manager: role=last_project_marker path=%s read=empty", path);
         return false;
     }
     out[read] = '\0';
@@ -203,14 +224,25 @@ static bool read_last_path(const AppState* state, char* out, size_t out_len) {
     char legacy_path[SESSION_PATH_MAX];
 
     resolve_last_path_file(state, preferred_path, sizeof(preferred_path));
-    path_copy(legacy_path, sizeof(legacy_path), kLegacyLastPathFile);
+    daw_data_path_copy(legacy_path, sizeof(legacy_path), kLegacyLastPathFile);
 
     if (read_last_path_file(preferred_path, out, out_len)) {
+        SDL_Log("project_manager: role=last_project_marker path=%s resolved_project=%s source=preferred",
+                preferred_path,
+                out);
         return true;
     }
     if (strcmp(preferred_path, legacy_path) != 0) {
-        return read_last_path_file(legacy_path, out, out_len);
+        if (read_last_path_file(legacy_path, out, out_len)) {
+            SDL_Log("project_manager: role=last_project_marker path=%s resolved_project=%s source=legacy",
+                    legacy_path,
+                    out);
+            return true;
+        }
     }
+    SDL_Log("project_manager: role=last_project_marker preferred=%s legacy=%s read=miss",
+            preferred_path,
+            legacy_path);
     return false;
 }
 
@@ -286,12 +318,12 @@ bool project_manager_load(AppState* state, const char* path_optional) {
         path[sizeof(path) - 1] = '\0';
     } else {
         if (!read_last_path(state, path, sizeof(path))) {
-            SDL_Log("project_manager: no last project path");
+            SDL_Log("project_manager: load_last failed reason=no_last_project_path");
             return false;
         }
     }
     if (!session_load_from_file(state, path)) {
-        SDL_Log("project_manager: load failed: %s", path);
+        SDL_Log("project_manager: role=project_file path=%s load failed", path);
         return false;
     }
     // Derive name from filename.
@@ -474,7 +506,7 @@ bool project_manager_list(AppState* state, ProjectInfo* out_items, int max_items
     char legacy_dir[SESSION_PATH_MAX];
     int count = 0;
     resolve_projects_dir(state, preferred_dir, sizeof(preferred_dir));
-    path_copy(legacy_dir, sizeof(legacy_dir), kLegacyProjectsDir);
+    daw_data_path_copy(legacy_dir, sizeof(legacy_dir), kLegacyProjectsDir);
 
     project_manager_collect_from_dir(preferred_dir, out_items, max_items, &count);
     if (strcmp(preferred_dir, legacy_dir) != 0) {

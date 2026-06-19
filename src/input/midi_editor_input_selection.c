@@ -9,6 +9,22 @@
 #include <stdlib.h>
 #include <string.h>
 
+void midi_editor_input_set_selected_clip(AppState* state,
+                                         int track_index,
+                                         int clip_index,
+                                         uint64_t clip_creation_index) {
+    if (!state) {
+        return;
+    }
+    state->midi_editor_ui.selected_track_index = track_index;
+    state->midi_editor_ui.selected_clip_index = clip_index;
+    state->midi_editor_ui.selected_clip_creation_index = clip_creation_index;
+}
+
+void midi_editor_input_clear_selected_clip(AppState* state) {
+    midi_editor_input_set_selected_clip(state, -1, -1, 0);
+}
+
 bool midi_editor_point_in_panel(const AppState* state, int x, int y) {
     if (!midi_editor_should_render(state)) {
         return false;

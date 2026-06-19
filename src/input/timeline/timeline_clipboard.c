@@ -285,9 +285,7 @@ void timeline_clipboard_paste(AppState* state) {
         for (int i = 0; i < new_count; ++i) {
             timeline_selection_add(state, new_sel[i].track_index, new_sel[i].clip_index);
         }
-        state->active_track_index = new_sel[0].track_index;
-        state->selected_track_index = new_sel[0].track_index;
-        state->selected_clip_index = new_sel[0].clip_index;
+        timeline_selection_set_primary(state, new_sel[0].track_index, new_sel[0].clip_index);
         effects_panel_sync_from_engine(state);
     }
 }

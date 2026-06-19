@@ -11,6 +11,7 @@
 #include "input/effects_panel_input.h"
 #include "input/midi_editor_input.h"
 #include "input/midi_instrument_panel_input.h"
+#include "input/project_modal_input.h"
 #include "input/timeline_selection.h"
 #include "session.h"
 #include "ui/layout.h"
@@ -51,87 +52,6 @@ static void handle_transport_controls(AppState* state, bool was_down, bool is_do
     }
 }
 
-static void project_prompt_stop(AppState* state) {
-    if (!state) return;
-    state->project_prompt.active = false;
-    state->project_prompt.buffer[0] = '\0';
-    state->project_prompt.cursor = 0;
-    SDL_StopTextInput();
-}
-
-static bool project_prompt_handle_event(AppState* state, const SDL_Event* event) {
-    if (!state || !event || !state->project_prompt.active) {
-        return false;
-    }
-    ProjectSavePrompt* prompt = &state->project_prompt;
-    switch (event->type) {
-    case SDL_TEXTINPUT: {
-        const char* txt = event->text.text;
-        int len = (int)strlen(prompt->buffer);
-        int cur = prompt->cursor;
-        if (cur < 0) cur = 0;
-        if (cur > len) cur = len;
-        for (const char* p = txt; *p; ++p) {
-            if ((int)strlen(prompt->buffer) >= (int)sizeof(prompt->buffer) - 1) {
-                break;
-            }
-            // insert at cursor
-            memmove(prompt->buffer + cur + 1, prompt->buffer + cur, strlen(prompt->buffer + cur) + 1);
-            prompt->buffer[cur] = *p;
-            cur++;
-        }
-        prompt->cursor = cur;
-        return true;
-    }
-    case SDL_KEYDOWN: {
-        SDL_Keycode key = event->key.keysym.sym;
-        if (key == SDLK_BACKSPACE) {
-            int len = (int)strlen(prompt->buffer);
-            int cur = prompt->cursor;
-            if (cur > 0 && len > 0) {
-                memmove(prompt->buffer + cur - 1, prompt->buffer + cur, (size_t)(len - cur + 1));
-                prompt->cursor = cur - 1;
-            }
-            return true;
-        } else if (key == SDLK_LEFT) {
-            if (prompt->cursor > 0) prompt->cursor--;
-            return true;
-        } else if (key == SDLK_RIGHT) {
-            int len = (int)strlen(prompt->buffer);
-            if (prompt->cursor < len) prompt->cursor++;
-            return true;
-        } else if (key == SDLK_ESCAPE) {
-            project_prompt_stop(state);
-            return true;
-        } else if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
-            const char* name = prompt->buffer[0] ? prompt->buffer : "project";
-            project_manager_save(state, name, true);
-            project_prompt_stop(state);
-            return true;
-        }
-        break;
-    }
-    default:
-        break;
-    }
-    return false;
-}
-
-static void project_load_close(AppState* state) {
-    if (!state) return;
-    state->project_load.active = false;
-    state->project_load.count = 0;
-    state->project_load.selected_index = -1;
-}
-
-static void project_load_clamp_scroll(ProjectLoadModal* modal, int item_height, int view_height) {
-    if (!modal) return;
-    float max_scroll = (float)(modal->count * item_height - view_height);
-    if (max_scroll < 0.0f) max_scroll = 0.0f;
-    if (modal->scroll_offset < 0.0f) modal->scroll_offset = 0.0f;
-    if (modal->scroll_offset > max_scroll) modal->scroll_offset = max_scroll;
-}
-
 // Clears meter histories after a forced seek when the debug toggle is enabled.
 void input_manager_reset_meter_history_on_seek(AppState* state) {
     if (!state || !state->reset_meter_history_on_seek) {
@@ -139,113 +59,6 @@ void input_manager_reset_meter_history_on_seek(AppState* state) {
     }
     effects_panel_reset_meter_history(state);
     engine_spectrogram_clear_history(state->engine);
-}
-
-static bool project_load_handle_event(AppState* state, const SDL_Event* event) {
-    if (!state || !state->project_load.active || !event) {
-        return false;
-    }
-    ProjectLoadModal* modal = &state->project_load;
-
-    int width = state->window_width > 0 ? state->window_width : 800;
-    int height = state->window_height > 0 ? state->window_height : 600;
-    SDL_Rect box = {
-        (width - 720) / 2,
-        (height - 420) / 2,
-        720,
-        420
-    };
-    SDL_Rect list_rect = {
-        box.x + 16,
-        box.y + 56,
-        box.w / 2 - 32,
-        box.h - 96
-    };
-    SDL_Rect info_rect = {
-        box.x + box.w / 2 + 8,
-        box.y + 56,
-        box.w / 2 - 24,
-        box.h - 126
-    };
-    SDL_Rect load_button = {
-        info_rect.x,
-        box.y + box.h - 52,
-        120,
-        36
-    };
-    SDL_Rect cancel_button = {
-        load_button.x + load_button.w + 12,
-        load_button.y,
-        120,
-        36
-    };
-
-    int item_h = 28;
-    project_load_clamp_scroll(modal, item_h, list_rect.h);
-
-    switch (event->type) {
-    case SDL_MOUSEWHEEL: {
-        modal->scroll_offset -= (float)event->wheel.y * (float)item_h * 2.0f;
-        project_load_clamp_scroll(modal, item_h, list_rect.h);
-        return true;
-    }
-    case SDL_MOUSEBUTTONDOWN:
-        if (event->button.button == SDL_BUTTON_LEFT) {
-            SDL_Point p = {event->button.x, event->button.y};
-            Uint32 now = SDL_GetTicks();
-            if (SDL_PointInRect(&p, &list_rect)) {
-                int local_y = p.y - list_rect.y;
-                int idx = (int)((local_y + (int)modal->scroll_offset) / item_h);
-                if (idx >= 0 && idx < modal->count) {
-                    if (modal->last_click_index == idx && (now - modal->last_click_ticks) <= 350) {
-                        // Double click -> load
-                        if (project_manager_load(state, modal->entries[idx].path)) {
-                            project_manager_post_load(state);
-                        }
-                        project_load_close(state);
-                        return true;
-                    }
-                    modal->selected_index = idx;
-                    modal->last_click_index = idx;
-                    modal->last_click_ticks = now;
-                }
-                return true;
-            }
-            if (SDL_PointInRect(&p, &load_button)) {
-                int sel = modal->selected_index;
-                if (sel >= 0 && sel < modal->count) {
-                    if (project_manager_load(state, modal->entries[sel].path)) {
-                        project_manager_post_load(state);
-                    }
-                    project_load_close(state);
-                }
-                return true;
-            }
-            if (SDL_PointInRect(&p, &cancel_button)) {
-                project_load_close(state);
-                return true;
-            }
-        }
-        break;
-    case SDL_KEYDOWN:
-        if (event->key.keysym.sym == SDLK_ESCAPE) {
-            project_load_close(state);
-            return true;
-        } else if (event->key.keysym.sym == SDLK_RETURN || event->key.keysym.sym == SDLK_KP_ENTER) {
-            int sel = modal->selected_index;
-            if (sel >= 0 && sel < modal->count) {
-                if (project_manager_load(state, modal->entries[sel].path)) {
-                    project_manager_post_load(state);
-                }
-                project_load_close(state);
-            }
-            return true;
-        }
-        break;
-    default:
-        break;
-    }
-    return false;
 }
 
 static void seek_to_seconds(AppState* state, float seconds, bool resume_playback) {
@@ -298,8 +111,7 @@ static bool input_manager_authoring_text_entry_active(AppState* state) {
     if (!state) {
         return false;
     }
-    return state->project_prompt.active ||
-           state->project_load.active ||
+    return project_modal_input_active(state) ||
            state->tempo_ui.editing ||
            library_input_is_editing(state) ||
            state->track_name_editor.editing ||
@@ -623,12 +435,7 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
         return;
     }
 
-    if (state->project_load.active) {
-        project_load_handle_event(state, event);
-        return;
-    }
-    if (state->project_prompt.active) {
-        project_prompt_handle_event(state, event);
+    if (project_modal_input_handle_event(state, event)) {
         return;
     }
 
@@ -665,7 +472,7 @@ void input_manager_update(InputManager* manager, AppState* state) {
     if (!manager || !state) {
         return;
     }
-    if (state->project_prompt.active || state->project_load.active) {
+    if (project_modal_input_active(state)) {
         // Block normal updates while prompt is active.
         return;
     }

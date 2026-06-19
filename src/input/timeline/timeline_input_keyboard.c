@@ -366,10 +366,7 @@ bool timeline_input_keyboard_handle_event(InputManager* manager, AppState* state
                 timeline_selection_add(state, new_selection[i].track_index, new_selection[i].clip_index);
             }
 
-            state->active_track_index = new_selection[0].track_index;
-            state->selected_track_index = new_selection[0].track_index;
-            state->selected_clip_index = new_selection[0].clip_index;
-            state->timeline_drop_track_index = new_selection[0].track_index;
+            timeline_selection_set_primary(state, new_selection[0].track_index, new_selection[0].clip_index);
 
             const EngineTrack* updated_tracks = engine_get_tracks(state->engine);
             int updated_count = engine_get_track_count(state->engine);

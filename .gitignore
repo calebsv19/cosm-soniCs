@@ -6,6 +6,7 @@
 *.log
 *.dSYM/
 /tmp/
+/visual_artifacts/
 
 # Generated runtime/cache artifacts
 /ide_files/

@@ -33,6 +33,7 @@ bool engine_post_command(Engine* engine, const EngineCommand* cmd) {
 
 void engine_rebuild_sources(Engine* engine) {
     if (!engine || !engine->graph) {
+        engine_trace(engine, "engine_rebuild_sources: skipped reason=missing_engine_or_graph");
         return;
     }
     if (engine->fxm && engine->fxm_mutex) {
@@ -61,6 +62,12 @@ void engine_rebuild_sources(Engine* engine) {
         }
     }
 
+    int midi_sources = 0;
+    int audio_sources = 0;
+    int audition_sources = 0;
+    int add_failures = 0;
+    int midi_config_failures = 0;
+    int skipped_midi_no_instrument = 0;
     for (int i = 0; i < engine->track_count; ++i) {
         EngineTrack* track = &engine->tracks[i];
         if (!track->active || track->clip_count == 0 || track->muted) {
@@ -78,6 +85,7 @@ void engine_rebuild_sources(Engine* engine) {
             float clip_gain = clip->gain != 0.0f ? clip->gain : 1.0f;
             if (clip->kind == ENGINE_CLIP_KIND_MIDI) {
                 if (!clip->instrument) {
+                    ++skipped_midi_no_instrument;
                     continue;
                 }
                 EngineInstrumentPresetId preset =
@@ -100,14 +108,37 @@ void engine_rebuild_sources(Engine* engine) {
                                                            track_lane_count,
                                                            clip->automation_lanes,
                                                            clip->automation_lane_count)) {
-                    engine_graph_add_source(engine->graph,
-                                            &engine->instrument_ops,
-                                            clip->instrument,
-                                            track_gain * clip_gain,
-                                            i);
+                    if (engine_graph_add_source(engine->graph,
+                                                &engine->instrument_ops,
+                                                clip->instrument,
+                                                track_gain * clip_gain,
+                                                i)) {
+                        ++midi_sources;
+                    } else {
+                        ++add_failures;
+                        engine_trace(engine,
+                                     "engine_rebuild_sources: add_source failed kind=midi track=%d clip=%d",
+                                     i,
+                                     c);
+                    }
+                } else {
+                    ++midi_config_failures;
+                    engine_trace(engine,
+                                 "engine_rebuild_sources: midi_source_config failed track=%d clip=%d notes=%d",
+                                 i,
+                                 c,
+                                 clip->midi_notes.note_count);
                 }
             } else if (clip->sampler) {
-                engine_graph_add_source(engine->graph, &engine->sampler_ops, clip->sampler, track_gain * clip_gain, i);
+                if (engine_graph_add_source(engine->graph, &engine->sampler_ops, clip->sampler, track_gain * clip_gain, i)) {
+                    ++audio_sources;
+                } else {
+                    ++add_failures;
+                    engine_trace(engine,
+                                 "engine_rebuild_sources: add_source failed kind=audio track=%d clip=%d",
+                                 i,
+                                 c);
+                }
             }
         }
     }
@@ -133,14 +164,32 @@ void engine_rebuild_sources(Engine* engine) {
                                                    NULL,
                                                    0)) {
             float track_gain = track->gain != 0.0f ? track->gain : 1.0f;
-            engine_graph_add_source(engine->graph,
-                                    &engine->instrument_ops,
-                                    engine->midi_audition_source,
-                                    track_gain,
-                                    track_index);
+            if (engine_graph_add_source(engine->graph,
+                                        &engine->instrument_ops,
+                                        engine->midi_audition_source,
+                                        track_gain,
+                                        track_index)) {
+                ++audition_sources;
+            } else {
+                ++add_failures;
+                engine_trace(engine,
+                             "engine_rebuild_sources: add_source failed kind=midi_audition track=%d",
+                             track_index);
+            }
         }
     }
     engine_graph_reset(engine->graph);
+    engine_trace(engine,
+                 "engine_rebuild_sources: summary tracks=%d any_solo=%d record_armed_track=%d audio_sources=%d midi_sources=%d audition_sources=%d add_failures=%d midi_config_failures=%d skipped_midi_no_instrument=%d",
+                 engine->track_count,
+                 any_solo ? 1 : 0,
+                 record_armed_track,
+                 audio_sources,
+                 midi_sources,
+                 audition_sources,
+                 add_failures,
+                 midi_config_failures,
+                 skipped_midi_no_instrument);
 }
 
 bool engine_request_rebuild_sources(Engine* engine) {

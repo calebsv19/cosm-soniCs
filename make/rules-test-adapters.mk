@@ -28,6 +28,9 @@ $(LAYOUT_SWEEP_TEST_BIN): $(LAYOUT_SWEEP_TEST_OBJS) $(APP_OBJS_NO_MAIN)
 test-data-path-contract: $(DATA_PATH_CONTRACT_TEST_BIN)
 	$(DATA_PATH_CONTRACT_TEST_BIN)
 
+test-config-diagnostics: $(CONFIG_DIAGNOSTICS_TEST_BIN)
+	$(CONFIG_DIAGNOSTICS_TEST_BIN)
+
 test-workspace-authoring-host: $(WORKSPACE_AUTHORING_HOST_TEST_BIN)
 	$(WORKSPACE_AUTHORING_HOST_TEST_BIN)
 
@@ -37,6 +40,12 @@ test-library-copy-vs-reference-contract: test-data-path-contract
 $(DATA_PATH_CONTRACT_TEST_BIN): $(DATA_PATH_CONTRACT_TEST_OBJS) $(APP_OBJS_NO_MAIN)
 	@mkdir -p "$(dir $@)"
 	$(HOST_CC) $(foreach obj,$(APP_OBJS_NO_MAIN),"$(obj)") $(TIMER_HUD_OBJS_QUOTED) $(DATA_PATH_CONTRACT_TEST_OBJS) $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+$(CONFIG_DIAGNOSTICS_TEST_BIN): $(CONFIG_DIAGNOSTICS_TEST_OBJS) \
+	$(APP_OBJ_DIR)/src/config/config.o \
+	$(APP_OBJ_DIR)/src/app/main_loop_policy.o
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
 
 $(WORKSPACE_AUTHORING_HOST_TEST_BIN): $(WORKSPACE_AUTHORING_HOST_TEST_SRCS) src/app/workspace_authoring/daw_workspace_authoring_host.c src/ui/shared_theme_font_adapter.c $(KIT_WORKSPACE_AUTHORING_LIB) $(CORE_THEME_LIB) $(CORE_FONT_LIB) $(CORE_PANE_LIB) $(CORE_BASE_LIB)
 	@mkdir -p "$(dir $@)"

@@ -1,5 +1,6 @@
 TEST_SRCS := \
-	tests/session_serialization_test.c
+	tests/session_serialization_test.c \
+	tests/test_session_engine_stubs.c
 
 TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(TEST_SRCS))
 TEST_BIN := $(TEST_BUILD_ROOT)/session_serialization_test
@@ -11,19 +12,22 @@ CACHE_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(CACHE_TEST_SRCS
 CACHE_TEST_BIN := $(TEST_BUILD_ROOT)/media_cache_stress_test
 
 OVERLAP_TEST_SRCS := \
-	tests/clip_overlap_priority_test.c
+	tests/clip_overlap_priority_test.c \
+	tests/test_wav_fixture.c
 
 OVERLAP_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(OVERLAP_TEST_SRCS))
 OVERLAP_TEST_BIN := $(TEST_BUILD_ROOT)/clip_overlap_priority_test
 
 TIMELINE_CONTRACT_TEST_SRCS := \
-	tests/timeline_contract_test.c
+	tests/timeline_contract_test.c \
+	tests/test_wav_fixture.c
 
 TIMELINE_CONTRACT_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(TIMELINE_CONTRACT_TEST_SRCS))
 TIMELINE_CONTRACT_TEST_BIN := $(TEST_BUILD_ROOT)/timeline_contract_test
 
 MIDI_MODEL_TEST_SRCS := \
-	tests/midi_model_test.c
+	tests/midi_model_test.c \
+	tests/test_wav_fixture.c
 
 MIDI_MODEL_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(MIDI_MODEL_TEST_SRCS))
 MIDI_MODEL_TEST_BIN := $(TEST_BUILD_ROOT)/midi_model_test
@@ -47,7 +51,8 @@ MIDI_EDITOR_SHELL_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(MID
 MIDI_EDITOR_SHELL_TEST_BIN := $(TEST_BUILD_ROOT)/midi_editor_shell_test
 
 SMOKE_TEST_SRCS := \
-	tests/engine_smoke_test.c
+	tests/engine_smoke_test.c \
+	tests/test_wav_fixture.c
 
 SMOKE_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(SMOKE_TEST_SRCS))
 SMOKE_TEST_BIN := $(TEST_BUILD_ROOT)/engine_smoke_test
@@ -105,6 +110,12 @@ DATA_PATH_CONTRACT_TEST_SRCS := \
 DATA_PATH_CONTRACT_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(DATA_PATH_CONTRACT_TEST_SRCS))
 DATA_PATH_CONTRACT_TEST_BIN := $(TEST_BUILD_ROOT)/daw_data_path_contract_test
 
+CONFIG_DIAGNOSTICS_TEST_SRCS := \
+	tests/config_diagnostics_test.c
+
+CONFIG_DIAGNOSTICS_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(CONFIG_DIAGNOSTICS_TEST_SRCS))
+CONFIG_DIAGNOSTICS_TEST_BIN := $(TEST_BUILD_ROOT)/config_diagnostics_test
+
 WORKSPACE_AUTHORING_HOST_TEST_SRCS := \
 	tests/daw_workspace_authoring_host_test.c \
 	tests/daw_workspace_authoring_kit_render_stub.c
@@ -142,10 +153,11 @@ SMOKE_TEST_DEPS := $(SMOKE_TEST_OBJS:.o=.d)
 PACK_CONTRACT_TEST_DEPS := $(PACK_CONTRACT_TEST_OBJS:.o=.d)
 LAYOUT_SWEEP_TEST_DEPS := $(LAYOUT_SWEEP_TEST_OBJS:.o=.d)
 DATA_PATH_CONTRACT_TEST_DEPS := $(DATA_PATH_CONTRACT_TEST_OBJS:.o=.d)
+CONFIG_DIAGNOSTICS_TEST_DEPS := $(CONFIG_DIAGNOSTICS_TEST_OBJS:.o=.d)
 ENGINE_TEST_SUPPORT_DEPS := $(ENGINE_TEST_SUPPORT_OBJS:.o=.d)
 AUDIO_CAPTURE_DEVICE_TEST_DEPS := $(AUDIO_CAPTURE_DEVICE_TEST_OBJS:.o=.d)
 AUDIO_RECORDING_TEST_DEPS := $(AUDIO_RECORDING_TEST_OBJS:.o=.d)
-ALL_DEPS := $(APP_DEPS) $(TIMER_HUD_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(TIMELINE_CONTRACT_TEST_DEPS) $(MIDI_MODEL_TEST_DEPS) $(MIDI_INSTRUMENT_RENDER_TEST_DEPS) $(TIMELINE_MIDI_REGION_TEST_DEPS) $(MIDI_EDITOR_SHELL_TEST_DEPS) $(SMOKE_TEST_DEPS) $(PACK_CONTRACT_TEST_DEPS) $(LAYOUT_SWEEP_TEST_DEPS) $(DATA_PATH_CONTRACT_TEST_DEPS) $(AUDIO_CAPTURE_DEVICE_TEST_DEPS) $(AUDIO_RECORDING_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
+ALL_DEPS := $(APP_DEPS) $(TIMER_HUD_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(TIMELINE_CONTRACT_TEST_DEPS) $(MIDI_MODEL_TEST_DEPS) $(MIDI_INSTRUMENT_RENDER_TEST_DEPS) $(TIMELINE_MIDI_REGION_TEST_DEPS) $(MIDI_EDITOR_SHELL_TEST_DEPS) $(SMOKE_TEST_DEPS) $(PACK_CONTRACT_TEST_DEPS) $(LAYOUT_SWEEP_TEST_DEPS) $(DATA_PATH_CONTRACT_TEST_DEPS) $(CONFIG_DIAGNOSTICS_TEST_DEPS) $(AUDIO_CAPTURE_DEVICE_TEST_DEPS) $(AUDIO_RECORDING_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
 
 STABLE_TEST_TARGETS := \
 	test-pack-contract \
@@ -164,6 +176,7 @@ STABLE_TEST_TARGETS := \
 	test-audio-capture-device \
 	test-audio-recording \
 	test-data-path-contract \
+	test-config-diagnostics \
 	test-workspace-authoring-host \
 	test-library-copy-vs-reference-contract
 

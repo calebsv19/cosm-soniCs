@@ -193,6 +193,17 @@ static void test_output_root_session_resolution(void) {
     if (strcmp(path, "config/last_session.json") != 0) {
         failf("legacy session fallback mismatch", path);
     }
+
+    snprintf(state.data_paths.output_root,
+             sizeof(state.data_paths.output_root),
+             "/tmp/daw_contract.app/Contents/output");
+    if (!project_manager_last_session_path(&state, path, sizeof(path))) {
+        failf("project_manager_last_session_path failed", "unsafe output-root case");
+        return;
+    }
+    if (strcmp(path, "config/last_session.json") != 0) {
+        failf("unsafe output root did not fall back for session path", path);
+    }
 }
 
 static void test_output_root_last_project_resolution(void) {
@@ -216,6 +227,60 @@ static void test_output_root_last_project_resolution(void) {
     if (strcmp(path, "config/projects/last_project.txt") != 0) {
         failf("legacy last-project fallback mismatch", path);
     }
+
+    snprintf(state.data_paths.output_root,
+             sizeof(state.data_paths.output_root),
+             "/tmp/daw_contract.app/Contents/output");
+    if (!project_manager_last_project_path(&state, path, sizeof(path))) {
+        failf("project_manager_last_project_path failed", "unsafe output-root case");
+        return;
+    }
+    if (strcmp(path, "config/projects/last_project.txt") != 0) {
+        failf("unsafe output root did not fall back for last-project path", path);
+    }
+}
+
+static void test_write_root_guardrails(void) {
+    char template_path[] = "/tmp/daw_write_root_guard_XXXXXX";
+    char* root = mkdtemp(template_path);
+    char input_root[SESSION_PATH_MAX];
+    char output_root[SESSION_PATH_MAX];
+    char copy_root[SESSION_PATH_MAX];
+    DawDataPaths paths = {0};
+
+    if (!root) {
+        failf("mkdtemp failed", strerror(errno));
+        return;
+    }
+    snprintf(input_root, sizeof(input_root), "%s/input_audio", root);
+    snprintf(output_root, sizeof(output_root), "%s/Fake.app/Contents/output_data", root);
+    snprintf(copy_root, sizeof(copy_root), "%s/Fake.app/Contents/library_copy", root);
+    if (!ensure_dir(input_root)) {
+        failf("failed creating input directory", input_root);
+        return;
+    }
+
+    snprintf(paths.input_root, sizeof(paths.input_root), "%s", input_root);
+    snprintf(paths.output_root, sizeof(paths.output_root), "%s", output_root);
+    snprintf(paths.library_copy_root, sizeof(paths.library_copy_root), "%s", copy_root);
+
+    if (!daw_data_path_targets_app_bundle_contents(output_root)) {
+        failf("app bundle contents detector missed output root", output_root);
+    }
+    if (daw_data_path_is_safe_write_root(output_root)) {
+        failf("unsafe output root classified as safe", output_root);
+    }
+
+    daw_data_paths_apply_runtime_policy(&paths);
+    if (strcmp(paths.input_root, input_root) != 0) {
+        failf("input root should remain read-root policy", paths.input_root);
+    }
+    if (strcmp(paths.output_root, DAW_DATA_PATH_DEFAULT_OUTPUT_ROOT) != 0) {
+        failf("unsafe output root did not fall back", paths.output_root);
+    }
+    if (strcmp(paths.library_copy_root, DAW_DATA_PATH_DEFAULT_LIBRARY_COPY_ROOT) != 0) {
+        failf("unsafe library copy root did not fall back", paths.library_copy_root);
+    }
 }
 
 static void test_source_contract_guards(void) {
@@ -227,6 +292,12 @@ static void test_source_contract_guards(void) {
     }
     if (!read_file_contains(library_input_path, "copy_root = state->data_paths.library_copy_root")) {
         failf("library copy_root contract guard missing", library_input_path);
+    }
+    if (!read_file_contains(library_input_path, "library_input_is_safe_path_component(file_name)")) {
+        failf("library import path-component guard missing", library_input_path);
+    }
+    if (!read_file_contains(library_input_path, "library_input_is_safe_path_component(new_name)")) {
+        failf("library rename path-component guard missing", library_input_path);
     }
     if (!read_file_contains(timeline_drop_path, "snprintf(path, sizeof(path), \"%s/%s\", state->library.directory,")) {
         failf("timeline reference-path guard missing", timeline_drop_path);
@@ -240,6 +311,7 @@ int main(void) {
     test_roundtrip_and_recovery();
     test_output_root_session_resolution();
     test_output_root_last_project_resolution();
+    test_write_root_guardrails();
     test_source_contract_guards();
     if (g_failures != 0) {
         fprintf(stderr, "daw_data_path_contract_test: failed (%d)\n", g_failures);

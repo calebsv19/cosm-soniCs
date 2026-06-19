@@ -2,6 +2,7 @@
 
 #include "app_state.h"
 #include "input/input_manager.h"
+#include "input/project_modal_input.h"
 #include "ui/transport.h"
 #include "ui/timeline_view.h"
 #include "ui/layout.h"
@@ -191,14 +192,6 @@ static float snap_window_start(const AppState* state, float seconds, float max_s
     if (snapped_sec < 0.0) snapped_sec = 0.0;
     if (snapped_sec > (double)max_start) snapped_sec = (double)max_start;
     return (float)snapped_sec;
-}
-
-static void open_project_prompt(AppState* state) {
-    if (!state) return;
-    state->project_prompt.active = true;
-    state->project_prompt.buffer[0] = '\0';
-    state->project_prompt.cursor = 0;
-    SDL_StartTextInput();
 }
 
 // Clears editing state while keeping the current focus.
@@ -479,7 +472,7 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
                 if (state->project.has_name) {
                     project_manager_save(state, state->project.name, true);
                 } else {
-                    open_project_prompt(state);
+                    project_modal_input_open_save_prompt(state);
                 }
                 break;
             }
@@ -490,30 +483,7 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
                         project_manager_post_load(state);
                     }
                 } else {
-                    state->project_load.active = true;
-                    state->project_load.scroll_offset = 0.0f;
-                    state->project_load.selected_index = -1;
-                    state->project_load.last_click_index = -1;
-                    state->project_load.last_click_ticks = 0;
-                    int count = 0;
-                    project_manager_list(state,
-                                         state->project_load.entries,
-                                         (int)(sizeof(state->project_load.entries) / sizeof(state->project_load.entries[0])),
-                                         &count);
-                    state->project_load.count = count;
-                    if (count > 0) {
-                        int match = -1;
-                        for (int i = 0; i < count; ++i) {
-                            if (state->project.path[0] &&
-                                strcmp(state->project.path, state->project_load.entries[i].path) == 0) {
-                                match = i;
-                                break;
-                            }
-                        }
-                        state->project_load.selected_index = match >= 0 ? match : 0;
-                    } else {
-                        SDL_Log("No project to load in output-root project lanes");
-                    }
+                    (void)project_modal_input_open_load_modal(state);
                 }
                 transport_ui_sync(transport, state);
                 break;

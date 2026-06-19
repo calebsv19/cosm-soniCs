@@ -2,6 +2,7 @@
 
 #include "audio/media_clip.h"
 #include "audio/media_registry.h"
+#include "daw/data_paths.h"
 #include "engine/engine.h"
 #include "ui/daw_ui_button.h"
 #include "ui/font.h"
@@ -12,9 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/stat.h>
 #if defined(_WIN32)
-#include <direct.h>
 #define strcasecmp _stricmp
 #endif
 
@@ -263,33 +262,6 @@ bool library_browser_hit_test_mode_button(const LibraryBrowser* browser,
     return false;
 }
 
-static void ensure_directory(const char* path) {
-    if (!path || !*path) {
-        return;
-    }
-    char temp[260];
-    strncpy(temp, path, sizeof(temp) - 1);
-    temp[sizeof(temp) - 1] = '\0';
-
-    for (char* p = temp + 1; *p; ++p) {
-        if (*p == '/' || *p == '\\') {
-            char old = *p;
-            *p = '\0';
-#if defined(_WIN32)
-            _mkdir(temp);
-#else
-            mkdir(temp, 0755);
-#endif
-            *p = old;
-        }
-    }
-#if defined(_WIN32)
-    _mkdir(temp);
-#else
-    mkdir(temp, 0755);
-#endif
-}
-
 static float library_resolve_duration_seconds(const char* directory, const char* filename) {
     if (!directory || !filename) {
         return 0.0f;
@@ -315,7 +287,7 @@ void library_browser_scan(LibraryBrowser* browser, MediaRegistry* registry) {
         return;
     }
 
-    ensure_directory(browser->directory);
+    (void)daw_data_path_ensure_directory_recursive(browser->directory);
 
     DIR* dir = opendir(browser->directory);
     if (!dir) {

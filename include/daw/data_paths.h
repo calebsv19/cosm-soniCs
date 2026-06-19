@@ -3,6 +3,7 @@
 #include "session.h"
 
 #include <stdbool.h>
+#include <stddef.h>
 
 #define DAW_DATA_PATH_PRODUCT_NAME "DAW"
 #define DAW_DATA_PATH_DEFAULT_INPUT_ROOT "assets/audio"
@@ -24,3 +25,11 @@ bool daw_data_paths_load_file(const char* path, DawDataPaths* out_paths);
 bool daw_data_paths_save_file(const char* path, const DawDataPaths* paths);
 bool daw_data_paths_load_runtime(DawDataPaths* out_paths);
 bool daw_data_paths_save_runtime(const DawDataPaths* paths);
+
+void daw_data_path_copy(char* dst, size_t dst_len, const char* src);
+bool daw_data_path_exists(const char* path);
+bool daw_data_path_is_directory(const char* path);
+bool daw_data_path_is_regular_file(const char* path);
+bool daw_data_path_ensure_directory_recursive(const char* path);
+bool daw_data_path_targets_app_bundle_contents(const char* path);
+bool daw_data_path_is_safe_write_root(const char* path);

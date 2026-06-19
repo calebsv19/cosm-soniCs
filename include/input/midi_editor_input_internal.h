@@ -1,6 +1,7 @@
 #pragma once
 
 #include "app_state.h"
+#include "input/midi_editor_input.h"
 #include "ui/midi_editor.h"
 
 #include <stdbool.h>

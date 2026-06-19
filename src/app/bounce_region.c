@@ -2,21 +2,11 @@
 
 #include "daw/data_paths.h"
 #include "engine/engine.h"
+#include "input/timeline_selection.h"
 
 #include <SDL2/SDL.h>
 #include <stdio.h>
 #include <string.h>
-#include <sys/stat.h>
-
-static bool bounce_path_exists(const char* path) {
-    struct stat st;
-    return path && stat(path, &st) == 0;
-}
-
-static bool bounce_directory_exists(const char* path) {
-    struct stat st;
-    return path && path[0] != '\0' && stat(path, &st) == 0 && S_ISDIR(st.st_mode);
-}
 
 const char* daw_bounce_library_root(const AppState* state) {
     if (!state) {
@@ -29,7 +19,8 @@ const char* daw_bounce_library_root(const AppState* state) {
 }
 
 bool daw_bounce_next_path_for_directory(const char* directory, char* out, size_t len) {
-    if (!directory || directory[0] == '\0' || !out || len == 0 || !bounce_directory_exists(directory)) {
+    if (!directory || directory[0] == '\0' || !out || len == 0 ||
+        !daw_data_path_is_directory(directory)) {
         return false;
     }
     for (int i = 0; i < 10000; ++i) {
@@ -43,7 +34,7 @@ bool daw_bounce_next_path_for_directory(const char* directory, char* out, size_t
         if (written < 0 || (size_t)written >= len) {
             return false;
         }
-        if (!bounce_path_exists(out)) {
+        if (!daw_data_path_exists(out)) {
             return true;
         }
     }
@@ -91,13 +82,7 @@ bool daw_bounce_insert_audio_track(AppState* state,
         return false;
     }
 
-    state->selection_count = 1;
-    state->selection[0].track_index = track_index;
-    state->selection[0].clip_index = clip_index;
-    state->active_track_index = track_index;
-    state->selected_track_index = track_index;
-    state->selected_clip_index = clip_index;
-    state->timeline_drop_track_index = track_index;
+    timeline_selection_set_single(state, track_index, clip_index);
 
     if (out_track_index) {
         *out_track_index = track_index;

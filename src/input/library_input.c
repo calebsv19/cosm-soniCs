@@ -92,6 +92,18 @@ static bool library_input_is_supported_audio(const char* path) {
     return strcasecmp(dot, ".wav") == 0 || strcasecmp(dot, ".mp3") == 0;
 }
 
+static bool library_input_is_safe_path_component(const char* name) {
+    if (!name || name[0] == '\0' || strcmp(name, ".") == 0 || strcmp(name, "..") == 0) {
+        return false;
+    }
+    for (const unsigned char* p = (const unsigned char*)name; *p; ++p) {
+        if (*p < 0x20 || *p == '/' || *p == '\\' || *p == ':') {
+            return false;
+        }
+    }
+    return true;
+}
+
 static void library_input_path_stem_and_ext(const char* file_name,
                                             char* out_stem,
                                             size_t out_stem_cap,
@@ -179,6 +191,10 @@ static bool library_input_build_collision_safe_path(const char* root,
     if (!file_name || file_name[0] == '\0') {
         return false;
     }
+    if (!library_input_is_safe_path_component(file_name)) {
+        SDL_Log("library_input: import filename refused (unsafe component): %s", file_name);
+        return false;
+    }
     library_input_path_stem_and_ext(file_name, stem, sizeof(stem), ext, sizeof(ext));
     if (snprintf(out_path, out_cap, "%s/%s%s", root, stem, ext) >= (int)out_cap) {
         return false;
@@ -222,6 +238,14 @@ static void library_edit_commit(AppState* state) {
     strncpy(new_name_copy, new_name, sizeof(new_name_copy) - 1);
     new_name_copy[sizeof(new_name_copy) - 1] = '\0';
     if (!new_name || new_name[0] == '\0' || strcmp(old_name, new_name) == 0) {
+        library_edit_stop(lib);
+        return;
+    }
+    if (!library_input_is_safe_path_component(old_name) ||
+        !library_input_is_safe_path_component(new_name)) {
+        SDL_Log("Rename failed: unsafe library item name (%s -> %s)",
+                old_name ? old_name : "(null)",
+                new_name ? new_name : "(null)");
         library_edit_stop(lib);
         return;
     }

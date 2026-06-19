@@ -11,6 +11,8 @@
 #include "ui/timeline_view.h"
 #include "ui/transport.h"
 
+#include "test_rect_geometry.h"
+
 #include <SDL2/SDL_ttf.h>
 
 #include <stdbool.h>
@@ -32,30 +34,6 @@ static void expect(bool cond, const char* msg) {
     if (!cond) {
         fail(msg);
     }
-}
-
-static bool rect_has_positive_size(const SDL_Rect* rect) {
-    return rect && rect->w > 0 && rect->h > 0;
-}
-
-static bool rect_contains_rect(const SDL_Rect* outer, const SDL_Rect* inner) {
-    if (!outer || !inner) {
-        return false;
-    }
-    return inner->x >= outer->x &&
-           inner->y >= outer->y &&
-           inner->x + inner->w <= outer->x + outer->w &&
-           inner->y + inner->h <= outer->y + outer->h;
-}
-
-static bool rects_overlap_strict(const SDL_Rect* a, const SDL_Rect* b) {
-    if (!rect_has_positive_size(a) || !rect_has_positive_size(b)) {
-        return false;
-    }
-    return a->x < b->x + b->w &&
-           a->x + a->w > b->x &&
-           a->y < b->y + b->h &&
-           a->y + a->h > b->y;
 }
 
 static int rect_center_x(const SDL_Rect* rect) {

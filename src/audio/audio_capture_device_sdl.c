@@ -19,7 +19,7 @@ static bool audio_capture_ensure_sdl(void) {
         return true;
     }
     if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
-        SDL_Log("SDL_InitSubSystem(SDL_INIT_AUDIO) failed for capture: %s", SDL_GetError());
+        SDL_Log("audio_capture_device: init_sdl failed reason=%s", SDL_GetError());
         return false;
     }
     return true;
@@ -100,6 +100,12 @@ bool audio_capture_device_open(AudioCaptureDevice* device,
                                AudioCaptureCallback cb,
                                void* userdata) {
     if (!device || !cb) {
+        SDL_Log("audio_capture_device: open failed reason=invalid_arguments device=%p callback=%p",
+                (void*)device,
+                (void*)cb);
+        if (device) {
+            audio_capture_set_error(device, "invalid capture open request");
+        }
         return false;
     }
     if (device->is_open) {
@@ -112,6 +118,11 @@ bool audio_capture_device_open(AudioCaptureDevice* device,
     }
 
     AudioDeviceSpec spec = audio_capture_normalize_spec(desired);
+    SDL_Log("audio_capture_device: open request device=%s sample_rate=%d channels=%d block_size=%d",
+            (device_name && device_name[0] != '\0') ? device_name : "default",
+            spec.sample_rate,
+            spec.channels,
+            spec.block_size);
     SDL_AudioSpec want = {0};
     want.freq = spec.sample_rate;
     want.format = AUDIO_F32;
@@ -127,11 +138,17 @@ bool audio_capture_device_open(AudioCaptureDevice* device,
     SDL_AudioDeviceID dev_id = SDL_OpenAudioDevice(device_name, SDL_TRUE, &want, &have, allowed_changes);
     if (dev_id == 0) {
         audio_capture_set_error(device, "SDL_OpenAudioDevice capture failed: %s", SDL_GetError());
+        SDL_Log("audio_capture_device: open failed device=%s reason=%s",
+                (device_name && device_name[0] != '\0') ? device_name : "default",
+                SDL_GetError());
         return false;
     }
     if (have.format != AUDIO_F32) {
         SDL_CloseAudioDevice(dev_id);
         audio_capture_set_error(device, "capture device returned unsupported format %u", (unsigned)have.format);
+        SDL_Log("audio_capture_device: open failed device=%s reason=unsupported_format format=%u",
+                (device_name && device_name[0] != '\0') ? device_name : "default",
+                (unsigned)have.format);
         return false;
     }
 
@@ -147,16 +164,23 @@ bool audio_capture_device_open(AudioCaptureDevice* device,
     } else {
         SDL_strlcpy(device->name, "Default Input", sizeof(device->name));
     }
+    SDL_Log("audio_capture_device: open ok device=%s sample_rate=%d channels=%d block_size=%d",
+            device->name,
+            device->spec.sample_rate,
+            device->spec.channels,
+            device->spec.block_size);
     return true;
 }
 
 bool audio_capture_device_start(AudioCaptureDevice* device) {
     if (!device || !device->is_open) {
         audio_capture_set_error(device, "capture device is not open");
+        SDL_Log("audio_capture_device: start failed reason=not_open");
         return false;
     }
     SDL_PauseAudioDevice(device->device_id, 0);
     device->is_started = true;
+    SDL_Log("audio_capture_device: start ok device=%s", device->name[0] ? device->name : "(unnamed)");
     return true;
 }
 
@@ -166,6 +190,7 @@ void audio_capture_device_stop(AudioCaptureDevice* device) {
     }
     SDL_PauseAudioDevice(device->device_id, 1);
     device->is_started = false;
+    SDL_Log("audio_capture_device: stop device=%s", device->name[0] ? device->name : "(unnamed)");
 }
 
 void audio_capture_device_close(AudioCaptureDevice* device) {
@@ -173,6 +198,7 @@ void audio_capture_device_close(AudioCaptureDevice* device) {
         return;
     }
     if (device->is_open) {
+        SDL_Log("audio_capture_device: close device=%s", device->name[0] ? device->name : "(unnamed)");
         audio_capture_device_stop(device);
         SDL_CloseAudioDevice(device->device_id);
     }

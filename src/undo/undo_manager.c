@@ -4,7 +4,9 @@
 #include "app_state.h"
 #include "engine/engine.h"
 #include "engine/sampler.h"
+#include "input/midi_editor_input.h"
 #include "input/timeline_drag.h"
+#include "input/timeline_selection.h"
 #include "input/library_input.h"
 #include "ui/effects_panel.h"
 #include "ui/library_browser.h"
@@ -671,11 +673,8 @@ static bool apply_midi_note_edit(AppState* state, const UndoMidiNoteEdit* edit, 
     if (!engine_clip_midi_set_notes(state->engine, edit->track_index, clip_index, notes, note_count)) {
         return false;
     }
-    state->selected_track_index = edit->track_index;
-    state->selected_clip_index = clip_index;
-    state->midi_editor_ui.selected_track_index = edit->track_index;
-    state->midi_editor_ui.selected_clip_index = clip_index;
-    state->midi_editor_ui.selected_clip_creation_index = edit->clip_creation_index;
+    timeline_selection_set_selected_clip(state, edit->track_index, clip_index);
+    midi_editor_input_set_selected_clip(state, edit->track_index, clip_index, edit->clip_creation_index);
     state->midi_editor_ui.selected_note_index = -1;
     return true;
 }

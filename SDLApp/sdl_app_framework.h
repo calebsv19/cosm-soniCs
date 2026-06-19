@@ -62,6 +62,7 @@ typedef struct {
     void (*handleInput)(AppContext* ctx);   // SDL event input handling
     void (*handleUpdate)(AppContext* ctx);  // Per-frame logic
     void (*handleRender)(AppContext* ctx);  // Render function
+    void (*afterRender)(AppContext* ctx);   // Optional hook after a rendered frame
     void (*handleBackgroundTick)(AppContext* ctx, uint64_t now_ns); // Non-UI loop slice work
     bool (*hasImmediateWork)(AppContext* ctx); // Signals work that should avoid blocking
     uint32_t (*computeWaitTimeoutMs)(AppContext* ctx); // Optional custom wait timeout

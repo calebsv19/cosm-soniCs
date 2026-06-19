@@ -1,24 +1,43 @@
 # soniCs Docs Index
 
 Start here for soniCs public documentation.
-Last audited: 2026-05-15.
+Last audited: 2026-06-19.
 
 Repository and source-level identifiers still use `daw`.
 
 ## Scaffold State
 - `docs/current_truth.md`: current scaffold/runtime state and verification snapshot.
+- `docs/demo_proof.md`: R6 demo-proof contract, canonical proof command,
+  package proof lane, and manual-proof boundary.
 - `docs/future_intent.md`: intended scaffold convergence path and next migration phases.
 - `docs/memory_check_audit.md`: default-off fisiCs memory-check audit lane.
 - Intel `x86_64` packaging/runtime hardening is active in the current truth and desktop packaging docs.
 - MIDI/instrument and audio-recording state is summarized in current truth and future intent; detailed implementation history stays in the private DAW planning lane.
+- Current diagnostics coverage is summarized in `docs/current_truth.md`.
 - migration-friendly verification gates:
   - `make -C daw run-headless-smoke`:
-    aggregate non-interactive smoke coverage
+    canonical demo proof; aggregate non-interactive smoke coverage with
+    expected success line `daw headless smoke passed (non-interactive)` plus
+    `demo-proof:` summary lines for separate package/manual proof lanes
   - `make -C daw visual-harness`:
     build-only visual readiness, not an unattended runtime pass
+  - `make -C daw visual-artifact`:
+    source-render first-frame proof at
+    `visual_artifacts/daw_first_frame.bmp`
+  - `make -C daw test-midi-editor-shell`
+  - `make -C daw test-audio-capture-device`
+  - `make -C daw test-audio-recording`
   - `make -C daw test-stable`
-  - `make -C daw memory-check-audit`
+  - `make -C daw package-desktop-self-test`
+  - `make -C daw memory-check-audit`:
+    default-off fisiCs audit lane, not part of the one-command demo proof
   - `make -C daw test-legacy`
+- Manual packaged-app microphone validation remains outside automated gates;
+  the latest live proof moved the audio boundary to recording UX polish and
+  audio-vs-MIDI track typing before external MIDI input.
+- Security posture remains trusted local desktop use with R4 local path and
+  package-artifact hardening; see `../SECURITY.md` for the current boundary
+  notes.
 
 ## Existing Public Docs
 - `docs/desktop_packaging.md`

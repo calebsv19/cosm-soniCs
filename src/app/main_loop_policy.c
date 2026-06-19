@@ -1,7 +1,16 @@
 #include "app/main_loop_policy.h"
 
+#include <SDL2/SDL.h>
+
 #include <stdlib.h>
 #include <string.h>
+
+static void log_env_diag(const char *name, const char *value, const char *message) {
+    SDL_Log("main_loop_policy: env %s=%s %s",
+            name ? name : "(null)",
+            value ? value : "(unset)",
+            message ? message : "diagnostic");
+}
 
 static uint32_t env_u32_or_default(const char *name,
                                    uint32_t fallback,
@@ -14,12 +23,15 @@ static uint32_t env_u32_or_default(const char *name,
     char *end = NULL;
     unsigned long parsed = strtoul(value, &end, 10);
     if (!end || end == value || *end != '\0') {
+        log_env_diag(name, value, "ignored invalid unsigned integer; keeping default/current value");
         return fallback;
     }
     if (parsed < min_value) {
+        log_env_diag(name, value, "clamped below minimum");
         parsed = min_value;
     }
     if (parsed > max_value) {
+        log_env_diag(name, value, "clamped above maximum");
         parsed = max_value;
     }
     return (uint32_t)parsed;
@@ -36,12 +48,15 @@ static double env_double_or_default(const char *name,
     char *end = NULL;
     double parsed = strtod(value, &end);
     if (!end || end == value || *end != '\0') {
+        log_env_diag(name, value, "ignored invalid floating point value; keeping default/current value");
         return fallback;
     }
     if (parsed < min_value) {
+        log_env_diag(name, value, "clamped below minimum");
         parsed = min_value;
     }
     if (parsed > max_value) {
+        log_env_diag(name, value, "clamped above maximum");
         parsed = max_value;
     }
     return parsed;
@@ -66,6 +81,7 @@ static bool env_bool_or_default(const char *name, bool fallback) {
         strcmp(value, "off") == 0) {
         return false;
     }
+    log_env_diag(name, value, "ignored invalid boolean; keeping default/current value");
     return fallback;
 }
 
@@ -79,6 +95,9 @@ static DawGateScenario env_gate_scenario(DawGateScenario fallback) {
     }
     if (strcmp(scenario, "interaction") == 0) {
         return DAW_GATE_SCENARIO_INTERACTION;
+    }
+    if (strcmp(scenario, "idle") != 0) {
+        log_env_diag("DAW_SCENARIO", scenario, "ignored unknown scenario; using idle gate scenario");
     }
     return DAW_GATE_SCENARIO_IDLE;
 }
@@ -106,6 +125,8 @@ void daw_load_loop_policy_from_env(DawLoopRuntimePolicy *loop_policy,
     if (loop_diag_format && loop_diag_format[0] &&
         strcmp(loop_diag_format, "json") == 0) {
         loop_policy->diagnostics_json = true;
+    } else if (loop_diag_format && loop_diag_format[0]) {
+        log_env_diag("DAW_LOOP_DIAG_FORMAT", loop_diag_format, "ignored unsupported format; expected json");
     }
     if (loop_policy->diagnostics_json) {
         loop_policy->diagnostics = true;

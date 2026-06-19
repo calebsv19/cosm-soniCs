@@ -363,6 +363,9 @@ void App_Run(AppContext* ctx, AppCallbacks* callbacks) {
                 rendered = true;
             }
             if (rendered) {
+                if (callbacks->afterRender) {
+                    callbacks->afterRender(ctx);
+                }
                 ctx->timeSinceLastRender = 0.0f;
                 last_heartbeat_ms = SDL_GetTicks64();
                 diag.renders++;

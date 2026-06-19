@@ -26,6 +26,7 @@ APP_SRCS := \
 	$(SRC_DIR)/app/bounce_region.c \
 	$(SRC_DIR)/app/main_bounce.c \
 	$(SRC_DIR)/app/main_loop_policy.c \
+	$(SRC_DIR)/app/visual_artifact_proof.c \
 	$(SRC_DIR)/app/main.c \
 	$(SRC_DIR)/config/config.c \
 	$(SRC_DIR)/config/data_paths.c \
@@ -147,6 +148,7 @@ APP_SRCS := \
 	$(SRC_DIR)/ui/effects_panel/track_snapshot_view.c \
 	$(SRC_DIR)/input/input_manager.c \
 	$(SRC_DIR)/input/library_input.c \
+	$(SRC_DIR)/input/project_modal_input.c \
 	$(SRC_DIR)/input/timeline/timeline_clipboard.c \
 	$(SRC_DIR)/input/timeline/timeline_drop.c \
 	$(SRC_DIR)/input/timeline/timeline_geometry.c \
