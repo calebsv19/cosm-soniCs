@@ -45,6 +45,62 @@ static void timeline_draw_text_in_rect_clipped(SDL_Renderer* renderer,
                          max_w);
 }
 
+static void timeline_view_draw_audio_recording_status(SDL_Renderer* renderer,
+                                                      const SDL_Rect* rect,
+                                                      const AppState* state,
+                                                      const TimelineTheme* theme,
+                                                      int content_left,
+                                                      int content_width,
+                                                      int track_y) {
+    if (!renderer || !rect || !state || !theme || content_width <= 0) {
+        return;
+    }
+    const DawAudioRecordingState* recording = &state->audio_recording;
+    if (recording->status != DAW_AUDIO_RECORDING_ACTIVE &&
+        recording->status != DAW_AUDIO_RECORDING_ERROR) {
+        return;
+    }
+    const char* status = daw_audio_recording_status_message(recording);
+    if (!status || status[0] == '\0') {
+        return;
+    }
+
+    int text_h = ui_font_line_height(1.0f);
+    int banner_h = text_h + 8;
+    int banner_w = content_width - 16;
+    if (banner_w > 560) {
+        banner_w = 560;
+    }
+    if (banner_w <= 0) {
+        return;
+    }
+    int banner_y = track_y + 6;
+    if (banner_y < rect->y + 6) {
+        banner_y = rect->y + 6;
+    }
+    if (banner_y + banner_h > rect->y + rect->h) {
+        return;
+    }
+    SDL_Rect banner = {content_left + 8, banner_y, banner_w, banner_h};
+    SDL_Color fill = theme->header_fill;
+    SDL_Color border = theme->playhead;
+    SDL_Color text = theme->text;
+    if (recording->status == DAW_AUDIO_RECORDING_ERROR) {
+        border = theme->loop_handle_end;
+        text = theme->loop_handle_end;
+    }
+    fill.a = 235;
+    border.a = 245;
+
+    ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
+    SDL_RenderFillRect(renderer, &banner);
+    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+    SDL_RenderDrawRect(renderer, &banner);
+    timeline_draw_text_in_rect_clipped(renderer, &banner, status, text, 6, 4, 1.0f);
+    ui_set_blend_mode(renderer, SDL_BLENDMODE_NONE);
+}
+
 static void timeline_view_draw_audio_recording_preview(SDL_Renderer* renderer,
                                                        AppState* state,
                                                        const TimelineTheme* theme,
@@ -138,9 +194,13 @@ static void timeline_view_draw_audio_recording_preview(SDL_Renderer* renderer,
         label_pad_y = 2;
     }
     SDL_Color text = theme->clip_text;
+    const char* label = daw_audio_recording_status_message(recording);
+    if (!label || label[0] == '\0') {
+        label = "Recording...";
+    }
     timeline_draw_text_in_rect_clipped(renderer,
                                        &preview_rect,
-                                       "Recording...",
+                                       label,
                                        text,
                                        6,
                                        label_pad_y,
@@ -226,6 +286,13 @@ void timeline_view_render_runtime_overlays(SDL_Renderer* renderer,
     int timeline_bottom = track_y + (track_count > 0
                                       ? (track_count * (track_height + track_spacing)) - track_spacing
                                       : track_height);
+    timeline_view_draw_audio_recording_status(renderer,
+                                              rect,
+                                              state,
+                                              theme,
+                                              content_left,
+                                              content_width,
+                                              track_y);
     timeline_view_draw_audio_recording_preview(renderer,
                                                state,
                                                theme,

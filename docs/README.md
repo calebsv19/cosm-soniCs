@@ -27,14 +27,17 @@ Repository and source-level identifiers still use `daw`.
   - `make -C daw test-midi-editor-shell`
   - `make -C daw test-audio-capture-device`
   - `make -C daw test-audio-recording`
+  - `make -C daw test-track-role`
   - `make -C daw test-stable`
   - `make -C daw package-desktop-self-test`
   - `make -C daw memory-check-audit`:
     default-off fisiCs audit lane, not part of the one-command demo proof
   - `make -C daw test-legacy`
 - Manual packaged-app microphone validation remains outside automated gates;
-  the latest live proof moved the audio boundary to recording UX polish and
-  audio-vs-MIDI track typing before external MIDI input.
+  the latest live proof plus S24 follow-through leaves audio recording in a
+  solid current state. Hard track typing, durable record-arm controls,
+  input-device picker UI, user preset storage, and external MIDI input are
+  future fresh-slice work.
 - Security posture remains trusted local desktop use with R4 local path and
   package-artifact hardening; see `../SECURITY.md` for the current boundary
   notes.

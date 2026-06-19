@@ -52,6 +52,7 @@ APP_SRCS := \
 	$(SRC_DIR)/engine/engine_clips_midi.c \
 	$(SRC_DIR)/engine/engine_clips_automation.c \
 	$(SRC_DIR)/engine/engine_clips_no_overlap.c \
+	$(SRC_DIR)/engine/track_role.c \
 	$(SRC_DIR)/engine/midi.c \
 	$(SRC_DIR)/engine/engine_midi_audition.c \
 	$(SRC_DIR)/engine/instrument_osc.c \

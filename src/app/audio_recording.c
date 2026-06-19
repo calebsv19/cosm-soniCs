@@ -6,6 +6,7 @@
 #include "daw/data_paths.h"
 #include "engine/engine.h"
 #include "engine/sampler.h"
+#include "engine/track_role.h"
 #include "input/timeline_selection.h"
 #include "undo/undo_manager.h"
 
@@ -167,6 +168,46 @@ static int daw_audio_recording_resolve_timeline_track(const AppState* state) {
     return 0;
 }
 
+static void daw_audio_recording_set_active_status_for_track(DawAudioRecordingState* recording,
+                                                            const Engine* engine,
+                                                            int track_index) {
+    if (!recording) {
+        return;
+    }
+    EngineTrackRole role = ENGINE_TRACK_ROLE_EMPTY;
+    if (engine_track_role_resolve(engine, track_index, &role)) {
+        char message[128];
+        snprintf(message,
+                 sizeof(message),
+                 "Audio recording active on %s track %d.",
+                 engine_track_role_label(role),
+                 track_index + 1);
+        daw_audio_recording_set_status(recording, message);
+        return;
+    }
+    daw_audio_recording_set_status(recording, "Audio recording active.");
+}
+
+static bool daw_audio_recording_target_allows_audio(DawAudioRecordingState* recording,
+                                                    const Engine* engine,
+                                                    int track_index) {
+    EngineTrackRole role = ENGINE_TRACK_ROLE_EMPTY;
+    if (!engine_track_role_resolve(engine, track_index, &role)) {
+        return false;
+    }
+    if (role == ENGINE_TRACK_ROLE_MIDI) {
+        char message[160];
+        snprintf(message,
+                 sizeof(message),
+                 "Audio recording needs an empty, audio, or mixed track; track %d is MIDI-only.",
+                 track_index + 1);
+        recording->status = DAW_AUDIO_RECORDING_ERROR;
+        daw_audio_recording_set_status(recording, message);
+        return false;
+    }
+    return true;
+}
+
 static void daw_audio_recording_capture_callback(const float* input,
                                                  int frames,
                                                  int channels,
@@ -260,6 +301,10 @@ bool daw_audio_recording_begin_take(AppState* state,
         SDL_Log("audio_recording: begin_take failed reason=already_active track=%d", track_index);
         return false;
     }
+    if (!daw_audio_recording_target_allows_audio(recording, state->engine, track_index)) {
+        SDL_Log("audio_recording: begin_take failed reason=target_policy track=%d", track_index);
+        return false;
+    }
 
     AudioDeviceSpec spec = desired ? *desired : audio_capture_device_default_spec();
     if (state->runtime_cfg.sample_rate > 0 && (!desired || desired->sample_rate <= 0)) {
@@ -296,7 +341,7 @@ bool daw_audio_recording_begin_take(AppState* state,
     atomic_store_explicit(&recording->dropped_frames, 0, memory_order_relaxed);
     recording->status = DAW_AUDIO_RECORDING_ACTIVE;
     (void)engine_set_record_armed_track(state->engine, track_index);
-    daw_audio_recording_set_status(recording, "Audio recording active.");
+    daw_audio_recording_set_active_status_for_track(recording, state->engine, track_index);
     SDL_Log("audio_recording: begin_take ok track=%d start_frame=%llu sample_rate=%d channels=%d queue_frames=%llu",
             track_index,
             (unsigned long long)start_frame,
@@ -318,6 +363,11 @@ bool daw_audio_recording_begin_capture(AppState* state,
     if (daw_audio_recording_is_active(recording)) {
         daw_audio_recording_set_status(recording, "Audio recording is already active.");
         SDL_Log("audio_recording: begin_capture failed reason=already_active track=%d", track_index);
+        return false;
+    }
+    if (track_index >= 0 && track_index < engine_get_track_count(state->engine) &&
+        !daw_audio_recording_target_allows_audio(recording, state->engine, track_index)) {
+        SDL_Log("audio_recording: begin_capture failed reason=target_policy track=%d", track_index);
         return false;
     }
 

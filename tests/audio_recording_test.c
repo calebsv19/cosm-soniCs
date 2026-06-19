@@ -4,6 +4,7 @@
 #include "app_state.h"
 #include "config.h"
 #include "engine/engine.h"
+#include "engine/track_role.h"
 #include "session.h"
 #include "undo/undo_manager.h"
 
@@ -38,6 +39,14 @@ static void write_constant_wav_or_fail(const char* path, float value, int frames
         samples[i] = value;
     }
     assert(wav_write_pcm16_dithered(path, samples, (uint64_t)frames, 1, sample_rate, 0xA23u));
+}
+
+static void assert_status_contains(const DawAudioRecordingState* recording, const char* needle) {
+    const char* status = daw_audio_recording_status_message(recording);
+    if (!strstr(status, needle)) {
+        fprintf(stderr, "expected status to contain '%s', got '%s'\n", needle, status);
+        assert(false);
+    }
 }
 
 static void prepare_state(AppState* state, char* temp_dir_template) {
@@ -241,6 +250,63 @@ static void test_empty_take_finish_reports_error_and_cancel_resets(void) {
     cleanup_state(&state);
 }
 
+static void test_begin_take_applies_target_role_policy(void) {
+    AppState state;
+    char temp_dir[] = "tmp/audio_recording_role_status_XXXXXX";
+    prepare_state(&state, temp_dir);
+
+    AudioDeviceSpec spec = {
+        .sample_rate = 48000,
+        .block_size = 128,
+        .channels = 1
+    };
+
+    int empty_track = engine_add_track(state.engine);
+    assert(empty_track == 1);
+    assert(daw_audio_recording_begin_take(&state, empty_track, 0, &spec));
+    assert_status_contains(&state.audio_recording, "empty track 2");
+    daw_audio_recording_cancel(&state.audio_recording);
+
+    char audio_path[SESSION_PATH_MAX];
+    snprintf(audio_path, sizeof(audio_path), "%s/audio_role.wav", state.data_paths.library_copy_root);
+    write_constant_wav_or_fail(audio_path, 0.0f, 256, state.runtime_cfg.sample_rate);
+
+    int audio_track = engine_add_track(state.engine);
+    assert(audio_track == 2);
+    int clip_index = -1;
+    assert(engine_add_clip_to_track(state.engine, audio_track, audio_path, 0, &clip_index));
+    EngineTrackRole role = ENGINE_TRACK_ROLE_EMPTY;
+    assert(engine_track_role_resolve(state.engine, audio_track, &role));
+    assert(role == ENGINE_TRACK_ROLE_AUDIO);
+    assert(daw_audio_recording_begin_take(&state, audio_track, 0, &spec));
+    assert_status_contains(&state.audio_recording, "audio track 3");
+    daw_audio_recording_cancel(&state.audio_recording);
+
+    int midi_track = engine_add_track(state.engine);
+    assert(midi_track == 3);
+    assert(engine_add_midi_clip_to_track(state.engine, midi_track, 0, 48000, &clip_index));
+    assert(engine_track_role_resolve(state.engine, midi_track, &role));
+    assert(role == ENGINE_TRACK_ROLE_MIDI);
+    assert(!daw_audio_recording_begin_take(&state, midi_track, 0, &spec));
+    assert(!daw_audio_recording_is_active(&state.audio_recording));
+    assert(state.audio_recording.status == DAW_AUDIO_RECORDING_ERROR);
+    assert(!state.audio_recording.queue_ready);
+    assert(state.audio_recording.target_track_index == -1);
+    assert_status_contains(&state.audio_recording, "track 4 is MIDI-only");
+
+    int mixed_track = engine_add_track(state.engine);
+    assert(mixed_track == 4);
+    assert(engine_add_midi_clip_to_track(state.engine, mixed_track, 0, 48000, &clip_index));
+    assert(engine_add_clip_to_track(state.engine, mixed_track, audio_path, 96000, &clip_index));
+    assert(engine_track_role_resolve(state.engine, mixed_track, &role));
+    assert(role == ENGINE_TRACK_ROLE_MIXED);
+    assert(daw_audio_recording_begin_take(&state, mixed_track, 0, &spec));
+    assert_status_contains(&state.audio_recording, "mixed track 5");
+    daw_audio_recording_cancel(&state.audio_recording);
+
+    cleanup_state(&state);
+}
+
 static void test_record_armed_solo_track_gates_backing_audio(void) {
     AppState state;
     char temp_dir[] = "tmp/audio_recording_solo_XXXXXX";
@@ -293,6 +359,7 @@ int main(void) {
     test_next_path_rejects_unsafe_library_copy_root();
     test_synthetic_take_writes_wav_and_inserts_audio_clip();
     test_empty_take_finish_reports_error_and_cancel_resets();
+    test_begin_take_applies_target_role_policy();
     test_record_armed_solo_track_gates_backing_audio();
     puts("audio_recording_test: success");
     return 0;

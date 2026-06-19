@@ -24,8 +24,9 @@ The repository and source-level program key remain `daw`.
   built-in instruments, per-region overrides, track-level defaults, instrument
   automation, and bounce-to-WAV coverage.
 - Audio recording with an SDL capture wrapper, transport-gated recording,
-  active waveform preview, selected/armed-track placement, undoable inserted
-  audio clips, and session round-trip coverage.
+  active waveform preview, selected/armed-track placement, derived target-role
+  timeline status, MIDI-only target refusal, undoable inserted audio clips, and
+  session round-trip coverage.
 - Session/project persistence with deterministic startup fallback:
   1. `<output_root>/projects/last_project.txt`
      (legacy fallback: `config/projects/last_project.txt`)
@@ -48,8 +49,9 @@ The repository and source-level program key remain `daw`.
 - Effects are functional but still a basic subset.
 - Hard audio-vs-MIDI track typing, external MIDI input, and user instrument
   preset storage remain future work.
-- Recording UX polish and hard audio-vs-MIDI track typing are the next planned
-  audio workflow lane before external MIDI input.
+- Durable record-arm controls, input-device picker UI, and hard
+  audio-vs-MIDI track typing remain future fresh-slice work before any external
+  MIDI input lane.
 - General alpha-level UI/engine glitches can still occur.
 
 See [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) for the current issue list.
@@ -143,9 +145,10 @@ toolchain path.
 Manual packaged-app microphone proof remains separate from automated gates. The
 latest live `soniCs.app` proof recorded selected-track recording, record-armed
 solo setup, live waveform preview, and play/pause-gated capture as functioning
-well enough to move the next lane to recording UX polish and audio-vs-MIDI track
-typing. The manual checklist lives in `daw/docs/demo_proof.md` and should stay
-human-run package evidence, not a blocker for `run-headless-smoke`.
+well enough for the current audio-recording lane. The manual checklist lives in
+`daw/docs/demo_proof.md`; future hard track typing, durable record-arm controls,
+input-device picker UI, and external MIDI input should start as fresh
+planning/proof slices rather than block `run-headless-smoke`.
 
 ### Shared Subtree Update
 
@@ -183,6 +186,7 @@ make test-overlap
 make test-midi-editor-shell
 make test-audio-capture-device
 make test-audio-recording
+make test-track-role
 make test-smoke
 make test-kitviz-adapter
 make test-waveform-pack-warmstart

@@ -17,11 +17,10 @@ Last updated: 2026-06-19
 - Public release version is now `0.2.0`.
 - MIDI regions are first-class engine/session objects with timeline creation/selection, piano-roll editing, QWERTY audition/recording, note clipboard/duplicate commands, quantize, velocity editing, bounce-to-WAV, and session round-trip coverage.
 - Built-in MIDI instruments now use grouped factory presets, per-region overrides, track-level instrument defaults, and instrument parameter automation for region-local and inherited track-level lanes.
-- Audio recording now has a DAW-local SDL capture wrapper and recording coordinator that arms from timeline `R`, captures only while transport is moving, previews the active waveform, finalizes to `recordings/recording*.wav`, and inserts the result as a normal undoable/session-persisted audio clip on the selected track.
+- Audio recording now has a DAW-local SDL capture wrapper and recording coordinator that arms from timeline `R`, captures only while transport is moving, previews the active waveform with role-aware status text, reports active/error recording status in the timeline, refuses MIDI-only audio targets with a clear status message, finalizes to `recordings/recording*.wav`, and inserts the result as a normal undoable/session-persisted audio clip on the selected empty, audio, or mixed track.
 - Latest manual packaged-app proof recorded selected-track recording,
   record-armed solo setup, live waveform preview, and play/pause-gated capture
-  as functioning well enough to move the next audio lane to recording UX polish
-  and audio-vs-MIDI track typing.
+  as functioning well enough for the current audio-recording lane.
 - R4 trusted-local security hardening now covers unsafe session/runtime write
   roots, library import/rename path components, destructive package/release
   helper destinations, and public package/release artifact hygiene.
@@ -129,9 +128,11 @@ Last updated: 2026-06-19
   excluded and audited.
 
 ## Current Boundary
-- Preserve seam decomposition stability and data-path contract correctness while expanding MIDI/audio features.
-- Current audio workflow boundary is recording UX polish and hard
-  audio-vs-MIDI track typing before external MIDI input.
+- Preserve seam decomposition stability and data-path contract correctness.
+- Current audio/MIDI implementation is paused at a solid current state. Future
+  hard audio-vs-MIDI track typing, durable record-arm controls, input-device
+  picker UI, user preset storage, and external MIDI input should begin as fresh
+  planning/proof slices rather than as active S24 work.
 - Keep launcher/runtime shader-copy hardening aligned with the packaged Vulkan/runtime contract.
 - Current security posture remains trusted local desktop use. R4 hardened the
   current local trust boundaries, but broader untrusted-project or sandboxed

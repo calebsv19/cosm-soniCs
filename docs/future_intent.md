@@ -75,7 +75,8 @@ Last updated: 2026-05-15
 - next posture:
   - refine factory/user preset storage and instrument UX in small slices.
   - keep region overrides and track defaults explicitly separated in tests.
-  - defer external MIDI input until audio hardware capture lifecycle is fully proven in packaged app usage.
+  - defer external MIDI input until MIDI hardware is available for a dedicated
+    packaged-app proof slice.
 
 ## Audio Recording Intent
 - First microphone/audio-region recording lane is implemented as a DAW-local hardware-input path.
@@ -85,8 +86,11 @@ Last updated: 2026-05-15
   - active takes show a live waveform preview and finish as normal audio clips.
   - selected/armed track placement is supported, including record-armed solo gating for empty selected tracks.
 - next posture:
-  - validate live microphone workflows in the packaged app.
-  - decide whether the next lane is audio/MIDI track typing, recording UX polish, or external MIDI input.
+  - keep the implemented workflow stable unless packaged-app use exposes a
+    concrete polish issue.
+  - treat hard audio-vs-MIDI track typing, durable record-arm controls,
+    input-device picker UI, and external MIDI input as future fresh
+    planning/proof slices.
 
 ## Connection Pass Intent
 - completed:

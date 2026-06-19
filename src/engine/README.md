@@ -49,6 +49,8 @@ Purpose: Real-time audio engine, graph, and source implementations.
   - `daw_timeline_frame_range*`: Define half-open transport-frame ranges and overlap predicates.
   - `daw_timeline_analyze_overlap`: Produce trim/split/remove/shift plans used by clip overlap resolution.
   - `daw_timeline_frames_from_*`: Convert seconds or tempo-map beats into canonical transport frames for audio and MIDI region placement.
+- `track_role.c`
+  - `engine_track_role_*`: Derive non-persistent empty/audio/MIDI/mixed track roles from existing clip kinds for recording-target and timeline UX policy.
 - `source_tone.c`
   - `engine_tone_source_create/destroy`: Allocate a diagnostic tone generator.
   - `engine_tone_source_render/reset`: Fill buffers with a simple sine tone, keeping phase continuity.

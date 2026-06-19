@@ -134,8 +134,7 @@ toolchain path and writes reports under `daw/build/memory_check/`.
 Manual microphone/app validation remains separate from automated gates. The
 latest live `soniCs.app` proof recorded selected-track recording,
 record-armed solo setup, live waveform preview, and play/pause-gated capture as
-functioning well enough to move the next audio lane to recording UX polish and
-hard audio-vs-MIDI track typing before external MIDI input.
+functioning well enough for the current audio-recording lane.
 
 Checklist for the manual packaged-app proof:
 - build or refresh the package with `make -C daw package-desktop-refresh`
@@ -151,6 +150,7 @@ Checklist for the manual packaged-app proof:
   failed solely because live microphone proof has not been rerun
 
 Current evidence from the 2026-06-19 live packaged-app proof satisfies this
-checklist for the present R6 boundary. Follow-up feature work belongs to
-`AUDIO-S24` recording UX polish and hard audio-vs-MIDI track typing, not to the
-R6 demo proof pass.
+checklist for the present R6 boundary. Follow-up feature work such as hard
+track typing, durable record-arm controls, input-device picker UI, or external
+MIDI input should start as fresh planning/proof slices, not as part of the R6
+demo proof pass.
