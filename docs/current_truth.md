@@ -10,14 +10,15 @@ Last updated: 2026-08-08
   - wrapper shell: `include/daw/daw_app_main.h`, `src/app/daw_app_main.c`
 
 ## Current Shipped State
-- A protected managed Vulkan adoption is verified locally against canonical
+- The managed Vulkan adoption is committed locally as `5fa5d6e` (shared
+  subtree refresh) and `f472ae8` (soniCs integration) against canonical
   shared commit `60084f90564105983c7c74e862a299d8b6775347`, with
   `vk_runtime 0.6.0` and `vk_renderer 1.3.1`. The existing SDL/Vulkan
   presentation path now uses the renderer's embedded runtime ownership. The
   dedicated rollout proof verifies validation-clean startup, resize, renderer
   restart, deterministic readback/capture, and 2.0x Retina drawable scaling
-  (`1440x900` then `1800x1120`) on Apple M2. This is protected worktree truth,
-  not a DAW commit, version bump, release, Registry promotion, Linux proof, or
+  (`1440x900` then `1800x1120`) on Apple M2. This is committed source truth,
+  but not a version bump, release, Registry promotion, Linux proof, or
   compute-path adoption; DAW audio, transport, persistence, and UI semantics
   remain app-owned and unchanged.
 - Core seam decomposition wave is landed across app/engine/input/session/ui/undo lanes.
