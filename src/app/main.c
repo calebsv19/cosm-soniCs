@@ -6,6 +6,7 @@
 #include "app/main_bounce.h"
 #include "app/main_loop_policy.h"
 #include "app/visual_artifact_proof.h"
+#include "app/daw_vulkan_rollout.h"
 #include "app/workspace_authoring/daw_workspace_authoring_host.h"
 #include "app/workspace_authoring/daw_workspace_authoring_overlay.h"
 #include "engine/engine.h"
@@ -974,7 +975,10 @@ int daw_app_main_legacy(void) {
     return daw_visual_artifact_proof_exit_code();
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+    if (argc == 2 && strcmp(argv[1], "--vulkan-rollout-self-test") == 0) {
+        return daw_vulkan_rollout_self_test();
+    }
     daw_app_set_legacy_entry(daw_app_main_legacy);
     return daw_app_main_run();
 }

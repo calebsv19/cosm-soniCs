@@ -34,10 +34,14 @@ $(eval $(call build_copy_static_lib,CORE_WAKE,))
 $(eval $(call build_copy_static_lib,CORE_KERNEL,))
 $(eval $(call build_copy_static_lib,CORE_TRACE,))
 $(eval $(call build_copy_static_lib,KIT_VIZ,))
-$(eval $(call build_copy_static_lib,KIT_RENDER,KIT_RENDER_ENABLE_VK=1))
+$(eval $(call build_copy_static_lib,KIT_RENDER,KIT_RENDER_ENABLE_VK=1 CFLAGS="$(CFLAGS) -I../../vk_runtime/include"))
 $(eval $(call build_copy_static_lib,KIT_UI,))
 $(eval $(call build_copy_static_lib,KIT_WORKSPACE_AUTHORING,))
+$(eval $(call build_copy_static_lib,VK_RUNTIME,))
 $(eval $(call build_copy_static_lib,VK_RENDERER,))
+
+# The renderer's embedded device lifecycle links the already-built runtime.
+$(VK_RENDERER_LIB): $(VK_RUNTIME_LIB)
 
 $(APP_BIN): $(APP_OBJS) $(TIMER_HUD_OBJS) $(APP_SHARED_LIBS) | $(APP_BIN_DIR)
 	@mkdir -p "$(dir $@)"

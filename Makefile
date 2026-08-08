@@ -19,5 +19,6 @@ include make/rules-test-core.mk
 include make/rules-memory-check.mk
 include make/rules-test-adapters.mk
 include make/rules-loop.mk
+include make/rules-vulkan-runtime.mk
 
 -include $(ALL_DEPS)

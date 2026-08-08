@@ -1,5 +1,6 @@
 SHARED_ROOT ?= third_party/codework_shared
 VK_RENDERER_DIR := $(SHARED_ROOT)/vk_renderer
+VK_RUNTIME_DIR := $(SHARED_ROOT)/vk_runtime
 TIMER_HUD_DIR := $(SHARED_ROOT)/timer_hud
 CORE_BASE_DIR := $(SHARED_ROOT)/core/core_base
 CORE_IO_DIR := $(SHARED_ROOT)/core/core_io

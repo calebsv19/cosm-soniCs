@@ -1,6 +1,6 @@
 # soniCs Current Truth
 
-Last updated: 2026-06-19
+Last updated: 2026-08-08
 
 ## Program Identity
 - Repository directory: `daw/`
@@ -10,6 +10,16 @@ Last updated: 2026-06-19
   - wrapper shell: `include/daw/daw_app_main.h`, `src/app/daw_app_main.c`
 
 ## Current Shipped State
+- A protected managed Vulkan adoption is verified locally against canonical
+  shared commit `60084f90564105983c7c74e862a299d8b6775347`, with
+  `vk_runtime 0.6.0` and `vk_renderer 1.3.1`. The existing SDL/Vulkan
+  presentation path now uses the renderer's embedded runtime ownership. The
+  dedicated rollout proof verifies validation-clean startup, resize, renderer
+  restart, deterministic readback/capture, and 2.0x Retina drawable scaling
+  (`1440x900` then `1800x1120`) on Apple M2. This is protected worktree truth,
+  not a DAW commit, version bump, release, Registry promotion, Linux proof, or
+  compute-path adoption; DAW audio, transport, persistence, and UI semantics
+  remain app-owned and unchanged.
 - Core seam decomposition wave is landed across app/engine/input/session/ui/undo lanes.
 - Data-path contract foundation (`P3`) is complete with explicit runtime path fields and persistence.
 - Release/desktop packaging lanes are complete through the shared target-contract flow.
@@ -69,6 +79,11 @@ Last updated: 2026-06-19
   path rather than always-on runtime output.
 
 ## Verification Contract
+- Managed Vulkan presentation proof:
+  - `make -C daw vulkan-rollout-contract`
+  - `make -C daw vulkan-rollout-self-test`
+  - the self-test is display-backed and proves validation, runtime/device
+    identity, readback/capture, resize, 2.0x Retina scale, and restart
 - Demo proof:
   - `docs/demo_proof.md` defines the public R6 proof contract.
   - `make -C daw run-headless-smoke` is the canonical non-interactive proof

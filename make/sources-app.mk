@@ -22,6 +22,7 @@ APP_SRCS := \
 	$(SRC_DIR)/core/loop/daw_mainthread_kernel.c \
 	$(SRC_DIR)/core/loop/daw_render_invalidation.c \
 	$(SRC_DIR)/app/daw_app_main.c \
+	$(SRC_DIR)/app/daw_vulkan_rollout.c \
 	$(SRC_DIR)/app/audio_recording.c \
 	$(SRC_DIR)/app/bounce_region.c \
 	$(SRC_DIR)/app/main_bounce.c \
