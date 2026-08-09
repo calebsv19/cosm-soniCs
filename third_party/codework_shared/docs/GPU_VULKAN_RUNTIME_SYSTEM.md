@@ -88,7 +88,7 @@ program uses it.
 | Program | Current presentation path | Vendored `vk_renderer` | Current interpretation |
 | --- | --- | ---: | --- |
 | Ball Bounce | direct SDL | none observed | no active Vulkan path |
-| BehaviorSim | direct SDL | `1.1.1` | vendored but not the active renderer |
+| BehaviorSim | Vulkan default; SDL/fisiCs oracle | `1.3.1` | committed managed `vk_runtime 0.6.0` presentation adoption with exact-source, validation/readback/resize/Retina/restart, package, Traffic, and Population proof; no compute adoption |
 | DAW | Vulkan default | `1.1.1` | active shared Vulkan host |
 | DataLab | direct SDL | `1.1.2` | vendored but not the active renderer |
 | Drawing Program | direct SDL | `1.1.2` | vendored but not the active renderer |
