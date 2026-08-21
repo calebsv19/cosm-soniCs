@@ -72,8 +72,9 @@ else
 	endif
 endif
 
-CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) -I$(VK_RENDERER_DIR)/include -I$(TIMER_HUD_DIR)/include -I$(TIMER_HUD_DIR)/external -I$(CORE_BASE_DIR)/include -I$(CORE_IO_DIR)/include -I$(CORE_DATA_DIR)/include -I$(CORE_PACK_DIR)/include -I$(CORE_TIME_DIR)/include -I$(CORE_THEME_DIR)/include -I$(CORE_FONT_DIR)/include -I$(CORE_PANE_DIR)/include -I$(CORE_QUEUE_DIR)/include -I$(CORE_SCHED_DIR)/include -I$(CORE_JOBS_DIR)/include -I$(CORE_WORKERS_DIR)/include -I$(CORE_WAKE_DIR)/include -I$(CORE_KERNEL_DIR)/include -I$(CORE_TRACE_DIR)/include -I$(KIT_VIZ_DIR)/include -I$(KIT_RENDER_DIR)/include -I$(KIT_UI_DIR)/include -I$(KIT_WORKSPACE_AUTHORING_DIR)/include $(SDL2_CFLAGS) $(VULKAN_CFLAGS) -DVK_RENDERER_SHADER_ROOT=\"$(abspath $(VK_RENDERER_DIR))\" -include $(VK_RENDERER_DIR)/include/vk_renderer_sdl.h
+CPPFLAGS := -Iinclude -Iextern -I$(SDLAPP_DIR) -I$(VK_RENDERER_DIR)/include -I$(TIMER_HUD_DIR)/include -I$(TIMER_HUD_DIR)/external -I$(CORE_BASE_DIR)/include -I$(CORE_IO_DIR)/include -I$(CORE_DATA_DIR)/include -I$(CORE_PACK_DIR)/include -I$(CORE_TIME_DIR)/include -I$(CORE_THEME_DIR)/include -I$(CORE_FONT_DIR)/include -I$(CORE_PANE_DIR)/include -I$(CORE_WORKSPACE_AUTHORING_SESSION_DIR)/include -I$(CORE_QUEUE_DIR)/include -I$(CORE_SCHED_DIR)/include -I$(CORE_JOBS_DIR)/include -I$(CORE_WORKERS_DIR)/include -I$(CORE_WAKE_DIR)/include -I$(CORE_KERNEL_DIR)/include -I$(CORE_TRACE_DIR)/include -I$(KIT_VIZ_DIR)/include -I$(KIT_RENDER_DIR)/include -I$(KIT_UI_DIR)/include -I$(KIT_WORKSPACE_AUTHORING_DIR)/include $(SDL2_CFLAGS) $(VULKAN_CFLAGS) -DVK_RENDERER_SHADER_ROOT=\"$(abspath $(VK_RENDERER_DIR))\" -include $(VK_RENDERER_DIR)/include/vk_renderer_sdl.h
 CPPFLAGS += -I$(VK_RUNTIME_DIR)/include -DVK_RUNTIME_BUILD_VERSION=\"$(shell cat $(VK_RUNTIME_DIR)/VERSION)\"
+CPPFLAGS += -I$(CORE_PANE_MODULE_DIR)/include -I$(CORE_PANE_SNAPSHOT_DIR)/include
 
 LDFLAGS := $(ARCH_FLAGS) $(SDL2_LDFLAGS) $(SDL2_LIBS) $(SDL2_FRAMEWORKS) $(VULKAN_LIBS)
 ifeq ($(UNAME_S),Darwin)

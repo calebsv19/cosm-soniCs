@@ -89,6 +89,7 @@ static void daw_authoring_draw_pane_label(SDL_Renderer *renderer,
                                           const SDL_Rect *pane_rect,
                                           int pane_index,
                                           const char *pane_title,
+                                          int selected,
                                           const DawThemePalette *theme) {
     SDL_Rect tag;
     SDL_Rect module_tag;
@@ -103,7 +104,7 @@ static void daw_authoring_draw_pane_label(SDL_Renderer *renderer,
 
     if (!renderer || !pane_rect || !theme || !daw_authoring_rect_visible(pane_rect)) return;
 
-    snprintf(label, sizeof(label), "P%d %s", pane_index + 1, pane_title ? pane_title : "PANE");
+    snprintf(label, sizeof(label), "%sP%d %s", selected ? "FOCUS " : "P", selected ? pane_index + 1 : pane_index + 1, pane_title ? pane_title : "PANE");
     label_w = ui_measure_text_width(label, 1.0f);
     if (label_w < 0) label_w = 0;
 
@@ -117,7 +118,7 @@ static void daw_authoring_draw_pane_label(SDL_Renderer *renderer,
     if (tag.w > pane_rect->w - (pad * 2)) tag.w = pane_rect->w - (pad * 2);
     if (!daw_authoring_rect_visible(&tag)) return;
 
-    tag_fill = daw_authoring_alpha(theme->control_fill, 238u);
+    tag_fill = daw_authoring_alpha(selected ? theme->pane_highlight_fill : theme->control_fill, 238u);
     tag_border = daw_authoring_alpha(theme->accent_primary, 235u);
     text = theme->text_primary;
     muted = theme->text_muted;
@@ -169,8 +170,21 @@ static void daw_authoring_draw_pane_inventory(SDL_Renderer *renderer,
                                       &pane->rect,
                                       i,
                                       daw_authoring_pane_title(pane, i),
+                                      state->workspace_authoring.projection.focus_pane == (uint8_t)i,
                                       theme);
     }
+}
+
+static void daw_authoring_draw_pane_backdrop(SDL_Renderer *renderer,
+                                             const AppState *state,
+                                             const DawThemePalette *theme) {
+    SDL_Rect screen;
+    SDL_Color fill;
+    if (!renderer || !state || !theme || state->window_width <= 0 || state->window_height <= 0) return;
+    screen = (SDL_Rect){0, 0, state->window_width, state->window_height};
+    fill = daw_authoring_alpha(theme->timeline_fill, 255u);
+    SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
+    SDL_RenderFillRect(renderer, &screen);
 }
 
 static void daw_authoring_draw_status(SDL_Renderer *renderer,
@@ -208,7 +222,7 @@ static void daw_authoring_draw_status(SDL_Renderer *renderer,
     ui_draw_text_clipped(renderer,
                          rect.x + 10,
                          rect.y + 52,
-                         "Tab cycles | Enter applies | Esc cancels",
+                         "S Save | O Preview | 1-4 Focus | L/I panes | +/- transport | [] library | ,/. mixer | Enter Apply | Esc Cancel",
                          theme->text_muted,
                          1.0f,
                          rect.w - 20);
@@ -521,6 +535,9 @@ void daw_workspace_authoring_overlay_render(SDL_Renderer *renderer, AppState *st
 
     ui_set_blend_mode(renderer, SDL_BLENDMODE_BLEND);
     if (daw_workspace_authoring_host_pane_overlay_active(&state->workspace_authoring)) {
+        /* Pane authoring is a distinct, opaque composition: runtime hover/drag
+         * presentation is not merely obscured beneath a translucent overlay. */
+        daw_authoring_draw_pane_backdrop(renderer, state, &theme);
         daw_authoring_draw_pane_inventory(renderer, state, &theme);
         daw_authoring_draw_status(renderer, state, &theme);
     } else if (daw_workspace_authoring_host_font_theme_overlay_active(&state->workspace_authoring)) {

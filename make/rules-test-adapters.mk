@@ -34,6 +34,10 @@ test-config-diagnostics: $(CONFIG_DIAGNOSTICS_TEST_BIN)
 test-workspace-authoring-host: $(WORKSPACE_AUTHORING_HOST_TEST_BIN)
 	$(WORKSPACE_AUTHORING_HOST_TEST_BIN)
 
+test-workspace-authoring-profile:
+	$(HOST_CC) -std=c11 -Wall -Wextra -Wpedantic -Iinclude -I$(CORE_PACK_DIR)/include -I$(CORE_PANE_MODULE_DIR)/include -I$(CORE_PANE_SNAPSHOT_DIR)/include -I$(CORE_BASE_DIR)/include tests/daw_workspace_authoring_profile_test.c src/app/workspace_authoring/daw_workspace_authoring_profile.c $(CORE_PACK_DIR)/src/core_pack.c $(CORE_PANE_MODULE_DIR)/src/core_pane_module.c $(CORE_PANE_SNAPSHOT_DIR)/src/core_pane_snapshot.c $(CORE_BASE_DIR)/src/core_base.c -lm -o $(TEST_BUILD_ROOT)/daw_workspace_authoring_profile_test
+	$(TEST_BUILD_ROOT)/daw_workspace_authoring_profile_test
+
 test-library-copy-vs-reference-contract: test-data-path-contract
 	@echo "test-library-copy-vs-reference-contract: success"
 
@@ -47,11 +51,11 @@ $(CONFIG_DIAGNOSTICS_TEST_BIN): $(CONFIG_DIAGNOSTICS_TEST_OBJS) \
 	@mkdir -p "$(dir $@)"
 	$(HOST_CC) $(foreach obj,$^,"$(obj)") -o "$@" $(LDFLAGS)
 
-$(WORKSPACE_AUTHORING_HOST_TEST_BIN): $(WORKSPACE_AUTHORING_HOST_TEST_SRCS) src/app/workspace_authoring/daw_workspace_authoring_host.c src/ui/shared_theme_font_adapter.c $(KIT_WORKSPACE_AUTHORING_LIB) $(CORE_THEME_LIB) $(CORE_FONT_LIB) $(CORE_PANE_LIB) $(CORE_BASE_LIB)
+$(WORKSPACE_AUTHORING_HOST_TEST_BIN): $(WORKSPACE_AUTHORING_HOST_TEST_SRCS) src/app/workspace_authoring/daw_workspace_authoring_host.c src/app/workspace_authoring/daw_workspace_authoring_projection.c src/app/workspace_authoring/daw_workspace_authoring_profile.c src/app/workspace_authoring/daw_workspace_authoring_session_adapter.c src/ui/shared_theme_font_adapter.c $(KIT_WORKSPACE_AUTHORING_LIB) $(CORE_WORKSPACE_AUTHORING_SESSION_LIB) $(CORE_THEME_LIB) $(CORE_FONT_LIB) $(CORE_PANE_LIB) $(CORE_BASE_LIB)
 	@mkdir -p "$(dir $@)"
-	$(HOST_CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(KIT_WORKSPACE_AUTHORING_DIR)/include -I$(KIT_RENDER_DIR)/include -I$(CORE_THEME_DIR)/include -I$(CORE_FONT_DIR)/include -I$(CORE_PANE_DIR)/include -I$(CORE_BASE_DIR)/include \
-		tests/daw_workspace_authoring_host_test.c tests/daw_workspace_authoring_kit_render_stub.c src/app/workspace_authoring/daw_workspace_authoring_host.c src/ui/shared_theme_font_adapter.c \
-		$(KIT_WORKSPACE_AUTHORING_LIB) $(CORE_THEME_LIB) $(CORE_FONT_LIB) $(CORE_PANE_LIB) $(CORE_BASE_LIB) \
+	$(HOST_CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(KIT_WORKSPACE_AUTHORING_DIR)/include -I$(KIT_RENDER_DIR)/include -I$(CORE_WORKSPACE_AUTHORING_SESSION_DIR)/include -I$(CORE_THEME_DIR)/include -I$(CORE_FONT_DIR)/include -I$(CORE_PANE_DIR)/include -I$(CORE_PACK_DIR)/include -I$(CORE_PANE_MODULE_DIR)/include -I$(CORE_PANE_SNAPSHOT_DIR)/include -I$(CORE_BASE_DIR)/include \
+		tests/daw_workspace_authoring_host_test.c tests/daw_workspace_authoring_kit_render_stub.c src/app/workspace_authoring/daw_workspace_authoring_host.c src/app/workspace_authoring/daw_workspace_authoring_projection.c src/app/workspace_authoring/daw_workspace_authoring_profile.c src/app/workspace_authoring/daw_workspace_authoring_session_adapter.c src/ui/shared_theme_font_adapter.c $(CORE_PACK_DIR)/src/core_pack.c $(CORE_PANE_MODULE_DIR)/src/core_pane_module.c $(CORE_PANE_SNAPSHOT_DIR)/src/core_pane_snapshot.c \
+		$(KIT_WORKSPACE_AUTHORING_LIB) $(CORE_WORKSPACE_AUTHORING_SESSION_LIB) $(CORE_THEME_LIB) $(CORE_FONT_LIB) $(CORE_PANE_LIB) $(CORE_BASE_LIB) \
 		$(SDL2_LDFLAGS) -lSDL2 -o "$@"
 
 test-pack-contract: $(PACK_CONTRACT_TEST_BIN)

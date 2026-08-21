@@ -146,12 +146,46 @@ static void test_font_theme_cancel_restores_entry_baseline(void) {
     assert(daw_workspace_authoring_host_take_theme_dirty(&host));
 }
 
+static void test_pane_projection_draft(void) {
+    DawWorkspaceAuthoringHostState host;
+    DawWorkspaceAuthoringProjectionAction action = DAW_WORKSPACE_AUTHORING_PROJECTION_NONE;
+    SDL_Event library = key_event(SDL_KEYDOWN, SDL_SCANCODE_L, SDLK_l, KMOD_NONE);
+    SDL_Event library_ratio = key_event(SDL_KEYDOWN, SDL_SCANCODE_RIGHTBRACKET, SDLK_RIGHTBRACKET, KMOD_NONE);
+    SDL_Event mixer_ratio = key_event(SDL_KEYDOWN, SDL_SCANCODE_PERIOD, SDLK_PERIOD, KMOD_NONE);
+    SDL_Event focus_library = key_event(SDL_KEYDOWN, SDL_SCANCODE_4, SDLK_4, KMOD_NONE);
+
+    daw_workspace_authoring_host_reset(&host);
+    assert(daw_workspace_authoring_host_enter(&host).code == CORE_OK);
+    daw_workspace_authoring_projection_capture(&host.projection, 1, 1, 0.12f, 0.20f, 0.30f);
+
+    assert(daw_workspace_authoring_host_handle_sdl_event(&host, &library, 0));
+    assert(daw_workspace_authoring_projection_take_action(&host.projection, &action));
+    daw_workspace_authoring_projection_apply_action(&host.projection, action);
+    assert(host.projection.library_visible == 0u);
+
+    assert(daw_workspace_authoring_host_handle_sdl_event(&host, &library_ratio, 0));
+    assert(daw_workspace_authoring_projection_take_action(&host.projection, &action));
+    daw_workspace_authoring_projection_apply_action(&host.projection, action);
+    assert(host.projection.library_ratio > host.projection.baseline_library_ratio);
+
+    assert(daw_workspace_authoring_host_handle_sdl_event(&host, &mixer_ratio, 0));
+    assert(daw_workspace_authoring_projection_take_action(&host.projection, &action));
+    daw_workspace_authoring_projection_apply_action(&host.projection, action);
+    assert(host.projection.mixer_ratio > host.projection.baseline_mixer_ratio);
+
+    assert(daw_workspace_authoring_host_handle_sdl_event(&host, &focus_library, 0));
+    assert(daw_workspace_authoring_projection_take_action(&host.projection, &action));
+    daw_workspace_authoring_projection_apply_action(&host.projection, action);
+    assert(host.projection.focus_pane == 3u);
+}
+
 int main(void) {
     test_entry_chord_and_apply();
     test_text_entry_blocks_entry();
     test_active_capture_and_cancel();
     test_alt_chord_toggles_off_as_cancel();
     test_font_theme_cancel_restores_entry_baseline();
+    test_pane_projection_draft();
     printf("daw_workspace_authoring_host_test: ok\n");
     return 0;
 }

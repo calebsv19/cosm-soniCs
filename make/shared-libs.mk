@@ -6,6 +6,9 @@ CORE_TIME_LIB_SRC := $(CORE_TIME_DIR)/build/libcore_time.a
 CORE_THEME_LIB_SRC := $(CORE_THEME_DIR)/build/libcore_theme.a
 CORE_FONT_LIB_SRC := $(CORE_FONT_DIR)/build/libcore_font.a
 CORE_PANE_LIB_SRC := $(CORE_PANE_DIR)/build/libcore_pane.a
+CORE_PANE_MODULE_LIB_SRC := $(CORE_PANE_MODULE_DIR)/build/libcore_pane_module.a
+CORE_PANE_SNAPSHOT_LIB_SRC := $(CORE_PANE_SNAPSHOT_DIR)/build/libcore_pane_snapshot.a
+CORE_WORKSPACE_AUTHORING_SESSION_LIB_SRC := $(CORE_WORKSPACE_AUTHORING_SESSION_DIR)/build/libcore_workspace_authoring_session.a
 CORE_QUEUE_LIB_SRC := $(CORE_QUEUE_DIR)/build/libcore_queue.a
 CORE_SCHED_LIB_SRC := $(CORE_SCHED_DIR)/build/libcore_sched.a
 CORE_JOBS_LIB_SRC := $(CORE_JOBS_DIR)/build/libcore_jobs.a
@@ -28,6 +31,9 @@ CORE_TIME_LIB := $(SHARED_BUILD_DIR)/libcore_time.a
 CORE_THEME_LIB := $(SHARED_BUILD_DIR)/libcore_theme.a
 CORE_FONT_LIB := $(SHARED_BUILD_DIR)/libcore_font.a
 CORE_PANE_LIB := $(SHARED_BUILD_DIR)/libcore_pane.a
+CORE_PANE_MODULE_LIB := $(SHARED_BUILD_DIR)/libcore_pane_module.a
+CORE_PANE_SNAPSHOT_LIB := $(SHARED_BUILD_DIR)/libcore_pane_snapshot.a
+CORE_WORKSPACE_AUTHORING_SESSION_LIB := $(SHARED_BUILD_DIR)/libcore_workspace_authoring_session.a
 CORE_QUEUE_LIB := $(SHARED_BUILD_DIR)/libcore_queue.a
 CORE_SCHED_LIB := $(SHARED_BUILD_DIR)/libcore_sched.a
 CORE_JOBS_LIB := $(SHARED_BUILD_DIR)/libcore_jobs.a
@@ -57,6 +63,9 @@ APP_SHARED_LIBS := \
 	$(CORE_THEME_LIB) \
 	$(CORE_FONT_LIB) \
 	$(CORE_PANE_LIB) \
+	$(CORE_PANE_MODULE_LIB) \
+	$(CORE_PANE_SNAPSHOT_LIB) \
+	$(CORE_WORKSPACE_AUTHORING_SESSION_LIB) \
 	$(CORE_BASE_LIB) \
 	$(KIT_VIZ_LIB) \
 	$(KIT_RENDER_LIB) \

@@ -7,6 +7,8 @@
 #include "core_base.h"
 #include "kit_workspace_authoring.h"
 #include "kit_workspace_authoring_ui.h"
+#include "app/workspace_authoring/daw_workspace_authoring_projection.h"
+#include "app/workspace_authoring/daw_workspace_authoring_session_adapter.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,6 +20,7 @@ typedef enum DawWorkspaceAuthoringOverlayMode {
 } DawWorkspaceAuthoringOverlayMode;
 
 typedef struct DawWorkspaceAuthoringHostState {
+    DawWorkspaceAuthoringSessionAdapter session_adapter;
     uint8_t active;
     uint8_t key_c_down;
     uint8_t key_v_down;
@@ -35,6 +38,8 @@ typedef struct DawWorkspaceAuthoringHostState {
     uint32_t add_stub_count;
     uint32_t last_overlay_button_id;
     uint32_t last_font_theme_button_id;
+    DawWorkspaceAuthoringProjection projection;
+    uint8_t projection_profile_loaded;
     uint32_t viewport_width;
     uint32_t viewport_height;
     uint32_t last_event_consumed;
@@ -68,6 +73,8 @@ int daw_workspace_authoring_host_apply_font_theme_button(DawWorkspaceAuthoringHo
                                                          KitWorkspaceAuthoringFontThemeButtonId button_id);
 int daw_workspace_authoring_host_take_font_dirty(DawWorkspaceAuthoringHostState *host);
 int daw_workspace_authoring_host_take_theme_dirty(DawWorkspaceAuthoringHostState *host);
+int daw_workspace_authoring_host_save_profile(DawWorkspaceAuthoringHostState *host);
+int daw_workspace_authoring_host_preview_profile(DawWorkspaceAuthoringHostState *host);
 int daw_workspace_authoring_host_handle_sdl_event(DawWorkspaceAuthoringHostState *host,
                                                   const SDL_Event *event,
                                                   int text_entry_active);

@@ -148,6 +148,36 @@ static void input_manager_apply_authoring_preview_dirty(AppState* state) {
     if (daw_workspace_authoring_host_take_font_dirty(&state->workspace_authoring)) {
         apply_shared_ui_font(state);
     }
+    DawWorkspaceAuthoringHostState *host = &state->workspace_authoring;
+    if (host->last_event_entered) {
+        daw_workspace_authoring_projection_capture(&host->projection,
+                                                   state->panes[3].visible,
+                                                   state->panes[2].visible,
+                                                   state->layout_runtime.transport_ratio,
+                                                   state->layout_runtime.library_ratio,
+                                                   state->layout_runtime.mixer_ratio);
+    }
+    DawWorkspaceAuthoringProjectionAction action = DAW_WORKSPACE_AUTHORING_PROJECTION_NONE;
+    if (daw_workspace_authoring_projection_take_action(&host->projection, &action)) {
+        daw_workspace_authoring_projection_apply_action(&host->projection, action);
+    }
+    if (host->projection.baseline_valid && (daw_workspace_authoring_host_active(host) || host->last_event_canceled || host->projection_profile_loaded)) {
+        if (host->last_event_canceled) {
+            daw_workspace_authoring_projection_restore_baseline(&host->projection);
+        }
+        state->panes[3].visible = host->projection.library_visible != 0u;
+        state->panes[2].visible = host->projection.inspector_visible != 0u;
+        state->layout_runtime.transport_ratio = host->projection.transport_ratio;
+        state->layout_runtime.library_ratio = host->projection.library_ratio;
+        state->layout_runtime.mixer_ratio = host->projection.mixer_ratio;
+        if (state->window_width > 0 && state->window_height > 0) {
+            ui_layout_panes(state, state->window_width, state->window_height);
+        }
+        daw_invalidate_all(state->panes, state->pane_count,
+                           DAW_RENDER_INVALIDATION_LAYOUT | DAW_RENDER_INVALIDATION_OVERLAY);
+        daw_request_full_redraw(DAW_RENDER_INVALIDATION_LAYOUT | DAW_RENDER_INVALIDATION_OVERLAY);
+        host->projection_profile_loaded = 0u;
+    }
 }
 
 static void input_manager_save_authoring_accepted_preferences(AppState* state) {

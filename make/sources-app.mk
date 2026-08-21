@@ -89,6 +89,9 @@ APP_SRCS := \
 	$(SRC_DIR)/undo/undo_manager_clone.c \
 	$(SRC_DIR)/undo/undo_manager_stack.c \
 	$(SRC_DIR)/app/workspace_authoring/daw_workspace_authoring_host.c \
+	$(SRC_DIR)/app/workspace_authoring/daw_workspace_authoring_projection.c \
+	$(SRC_DIR)/app/workspace_authoring/daw_workspace_authoring_profile.c \
+	$(SRC_DIR)/app/workspace_authoring/daw_workspace_authoring_session_adapter.c \
 	$(SRC_DIR)/app/workspace_authoring/daw_workspace_authoring_overlay.c \
 	$(SRC_DIR)/ui/panes.c \
 	$(SRC_DIR)/ui/layout.c \

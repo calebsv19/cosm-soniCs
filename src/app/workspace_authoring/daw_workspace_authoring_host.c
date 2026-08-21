@@ -4,6 +4,7 @@
 
 #include "core_font.h"
 #include "core_theme.h"
+#include "app/workspace_authoring/daw_workspace_authoring_profile.h"
 #include "ui/shared_theme_font_adapter.h"
 
 static CoreResult daw_workspace_authoring_invalid(const char *message) {
@@ -100,9 +101,62 @@ static void daw_workspace_authoring_host_restore_baseline(DawWorkspaceAuthoringH
     host->font_theme_pending_changes = 0u;
 }
 
+static CoreWorkspaceAuthoringSessionHookResult daw_workspace_authoring_session_begin(void *context) {
+    DawWorkspaceAuthoringHostState *host = context;
+    if (!host) return CORE_WORKSPACE_AUTHORING_SESSION_HOOK_FAILED;
+    daw_workspace_authoring_host_capture_baseline(host);
+    host->active = 1u;
+    host->overlay_mode = DAW_WORKSPACE_AUTHORING_OVERLAY_PANES;
+    host->enter_count += 1u;
+    host->font_theme_pending_changes = 0u;
+    host->font_theme_font_dirty = 0u;
+    host->font_theme_theme_dirty = 0u;
+    host->font_theme_status[0] = '\0';
+    return CORE_WORKSPACE_AUTHORING_SESSION_HOOK_OK;
+}
+
+static CoreWorkspaceAuthoringSessionHookResult daw_workspace_authoring_session_validate(void *context) {
+    return context ? CORE_WORKSPACE_AUTHORING_SESSION_HOOK_OK : CORE_WORKSPACE_AUTHORING_SESSION_HOOK_FAILED;
+}
+
+static CoreWorkspaceAuthoringSessionHookResult daw_workspace_authoring_session_apply(void *context) {
+    DawWorkspaceAuthoringHostState *host = context;
+    if (!host) return CORE_WORKSPACE_AUTHORING_SESSION_HOOK_FAILED;
+    host->active = 0u;
+    host->apply_count += 1u;
+    host->last_event_accepted = 1u;
+    host->font_theme_pending_changes = 0u;
+    host->font_theme_baseline_valid = 0u;
+    return CORE_WORKSPACE_AUTHORING_SESSION_HOOK_OK;
+}
+
+static CoreWorkspaceAuthoringSessionHookResult daw_workspace_authoring_session_cancel(void *context) {
+    DawWorkspaceAuthoringHostState *host = context;
+    if (!host) return CORE_WORKSPACE_AUTHORING_SESSION_HOOK_FAILED;
+    daw_workspace_authoring_host_restore_baseline(host);
+    host->active = 0u;
+    host->cancel_count += 1u;
+    host->last_event_canceled = 1u;
+    return CORE_WORKSPACE_AUTHORING_SESSION_HOOK_OK;
+}
+
+static CoreWorkspaceAuthoringSessionHookResult daw_workspace_authoring_session_resume(void *context) {
+    return context ? CORE_WORKSPACE_AUTHORING_SESSION_HOOK_OK : CORE_WORKSPACE_AUTHORING_SESSION_HOOK_FAILED;
+}
+
 void daw_workspace_authoring_host_reset(DawWorkspaceAuthoringHostState *host) {
+    CoreWorkspaceAuthoringSessionHooks hooks;
     if (!host) return;
     memset(host, 0, sizeof(*host));
+    hooks = (CoreWorkspaceAuthoringSessionHooks){
+        daw_workspace_authoring_session_begin,
+        daw_workspace_authoring_session_validate,
+        daw_workspace_authoring_session_apply,
+        daw_workspace_authoring_session_cancel,
+        daw_workspace_authoring_session_resume,
+        daw_workspace_authoring_session_cancel
+    };
+    daw_workspace_authoring_session_adapter_init(&host->session_adapter, host, &hooks);
     host->overlay_mode = DAW_WORKSPACE_AUTHORING_OVERLAY_PANES;
     host->entry_chord_armed_key = KIT_WORKSPACE_AUTHORING_KEY_UNKNOWN;
 }
@@ -116,7 +170,7 @@ void daw_workspace_authoring_host_set_viewport(DawWorkspaceAuthoringHostState *h
 }
 
 int daw_workspace_authoring_host_active(const DawWorkspaceAuthoringHostState *host) {
-    return host && host->active ? 1 : 0;
+    return host && host->active && daw_workspace_authoring_session_adapter_active(&host->session_adapter);
 }
 
 int daw_workspace_authoring_host_pane_overlay_active(const DawWorkspaceAuthoringHostState *host) {
@@ -131,15 +185,10 @@ int daw_workspace_authoring_host_font_theme_overlay_active(const DawWorkspaceAut
 
 CoreResult daw_workspace_authoring_host_enter(DawWorkspaceAuthoringHostState *host) {
     if (!host) return daw_workspace_authoring_invalid("null authoring host");
-    if (!daw_workspace_authoring_host_active(host)) {
-        daw_workspace_authoring_host_capture_baseline(host);
-        host->active = 1u;
-        host->overlay_mode = DAW_WORKSPACE_AUTHORING_OVERLAY_PANES;
-        host->enter_count += 1u;
-        host->font_theme_pending_changes = 0u;
-        host->font_theme_font_dirty = 0u;
-        host->font_theme_theme_dirty = 0u;
-        host->font_theme_status[0] = '\0';
+    if (!daw_workspace_authoring_host_active(host) &&
+        daw_workspace_authoring_session_adapter_enter(&host->session_adapter) ==
+            CORE_WORKSPACE_AUTHORING_SESSION_OUTCOME_FAILED_SAFE) {
+        return daw_workspace_authoring_invalid("authoring session failed safe");
     }
     host->last_event_entered = 1u;
     return core_result_ok();
@@ -148,11 +197,10 @@ CoreResult daw_workspace_authoring_host_enter(DawWorkspaceAuthoringHostState *ho
 CoreResult daw_workspace_authoring_host_apply(DawWorkspaceAuthoringHostState *host) {
     if (!host) return daw_workspace_authoring_invalid("null authoring host");
     if (daw_workspace_authoring_host_active(host)) {
-        host->active = 0u;
-        host->apply_count += 1u;
-        host->last_event_accepted = 1u;
-        host->font_theme_pending_changes = 0u;
-        host->font_theme_baseline_valid = 0u;
+        if (daw_workspace_authoring_session_adapter_apply(&host->session_adapter) ==
+            CORE_WORKSPACE_AUTHORING_SESSION_OUTCOME_FAILED_SAFE) {
+            return daw_workspace_authoring_invalid("authoring session failed safe");
+        }
     }
     host->key_c_down = 0u;
     host->key_v_down = 0u;
@@ -165,10 +213,10 @@ CoreResult daw_workspace_authoring_host_apply(DawWorkspaceAuthoringHostState *ho
 CoreResult daw_workspace_authoring_host_cancel(DawWorkspaceAuthoringHostState *host) {
     if (!host) return daw_workspace_authoring_invalid("null authoring host");
     if (daw_workspace_authoring_host_active(host)) {
-        daw_workspace_authoring_host_restore_baseline(host);
-        host->active = 0u;
-        host->cancel_count += 1u;
-        host->last_event_canceled = 1u;
+        if (daw_workspace_authoring_session_adapter_cancel(&host->session_adapter) ==
+            CORE_WORKSPACE_AUTHORING_SESSION_OUTCOME_FAILED_SAFE) {
+            return daw_workspace_authoring_invalid("authoring session failed safe");
+        }
     }
     host->key_c_down = 0u;
     host->key_v_down = 0u;
@@ -280,6 +328,36 @@ int daw_workspace_authoring_host_take_theme_dirty(DawWorkspaceAuthoringHostState
     if (!host || !host->font_theme_theme_dirty) return 0;
     host->font_theme_theme_dirty = 0u;
     return 1;
+}
+
+int daw_workspace_authoring_host_save_profile(DawWorkspaceAuthoringHostState *host) {
+    char path[256];
+    if (!host || !daw_workspace_authoring_host_pane_overlay_active(host) ||
+        !host->projection.baseline_valid ||
+        !daw_workspace_authoring_profile_default_path(path, sizeof(path))) return 0;
+    if (daw_workspace_authoring_profile_export_file(path, &host->projection) != DAW_WORKSPACE_AUTHORING_PROFILE_OK) {
+        daw_workspace_authoring_host_set_status(host, "WAPP save failed"); return 0;
+    }
+    daw_workspace_authoring_host_set_status(host, "WAPP saved: config/runtime/workspace_authoring.wapp"); return 1;
+}
+
+int daw_workspace_authoring_host_preview_profile(DawWorkspaceAuthoringHostState *host) {
+    DawWorkspaceAuthoringProjection loaded;
+    char path[256];
+    if (!host || !daw_workspace_authoring_host_pane_overlay_active(host) ||
+        !host->projection.baseline_valid ||
+        !daw_workspace_authoring_profile_default_path(path, sizeof(path))) return 0;
+    if (daw_workspace_authoring_profile_import_file(path, &loaded) != DAW_WORKSPACE_AUTHORING_PROFILE_OK) {
+        daw_workspace_authoring_host_set_status(host, "WAPP preview rejected"); return 0;
+    }
+    host->projection.library_visible = loaded.library_visible;
+    host->projection.inspector_visible = loaded.inspector_visible;
+    host->projection.focus_pane = loaded.focus_pane;
+    host->projection.transport_ratio = loaded.transport_ratio;
+    host->projection.library_ratio = loaded.library_ratio;
+    host->projection.mixer_ratio = loaded.mixer_ratio;
+    host->projection_profile_loaded = 1u;
+    daw_workspace_authoring_host_set_status(host, "WAPP preview loaded; Enter applies, Esc restores"); return 1;
 }
 
 static int daw_workspace_authoring_host_handle_overlay_click(DawWorkspaceAuthoringHostState *host,
@@ -412,6 +490,26 @@ int daw_workspace_authoring_host_handle_sdl_event(DawWorkspaceAuthoringHostState
     }
 
     switch (key) {
+        case KIT_WORKSPACE_AUTHORING_KEY_UNKNOWN:
+            switch (event->key.keysym.sym) {
+                case SDLK_l: host->projection.pending_action = DAW_WORKSPACE_AUTHORING_PROJECTION_TOGGLE_LIBRARY; break;
+                case SDLK_i: host->projection.pending_action = DAW_WORKSPACE_AUTHORING_PROJECTION_TOGGLE_INSPECTOR; break;
+                case SDLK_EQUALS: host->projection.pending_action = DAW_WORKSPACE_AUTHORING_PROJECTION_RATIO_TRANSPORT_INC; break;
+                case SDLK_MINUS: host->projection.pending_action = DAW_WORKSPACE_AUTHORING_PROJECTION_RATIO_TRANSPORT_DEC; break;
+                case SDLK_RIGHTBRACKET: host->projection.pending_action = DAW_WORKSPACE_AUTHORING_PROJECTION_RATIO_LIBRARY_INC; break;
+                case SDLK_LEFTBRACKET: host->projection.pending_action = DAW_WORKSPACE_AUTHORING_PROJECTION_RATIO_LIBRARY_DEC; break;
+                case SDLK_PERIOD: host->projection.pending_action = DAW_WORKSPACE_AUTHORING_PROJECTION_RATIO_MIXER_INC; break;
+                case SDLK_COMMA: host->projection.pending_action = DAW_WORKSPACE_AUTHORING_PROJECTION_RATIO_MIXER_DEC; break;
+                case SDLK_1: host->projection.pending_action = DAW_WORKSPACE_AUTHORING_PROJECTION_FOCUS_TRANSPORT; break;
+                case SDLK_2: host->projection.pending_action = DAW_WORKSPACE_AUTHORING_PROJECTION_FOCUS_TIMELINE; break;
+                case SDLK_3: host->projection.pending_action = DAW_WORKSPACE_AUTHORING_PROJECTION_FOCUS_INSPECTOR; break;
+                case SDLK_4: host->projection.pending_action = DAW_WORKSPACE_AUTHORING_PROJECTION_FOCUS_LIBRARY; break;
+                case SDLK_s: (void)daw_workspace_authoring_host_save_profile(host); break;
+                case SDLK_o: (void)daw_workspace_authoring_host_preview_profile(host); break;
+                default: break;
+            }
+            daw_workspace_authoring_note_consumed(host, 1);
+            return 1;
         case KIT_WORKSPACE_AUTHORING_KEY_TAB:
             (void)daw_workspace_authoring_host_cycle_overlay(host);
             daw_workspace_authoring_note_consumed(host, 1);
