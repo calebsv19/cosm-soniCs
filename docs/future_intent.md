@@ -1,6 +1,6 @@
 # DAW Future Intent
 
-Last updated: 2026-05-15
+Last updated: 2026-08-10
 
 ## Scaffold Alignment Intent
 1. Preserve DAW's existing subsystem decomposition strengths.
@@ -68,6 +68,17 @@ Last updated: 2026-05-15
 - next posture:
   - maintenance-only updates for explicit root handling and ingest-mode matrix (`copy` in library pane, `reference` in timeline drop).
   - keep `test-data-path-contract` and `test-library-copy-vs-reference-contract` in stable verification lane.
+
+## Workspace Authoring Intent
+
+- DAW WAP4 is complete as the second Workspace Authoring presentation-profile
+  proving host after IDE.
+- The completed scope is deliberately fixed: four stable surfaces,
+  Library/Inspector visibility, selected focus, and existing layout ratios;
+  shared session/profile compatibility is reused through DAW-local adapters.
+- Future generic pane trees, dynamic providers, module insertion, or broader
+  runtime controls require a fresh platform/host plan rather than reopening
+  this closed proving lane.
 
 ## MIDI and Instrument Intent
 - MIDI region and instrument work is now active current product surface rather than speculative future work.

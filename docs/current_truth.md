@@ -1,6 +1,6 @@
 # soniCs Current Truth
 
-Last updated: 2026-08-08
+Last updated: 2026-08-10
 
 ## Program Identity
 - Repository directory: `daw/`
@@ -22,6 +22,13 @@ Last updated: 2026-08-08
   compute-path adoption; DAW audio, transport, persistence, and UI semantics
   remain app-owned and unchanged.
 - Core seam decomposition wave is landed across app/engine/input/session/ui/undo lanes.
+- Workspace Authoring WAP4 is operator-accepted as the second bounded
+  presentation-profile proving host after IDE: DAW uses the shared session and
+  compatibility vocabulary through local adapters while retaining its fixed
+  four-surface solver, runtime gate, drawing, and WAPP path policy. Pane mode
+  drafts only Library/Inspector visibility, selected focus, and existing
+  transport/library/mixer ratios; it supports explicit Apply/Cancel and
+  fail-closed WAPP save/preview without changing audio, projects, or sessions.
 - Data-path contract foundation (`P3`) is complete with explicit runtime path fields and persistence.
 - Release/desktop packaging lanes are complete through the shared target-contract flow.
 - Intel `x86_64` packaging passed local gates after launcher runtime shader-lane hardening.
@@ -150,6 +157,8 @@ Last updated: 2026-08-08
   picker UI, user preset storage, and external MIDI input should begin as fresh
   planning/proof slices rather than as active S24 work.
 - Keep launcher/runtime shader-copy hardening aligned with the packaged Vulkan/runtime contract.
+- Treat generic pane trees, dynamic module providers, and broader runtime
+  controls as future platform decisions, not as unimplemented DAW WAP4 work.
 - Current security posture remains trusted local desktop use. R4 hardened the
   current local trust boundaries, but broader untrusted-project or sandboxed
   runtime safety still needs a fresh audit before being claimed.
