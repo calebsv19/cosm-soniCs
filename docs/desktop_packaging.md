@@ -2,7 +2,7 @@
 
 DAW (`soniCs`) supports standardized macOS app-bundle packaging and release notarization via Makefile targets.
 
-Last updated: 2026-06-19
+Last updated: 2026-08-27
 
 ## Local Desktop Package
 
@@ -40,6 +40,44 @@ output. The packaged launcher may write runtime state under
 `~/Library/Logs/DAW/launcher.log`, with tmp fallbacks; sandboxed agent runs may
 need approval for those launcher runtime writes.
 
+## Persistent Main Edit Package
+
+The isolated development package uses a distinct identity and mutable-state
+namespace:
+
+- app: `soniCs Main Edit.app`
+- bundle identifier: `com.cosm.sonics.main-edit`
+- profile: `main-edit`
+- runtime: `~/Library/Application Support/DAW-Main-Edit/runtime`
+- logs: `~/Library/Logs/DAW-Main-Edit/launcher.log`
+- build output: `build/targets/<target-triple>/dist/dev/main-edit/`
+
+Build and validate it without installing or launching the app:
+
+```sh
+make -C daw package-desktop-main-edit
+make -C daw package-desktop-main-edit-self-test
+```
+
+The package embeds `Contents/Resources/build_identity.json` using the generic
+`codework_local_development_build_identity_v1` schema. The shared MEW1 helper
+binds that file to exact source state and packaged binary bytes, while a
+before/after source fingerprint guard rejects a package assembled across a
+source mutation.
+
+Desktop replacement is an explicit, separate host operation:
+
+```sh
+make -C daw package-desktop-main-edit-refresh
+```
+
+Refresh performs a read-only process audit and refuses to replace a running
+Main Edit app. It cannot overwrite canonical `soniCs.app`. Opening the app is
+another explicit boundary through `package-desktop-main-edit-open`.
+
+See `docs/main_edit_worktree.md` for lane start, checkpoint, integration, and
+retain/recycle gates.
+
 Package resources are allowlisted for public/default state. Bundled config
 includes the default engine/config support files and
 `config/templates/public_default_project.json`; generated runtime roots,
@@ -47,6 +85,10 @@ includes the default engine/config support files and
 `config/library_index.json` media registry are excluded. Bundled audio includes
 only `assets/audio/README.md`, so ignored local user `.wav`/`.mp3` files under
 `assets/audio/` are not copied into `soniCs.app`.
+
+The ignored runtime preference `config/font_zoom_step.txt` is also excluded;
+fresh packages begin from the source-defined default instead of copying a
+maintainer-local UI preference.
 
 Optional icon inputs:
 

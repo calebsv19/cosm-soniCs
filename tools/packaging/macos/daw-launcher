@@ -4,9 +4,24 @@ set -eu
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
 APP_CONTENTS_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
 RES_DIR="$APP_CONTENTS_DIR/Resources"
-LOG_DIR="${HOME}/Library/Logs/DAW"
+INFO_PLIST="$APP_CONTENTS_DIR/Info.plist"
+read_plist_string() {
+    key="$1"
+    fallback="$2"
+    value="$(/usr/libexec/PlistBuddy -c "Print :$key" "$INFO_PLIST" 2>/dev/null || true)"
+    if [ -n "$value" ]; then
+        printf '%s' "$value"
+    else
+        printf '%s' "$fallback"
+    fi
+}
+PACKAGE_PROFILE="$(read_plist_string SoniCsPackageProfile standard)"
+RUNTIME_NAMESPACE="$(read_plist_string SoniCsRuntimeNamespace DAW)"
+LOG_NAMESPACE="$(read_plist_string SoniCsLogNamespace DAW)"
+BUILD_LABEL="$(read_plist_string SoniCsBuildLabel soniCs)"
+LOG_DIR="${HOME}/Library/Logs/${LOG_NAMESPACE}"
 LOG_FILE="$LOG_DIR/launcher.log"
-RUNTIME_DIR_DEFAULT="${HOME}/Library/Application Support/DAW/runtime"
+RUNTIME_DIR_DEFAULT="${HOME}/Library/Application Support/${RUNTIME_NAMESPACE}/runtime"
 RUNTIME_DIR="${DAW_RUNTIME_DIR:-$RUNTIME_DIR_DEFAULT}"
 
 ensure_bundle_copy() {
@@ -70,6 +85,10 @@ if ! touch "$LOG_FILE" 2>/dev/null; then
 fi
 
 export DAW_RUNTIME_DIR="$RUNTIME_DIR"
+export DAW_PACKAGE_PROFILE="$PACKAGE_PROFILE"
+export DAW_RUNTIME_NAMESPACE="$RUNTIME_NAMESPACE"
+export DAW_LOG_NAMESPACE="$LOG_NAMESPACE"
+export DAW_BUILD_LABEL="$BUILD_LABEL"
 export VK_RENDERER_SHADER_ROOT="${VK_RENDERER_SHADER_ROOT:-$RUNTIME_DIR}"
 export DAW_TIMER_HUD_SETTINGS="${DAW_TIMER_HUD_SETTINGS:-$DAW_RUNTIME_DIR/timerhud/daw/settings.json}"
 export DAW_TIMER_HUD="${DAW_TIMER_HUD:-0}"
@@ -92,6 +111,10 @@ if [ "${1:-}" = "--print-config" ]; then
     echo "APP_CONTENTS_DIR=$APP_CONTENTS_DIR"
     echo "RES_DIR=$RES_DIR"
     echo "LOG_FILE=$LOG_FILE"
+    echo "DAW_PACKAGE_PROFILE=$DAW_PACKAGE_PROFILE"
+    echo "DAW_RUNTIME_NAMESPACE=$DAW_RUNTIME_NAMESPACE"
+    echo "DAW_LOG_NAMESPACE=$DAW_LOG_NAMESPACE"
+    echo "DAW_BUILD_LABEL=$DAW_BUILD_LABEL"
     echo "DAW_RUNTIME_DIR=$DAW_RUNTIME_DIR"
     echo "DAW_TIMER_HUD_SETTINGS=$DAW_TIMER_HUD_SETTINGS"
     echo "DAW_TIMER_HUD=$DAW_TIMER_HUD"
@@ -109,6 +132,9 @@ if [ "${1:-}" = "--self-test" ]; then
     [ -f "$APP_CONTENTS_DIR/Frameworks/libvulkan.1.dylib" ] || { echo "missing: bundled libvulkan" >&2; exit 1; }
     [ -f "$APP_CONTENTS_DIR/Frameworks/libMoltenVK.dylib" ] || { echo "missing: bundled libMoltenVK" >&2; exit 1; }
     [ -f "$APP_CONTENTS_DIR/Info.plist" ] || { echo "missing: Info.plist" >&2; exit 1; }
+    if [ "$PACKAGE_PROFILE" = "main-edit" ]; then
+        [ -f "$RES_DIR/build_identity.json" ] || { echo "missing: build_identity.json" >&2; exit 1; }
+    fi
     [ -f "$RES_DIR/config/engine.cfg" ] || { echo "missing: config/engine.cfg" >&2; exit 1; }
     [ -f "$RES_DIR/assets/audio/README.md" ] || { echo "missing: bundled audio readme" >&2; exit 1; }
     [ -f "$RES_DIR/include/fonts/Montserrat/Montserrat-Regular.ttf" ] || { echo "missing: bundled Montserrat" >&2; exit 1; }
@@ -125,6 +151,10 @@ if [ "${1:-}" = "--self-test" ]; then
     [ -f "$ICD_FILE" ] || { echo "missing: runtime MoltenVK_icd.json" >&2; exit 1; }
     echo "self-test: ok"
     echo "LOG_FILE=$LOG_FILE"
+    echo "DAW_PACKAGE_PROFILE=$DAW_PACKAGE_PROFILE"
+    echo "DAW_RUNTIME_NAMESPACE=$DAW_RUNTIME_NAMESPACE"
+    echo "DAW_LOG_NAMESPACE=$DAW_LOG_NAMESPACE"
+    echo "DAW_BUILD_LABEL=$DAW_BUILD_LABEL"
     echo "DAW_RUNTIME_DIR=$DAW_RUNTIME_DIR"
     echo "DAW_TIMER_HUD_SETTINGS=$DAW_TIMER_HUD_SETTINGS"
     echo "DAW_TIMER_HUD=$DAW_TIMER_HUD"

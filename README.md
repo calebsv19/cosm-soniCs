@@ -42,6 +42,9 @@ The repository and source-level program key remain `daw`.
   parser, restore, data-path, package, capture-device, recording, and opt-in
   engine graph diagnostics.
 - Target-aware desktop packaging and Intel `x86_64` release artifact flow for `soniCs`.
+- An isolated persistent Main Edit package profile for ongoing development:
+  `soniCs Main Edit.app`, a separate bundle/runtime/log identity, and embedded
+  exact-source provenance.
 
 ## Current Gaps
 
@@ -133,6 +136,17 @@ Expected success lines include `self-test: ok` and
 state under `~/Library/Application Support/DAW/runtime` and logs under
 `~/Library/Logs/DAW/launcher.log`, with tmp fallbacks.
 
+Main Edit package proof:
+
+```bash
+make -C daw package-desktop-main-edit-self-test
+```
+
+This produces and validates the isolated development bundle without replacing
+or launching either Desktop app. See
+[`docs/main_edit_worktree.md`](docs/main_edit_worktree.md) for the persistent
+lane and integration gates.
+
 Default-off audit proof:
 
 ```bash
@@ -194,6 +208,7 @@ make test-kitviz-fx-preview-adapter
 make test-kitviz-meter-adapter
 make test-shared-theme-font-adapter
 make package-desktop-self-test
+make package-desktop-main-edit-self-test
 make memory-check-audit
 ```
 

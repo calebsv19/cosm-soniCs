@@ -1,6 +1,6 @@
 # soniCs Current Truth
 
-Last updated: 2026-08-10
+Last updated: 2026-08-27
 
 ## Program Identity
 - Repository directory: `daw/`
@@ -31,6 +31,13 @@ Last updated: 2026-08-10
   fail-closed WAPP save/preview without changing audio, projects, or sessions.
 - Data-path contract foundation (`P3`) is complete with explicit runtime path fields and persistence.
 - Release/desktop packaging lanes are complete through the shared target-contract flow.
+- MEW1 portability support is implemented in the persistent
+  `codex/daw-main-edit` lane: `soniCs Main Edit.app` uses bundle identifier
+  `com.cosm.sonics.main-edit`, separate `DAW-Main-Edit` runtime/log namespaces,
+  the generic embedded build-identity schema, a source-mutation guard, and the
+  required build/self-test/guarded-refresh targets. This remains local
+  development proof, not a version, release, Registry, publication, or
+  deployment claim.
 - Intel `x86_64` packaging passed local gates after launcher runtime shader-lane hardening.
 - Public release version is now `0.2.0`.
 - MIDI regions are first-class engine/session objects with timeline creation/selection, piano-roll editing, QWERTY audition/recording, note clipboard/duplicate commands, quantize, velocity editing, bounce-to-WAV, and session round-trip coverage.
@@ -81,6 +88,7 @@ Last updated: 2026-08-10
 - Package diagnostics are exposed by:
   - `make -C daw package-desktop-self-test`
   - `build/targets/macOS-arm64/dist/soniCs.app/Contents/MacOS/daw-launcher --print-config`
+  - `make -C daw package-desktop-main-edit-self-test`
 - Audio capture and recording diagnostics stay outside capture callbacks,
   drain loops, per-frame paths, and audio-thread work.
 - Engine graph rebuild summaries are opt-in through the existing engine logging
@@ -130,6 +138,13 @@ Last updated: 2026-08-10
     path, Vulkan ICD files, and MoltenVK dylib path; expected success lines
     include `self-test: ok` and `package-desktop-self-test passed.`
   - `make -C daw package-desktop-refresh`
+  - `make -C daw package-desktop-main-edit-self-test`:
+    validates exact generic source/package identity, the isolated Main Edit
+    bundle identifier, runtime/log namespaces, architecture, resources, and
+    signature without installing or launching the GUI
+  - `make -C daw package-desktop-main-edit-refresh`:
+    host-required guarded refresh that refuses to replace a running Main Edit
+    app and cannot target canonical `soniCs.app`
   - `build/targets/macOS-arm64/dist/soniCs.app/Contents/MacOS/daw-launcher --print-config`:
     prints the resolved app contents/resources paths, log file, runtime root,
     shader root, Timer HUD settings, Vulkan ICD files, and MoltenVK dylib path
@@ -149,6 +164,9 @@ Last updated: 2026-08-10
   and `assets/audio/README.md`; generated runtime/session/project state, local
   library-index metadata, local user audio, and private planning docs are
   excluded and audited.
+- `docs/main_edit_worktree.md` is the program-local MEW1 runbook. The
+  persistent Main Edit lane is retained by default after adoption; recycling
+  requires clean/reachable/process-free evidence.
 
 ## Current Boundary
 - Preserve seam decomposition stability and data-path contract correctness.

@@ -1,7 +1,7 @@
 # soniCs Docs Index
 
 Start here for soniCs public documentation.
-Last audited: 2026-06-19.
+Last audited: 2026-08-27.
 
 Repository and source-level identifiers still use `daw`.
 
@@ -11,6 +11,8 @@ Repository and source-level identifiers still use `daw`.
   package proof lane, and manual-proof boundary.
 - `docs/future_intent.md`: intended scaffold convergence path and next migration phases.
 - `docs/memory_check_audit.md`: default-off fisiCs memory-check audit lane.
+- `docs/main_edit_worktree.md`: persistent Main Edit topology, isolated
+  development-package identity, and checkpoint/integration/recycle gates.
 - Intel `x86_64` packaging/runtime hardening is active in the current truth and desktop packaging docs.
 - MIDI/instrument and audio-recording state is summarized in current truth and future intent; detailed implementation history stays in the private DAW planning lane.
 - Current diagnostics coverage is summarized in `docs/current_truth.md`.
@@ -30,6 +32,7 @@ Repository and source-level identifiers still use `daw`.
   - `make -C daw test-track-role`
   - `make -C daw test-stable`
   - `make -C daw package-desktop-self-test`
+  - `make -C daw package-desktop-main-edit-self-test`
   - `make -C daw memory-check-audit`:
     default-off fisiCs audit lane, not part of the one-command demo proof
   - `make -C daw test-legacy`
@@ -44,6 +47,7 @@ Repository and source-level identifiers still use `daw`.
 
 ## Existing Public Docs
 - `docs/desktop_packaging.md`
+- `docs/main_edit_worktree.md`
 - `docs/DAW_ARCH_EFFECTS_AUDIT.md`
 - `docs/DAW_EFFECTS_PANEL_STATUS.md`
 - `docs/DAW_WAKE_IDLE_LOOP_MIGRATION_PLAN.md`
