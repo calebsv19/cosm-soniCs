@@ -10,10 +10,13 @@
 #include "ui/timeline_midi_clip_preview.h"
 #include "undo/undo_manager.h"
 
+#include "test_wav_fixture.h"
+
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static void fail(const char* message) {
     fprintf(stderr, "timeline_midi_region_test: %s\n", message);
@@ -534,9 +537,15 @@ static void test_midi_track_default_inheritance_and_region_override(void) {
 }
 
 static void test_midi_clipboard_copy_ignores_stale_audio_selection(void) {
+    const char* audio_fixture_path = "tmp/timeline_midi_region_stale_selection.wav";
     AppState state;
     EngineRuntimeConfig cfg;
     state_init(&state, &cfg);
+
+    daw_test_wav_write_silence_or_fail(audio_fixture_path,
+                                       cfg.sample_rate,
+                                       256,
+                                       "timeline_midi_region_test");
 
     int destination_track = engine_add_track(state.engine);
     expect(destination_track == 1, "destination track should be created for stale selection copy test");
@@ -544,7 +553,7 @@ static void test_midi_clipboard_copy_ignores_stale_audio_selection(void) {
     int audio_index = -1;
     expect(engine_add_clip_to_track(state.engine,
                                     0,
-                                    "assets/audio/kamhunt-timbo-drumline-loop-103bpm-171091.mp3",
+                                    audio_fixture_path,
                                     0,
                                     &audio_index),
            "failed to add audio source clip for stale selection copy test");
@@ -583,6 +592,7 @@ static void test_midi_clipboard_copy_ignores_stale_audio_selection(void) {
                 "stale selection MIDI paste note mismatch");
 
     state_destroy(&state);
+    (void)unlink(audio_fixture_path);
 }
 
 int main(void) {

@@ -39,7 +39,8 @@ MIDI_INSTRUMENT_RENDER_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,
 MIDI_INSTRUMENT_RENDER_TEST_BIN := $(TEST_BUILD_ROOT)/midi_instrument_render_test
 
 TIMELINE_MIDI_REGION_TEST_SRCS := \
-	tests/timeline_midi_region_test.c
+	tests/timeline_midi_region_test.c \
+	tests/test_wav_fixture.c
 
 TIMELINE_MIDI_REGION_TEST_OBJS := $(patsubst tests/%.c,$(TEST_BUILD_ROOT)/%.o,$(TIMELINE_MIDI_REGION_TEST_SRCS))
 TIMELINE_MIDI_REGION_TEST_BIN := $(TEST_BUILD_ROOT)/timeline_midi_region_test
