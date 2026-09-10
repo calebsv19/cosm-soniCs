@@ -200,3 +200,7 @@ Follow-up feature work remains in the audio lane, not in package automation.
 
 Note:
 - a fresh clone will still need an `AppIcon.icns` copied into `tools/packaging/macos/local_app_icon/` before plain packaging picks it up, because that lane is intentionally ignored.
+
+## Isolated release input
+
+`make release-artifact-disposable RELEASE_ROOT=build/release-authenticated/<job-id>` creates a new job-owned directory containing `soniCs.app`, a ZIP, SHA-256 sidecar and source-bound manifest. It runs the existing package smoke with an isolated `DIST_DIR`; `release-package-self-test` seeds a temporary runtime under `build/` and removes it on success or failure, avoiding writes into the installed app runtime. Existing destinations, traversal and symlink ancestors are rejected before packaging. This target performs local ad-hoc signing only; Developer ID authentication and publication remain separate Decision 1 and Decision 2 stages. It does not replace installed apps.
