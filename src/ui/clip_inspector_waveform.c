@@ -357,7 +357,7 @@ void clip_inspector_render_waveform_panel(SDL_Renderer* renderer,
     }
 
     if (state->engine) {
-        uint64_t transport_frame = engine_get_transport_frame(state->engine);
+        uint64_t transport_frame = engine_get_presentation_frame(state->engine);
         uint64_t clip_start_frame = clip->timeline_start_frames;
         uint64_t clip_end_frame = clip_start_frame + clip_frames;
         if (transport_frame >= clip_start_frame && transport_frame <= clip_end_frame) {

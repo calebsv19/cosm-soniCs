@@ -1,0 +1,38 @@
+sustained_root=/tmp/daw-s49-6k47IG
+2026-09-22 13:55:06.833 lifecycle_acceptance_bench[78701:210458995] INFO: audio_recording: begin_capture request track=0 start_frame=32342 device=default sample_rate=48000 channels=1 block_size=128
+2026-09-22 13:55:06.834 lifecycle_acceptance_bench[78701:210458995] INFO: audio_capture_device: open request device=default sample_rate=48000 channels=1 block_size=128
+2026-09-22 13:55:06.834 lifecycle_acceptance_bench[78701:210458995] INFO: audio_capture_device: open ok device=Default Input sample_rate=48000 channels=1 block_size=128
+2026-09-22 13:55:06.838 lifecycle_acceptance_bench[78701:210458995] INFO: audio_recording: recovery journal=/tmp/daw-s49-6k47IG/recordings/take-92QHN3
+2026-09-22 13:55:06.838 lifecycle_acceptance_bench[78701:210458995] INFO: audio_recording: begin_take ok track=0 start_frame=32342 sample_rate=48000 channels=1 queue_frames=480000
+2026-09-22 13:55:06.839 lifecycle_acceptance_bench[78701:210458995] INFO: audio_capture_device: start ok device=Default Input
+2026-09-22 13:55:06.839 lifecycle_acceptance_bench[78701:210458995] INFO: audio_recording: begin_capture ok track=0 device=Default Input sample_rate=48000 channels=1 block_size=128
+2026-09-22 13:55:07.842 lifecycle_acceptance_bench[78701:210458995] INFO: media_import: Loading (Ctrl/Cmd+Esc cancels) (/tmp/daw-s49-6k47IG/import.wav)
+2026-09-22 13:55:09.419 lifecycle_acceptance_bench[78701:210458995] INFO: media_import: Imported (/tmp/daw-s49-6k47IG/import.wav)
+2026-09-22 13:55:12.846 lifecycle_acceptance_bench[78701:210458995] INFO: media_import: Loading (Ctrl/Cmd+Esc cancels) (/tmp/daw-s49-6k47IG/import.wav)
+2026-09-22 13:55:14.278 lifecycle_acceptance_bench[78701:210458995] INFO: media_import: Imported (/tmp/daw-s49-6k47IG/import.wav)
+2026-09-22 13:55:16.843 lifecycle_acceptance_bench[78701:210458995] INFO: audio_capture_device: stop device=Default Input
+2026-09-22 13:55:17.032 lifecycle_acceptance_bench[78701:210458995] INFO: media_import: Loading (Ctrl/Cmd+Esc cancels) (/tmp/daw-s49-6k47IG/recordings/take-92QHN3.wav)
+2026-09-22 13:55:17.032 lifecycle_acceptance_bench[78701:210458995] INFO: audio_recording: cancel status=1 track=0 frames=570368 dropped_frames=0 capture_open=1 capture_started=0
+2026-09-22 13:55:17.032 lifecycle_acceptance_bench[78701:210458995] INFO: audio_capture_device: close device=Default Input
+2026-09-22 13:55:17.032 lifecycle_acceptance_bench[78701:210458995] INFO: audio_capture_device: stop device=Default Input
+2026-09-22 13:55:17.187 lifecycle_acceptance_bench[78701:210458995] INFO: media_import: Imported (/tmp/daw-s49-6k47IG/recordings/take-92QHN3.wav)
+2026-09-22 13:55:17.715 lifecycle_acceptance_bench[78701:210458995] INFO: session_apply_document: migrated 32 clips to media_id
+sustained_root=/tmp/daw-s49-sb06tW
+2026-09-22 13:55:19.314 lifecycle_acceptance_bench[78701:210458995] INFO: audio_recording: begin_capture request track=0 start_frame=32768 device=default sample_rate=48000 channels=1 block_size=128
+2026-09-22 13:55:19.314 lifecycle_acceptance_bench[78701:210458995] INFO: audio_capture_device: open request device=default sample_rate=48000 channels=1 block_size=128
+2026-09-22 13:55:19.314 lifecycle_acceptance_bench[78701:210458995] INFO: audio_capture_device: open ok device=Default Input sample_rate=48000 channels=1 block_size=128
+2026-09-22 13:55:19.318 lifecycle_acceptance_bench[78701:210458995] INFO: audio_recording: recovery journal=/tmp/daw-s49-sb06tW/recordings/take-VymFTw
+2026-09-22 13:55:19.318 lifecycle_acceptance_bench[78701:210458995] INFO: audio_recording: begin_take ok track=0 start_frame=32768 sample_rate=48000 channels=1 queue_frames=480000
+2026-09-22 13:55:19.318 lifecycle_acceptance_bench[78701:210458995] INFO: audio_capture_device: start ok device=Default Input
+2026-09-22 13:55:19.318 lifecycle_acceptance_bench[78701:210458995] INFO: audio_recording: begin_capture ok track=0 device=Default Input sample_rate=48000 channels=1 block_size=128
+2026-09-22 13:55:20.319 lifecycle_acceptance_bench[78701:210458995] INFO: media_import: Loading (Ctrl/Cmd+Esc cancels) (/tmp/daw-s49-sb06tW/import.wav)
+2026-09-22 13:55:21.708 lifecycle_acceptance_bench[78701:210458995] INFO: media_import: Imported (/tmp/daw-s49-sb06tW/import.wav)
+2026-09-22 13:55:25.323 lifecycle_acceptance_bench[78701:210458995] INFO: media_import: Loading (Ctrl/Cmd+Esc cancels) (/tmp/daw-s49-sb06tW/import.wav)
+2026-09-22 13:55:26.709 lifecycle_acceptance_bench[78701:210458995] INFO: media_import: Imported (/tmp/daw-s49-sb06tW/import.wav)
+2026-09-22 13:55:29.323 lifecycle_acceptance_bench[78701:210458995] INFO: audio_capture_device: stop device=Default Input
+2026-09-22 13:55:29.506 lifecycle_acceptance_bench[78701:210458995] INFO: media_import: Loading (Ctrl/Cmd+Esc cancels) (/tmp/daw-s49-sb06tW/recordings/take-VymFTw.wav)
+2026-09-22 13:55:29.506 lifecycle_acceptance_bench[78701:210458995] INFO: audio_recording: cancel status=1 track=0 frames=572672 dropped_frames=0 capture_open=1 capture_started=0
+2026-09-22 13:55:29.506 lifecycle_acceptance_bench[78701:210458995] INFO: audio_capture_device: close device=Default Input
+2026-09-22 13:55:29.506 lifecycle_acceptance_bench[78701:210458995] INFO: audio_capture_device: stop device=Default Input
+2026-09-22 13:55:29.658 lifecycle_acceptance_bench[78701:210458995] INFO: media_import: Imported (/tmp/daw-s49-sb06tW/recordings/take-VymFTw.wav)
+2026-09-22 13:55:30.160 lifecycle_acceptance_bench[78701:210458995] INFO: session_apply_document: migrated 32 clips to media_id

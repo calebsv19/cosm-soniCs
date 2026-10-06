@@ -67,6 +67,8 @@ static bool session_eq_equal(const SessionEqCurve* a, const SessionEqCurve* b) {
 }
 
 static void eq_detail_apply_curve(AppState* state);
+static bool eq_detail_begin_undo_drag(AppState* state);
+static void eq_detail_finish_undo_drag(AppState* state);
 
 static void eq_curve_set_defaults(EqCurveState* curve) {
     if (!curve) {
@@ -97,41 +99,18 @@ static void eq_curve_set_defaults(EqCurveState* curve) {
     curve->bands[3].freq_hz = 8000.0f;
 }
 
+// Resets EQ only after reserving the complete undo baseline.
 static void eq_detail_reset_curve(AppState* state) {
-    if (!state) {
-        return;
-    }
-    EffectsPanelState* panel = &state->effects_panel;
-    UndoCommand cmd = {0};
-    cmd.type = UNDO_CMD_EQ_CURVE;
-    if (panel->eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK &&
-        panel->target == FX_PANEL_TARGET_TRACK &&
-        panel->target_track_index >= 0) {
-        cmd.data.eq_curve_edit.is_master = false;
-        cmd.data.eq_curve_edit.track_index = panel->target_track_index;
-    } else {
-        cmd.data.eq_curve_edit.is_master = true;
-        cmd.data.eq_curve_edit.track_index = -1;
-    }
-    eq_curve_to_session(&panel->eq_curve, &cmd.data.eq_curve_edit.before);
-    eq_curve_set_defaults(&panel->eq_curve);
-    if (cmd.data.eq_curve_edit.is_master) {
-        panel->eq_curve_master = panel->eq_curve;
-    } else if (panel->eq_curve_tracks &&
-               cmd.data.eq_curve_edit.track_index >= 0 &&
-               cmd.data.eq_curve_edit.track_index < panel->eq_curve_tracks_count) {
-        panel->eq_curve_tracks[cmd.data.eq_curve_edit.track_index] = panel->eq_curve;
-    }
+    if (!eq_detail_begin_undo_drag(state)) return;
+    eq_curve_set_defaults(&state->effects_panel.eq_curve);
     eq_detail_apply_curve(state);
-    eq_curve_to_session(&panel->eq_curve, &cmd.data.eq_curve_edit.after);
-    if (!session_eq_equal(&cmd.data.eq_curve_edit.before, &cmd.data.eq_curve_edit.after)) {
-        undo_manager_push(&state->undo, &cmd);
-    }
+    eq_detail_finish_undo_drag(state);
 }
 
-static void eq_detail_begin_undo_drag(AppState* state) {
+// Reserves EQ history before activating a curve gesture.
+static bool eq_detail_begin_undo_drag(AppState* state) {
     if (!state) {
-        return;
+        return false;
     }
     EffectsPanelState* panel = &state->effects_panel;
     UndoCommand cmd = {0};
@@ -147,22 +126,54 @@ static void eq_detail_begin_undo_drag(AppState* state) {
     }
     eq_curve_to_session(&panel->eq_curve, &cmd.data.eq_curve_edit.before);
     cmd.data.eq_curve_edit.after = cmd.data.eq_curve_edit.before;
-    undo_manager_begin_drag(&state->undo, &cmd);
+    if (!(undo_command_bind_track(state, &cmd) && undo_manager_begin_drag(&state->undo, &cmd))) return false;
+    panel->eq_detail.history_serial = state->undo.drag_serial;
+    return true;
 }
 
+// Publishes a curve and restores the displayed draft to accepted engine state on rejection.
 static void eq_detail_apply_curve(AppState* state) {
-    if (!state || !state->engine) {
-        return;
-    }
+    if (!state || !state->engine) return;
     EffectsPanelState* panel = &state->effects_panel;
     EngineEqCurve curve;
     eq_curve_to_engine(&panel->eq_curve, &curve);
-    if (panel->eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK &&
-        panel->target == FX_PANEL_TARGET_TRACK &&
-        panel->target_track_index >= 0) {
-        engine_set_track_eq_curve(state->engine, panel->target_track_index, &curve);
+    int track = panel->eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK &&
+        panel->target == FX_PANEL_TARGET_TRACK ? panel->target_track_index : -1;
+    bool accepted = track >= 0 ? engine_set_track_eq_curve(state->engine, track, &curve) :
+                                engine_set_master_eq_curve(state->engine, &curve);
+    bool owns_history = state->undo.active_drag_valid &&
+        panel->eq_detail.history_serial == state->undo.drag_serial && state->undo.active_drag.type == UNDO_CMD_EQ_CURVE;
+    if (!accepted && owns_history) {
+        const SessionEqCurve* previous = &state->undo.active_drag.data.eq_curve_edit.after;
+        panel->eq_curve.low_cut.enabled = previous->low_cut.enabled;
+        panel->eq_curve.low_cut.freq_hz = previous->low_cut.freq_hz;
+        panel->eq_curve.low_cut.slope = previous->low_cut.slope;
+        panel->eq_curve.high_cut.enabled = previous->high_cut.enabled;
+        panel->eq_curve.high_cut.freq_hz = previous->high_cut.freq_hz;
+        panel->eq_curve.high_cut.slope = previous->high_cut.slope;
+        for (int i = 0; i < ENGINE_EQ_BANDS; ++i) {
+            panel->eq_curve.bands[i].enabled = previous->bands[i].enabled;
+            panel->eq_curve.bands[i].freq_hz = previous->bands[i].freq_hz;
+            panel->eq_curve.bands[i].gain_db = previous->bands[i].gain_db;
+            panel->eq_curve.bands[i].q_width = previous->bands[i].q_width;
+        }
+    }
+    if (accepted && owns_history) eq_curve_to_session(&panel->eq_curve, &state->undo.active_drag.data.eq_curve_edit.after);
+    if (track < 0) panel->eq_curve_master = panel->eq_curve;
+    else if (panel->eq_curve_tracks && track < panel->eq_curve_tracks_count) panel->eq_curve_tracks[track] = panel->eq_curve;
+}
+
+// Commits only this EQ reservation using the accepted displayed curve.
+static void eq_detail_finish_undo_drag(AppState* state) {
+    if (!state || !state->undo.active_drag_valid ||
+        state->effects_panel.eq_detail.history_serial != state->undo.drag_serial ||
+        state->undo.active_drag.type != UNDO_CMD_EQ_CURVE) return;
+    UndoCommand* command = &state->undo.active_drag;
+    eq_curve_to_session(&state->effects_panel.eq_curve, &command->data.eq_curve_edit.after);
+    if (!session_eq_equal(&command->data.eq_curve_edit.before, &command->data.eq_curve_edit.after)) {
+        undo_manager_commit_drag(&state->undo, command);
     } else {
-        engine_set_master_eq_curve(state->engine, &curve);
+        undo_manager_cancel_drag(&state->undo);
     }
 }
 
@@ -302,6 +313,7 @@ bool effects_panel_eq_detail_handle_mouse_down(AppState* state,
     if (event->button.button != SDL_BUTTON_LEFT) {
         return false;
     }
+    if (state->undo.active_drag_valid) return false;
     SDL_Point pt = {event->button.x, event->button.y};
     if (!eq_detail_hit(layout, &pt)) {
         state->effects_panel.eq_detail.hovered = false;
@@ -334,56 +346,29 @@ bool effects_panel_eq_detail_handle_mouse_down(AppState* state,
     }
     EqCurveState* curve = &state->effects_panel.eq_curve;
     if (SDL_PointInRect(&pt, &low_rect)) {
-        UndoCommand cmd = {0};
-        cmd.type = UNDO_CMD_EQ_CURVE;
-        cmd.data.eq_curve_edit.is_master = !(state->effects_panel.eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK &&
-                                             state->effects_panel.target == FX_PANEL_TARGET_TRACK &&
-                                             state->effects_panel.target_track_index >= 0);
-        cmd.data.eq_curve_edit.track_index = cmd.data.eq_curve_edit.is_master ? -1 : state->effects_panel.target_track_index;
-        eq_curve_to_session(curve, &cmd.data.eq_curve_edit.before);
+        if (!eq_detail_begin_undo_drag(state)) return true;
         curve->low_cut.enabled = !curve->low_cut.enabled;
         eq_detail_apply_curve(state);
-        eq_curve_to_session(curve, &cmd.data.eq_curve_edit.after);
-        if (!session_eq_equal(&cmd.data.eq_curve_edit.before, &cmd.data.eq_curve_edit.after)) {
-            undo_manager_push(&state->undo, &cmd);
-        }
+        eq_detail_finish_undo_drag(state);
         return true;
     }
     if (SDL_PointInRect(&pt, &high_rect)) {
-        UndoCommand cmd = {0};
-        cmd.type = UNDO_CMD_EQ_CURVE;
-        cmd.data.eq_curve_edit.is_master = !(state->effects_panel.eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK &&
-                                             state->effects_panel.target == FX_PANEL_TARGET_TRACK &&
-                                             state->effects_panel.target_track_index >= 0);
-        cmd.data.eq_curve_edit.track_index = cmd.data.eq_curve_edit.is_master ? -1 : state->effects_panel.target_track_index;
-        eq_curve_to_session(curve, &cmd.data.eq_curve_edit.before);
+        if (!eq_detail_begin_undo_drag(state)) return true;
         curve->high_cut.enabled = !curve->high_cut.enabled;
         eq_detail_apply_curve(state);
-        eq_curve_to_session(curve, &cmd.data.eq_curve_edit.after);
-        if (!session_eq_equal(&cmd.data.eq_curve_edit.before, &cmd.data.eq_curve_edit.after)) {
-            undo_manager_push(&state->undo, &cmd);
-        }
+        eq_detail_finish_undo_drag(state);
         return true;
     }
     for (int i = 0; i < 4; ++i) {
         if (SDL_PointInRect(&pt, &mid_rects[i])) {
-            UndoCommand cmd = {0};
-            cmd.type = UNDO_CMD_EQ_CURVE;
-            cmd.data.eq_curve_edit.is_master = !(state->effects_panel.eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK &&
-                                                 state->effects_panel.target == FX_PANEL_TARGET_TRACK &&
-                                                 state->effects_panel.target_track_index >= 0);
-            cmd.data.eq_curve_edit.track_index = cmd.data.eq_curve_edit.is_master ? -1 : state->effects_panel.target_track_index;
-            eq_curve_to_session(curve, &cmd.data.eq_curve_edit.before);
+            if (!eq_detail_begin_undo_drag(state)) return true;
             curve->bands[i].enabled = !curve->bands[i].enabled;
             if (!curve->bands[i].enabled && curve->selected_band == i) {
                 curve->selected_band = -1;
                 curve->selected_handle = EQ_CURVE_HANDLE_NONE;
             }
             eq_detail_apply_curve(state);
-            eq_curve_to_session(curve, &cmd.data.eq_curve_edit.after);
-            if (!session_eq_equal(&cmd.data.eq_curve_edit.before, &cmd.data.eq_curve_edit.after)) {
-                undo_manager_push(&state->undo, &cmd);
-            }
+            eq_detail_finish_undo_drag(state);
             return true;
         }
     }
@@ -391,7 +376,7 @@ bool effects_panel_eq_detail_handle_mouse_down(AppState* state,
         if (curve->low_cut.enabled) {
             float x_cut = effects_eq_freq_to_x(&graph, curve->low_cut.freq_hz);
             if (fabsf((float)pt.x - x_cut) <= 6.0f) {
-                eq_detail_begin_undo_drag(state);
+                if (!eq_detail_begin_undo_drag(state)) return true;
                 curve->selected_band = -1;
                 curve->selected_handle = EQ_CURVE_HANDLE_CUT_LOW;
                 state->effects_panel.eq_detail.dragging = true;
@@ -403,7 +388,7 @@ bool effects_panel_eq_detail_handle_mouse_down(AppState* state,
         if (curve->high_cut.enabled) {
             float x_cut = effects_eq_freq_to_x(&graph, curve->high_cut.freq_hz);
             if (fabsf((float)pt.x - x_cut) <= 6.0f) {
-                eq_detail_begin_undo_drag(state);
+                if (!eq_detail_begin_undo_drag(state)) return true;
                 curve->selected_band = -1;
                 curve->selected_handle = EQ_CURVE_HANDLE_CUT_HIGH;
                 state->effects_panel.eq_detail.dragging = true;
@@ -425,7 +410,7 @@ bool effects_panel_eq_detail_handle_mouse_down(AppState* state,
                 10
             };
             if (SDL_PointInRect(&pt, &point_rect)) {
-                eq_detail_begin_undo_drag(state);
+                if (!eq_detail_begin_undo_drag(state)) return true;
                 curve->selected_band = b;
                 curve->selected_handle = EQ_CURVE_HANDLE_POINT;
                 state->effects_panel.eq_detail.dragging = true;
@@ -454,7 +439,7 @@ bool effects_panel_eq_detail_handle_mouse_down(AppState* state,
                 12
             };
             if (SDL_PointInRect(&pt, &left_rect) || SDL_PointInRect(&pt, &right_rect)) {
-                eq_detail_begin_undo_drag(state);
+                if (!eq_detail_begin_undo_drag(state)) return true;
                 curve->selected_band = b;
                 curve->selected_handle = EQ_CURVE_HANDLE_WIDTH;
                 state->effects_panel.eq_detail.dragging = true;
@@ -465,7 +450,7 @@ bool effects_panel_eq_detail_handle_mouse_down(AppState* state,
         }
     }
     state->effects_panel.eq_detail.hovered = true;
-    state->effects_panel.eq_detail.dragging = true;
+    state->effects_panel.eq_detail.dragging = false;
     state->effects_panel.eq_detail.last_mouse = pt;
     return true;
 }
@@ -481,26 +466,19 @@ bool effects_panel_eq_detail_handle_mouse_up(AppState* state, const SDL_Event* e
         return false;
     }
     state->effects_panel.eq_detail.dragging = false;
-    state->effects_panel.eq_curve.selected_band = -1;
-    state->effects_panel.eq_curve.selected_handle = EQ_CURVE_HANDLE_NONE;
-    if (state->undo.active_drag_valid) {
-        UndoCommand* cmd = &state->undo.active_drag;
-        if (cmd->type == UNDO_CMD_EQ_CURVE) {
-            eq_curve_to_session(&state->effects_panel.eq_curve, &cmd->data.eq_curve_edit.after);
-            if (!session_eq_equal(&cmd->data.eq_curve_edit.before, &cmd->data.eq_curve_edit.after)) {
-                undo_manager_commit_drag(&state->undo, cmd);
-            } else {
-                undo_manager_cancel_drag(&state->undo);
-            }
-        } else {
-            undo_manager_cancel_drag(&state->undo);
-        }
+    if (!state->undo.active_drag_valid ||
+        state->effects_panel.eq_detail.history_serial != state->undo.drag_serial) {
+        state->effects_panel.eq_detail.pending_apply = false;
+        return true;
     }
     if (state->effects_panel.eq_detail.pending_apply) {
         eq_detail_apply_curve(state);
         state->effects_panel.eq_detail.last_apply_ticks = event->button.timestamp;
         state->effects_panel.eq_detail.pending_apply = false;
     }
+    state->effects_panel.eq_curve.selected_band = -1;
+    state->effects_panel.eq_curve.selected_handle = EQ_CURVE_HANDLE_NONE;
+    eq_detail_finish_undo_drag(state);
     return true;
 }
 
@@ -516,6 +494,12 @@ bool effects_panel_eq_detail_handle_mouse_motion(AppState* state,
     update_hover_state(state, &layout->detail_rect, &graph, &pt);
     if (!state->effects_panel.eq_detail.dragging) {
         return state->effects_panel.eq_detail.hovered;
+    }
+    if (!state->undo.active_drag_valid ||
+        state->effects_panel.eq_detail.history_serial != state->undo.drag_serial) {
+        state->effects_panel.eq_detail.dragging = false;
+        state->effects_panel.eq_detail.pending_apply = false;
+        return true;
     }
     state->effects_panel.eq_detail.pending_apply = true;
     EqCurveState* curve = &state->effects_panel.eq_curve;

@@ -1,0 +1,141 @@
+{
+  "slice": "s3-export",
+  "status": "complete_at_documented_software_boundary",
+  "recorded_utc": "2026-09-21T15:36:25.587638+00:00",
+  "git_head": "d8bff97cccab2054f18ccc874838162d0423e539",
+  "worktree": "Uncommitted; preserves earlier S1-S3.6 work. No commit or release performed.",
+  "checks": [
+    {
+      "command": "make test-stable test-legacy",
+      "exit_code": 0,
+      "log": "/tmp/daw-s37-final-regression.log",
+      "sha256": "0c03f61a9443f91bc19df6ea9f06968974a44f61dd289817c4880053a42e94f9",
+      "highlights": [
+        "export_render_test: 53 instrumented allocation failure boundaries passed",
+        "export_render_test: success (repeatability, ranges, preroll, release/FX tails, PDC, snapshot/live isolation, failures, normalization, deterministic WAV)",
+        "control_transitions_test: success (Gain ramps, partitions, retarget, reset, zero endpoint, revision handoff, bypass, mixer gain/pan/mute/solo)",
+        "media_conversion_test: success (PCM8/16/24/32, float, extensible, malformed input, rate pairs, filtering, allocation failures)",
+        "instrument_lifecycle_test: success (gate/release, early-off, partitions, alias reduction, automation, bounded voices, retirement, panic, zero guarded heap calls)",
+        "dynamics_processing_test: success (delay, ceiling, linking, release, knee, detectors, makeup, alignment, revisions, mixer, bounce, live edits, preparation failures, zero render heap calls)",
+        "analysis_calibration_test: success (tones, endpoints, power mean, real workers, gaps, epochs, mid, insert metadata)",
+        "fade_processing_test: success (four curves, render/clone/block/export/preview parity, capture, zero/short bounds)",
+        "media_durability_test: success (5 prepublication failures, directory uncertainty, RIFF limits, torn journal recovery)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "session_transaction_test: success (11 capture and 5 restore allocation boundaries, live capture, rollback, complete retry)",
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)",
+        "engine_parameter_transaction_test: success",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)",
+        "daw_pack_contract_parity_test: success",
+        "daw_trace_export_contract_test: success",
+        "daw_trace_export_async_contract_test: success",
+        "kit_viz_waveform_adapter_test: success",
+        "kit_viz_fx_preview_adapter_test: success",
+        "waveform_cache_pack_warmstart_test: success",
+        "layout_text_scaling_sweep_test: success",
+        "timeline_contract_test: success",
+        "midi_model_test: success",
+        "midi_instrument_render_test: success",
+        "midi_editor_shell_test: success",
+        "audio_capture_device_test: success",
+        "audio_output_device_test: success",
+        "effects_revision_test: success",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)",
+        "audio_recording_test: success",
+        "track_role_test: success",
+        "daw_data_path_contract_test: success",
+        "test-library-copy-vs-reference-contract: success",
+        "daw stable test lane passed",
+        "2026-09-21 08:34:51.364 session_serialization_test[49332:203372546] INFO: session_serialization_test: success (6898 bytes)",
+        "media_cache_stress_test: success (entries=0)",
+        "clip_overlap_priority_test: success (clips=3)",
+        "engine_smoke_test: success",
+        "shared_theme_font_adapter_test: success"
+      ]
+    },
+    {
+      "command": "make",
+      "exit_code": 0,
+      "log": "/tmp/daw-s37-final-build.log",
+      "sha256": "117e7595596ca04e176bb91b32980ff7d8a925783898d46e9805d4e232807ccd",
+      "highlights": []
+    },
+    {
+      "command": "make test-audio-recording",
+      "exit_code": 0,
+      "log": "/tmp/daw-s37-recording.log",
+      "sha256": "415033b978b4bd8b1da28357d9989bdad9f72f6a671cd8e4f43ecb68be690471",
+      "highlights": [
+        "audio_recording_test: success"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-export-render test-midi-instrument-render test-dynamics-processing test-engine-mix-ownership",
+      "exit_code": 0,
+      "log": "/tmp/daw-s37-asan.log",
+      "sha256": "c0868a477492b6361052320f8a2d5f50ac17763c3c54257b7d4d23207b4200c1",
+      "highlights": [
+        "export_render_test: 53 instrumented allocation failure boundaries passed",
+        "export_render_test: success (repeatability, ranges, preroll, release/FX tails, PDC, snapshot/live isolation, failures, normalization, deterministic WAV)",
+        "midi_instrument_render_test: success",
+        "dynamics_processing_test: success (delay, ceiling, linking, release, knee, detectors, makeup, alignment, revisions, mixer, bounce, live edits, preparation failures, zero render heap calls)",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-tsan.mk test-export-render test-engine-mix-ownership test-engine-transport-clock",
+      "exit_code": 0,
+      "log": "/tmp/daw-s37-tsan.log",
+      "sha256": "48435e2b4ac653609efd4b9043dd7645bbc3d08723ac00f9fe278ca57e7935f7",
+      "highlights": [
+        "export_render_test: 53 instrumented allocation failure boundaries passed",
+        "export_render_test: success (repeatability, ranges, preroll, release/FX tails, PDC, snapshot/live isolation, failures, normalization, deterministic WAV)",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)"
+      ]
+    }
+  ],
+  "source_sha256": {
+    "include/engine/engine.h": "9d29fd8101391b365a2fb13bc7ec065769a972b0e1fd1fa94eea963cfcc62ca9",
+    "include/engine/engine_internal.h": "a21724566fc5185a394563abffa8a57e1c6476d012c23adfd89be38f7026fc67",
+    "include/engine/instrument.h": "da30340dc64ed89c6556cfab59904d9c5f5dbf64cc2907c69148cc31f4070c0b",
+    "src/engine/engine_io.c": "2907d2d94825c5f41b54a7c67451c43b9ea7e30c51143305e3b3dd58bfc1ac67",
+    "src/engine/engine_source_plan.c": "0fbe14fe223a44196eab44f6699090e5553523f349c9bdc9c16bd6eb528da409",
+    "src/engine/engine_audio.c": "58d0cceb9697dad51dd0ebd7019d74ec5e1cdef4e5d8787f1a680023e8c7648a",
+    "src/engine/instrument_osc.c": "d2b89c7cada066c9759766aefce285c70d0bcb6ee58fde03fa493d2b8c0c8a4d",
+    "src/app/main_bounce.c": "ce8049c6368e0c730e7cb05e421f51e6e3192f698782073ce58c2d401138117f",
+    "src/audio/wav_writer.c": "27f1de009c47ebbd35a4db6ba4e02733691dba1b130cb2abc45d04ea1a39e64b",
+    "src/effects/effects_manager.c": "fd64f50e57e0ed9e9fd93bc733bcaaf92073ad5c41129709288ffa6f940321a5",
+    "src/engine/graph.c": "429911f30f723b3ccc93d4fc3b016ccb80ff563077c4c3f74879b6dcb6f4d77b",
+    "src/engine/sampler.c": "da551c7351bff119855e68d37db623f234419a6773bf015272e4a16a23f05954",
+    "tests/export_render_test.c": "88ddf7dcff51e85de10bd87029409646ed7a7fffa07a76cc0ff7172f4f1d03eb",
+    "tests/midi_instrument_render_test.c": "543a8108b0d96306e2f009016f459e9139ed9fdb717301c8e7eb05029c210b47",
+    "tests/audio_recording_test.c": "12801798587bae95560dc18cff0e15e112c3eadb817b83c7f59c457499bc24e1",
+    "make/rules-test-core.mk": "b5f0fe33d56523e4d0c9056c86cc87481ca11a85f260046ea097bc246eb5c75a",
+    "make/sources-tests.mk": "678e0f52fcb43dd66b1497ad2678358808cacb0ae39290dae78f55dd785b0dc6"
+  },
+  "application": {
+    "path": "build/targets/macOS-arm64/toolchains/clang/bin/daw_app",
+    "sha256": "2bb2e6cd809ab2ce53a2cf896ebd55344acd951971cee400d627d8631b0b2041"
+  },
+  "sanitizer_wrappers": {
+    "/tmp/daw-s1-asan.mk": {
+      "sha256": "aa1d17056ce3b31d1b99fd970a86a8279cabd1cb860bc4156cd7c226e67467c7",
+      "contents": "override BUILD_DIR := /tmp/daw-s1-asan-isolated\ninclude /Users/calebsv/Desktop/CodeWork/daw/Makefile\nCFLAGS += -fsanitize=address -fno-omit-frame-pointer -g\nLDFLAGS += -fsanitize=address\n"
+    },
+    "/tmp/daw-s1-tsan.mk": {
+      "sha256": "1dd3cd0696c30375c5aea6dc1b0418937a97d0583def2e8659d569e0ecffc0ef",
+      "contents": "override BUILD_DIR := /tmp/daw-s1-tsan-isolated\ninclude /Users/calebsv/Desktop/CodeWork/daw/Makefile\nCFLAGS += -fsanitize=thread -fno-omit-frame-pointer -g\nLDFLAGS += -fsanitize=thread\n"
+    }
+  },
+  "proof_limits": [
+    "Fixed configuration/build/block-size repeatability; not universal cross-platform bit identity or every effect combination.",
+    "SDL dummy live callback/worker software isolation; no physical device/listening or maximum-load certification.",
+    "Synchronous control-thread RAM-backed export; engine must survive callbacks. Preroll and tail are each at most 60 seconds.",
+    "Fixed tails can truncate decay; no automatic tail detector. Existing earlier MIDI region bounds remain.",
+    "Prepublication writer failures preserve destination; directory-sync failure retains visible-publication uncertainty.",
+    "Selected sanitizer tests cover the final production changes; the later recording-test-only correction is covered by the final normal regression.",
+    "S4 unstarted; S1 editing-integrity and physical-acceptance deferrals remain."
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "status": "generated_track_undo_verified_S5_active",
+  "logs": [
+    {
+      "path": "/tmp/daw-s5-track-history-normal.log",
+      "exit_code": 0,
+      "sha256": "779aa7b48c59f292b9e9de93d37119ecbee7ee994ac8b8a6432e197f88b0ec0c"
+    },
+    {
+      "path": "/tmp/daw-s5-track-history-asan-final.log",
+      "exit_code": 0,
+      "sha256": "9badbf8dd5b7157986e5bb4b3a87eef323a62a412685833c7dd9843350017273"
+    },
+    {
+      "path": "/tmp/daw-s5-track-history-regression.log",
+      "exit_code": 0,
+      "sha256": "d188f69b7b263acbdc56b06b0c11a5459ee9aed672ad5103e330c3d8ad16f6a3"
+    },
+    {
+      "path": "/tmp/daw-s5-track-history-final-make.log",
+      "exit_code": 0,
+      "sha256": "234cd7cadec9ae6982b6a0a516ec3a751a7fff0cb2740fe3b8e47529944d2f82"
+    }
+  ],
+  "coverage": [
+    "growth and shrink rollback",
+    "generated track settings FX and unrelated clip guards",
+    "repeated undo redo with identity refresh",
+    "selection identity reconciliation",
+    "stable and legacy regression"
+  ],
+  "remaining": [
+    "integrated overlap and neighbor content history",
+    "ripple trim and duplication deletion",
+    "other history identities and action feedback",
+    "native GUI acceptance",
+    "remaining S5 slices"
+  ]
+}

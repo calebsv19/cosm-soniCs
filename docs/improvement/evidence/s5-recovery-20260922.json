@@ -1,0 +1,65 @@
+{
+  "status": "bounded_recovery_checkpoint",
+  "created_utc": "2026-09-23T01:43:19.897294+00:00",
+  "repository": "/Users/calebsv/Desktop/CodeWork/daw",
+  "s5_complete": false,
+  "native_acceptance": false,
+  "checks": [
+    {
+      "command": "make -j4 test-engine-parameter-transaction test-input-delivery test-timeline-midi-region",
+      "exit_code": 0,
+      "log": "/tmp/daw-recovery-focused-final.log"
+    },
+    {
+      "command": "make -j4 MAKEOVERRIDES= BUILD_DIR=/tmp/daw-recovery-asan CC='cc -fsanitize=address -fno-omit-frame-pointer -g' test-engine-parameter-transaction test-input-delivery test-timeline-midi-region",
+      "exit_code": 0,
+      "log": "/tmp/daw-recovery-asan.log"
+    },
+    {
+      "command": "make -j4 test-stable test-legacy",
+      "exit_code": 0,
+      "log": "/tmp/daw-recovery-regression.log"
+    },
+    {
+      "command": "make",
+      "exit_code": 0,
+      "log": "/tmp/daw-recovery-make.log"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0
+    }
+  ],
+  "remaining": [
+    "Whole-track history restore is not atomic",
+    "Other discrete FX/mixer paths and stable track/effect gesture targets",
+    "Full history clone allocation failure coverage",
+    "Visible rejection feedback",
+    "Native UI and physical audio acceptance"
+  ],
+  "retained_failed_fixture_log": "/tmp/daw-recovery-focused-3.log",
+  "sha256": {
+    "include/app_state.h": "acd5bef87f5834e9715fce3f45c602f89effdad30274dae1eaf15dd1182f0a9d",
+    "include/undo/undo_manager.h": "ee1e8d4f2976e80f8df9c5eb156a6b7534019d3b33dca4f0a457cabfc43fcc5b",
+    "include/input/effects_panel_input_helpers.h": "fc522e907d8e812ec6624920576fa1caf6a317e5c1371a742c97bbcebab4f2a8",
+    "src/input/effects_panel_input.c": "4b84a20af8049e2c71537e9a20c73eb8d74fc923d80bbb02bef427888464c68a",
+    "src/input/effects_panel_input_helpers.c": "e51e46d1589dd28137bfcf9db6b73b9c6600ddae86c672cfec357a629160229f",
+    "src/input/effects_panel_eq_detail_input.c": "369226a6a2ccbfa97827dcefd9a569a10d7e85b1dfb470b9c03ac9756f727e1e",
+    "src/input/effects_panel_track_snapshot.c": "c27cb8de22803d7f93c23f1af13941c3a03cb1df3e2004b6b390d3217f86fd6e",
+    "src/input/inspector_input.c": "21306d60bc7ce48f36aa9482b7e3532e51be6670ebc14251e17ba7c5f0712adb",
+    "src/input/inspector_input_numeric_edit.c": "8d4eef32af55b0f946ec9959a3f82a3859fbb6b060e802296ca09a09c04e9de9",
+    "src/undo/undo_manager.c": "be9bc9dbf0f172816568eaff94b5dcbf08f033712b2cf4e095d5acbdd442d36f",
+    "src/undo/undo_manager_stack.c": "4f98d4a3e7b74c0b9af6370f94aeb01b4b9a66c32ad1eaa7b09fd46cbc9c71df",
+    "tests/engine_parameter_transaction_test.c": "0ca4a848449cb5d3ceb92a298163acd0c218b3c0990ae165f25c2fd449b153bb",
+    "make/rules-test-core.mk": "71ebbd6a84b609b2d4fd8ff4c5ced3e277f4f25322f793e899cf92ed8f76638b",
+    "src/input/README.md": "4fb0701bc6eaf2f872b77c549d545eb4b794522f2b76bad73e6b3022d649a08e",
+    "src/undo/README.md": "bc385377ca09f754b3ba29c5cf4e8ae12ed8ec2b51f301c83864c8d6ae1a5076",
+    "docs/improvement/S5-IMPLEMENTATION.md": "3347eca50d3ab18548b64c2f3dda3e3ed3bd1460606c9a4801f67f5c04d48e40",
+    "docs/improvement/S5-PAUSE-HANDOFF.md": "aa50cd56476b5d6105e5e198dc9b16d3116544d4ca03f3d04c401ce78d73d7df",
+    "build/targets/macOS-arm64/toolchains/clang/bin/daw_app": "23d9de91c4bc49a1450b86e553d61320dadf61896635c3bc40fd8577712cabe0",
+    "/tmp/daw-recovery-focused-final.log": "f51b2e540c3aea2fc86c41a4ed310545f19e4ea6765b72260f8aacda84f92de7",
+    "/tmp/daw-recovery-asan.log": "720ca729bf82131b05fc66b02be7c62721e68a24470ad606403adc5854a83b2c",
+    "/tmp/daw-recovery-regression.log": "3c65e52bbd8f5566c41049df3da6bf9d3ef87975bad951a915b7d3375becbbdf",
+    "/tmp/daw-recovery-make.log": "0afbabb0d21aebd21072bcafae2407c74a469ea5acbd00f313a08cf2e3c8acc7"
+  }
+}

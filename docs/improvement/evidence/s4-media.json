@@ -1,0 +1,207 @@
+{
+  "status": "complete_at_documented_software_boundary",
+  "slices": [
+    "S4.7a",
+    "S4.7b",
+    "S4.7c",
+    "S4.7d"
+  ],
+  "created_utc": "2026-09-22T06:40:18.925156+00:00",
+  "source_sha256": {
+    "include/app/media_import.h": "26e59ecf63eb7282031cdd1c9becda5a1d72d4966e334ced627343e7dc316045",
+    "include/app/audio_recording.h": "99c3f30bec2fc0d5b661580cbb00ba7cac9e2702413741ec0b804a577b22dce3",
+    "include/app_state.h": "db7b59cc22e96ea95ea0b0aa79aa3cb69a8058d76766534b746a6d09406bb8c7",
+    "include/audio/media_jobs.h": "e275ee030cc6d1077db4a6563af457954cd196e3f223a284186da3da4541cc45",
+    "include/audio/media_clip.h": "a0ff9fdd6923c52cf7a42e2d5e7d7543df7b06df592fd72acc5e996566396734",
+    "include/audio/media_cache.h": "481c0f3dd5984f764e6ddb89c73b943f135bb96584fae3c92b147805ac117a81",
+    "include/audio/media_registry.h": "f16e86e2a270cb6209f9ce8292b9d36e5472837510a7d25936669a21b1223b67",
+    "include/audio/resample.h": "95ac3ec1b1467af371fc40126a511542d02a087220ddbd1c94727ac136cb505b",
+    "include/engine/engine.h": "5f674c8fc493018a86544aea1703c426eab056cb81f6dbe5011fa8d455ec50eb",
+    "include/ui/library_browser.h": "25bb2ed0e8842bff711a292541c0360b92805785308986e8550f3d0c05d9d9dc",
+    "src/app/media_import.c": "666cf13a17ffcb6f83c48c6c89acd357be59b5613da83ff9c98936442593466b",
+    "src/app/audio_recording.c": "010b37b3e8cd1011b1af14939158b5134c6d9556f44fb454509a4033488afb80",
+    "src/app/main_bounce.c": "6fce13ee891e58a3143f0b8ad9a98baa9509a2690418fa0d79c05a90cd694d0f",
+    "src/app/main.c": "1f11eca8f8b6c35d8d9e66adf7144fccb3711cb74196ab2355d41d5201f6399f",
+    "src/audio/media_jobs.c": "4fd23fb909ed1cb8c7b3251a10193499a67c823f61664284227f640ecac0f4cf",
+    "src/audio/media_clip.c": "66f9bce26b9727dac283c0f0384d6738c1b2f988bbf5cbee5a3e5ac42e7bc0ec",
+    "src/audio/media_cache.c": "46a255d72d517afb38f161e83a92400de9318966fd2391b736a6afc344cdf3f2",
+    "src/audio/media_registry.c": "0ea505b4cd917ade101a4012e23b33e41058c699c277b393630ceaec6dcc92b9",
+    "src/audio/resample.c": "8d6d7c1f28e5f121148ba94fbc51e8429017fd9c60f20331ec4f86bce1072742",
+    "src/engine/engine_clips.c": "e6e64be8c66a68d6aa555028891bbf329fe7212648ceb945f1169582ed6b0b28",
+    "src/engine/engine_source_plan.c": "eb9f69a53d067278decffa5a59d88400c934f6510970baf4e754e5e38d06b1ed",
+    "src/session/session_apply.c": "eea64755dde4a7bf3c3256020eea35f7a570f055fe77f115b699ad6df2116851",
+    "src/ui/library_browser.c": "2f488eafb3f8664e771770320ae1eb9f9033414f4480f3181f39e7aa4d1b3573",
+    "src/input/input_manager.c": "3cf2f1795a6437618ab8671a3133a538359c33af223576ce233ebfc151b271b7",
+    "src/input/timeline/timeline_drop.c": "f435741594f669f0aab23089df073d82d74439c6adb0d4b25bde7e54b8dc0946",
+    "tests/media_preparation_test.c": "f0e3c3a3d5b55c48f4b088874cfee741d9c690ac50e9aa02b2ae7eb7b99ffad7",
+    "tests/media_jobs_test.c": "dac376316e2136355ab7b2e22576c27369e10493405d074826454b97956abc6f",
+    "tests/media_import_test.c": "db99d2b961bb39a89b1d15a754d615fd0bf15ed0cb3f7ebdd5e32636121e477e",
+    "tests/media_ffmpeg_test.c": "653358a8dcf0edfb3aec998495e1549fe759407d666740313de49ccbfadd7be4",
+    "tests/daw_data_path_contract_test.c": "eac8f4876dc358c6977d2dd094d101a08853aec760b48d0f4999adcfa3646d6b",
+    "tests/performance/media_import_bench.c": "107b4514010c2e142d00888992989ae39c9b26dafe05e5ee421446165c0ca1d7",
+    "tests/performance/run_media_import.py": "627f74ac3c500463c0226c9acd7d15c5743f851e6e79342a2afe559f67faaec4",
+    "make/sources-app.mk": "6dbeb61543264e0f5df610a6d34c341e6930af3607242f6281d02ca77d481494",
+    "make/sources-tests.mk": "0b5cc45f08a79a78a343bcd29cc8e55d5edc15f24aa7b055e36bfb1448abfeed",
+    "make/rules-test-core.mk": "f6ce288e380a122ed97b80eb7c9d4b8cab1c8021fb2f289e1f5187a3592672cd",
+    "make/performance.mk": "4d551d5af258c25e2d12c1e71e4f66342f03d2ecf777163cc42680843ea11ec7"
+  },
+  "checks": [
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-media-preparation test-media-jobs test-media-import test-media-conversion test-session-transaction test-audio-recording /tmp/daw-s1-asan-isolated/targets/macOS-arm64/tests/media_ffmpeg_test",
+      "exit_code": 0,
+      "log": "/tmp/daw-s47-asan.log",
+      "log_sha256": "55fb47ad4fab229b3fa6dc8d250cfb2bcf6b1ed0d14a15c4bef3116bbbb514b0"
+    },
+    {
+      "command": "make -f /tmp/daw-s1-tsan.mk test-media-preparation test-media-jobs test-media-import test-session-transaction test-audio-recording",
+      "exit_code": 0,
+      "log": "/tmp/daw-s47-tsan.log",
+      "log_sha256": "7dc1ce58451284b3c3eef6d0251aed512d39060ef017f12df62531ade1e48531"
+    },
+    {
+      "command": "/tmp/daw-s1-asan-isolated/targets/macOS-arm64/tests/media_jobs_test /tmp/daw-s47-native.mp3",
+      "exit_code": 0,
+      "log": "/tmp/daw-s47-asan-mp3.log",
+      "log_sha256": "2b872dd8ad7f8bf823b92d42924f252198ec6110484f0ff8de15f6cea104a9e8"
+    },
+    {
+      "command": "/tmp/daw-s1-asan-isolated/targets/macOS-arm64/tests/media_ffmpeg_test /tmp/daw-s47-native.mp3",
+      "exit_code": 0,
+      "log": "/tmp/daw-s47-asan-ffmpeg.log",
+      "log_sha256": "02eeae1fd74d6dff45469c0de852146f2ffa6e438a429f78109b6ab5489ea04e"
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-media-import",
+      "exit_code": 0,
+      "log": "/tmp/daw-s47-asan-final-query.log",
+      "log_sha256": "bb22264966c6e4b424343e64de45047b4da64084e3a62f99e7e22b31300892b5"
+    },
+    {
+      "command": "make -f /tmp/daw-s1-tsan.mk test-media-import",
+      "exit_code": 0,
+      "log": "/tmp/daw-s47-tsan-final-query.log",
+      "log_sha256": "36918061bf517e4e97865b41021b48cd9ff0413392e4764fa4b226df2d06aeb9"
+    },
+    {
+      "command": "make -f make/performance.mk performance-media-import test-media-import",
+      "exit_code": 0,
+      "log": "/tmp/daw-s47-optimized-final-query.log",
+      "log_sha256": "923e3ea950a82690dd0b365ab95354cb3ad348f37990ce9785853fa5d9218a5d"
+    },
+    {
+      "command": "python3 /tmp/daw-s47-measure.py",
+      "exit_code": 0,
+      "log": "/tmp/daw-s47-measure-final.log",
+      "log_sha256": "e5bc99eb938c8aa308dfad25580e6d478279de9f7e8a999e3af39169bc13c1bf"
+    },
+    {
+      "command": "make test-stable",
+      "exit_code": 0,
+      "log": "/tmp/daw-s47-stable-final.log",
+      "log_sha256": "76e26aea745b297495941d78c052d3556eedf2ad5437d82e5c87940dc7359b6d"
+    },
+    {
+      "command": "make test-data-path-contract test-config-diagnostics test-workspace-authoring-host test-library-copy-vs-reference-contract test-legacy build/targets/macOS-arm64/tests/media_ffmpeg_test",
+      "exit_code": 0,
+      "log": "/tmp/daw-s47-regression-remainder.log",
+      "log_sha256": "4edba8a56c1bb008692985158cd6fb8b8ccf9dd991ab44c6c687b6686de0a6b7"
+    },
+    {
+      "command": "build/targets/macOS-arm64/tests/media_jobs_test /tmp/daw-s47-native.mp3",
+      "exit_code": 0,
+      "log": "/tmp/daw-s47-mp3.log",
+      "log_sha256": "2b872dd8ad7f8bf823b92d42924f252198ec6110484f0ff8de15f6cea104a9e8"
+    },
+    {
+      "command": "build/targets/macOS-arm64/tests/media_ffmpeg_test /tmp/daw-s47-native.mp3",
+      "exit_code": 0,
+      "log": "/tmp/daw-s47-ffmpeg.log",
+      "log_sha256": "02eeae1fd74d6dff45469c0de852146f2ffa6e438a429f78109b6ab5489ea04e"
+    },
+    {
+      "command": "make test-media-import",
+      "exit_code": 0,
+      "log": "/tmp/daw-s47-normal-final-query.log",
+      "log_sha256": "c3611042ba1737fb1c600da1c19fa120597e6108ea1fc93932376ddd1a9160d9"
+    },
+    {
+      "command": "make",
+      "exit_code": 0,
+      "log": "/tmp/daw-s47-make.log",
+      "log_sha256": "c5257528d31cf1887f3cd5e3b4457b4b85124322e6fc1682cc2f5cd112d3b8fe"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "log": "/tmp/daw-s47-diffcheck.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": "python3 tests/performance/run_media_import.py --help",
+      "exit_code": 0,
+      "log": "/tmp/daw-s47-runner-help.log",
+      "log_sha256": "7cd317363d0fe4d65918c8aba71c4c851d54c6e72fd05eb2d9f46533fe9b9e54"
+    }
+  ],
+  "workload_bundle": {
+    "path": "s4-media-workloads.json",
+    "sha256": "d901d57d6ae88cfb3c197066ffa17300eec3dc88f7234a231c457be930ab49eb",
+    "fresh_processes": 6,
+    "asynchronous_insertions": 120,
+    "missing_input_frames": 0,
+    "missing_output_frames": 0,
+    "audio_worker_budget_overruns": 0
+  },
+  "artifacts": {
+    "app": {
+      "path": "build/targets/macOS-arm64/toolchains/clang/bin/daw_app",
+      "sha256": "68bf4acba145493d068d57185a960356aa96ae244023c945c7f2ce6356fb9d7c"
+    },
+    "mp3_fixture": {
+      "path": "/tmp/daw-s47-native.mp3",
+      "sha256": "2f7c1537df1a719ce389a8d1bb522f9d6e12d80388c30eaecc812d799cad28b5",
+      "generation": "ffmpeg -v error -f lavfi -i sine=frequency=440:sample_rate=48000:duration=2 -c:a libmp3lame -y /tmp/daw-s47-native.mp3"
+    }
+  },
+  "qualification_order": "Broad regression/sanitizer checks were followed by a final read-only-cache-query correction and dedicated normal/optimized/ASan/TSan import checks. Final workloads use the corrected optimized binary; final make builds the application.",
+  "corrected_findings": [
+    "Strict WAV probe incorrectly fell through to native metadata for malformed WAV; fallback restricted to MP3.",
+    "Initial new-test instrumented allocator symbols, quoted object paths and source-list wiring were corrected before passing gates.",
+    "The first workload exposed synchronous registry hashing and delayed render-plan retirement collection; both were corrected.",
+    "The old static timeline source guard expected synchronous insertion; updated to owned import while preserving reference-path/copy checks.",
+    "Warm residency query could create unused source metadata; final read-only lookup and unchanged-source-count test corrected that."
+  ],
+  "memory_policy": {
+    "max_admitted": 4,
+    "decoder_workers": 1,
+    "max_sample_buffer_bytes": 67108864,
+    "conservative_max_reserved_bytes": 603979776,
+    "inactive_cache_budget_bytes": 0,
+    "active_cache_pins_non_evictable": true
+  },
+  "limitations": [
+    "Full-file source playback; asynchronous sample-buffer admission limit is not an active-project RSS limit.",
+    "OS RSS stayed above startup despite ready/reserved bytes reaching zero and cache pins returning to baseline.",
+    "Physical-device/listening, full GUI rendering latency and long-duration maximum-load qualification remain separate.",
+    "Explicit offline/raw and atomic restore paths retain synchronous behavior.",
+    "The durable matrix runner has enhanced retention and was help-checked; the recorded six-process run used the temporary runner named in checks."
+  ],
+  "shared_reuse": {
+    "decision": "reuse-adopted",
+    "libraries": [
+      "core_workers",
+      "core_queue",
+      "core_time"
+    ],
+    "version_or_adoption_changes": false
+  },
+  "commit_created": false,
+  "memory_mutation": false,
+  "documentation_verification": {
+    "command": "doc_sync_verify.sh /Users/calebsv/Desktop/CodeWork/daw HEAD~1 HEAD /tmp/daw-s47-docverify",
+    "log": "/tmp/daw-s47-docverify.log",
+    "log_sha256": "b68e36bcc32ad095b243317b14f617c93473c9929aa08d358ebd63064f4776e0",
+    "findings": 0,
+    "verify_ok": true
+  }
+}

@@ -1,4 +1,5 @@
 #include "ui/effects_panel.h"
+#include "ui/effects_panel_meter_detail.h"
 
 #include "app_state.h"
 #include "engine/engine.h"
@@ -752,6 +753,9 @@ void effects_panel_render(SDL_Renderer* renderer, const AppState* state, const E
     draw_button(renderer, &layout->preview_toggle_rect, panel->preview_toggle_hovered, "Preview", FX_PANEL_BUTTON_SCALE, &theme);
 
     if (panel->view_mode == FX_PANEL_VIEW_LIST) {
+        if (panel->list_detail_mode != FX_LIST_DETAIL_METER) {
+            engine_set_fx_spectrogram_target(state->engine, -1, 0, false);
+        }
         effects_panel_render_list(renderer, state, layout);
         effects_panel_render_overlay(renderer, state, layout);
         return;
@@ -768,6 +772,7 @@ void effects_panel_render(SDL_Renderer* renderer, const AppState* state, const E
         ui_draw_text(renderer, msg_x, msg_y, msg, text_dim, 2);
     }
 
+    effects_panel_update_spectrogram_card_target(state);
     for (int i = 0; i < layout->column_count && i < panel->chain_count; ++i) {
         effects_slot_render(renderer,
                             state,

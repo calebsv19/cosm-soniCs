@@ -1,0 +1,80 @@
+{
+  "started_utc": "2026-09-21T16:15:45.260778+00:00",
+  "binary": "/Users/calebsv/Desktop/CodeWork/daw/build/performance/O2/targets/macOS-arm64/tests/runtime_workload_bench",
+  "binary_sha256": "d722efde032ef259f6bf568c271566c7b9423de78ecc6636cdbe67b96489f325",
+  "platform": "macOS-15.7.4-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "logical_cpus": 8,
+  "load_average": [
+    8.3076171875,
+    4.8447265625,
+    3.8525390625
+  ],
+  "repeats": 3,
+  "group": "followup",
+  "order_seed": 437,
+  "workloads": [
+    {
+      "name": "overlap_8x8",
+      "args": [
+        "render_overlap",
+        8,
+        8,
+        0,
+        0,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    },
+    {
+      "name": "midi_sparse_1x1",
+      "args": [
+        "render_sparse",
+        1,
+        1,
+        1,
+        0,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    },
+    {
+      "name": "midi_sparse_1x128",
+      "args": [
+        "render_sparse",
+        1,
+        1,
+        128,
+        0,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    },
+    {
+      "name": "midi_sparse_1x1024",
+      "args": [
+        "render_sparse",
+        1,
+        1,
+        1024,
+        0,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    }
+  ],
+  "notes": [
+    "Sequential fresh processes; no CPU pinning or exclusive host access.",
+    "macOS peak RSS units are bytes; peak includes fixture construction.",
+    "Dummy callbacks do not measure physical DAC deadlines.",
+    "Recording feeds synthetic 100ms packets; offline recording cases are accelerated, live_record waits 100ms per drain."
+  ]
+}

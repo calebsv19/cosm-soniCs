@@ -1,3 +1,4 @@
+#include "app/media_import.h"
 #include "input/input_manager.h"
 
 #include "app/audio_recording.h"
@@ -29,27 +30,28 @@
 
 #include <SDL2/SDL.h>
 
-static void handle_transport_controls(AppState* state, bool was_down, bool is_down) {
-    if (!state || !state->engine) {
-        return;
-    }
-    if (!was_down && is_down) {
-        if (transport_ui_click_play(&state->transport_ui, state->mouse_x, state->mouse_y)) {
-            if (daw_audio_recording_is_active(&state->audio_recording) &&
-                engine_transport_is_playing(state->engine)) {
-                engine_transport_stop(state->engine);
-            } else {
-                (void)daw_audio_recording_drain_if_transport_playing(state);
-                engine_transport_play(state->engine);
-            }
-        } else if (transport_ui_click_stop(&state->transport_ui, state->mouse_x, state->mouse_y)) {
-            if (daw_audio_recording_is_active(&state->audio_recording)) {
-                DawAudioRecordingResult result;
-                (void)daw_audio_recording_finish_timeline_capture(state, &result);
-            }
-            engine_transport_stop(state->engine);
+// Applies each transport pointer-down event once, even when down/up arrive in one loop iteration.
+static bool handle_transport_press(AppState* state, int x, int y) {
+    if (!state || !state->engine) return false;
+    if (transport_ui_click_play(&state->transport_ui, x, y)) {
+        if (daw_audio_recording_is_active(&state->audio_recording) &&
+            engine_transport_requested_playing(state->engine)) {
+            engine_transport_pause(state->engine);
+        } else {
+            (void)daw_audio_recording_drain_if_transport_playing(state);
+            engine_transport_play(state->engine);
         }
+        return true;
     }
+    if (transport_ui_click_stop(&state->transport_ui, x, y)) {
+        if (daw_audio_recording_is_active(&state->audio_recording)) {
+            DawAudioRecordingResult result;
+            (void)daw_audio_recording_finish_timeline_capture(state, &result);
+        }
+        engine_transport_stop(state->engine);
+        return true;
+    }
+    return false;
 }
 
 // Clears meter histories after a forced seek when the debug toggle is enabled.
@@ -99,12 +101,8 @@ static void seek_to_seconds(AppState* state, float seconds, bool resume_playback
         seconds = max_seconds;
     }
     uint64_t frame = (uint64_t)llroundf(seconds * (float)sample_rate);
-    bool was_playing = engine_transport_is_playing(state->engine);
-    input_manager_reset_meter_history_on_seek(state);
-    engine_transport_seek(state->engine, frame);
-    if (resume_playback && was_playing) {
-        engine_transport_play(state->engine);
-    }
+    (void)resume_playback; // Seek preserves the engine's playback mode.
+    if (engine_transport_seek(state->engine, frame)) input_manager_reset_meter_history_on_seek(state);
 }
 
 static bool input_manager_authoring_text_entry_active(AppState* state) {
@@ -193,7 +191,6 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
     if (!manager || !state || !state->engine) {
         return;
     }
-    bool inspector_text_focus = inspector_input_has_text_focus(state);
     if (state->tempo_ui.editing || library_input_is_editing(state) || state->track_name_editor.editing) {
         return;
     }
@@ -202,14 +199,6 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
     SDL_Keymod mods = SDL_GetModState();
     bool ctrl_or_cmd = (mods & (KMOD_CTRL | KMOD_GUI)) != 0;
     bool shift_held = (mods & KMOD_SHIFT) != 0;
-    if (ctrl_or_cmd && keys[SDL_SCANCODE_Z]) {
-        if (shift_held) {
-            undo_manager_redo(&state->undo, state);
-        } else {
-            undo_manager_undo(&state->undo, state);
-        }
-        return;
-    }
 
     {
         bool theme_next_now = ctrl_or_cmd && shift_held && keys[SDL_SCANCODE_T];
@@ -264,34 +253,10 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
         manager->previous_font_zoom_reset = font_zoom_reset_now;
     }
 
-    bool space_now = keys[SDL_SCANCODE_SPACE] != 0;
-    if (!inspector_text_focus && space_now && !manager->previous_space) {
-        bool shift_down = (SDL_GetModState() & KMOD_SHIFT) != 0;
-        if (shift_down) {
-            bool was_playing = engine_transport_is_playing(state->engine);
-            uint64_t target_frame = 0;
-            if (state->loop_enabled && state->loop_end_frame > state->loop_start_frame) {
-                target_frame = state->loop_start_frame;
-            }
-            input_manager_reset_meter_history_on_seek(state);
-            engine_transport_seek(state->engine, target_frame);
-            if (was_playing) {
-                engine_transport_play(state->engine);
-            }
-        } else {
-            bool was_playing = engine_transport_is_playing(state->engine);
-            if (was_playing) {
-                engine_transport_stop(state->engine);
-            } else {
-                (void)daw_audio_recording_drain_if_transport_playing(state);
-                engine_transport_play(state->engine);
-            }
-        }
-    }
-    manager->previous_space = space_now;
     bool l_now = keys[SDL_SCANCODE_L] != 0;
     if (l_now && !manager->previous_l) {
         bool new_state = !state->loop_enabled;
+        uint64_t previous_end = state->loop_end_frame;
         if (new_state && state->loop_end_frame <= state->loop_start_frame) {
             const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
             int sample_rate = cfg ? cfg->sample_rate : 0;
@@ -301,19 +266,15 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
             }
             state->loop_end_frame = state->loop_start_frame + default_len;
         }
-        state->loop_enabled = new_state;
-        state->loop_restart_pending = false;
-        engine_transport_set_loop(state->engine, state->loop_enabled, state->loop_start_frame, state->loop_end_frame);
+        if (engine_transport_set_loop(state->engine, new_state, state->loop_start_frame, state->loop_end_frame)) {
+            state->loop_enabled = new_state;
+            state->loop_restart_pending = false;
+        } else {
+            state->loop_end_frame = previous_end;
+        }
     }
     manager->previous_l = l_now;
 
-    bool delete_now = keys[SDL_SCANCODE_DELETE] != 0 || keys[SDL_SCANCODE_BACKSPACE] != 0;
-    if (!inspector_text_focus && delete_now && !manager->previous_delete) {
-        if (!midi_editor_should_render(state)) {
-            timeline_selection_delete(state);
-        }
-    }
-    manager->previous_delete = delete_now;
 
     bool c_now = keys[SDL_SCANCODE_C] != 0;
     manager->previous_c = c_now;
@@ -486,6 +447,40 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
         }
     }
 
+    // History responds once to the recorded key edge, never to a later sampled keyboard state.
+    if (event->type == SDL_KEYDOWN && event->key.keysym.sym == SDLK_z &&
+        (event->key.keysym.mod & (KMOD_CTRL | KMOD_GUI)) &&
+        !state->track_name_editor.editing && !state->tempo_ui.editing) {
+        if (!event->key.repeat) {
+            if (event->key.keysym.mod & KMOD_SHIFT) undo_manager_redo(&state->undo, state);
+            else undo_manager_undo(&state->undo, state);
+        }
+        return;
+    }
+    if (event->type == SDL_KEYDOWN && event->key.keysym.sym == SDLK_ESCAPE &&
+        (event->key.keysym.mod & (KMOD_CTRL | KMOD_GUI))) {
+        daw_media_import_cancel(state);
+        return;
+    }
+    if (event->type == SDL_MOUSEBUTTONDOWN && event->button.button == SDL_BUTTON_LEFT &&
+        handle_transport_press(state, event->button.x, event->button.y)) return;
+    // Space is an edge-triggered action; key repeat and text editing cannot toggle transport.
+    if (event->type == SDL_KEYDOWN && event->key.keysym.sym == SDLK_SPACE &&
+        !state->track_name_editor.editing) {
+        if (!event->key.repeat) {
+            if (event->key.keysym.mod & KMOD_SHIFT) {
+                uint64_t target = state->loop_enabled && state->loop_end_frame > state->loop_start_frame
+                    ? state->loop_start_frame : 0;
+                if (engine_transport_seek(state->engine, target)) input_manager_reset_meter_history_on_seek(state);
+            } else if (engine_transport_requested_playing(state->engine)) {
+                engine_transport_pause(state->engine);
+            } else {
+                (void)daw_audio_recording_drain_if_transport_playing(state);
+                engine_transport_play(state->engine);
+            }
+        }
+        return;
+    }
     transport_input_handle_event(manager, state, event);
     if (midi_instrument_panel_input_handle_event(manager, state, event)) {
         return;
@@ -495,6 +490,13 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
     }
     inspector_input_handle_event(manager, state, event);
     effects_panel_input_handle_event(manager, state, event);
+    // Timeline deletion is edge-triggered while note, automation and text editors retain ownership.
+    if (event->type == SDL_KEYDOWN && (event->key.keysym.sym == SDLK_DELETE || event->key.keysym.sym == SDLK_BACKSPACE) &&
+        !state->track_name_editor.editing && !state->tempo_ui.editing && !midi_editor_should_render(state) &&
+        !state->timeline_automation_mode && !state->timeline_tempo_overlay_enabled) {
+        if (!event->key.repeat) timeline_selection_delete(state);
+        return;
+    }
     timeline_input_handle_event(manager, state, event);
 }
 
@@ -544,17 +546,16 @@ void input_manager_update(InputManager* manager, AppState* state) {
     }
     library_browser_refresh_project_usage(&state->library, state->engine);
 
-    handle_transport_controls(state, left_was_down, left_is_down);
     handle_keyboard_shortcuts(manager, state);
 
     if (state->loop_restart_pending) {
         if (!state->loop_enabled || state->loop_end_frame <= state->loop_start_frame) {
             state->loop_restart_pending = false;
         } else {
-            uint64_t frame = engine_get_transport_frame(state->engine);
+            uint64_t frame = engine_get_presentation_frame(state->engine);
             if (frame >= state->loop_start_frame) {
-                engine_transport_set_loop(state->engine, true, state->loop_start_frame, state->loop_end_frame);
-                state->loop_restart_pending = false;
+                if (engine_transport_set_loop(state->engine, true, state->loop_start_frame, state->loop_end_frame))
+                    state->loop_restart_pending = false;
             }
         }
     }

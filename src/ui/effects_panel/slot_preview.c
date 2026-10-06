@@ -196,7 +196,8 @@ static void effects_slot_preview_style(FxTypeId type_id, EffectsPreviewStyle* ou
     }
     out->bipolar = false;
     out->max_db = 24.0f;
-    out->value_label = "GR";
+    out->value_label = (type_id == 20u || type_id == 21u || type_id == 24u) ? "GR peak" : "RMS delta";
+    out->bipolar = type_id != 20u && type_id != 21u && type_id != 24u;
     if (type_id == 7u) {
         out->bipolar = true;
         out->value_label = "Trim";

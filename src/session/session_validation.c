@@ -37,6 +37,11 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
         session_set_error(error_message, error_message_len, "invalid sample rate: %d", doc->engine.sample_rate);
         return false;
     }
+    if (doc->engine.output_queue_blocks != 0 &&
+        (doc->engine.output_queue_blocks < 2 || doc->engine.output_queue_blocks > 32)) {
+        session_set_error(error_message, error_message_len, "invalid output queue blocks: %d", doc->engine.output_queue_blocks);
+        return false;
+    }
     if (doc->engine.block_size <= 0) {
         session_set_error(error_message, error_message_len, "invalid block size: %d", doc->engine.block_size);
         return false;
@@ -139,6 +144,10 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
     if (doc->library.panel_mode < LIBRARY_PANEL_MODE_SOURCE ||
         doc->library.panel_mode > LIBRARY_PANEL_MODE_IN_PROJECT) {
         session_set_error(error_message, error_message_len, "invalid library panel mode: %d", doc->library.panel_mode);
+        return false;
+    }
+    if (doc->track_count > 0 && !doc->tracks) {
+        session_set_error(error_message, error_message_len, "track array missing");
         return false;
     }
     if (doc->track_count < 0) {

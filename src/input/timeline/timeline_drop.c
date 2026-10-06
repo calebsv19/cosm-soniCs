@@ -1,3 +1,4 @@
+#include "app/media_import.h"
 #include "input/timeline/timeline_drop.h"
 
 #include "app_state.h"
@@ -60,36 +61,10 @@ static void set_drop_label(AppState* state, const char* filename, float duration
     }
 }
 
+// Uses scan metadata without decoding or converting audio during pointer events.
 static float library_item_preview_duration(const AppState* state, const LibraryItem* item) {
-    if (!state || !item) {
-        return 0.0f;
-    }
-    int target_rate = state->runtime_cfg.sample_rate;
-    if (state->engine) {
-        const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
-        if (cfg && cfg->sample_rate > 0) {
-            target_rate = cfg->sample_rate;
-        }
-    }
-    if (target_rate <= 0) {
-        return item->duration_seconds;
-    }
-    char full_path[512];
-    snprintf(full_path, sizeof(full_path), "%s/%s", state->library.directory, item->name);
-    AudioMediaClip clip;
-    SDL_zero(clip);
-    if (!audio_media_clip_load(full_path, target_rate, &clip)) {
-        return item->duration_seconds;
-    }
-    float seconds = 0.0f;
-    if (clip.sample_rate > 0 && clip.frame_count > 0) {
-        seconds = (float)clip.frame_count / (float)clip.sample_rate;
-    }
-    audio_media_clip_free(&clip);
-    if (seconds <= 0.0f) {
-        seconds = item->duration_seconds;
-    }
-    return seconds;
+    (void)state;
+    return item ? item->duration_seconds : 0.0f;
 }
 
 void timeline_drop_update_hint(AppState* state) {
@@ -307,101 +282,9 @@ void timeline_drop_handle_library_drag(InputManager* manager, AppState* state, b
                 if (target_track < 0) {
                     target_track = 0;
                 }
-                if (target_track >= track_count) {
-                    target_track = engine_add_track(state->engine);
-                    track_count = engine_get_track_count(state->engine);
-                    if (target_track < 0) {
-                        target_track = track_count > 0 ? track_count - 1 : 0;
-                    }
-                }
-
-                int new_clip_index = -1;
+                if (target_track > track_count) target_track = track_count;
                 const char* media_id = state->library.items[state->drag_library_index].media_id;
-                if (!engine_add_clip_to_track_with_id(state->engine,
-                                                      target_track,
-                                                      path,
-                                                      media_id,
-                                                      start_frame,
-                                                      &new_clip_index)) {
-                    SDL_Log("Failed to add clip: %s", path);
-                } else {
-                    SDL_Log("Added clip: %s", path);
-                    const EngineTrack* tracks = engine_get_tracks(state->engine);
-                    const EngineClip* new_clip_ptr = NULL;
-                    EngineSamplerSource* new_sampler = NULL;
-                    if (tracks) {
-                        const EngineTrack* track = &tracks[target_track];
-                        if (track && new_clip_index >= 0 && new_clip_index < track->clip_count) {
-                            new_clip_ptr = &track->clips[new_clip_index];
-                            new_sampler = new_clip_ptr->sampler;
-                        }
-                    }
-
-                    int final_clip_index = new_clip_index;
-                    if (new_sampler) {
-                        int resolved_index = -1;
-                        engine_track_apply_no_overlap(state->engine, target_track, new_sampler, &resolved_index);
-                        int sampler_track = target_track;
-                        int sampler_clip = -1;
-                        if (!timeline_find_clip_by_sampler(state, new_sampler, &sampler_track, &sampler_clip)) {
-                            sampler_track = target_track;
-                            sampler_clip = resolved_index;
-                        }
-                        if (sampler_track == target_track && sampler_clip >= 0) {
-                            final_clip_index = sampler_clip;
-                        } else if (sampler_track >= 0 && sampler_clip >= 0) {
-                            target_track = sampler_track;
-                            final_clip_index = sampler_clip;
-                        }
-                    }
-
-                    if (final_clip_index >= 0) {
-                        const EngineTrack* refreshed_tracks = engine_get_tracks(state->engine);
-                        if (refreshed_tracks && target_track >= 0 &&
-                            target_track < engine_get_track_count(state->engine)) {
-                            const EngineTrack* track = &refreshed_tracks[target_track];
-                            if (track && final_clip_index < track->clip_count) {
-                                const EngineClip* clip = &track->clips[final_clip_index];
-                                UndoCommand cmd = {0};
-                                cmd.type = UNDO_CMD_CLIP_ADD_REMOVE;
-                                cmd.data.clip_add_remove.added = true;
-                                cmd.data.clip_add_remove.track_index = target_track;
-                                cmd.data.clip_add_remove.sampler = clip->sampler;
-                                const char* media_id = engine_clip_get_media_id(clip);
-                                const char* media_path = engine_clip_get_media_path(clip);
-                                strncpy(cmd.data.clip_add_remove.clip.media_id, media_id ? media_id : "",
-                                        sizeof(cmd.data.clip_add_remove.clip.media_id) - 1);
-                                cmd.data.clip_add_remove.clip.media_id[sizeof(cmd.data.clip_add_remove.clip.media_id) - 1] = '\0';
-                                strncpy(cmd.data.clip_add_remove.clip.media_path, media_path ? media_path : "",
-                                        sizeof(cmd.data.clip_add_remove.clip.media_path) - 1);
-                                cmd.data.clip_add_remove.clip.media_path[sizeof(cmd.data.clip_add_remove.clip.media_path) - 1] = '\0';
-                                strncpy(cmd.data.clip_add_remove.clip.name, clip->name,
-                                        sizeof(cmd.data.clip_add_remove.clip.name) - 1);
-                                cmd.data.clip_add_remove.clip.name[sizeof(cmd.data.clip_add_remove.clip.name) - 1] = '\0';
-                                cmd.data.clip_add_remove.clip.start_frame = clip->timeline_start_frames;
-                                cmd.data.clip_add_remove.clip.duration_frames = clip->duration_frames;
-                                cmd.data.clip_add_remove.clip.offset_frames = clip->offset_frames;
-                                cmd.data.clip_add_remove.clip.fade_in_frames = clip->fade_in_frames;
-                                cmd.data.clip_add_remove.clip.fade_out_frames = clip->fade_out_frames;
-                                cmd.data.clip_add_remove.clip.fade_in_curve = clip->fade_in_curve;
-                                cmd.data.clip_add_remove.clip.fade_out_curve = clip->fade_out_curve;
-                                cmd.data.clip_add_remove.clip.gain = clip->gain;
-                                cmd.data.clip_add_remove.clip.selected = false;
-                                if (cmd.data.clip_add_remove.clip.duration_frames == 0 && clip->sampler) {
-                                    cmd.data.clip_add_remove.clip.duration_frames = engine_sampler_get_frame_count(clip->sampler);
-                                }
-                                undo_manager_push(&state->undo, &cmd);
-                            }
-                        }
-                        timeline_selection_set_single(state, target_track, final_clip_index);
-                        if (refreshed_tracks) {
-                            const EngineTrack* track = &refreshed_tracks[target_track];
-                            if (track && final_clip_index < track->clip_count) {
-                                inspector_input_show(state, target_track, final_clip_index, &track->clips[final_clip_index]);
-                            }
-                        }
-                    }
-                }
+                (void)daw_media_import_submit(state, path, media_id, target_track, start_frame, AUDIO_MEDIA_JOB_LIBRARY);
             }
         }
         state->dragging_library = false;

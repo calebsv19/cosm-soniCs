@@ -1,0 +1,57 @@
+{
+  "status": "generated_track_overlap_software_verified_S5_active",
+  "coverage": [
+    "single publication for placement growth and overlap",
+    "mixed audio MIDI existing neighbor split plus generated track",
+    "three repeated undo redo cycles after source removal",
+    "drop shrink and regrowth publication rejection",
+    "intercepted preparation allocation sweep",
+    "generated track settings FX and unrelated content protection",
+    "normal focused and ASan focused tests",
+    "stable and legacy regression plus default build"
+  ],
+  "limits": [
+    "native gestures not rehearsed",
+    "ripple trim compound duplicate delete and other history identities remain",
+    "ASan initial build failed before tests due recursive build directory override; corrected invocation passed"
+  ],
+  "logs": [
+    {
+      "path": "/tmp/daw-s5-growth-allocation.log",
+      "exit_code": 0,
+      "sha256": "55cd6cba693d424c079707a5ca7c24e310af771fa1adecfc15b6f311fe90c1b2"
+    },
+    {
+      "path": "/tmp/daw-s5-growth-asan.log",
+      "exit_code": 2,
+      "sha256": "2a7184671ca9a6d95cce29b19272da4021c06b10468740b95af47a1d8d319db6"
+    },
+    {
+      "path": "/tmp/daw-s5-growth-asan-retest.log",
+      "exit_code": 0,
+      "sha256": "ee52ce5e73ac82cf7ba3e9c440ef62bd6c402955cfd446c931cab82acb75ca72"
+    },
+    {
+      "path": "/tmp/daw-s5-growth-regression.log",
+      "exit_code": 0,
+      "sha256": "f48f2ba51438f14868af4862821583706df7541ee072d872fa3b6aa0b658d81d"
+    },
+    {
+      "path": "/tmp/daw-s5-growth-final-make.log",
+      "exit_code": 0,
+      "sha256": "b5378898777eadfe4c17fee95d760b4779429d6938f540f20f6ae0ee71a40543"
+    },
+    {
+      "path": "/tmp/daw-s5-growth-docs.log",
+      "exit_code": 0,
+      "sha256": "7c62abbe165242601526fa2b4db122fd2e5163476d51a586c96827412dae3f85"
+    }
+  ],
+  "source_sha256": {
+    "src/engine/engine_clip_history.c": "6ba90f29e2cd02df463dfc7e40fbbb6e6b8611bf654077b0c3b52d5c28623371",
+    "src/undo/undo_manager.c": "3e4aa11c7b81005104152b49a9d12aa0dad33dafb3f7eb1bd4c6d8aa835515f1",
+    "src/input/timeline/timeline_drag.c": "d493d511c9eae8d9cf0fc8d920f8edcc6f964c3c1f8e65e63f1d923de218de67",
+    "tests/engine_parameter_transaction_test.c": "b8687f2ae718519be9f0efb3e381efea5ec0abc7dc35b57cb63f703d495172ac",
+    "tests/timeline_midi_region_test.c": "09392aa276c4cad660a48aefd0337544afb9da91b90d3a8e66381171f23d474f"
+  }
+}

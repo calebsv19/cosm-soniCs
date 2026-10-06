@@ -1,4 +1,5 @@
 #include "engine/instrument.h"
+#include "engine/instrument_waveform.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -8,10 +9,24 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+// Keeps invariant pitch and reusable candidate indices beside each prepared note descriptor.
+typedef struct EnginePreparedNote {
+    EngineMidiNote note;
+    double frequency;
+    int candidate_index;
+} EnginePreparedNote;
+
+// Computes an invariant MIDI base frequency during note preparation.
+static double midi_note_frequency(uint8_t note);
+
+// Owns one authored MIDI region or prepared audition voice list and its automation.
 struct EngineInstrumentSource {
     uint64_t timeline_start_frame;
     uint64_t clip_duration_frames;
-    EngineMidiNote* notes;
+    uint64_t render_duration_frames;
+    uint64_t export_end_frame;
+    EnginePreparedNote* notes;
+    int candidate_count;
     int note_count;
     int note_capacity;
     EngineAutomationLane* track_automation_lanes;
@@ -631,6 +646,16 @@ EngineInstrumentSource* engine_instrument_source_create(void) {
     return instrument;
 }
 
+// Reserves voice descriptors before live audition starts; subsequent bounded updates reuse this storage.
+bool engine_instrument_source_reserve_notes(EngineInstrumentSource* instrument, int capacity) {
+    if (!instrument || capacity < 0) return false;
+    if (capacity <= instrument->note_capacity) return true;
+    EnginePreparedNote* notes = realloc(instrument->notes, (size_t)capacity * sizeof(*notes));
+    if (!notes) return false;
+    instrument->notes = notes; instrument->note_capacity = capacity;
+    return true;
+}
+
 void engine_instrument_source_destroy(EngineInstrumentSource* instrument) {
     if (!instrument) {
         return;
@@ -665,21 +690,16 @@ bool engine_instrument_source_set_midi_clip(EngineInstrumentSource* instrument,
     if (note_count > 0 && !notes) {
         return false;
     }
-    if (note_count > instrument->note_capacity) {
-        EngineMidiNote* resized = (EngineMidiNote*)realloc(instrument->notes,
-                                                           sizeof(EngineMidiNote) * (size_t)note_count);
-        if (!resized) {
-            return false;
-        }
-        instrument->notes = resized;
-        instrument->note_capacity = note_count;
-    }
-    if (note_count > 0) {
-        memcpy(instrument->notes, notes, sizeof(EngineMidiNote) * (size_t)note_count);
+    if (!engine_instrument_source_reserve_notes(instrument, note_count)) return false;
+    for (int n = 0; n < note_count; ++n) {
+        instrument->notes[n].note = notes[n];
+        instrument->notes[n].frequency = midi_note_frequency(notes[n].note);
     }
     instrument->note_count = note_count;
     instrument->timeline_start_frame = timeline_start_frame;
     instrument->clip_duration_frames = clip_duration_frames;
+    instrument->render_duration_frames = clip_duration_frames;
+    instrument->export_end_frame = UINT64_MAX;
     instrument->preset = engine_instrument_preset_clamp(preset);
     instrument->params = engine_instrument_params_sanitize(instrument->preset, params);
     if (!instrument_copy_automation_lanes(&instrument->track_automation_lanes,
@@ -694,6 +714,23 @@ bool engine_instrument_source_set_midi_clip(EngineInstrumentSource* instrument,
                                             &instrument->automation_lane_capacity,
                                             automation_lanes,
                                             automation_lane_count);
+}
+
+// Gates only the captured instrument at the export boundary while preserving authored automation timing.
+void engine_instrument_source_set_export_end(EngineInstrumentSource* instrument, uint64_t end, uint64_t tail) {
+    if (!instrument || end <= instrument->timeline_start_frame) return;
+    uint64_t cut = end - instrument->timeline_start_frame;
+    if (cut > instrument->clip_duration_frames) return;
+    int kept = 0;
+    for (int i = 0; i < instrument->note_count; ++i) {
+        EnginePreparedNote note = instrument->notes[i];
+        if (note.note.start_frame >= cut) continue;
+        if (note.note.duration_frames > cut - note.note.start_frame) note.note.duration_frames = cut - note.note.start_frame;
+        instrument->notes[kept++] = note;
+    }
+    instrument->note_count = kept;
+    instrument->render_duration_frames = cut + tail;
+    instrument->export_end_frame = end;
 }
 
 void engine_instrument_source_reset(void* userdata, int sample_rate, int channels) {
@@ -718,37 +755,28 @@ static uint64_t instrument_ms_to_frames(float ms, int sample_rate) {
     return (uint64_t)(frames + 0.5);
 }
 
-static float note_envelope(uint64_t rel,
-                           uint64_t duration,
-                           const EngineInstrumentParams* params,
-                           int sample_rate) {
-    if (duration == 0 || rel >= duration) {
-        return 0.0f;
-    }
-    uint64_t attack = params ? instrument_ms_to_frames(params->attack_ms, sample_rate) : 64;
-    uint64_t decay = params ? instrument_ms_to_frames(params->decay_ms, sample_rate) : 0;
-    uint64_t release = params ? instrument_ms_to_frames(params->release_ms, sample_rate) : 64;
-    if (attack > 0 && rel < attack) {
-        return (float)rel / (float)attack;
-    }
-    float sustain = params ? params->sustain : 1.0f;
-    if (sustain < 0.0f) sustain = 0.0f;
-    if (sustain > 1.0f) sustain = 1.0f;
-    uint64_t decay_start = attack;
-    if (decay > 0 && rel < decay_start + decay && rel >= decay_start) {
-        float t = (float)(rel - decay_start) / (float)decay;
-        return 1.0f + (sustain - 1.0f) * t;
-    }
-    uint64_t remaining = duration - rel;
-    float scale = sustain;
-    if (release > 0 && remaining < release) {
-        scale *= (float)remaining / (float)release;
-    }
-    return scale;
+// Evaluates the held attack/decay/sustain level at a sample relative to note-on.
+static float held_envelope(uint64_t rel, const EngineInstrumentParams* params, int rate) {
+    uint64_t attack = instrument_ms_to_frames(params->attack_ms, rate);
+    uint64_t decay = instrument_ms_to_frames(params->decay_ms, rate);
+    if (attack && rel < attack) return (float)rel / attack;
+    if (decay && rel - attack < decay) return 1 + (params->sustain - 1) * ((float)(rel-attack)/decay);
+    return params->sustain;
 }
 
-static float preset_sample(EngineInstrumentPresetId preset, EngineInstrumentParams params, double phase, double freq) {
-    double sine = sin(phase);
+// Releases from the gate's actual envelope level, including note-off during attack or decay.
+static float note_envelope(uint64_t rel, uint64_t duration, const EngineInstrumentParams* params, int rate) {
+    if (!duration) return 0;
+    if (rel < duration) return held_envelope(rel, params, rate);
+    uint64_t release = instrument_ms_to_frames(params->release_ms, rate);
+    uint64_t elapsed = rel-duration;
+    if (!release || elapsed >= release) return 0;
+    return held_envelope(duration, params, rate) * (1 - (float)elapsed/release);
+}
+
+// Evaluates the existing preset with rate-aware saw, triangle, and sinusoidal components.
+static float preset_sample(EngineInstrumentPresetId preset, EngineInstrumentParams params, double phase, double freq, int sample_rate) {
+    double sine = instrument_sine(phase, freq, sample_rate);
     double tone = params.tone;
     if (tone < 0.0) tone = 0.0;
     if (tone > 1.0) tone = 1.0;
@@ -756,29 +784,27 @@ static float preset_sample(EngineInstrumentPresetId preset, EngineInstrumentPara
     case ENGINE_INSTRUMENT_PRESET_SOFT_SQUARE:
         return (float)(tanh(sine * (1.2 + tone * 3.4)) * 0.16);
     case ENGINE_INSTRUMENT_PRESET_SAW_LEAD: {
-        double cycle = phase / (2.0 * M_PI);
-        double saw = 2.0 * (cycle - floor(cycle + 0.5));
+        double saw = instrument_saw(phase, freq, sample_rate);
         return (float)(saw * (0.08 + tone * 0.10) + sine * (0.06 - tone * 0.03));
     }
     case ENGINE_INSTRUMENT_PRESET_SIMPLE_BASS: {
         double sub_phase = phase * 0.5;
-        double second = sin(phase * 2.0);
+        double second = instrument_sine(phase*2, freq*2, sample_rate);
         (void)freq;
-        return (float)(sin(sub_phase) * 0.22 + second * (0.02 + tone * 0.08));
+        return (float)(instrument_sine(sub_phase, freq*.5, sample_rate) * 0.22 + second * (0.02 + tone * 0.08));
     }
     case ENGINE_INSTRUMENT_PRESET_SYNTH_LAB: {
         double detune_ratio = pow(2.0, (double)params.osc2_detune / 1200.0);
         double phase2 = phase * detune_ratio;
         double osc1 = sine * (0.14 + tone * 0.05);
-        double cycle2 = phase2 / (2.0 * M_PI);
-        double saw2 = 2.0 * (cycle2 - floor(cycle2 + 0.5));
+        double saw2 = instrument_saw(phase2, freq * detune_ratio, sample_rate);
         double osc_mix = params.osc_mix;
         if (osc_mix < 0.0) osc_mix = 0.0;
         if (osc_mix > 1.0) osc_mix = 1.0;
         double sub_mix = params.sub_mix;
         if (sub_mix < 0.0) sub_mix = 0.0;
         if (sub_mix > 1.0) sub_mix = 1.0;
-        double sub = sin(phase * 0.5) * 0.18 * sub_mix;
+        double sub = instrument_sine(phase*.5, freq*.5, sample_rate) * 0.18 * sub_mix;
         double blend = osc1 * (1.0 - osc_mix) + saw2 * (0.10 + tone * 0.08) * osc_mix + sub;
         double drive = 1.0 + params.drive * 5.0;
         return (float)(tanh(blend * drive) / (1.0 + params.drive * 0.8));
@@ -787,36 +813,34 @@ static float preset_sample(EngineInstrumentPresetId preset, EngineInstrumentPara
         double detune_ratio = pow(2.0, (double)params.osc2_detune / 1200.0);
         double phase2 = phase * detune_ratio;
         double soft = tanh(sine * (1.0 + tone * 1.8)) * 0.10;
-        double second = sin(phase2) * 0.08 * params.osc_mix;
-        double sub = sin(phase * 0.5) * 0.10 * params.sub_mix;
+        double second = instrument_sine(phase2, freq*detune_ratio, sample_rate) * 0.08 * params.osc_mix;
+        double sub = instrument_sine(phase*.5, freq*.5, sample_rate) * 0.10 * params.sub_mix;
         return (float)(soft + second + sub);
     }
     case ENGINE_INSTRUMENT_PRESET_PLUCK: {
-        double cycle = phase / (2.0 * M_PI);
-        double triangle = 2.0 * fabs(2.0 * (cycle - floor(cycle + 0.5))) - 1.0;
+        double triangle = instrument_triangle(phase, freq, sample_rate);
         double bright = triangle * (0.08 + tone * 0.08);
         double body = sine * 0.09 * (1.0 - params.osc_mix * 0.5);
         double drive = 1.0 + params.drive * 3.0;
         return (float)(tanh((bright + body) * drive) / (1.0 + params.drive * 0.5));
     }
     case ENGINE_INSTRUMENT_PRESET_BRIGHT_LEAD: {
-        double cycle = phase / (2.0 * M_PI);
-        double saw = 2.0 * (cycle - floor(cycle + 0.5));
+        double saw = instrument_saw(phase, freq, sample_rate);
         double pulse = tanh(sine * (2.0 + tone * 5.0)) * 0.07;
         double drive = 1.0 + params.drive * 4.5;
         return (float)(tanh((saw * (0.10 + tone * 0.08) + pulse) * drive) /
                        (1.0 + params.drive * 0.6));
     }
     case ENGINE_INSTRUMENT_PRESET_WARM_KEYS: {
-        double harmonic = sin(phase * 2.0) * (0.03 + tone * 0.05);
+        double harmonic = instrument_sine(phase*2, freq*2, sample_rate) * (0.03 + tone * 0.05);
         double rounded = tanh(sine * (1.0 + tone * 1.4)) * 0.13;
-        double sub = sin(phase * 0.5) * 0.06 * params.sub_mix;
+        double sub = instrument_sine(phase*.5, freq*.5, sample_rate) * 0.06 * params.sub_mix;
         return (float)(rounded + harmonic + sub);
     }
     case ENGINE_INSTRUMENT_PRESET_SUB_DRONE: {
-        double sub = sin(phase * 0.5) * (0.18 + params.sub_mix * 0.08);
+        double sub = instrument_sine(phase*.5, freq*.5, sample_rate) * (0.18 + params.sub_mix * 0.08);
         double body = sine * (0.04 + tone * 0.04);
-        double second = sin(phase * 0.25) * 0.05;
+        double second = instrument_sine(phase*.25, freq*.25, sample_rate) * 0.05;
         double drive = 1.0 + params.drive * 3.0;
         (void)freq;
         return (float)(tanh((sub + body + second) * drive) / (1.0 + params.drive * 0.7));
@@ -858,12 +882,45 @@ static EngineInstrumentParams instrument_params_at_frame(const EngineInstrumentS
     return engine_instrument_params_sanitize(instrument->preset, params);
 }
 
+// Reads an existing gain/pan automation lane using the same normalized values as audio clips.
+static float instrument_signal_lane(const EngineAutomationLane* lanes, int count, EngineAutomationTarget target,
+                                    uint64_t frame, uint64_t length) {
+    for (int i=0;i<count;++i) if (lanes[i].target==target) return engine_automation_lane_eval(&lanes[i],frame,length);
+    return 0;
+}
+
+// Selects a conservative block-local candidate list without changing original note accumulation order.
+static void instrument_select_candidates(EngineInstrumentSource* instrument, uint64_t start, int frames) {
+    instrument->candidate_count = 0;
+    bool wrap = start > UINT64_MAX - (uint64_t)(frames - 1);
+    uint64_t last = start + (uint64_t)(frames - 1);
+    uint64_t first_clip = start < instrument->timeline_start_frame ? 0 : start - instrument->timeline_start_frame;
+    if (!wrap && last < instrument->timeline_start_frame) return;
+    uint64_t last_clip = last - instrument->timeline_start_frame;
+    EngineInstrumentParamSpec release_spec;
+    (void)engine_instrument_param_spec(ENGINE_INSTRUMENT_PARAM_RELEASE_MS, &release_spec);
+    uint64_t maximum_release = instrument_ms_to_frames(release_spec.max_value, instrument->sample_rate);
+    for (int n = 0; n < instrument->note_count; ++n) {
+        const EngineMidiNote* note = &instrument->notes[n].note;
+        if (!wrap) {
+            if (note->start_frame > last_clip) continue;
+            if (first_clip >= note->start_frame) {
+                uint64_t age = first_clip - note->start_frame;
+                if (age >= note->duration_frames && age - note->duration_frames >= maximum_release) continue;
+            }
+        }
+        instrument->notes[instrument->candidate_count++].candidate_index = n;
+    }
+}
+
+// Renders note gates and release envelopes within the authored region, including existing gain/pan lanes.
 void engine_instrument_source_render(void* userdata, float* interleaved, int frames, uint64_t transport_frame) {
     EngineInstrumentSource* instrument = (EngineInstrumentSource*)userdata;
     if (!instrument || !interleaved || frames <= 0 || instrument->sample_rate <= 0 || instrument->channels <= 0) {
         return;
     }
 
+    instrument_select_candidates(instrument, transport_frame, frames);
     const int channels = instrument->channels;
     for (int i = 0; i < frames; ++i) {
         uint64_t global_frame = transport_frame + (uint64_t)i;
@@ -871,22 +928,24 @@ void engine_instrument_source_render(void* userdata, float* interleaved, int fra
             continue;
         }
         uint64_t clip_frame = global_frame - instrument->timeline_start_frame;
-        if (clip_frame >= instrument->clip_duration_frames) {
+        if (clip_frame >= instrument->render_duration_frames) {
             continue;
         }
 
-        EngineInstrumentParams frame_params = instrument_params_at_frame(instrument, global_frame, clip_frame);
+        uint64_t automation_global = global_frame < instrument->export_end_frame ? global_frame : instrument->export_end_frame - 1;
+        uint64_t automation_clip = automation_global - instrument->timeline_start_frame;
+        EngineInstrumentParams frame_params = instrument_params_at_frame(instrument, automation_global, automation_clip);
         float sample = 0.0f;
-        for (int n = 0; n < instrument->note_count; ++n) {
-            const EngineMidiNote* note = &instrument->notes[n];
+        for (int candidate = 0; candidate < instrument->candidate_count; ++candidate) {
+            int n = instrument->notes[candidate].candidate_index;
+            const EngineMidiNote* note = &instrument->notes[n].note;
             if (clip_frame < note->start_frame) {
                 continue;
             }
             uint64_t rel = clip_frame - note->start_frame;
-            if (rel >= note->duration_frames) {
-                continue;
-            }
-            double freq = midi_note_frequency(note->note);
+            uint64_t release = instrument_ms_to_frames(frame_params.release_ms, instrument->sample_rate);
+            if (rel >= note->duration_frames && rel - note->duration_frames >= release) continue;
+            double freq = instrument->notes[n].frequency;
             if (instrument->preset == ENGINE_INSTRUMENT_PRESET_SYNTH_LAB &&
                 frame_params.vibrato_depth > 0.0f &&
                 frame_params.vibrato_rate > 0.0f) {
@@ -897,7 +956,7 @@ void engine_instrument_source_render(void* userdata, float* interleaved, int fra
             }
             double phase = (2.0 * M_PI * freq * (double)rel) / (double)instrument->sample_rate;
             float env = note_envelope(rel, note->duration_frames, &frame_params, instrument->sample_rate);
-            sample += preset_sample(instrument->preset, frame_params, phase, freq) *
+            sample += preset_sample(instrument->preset, frame_params, phase, freq, instrument->sample_rate) *
                       frame_params.level *
                       note->velocity *
                       env;
@@ -908,8 +967,19 @@ void engine_instrument_source_render(void* userdata, float* interleaved, int fra
         } else if (sample < -1.0f) {
             sample = -1.0f;
         }
+        float volume = instrument_signal_lane(instrument->automation_lanes, instrument->automation_lane_count,
+            ENGINE_AUTOMATION_TARGET_VOLUME, automation_clip, instrument->clip_duration_frames);
+        volume += instrument_signal_lane(instrument->track_automation_lanes, instrument->track_automation_lane_count,
+            ENGINE_AUTOMATION_TARGET_VOLUME, automation_global, UINT64_MAX);
+        float pan = instrument_signal_lane(instrument->automation_lanes, instrument->automation_lane_count,
+            ENGINE_AUTOMATION_TARGET_PAN, automation_clip, instrument->clip_duration_frames);
+        pan += instrument_signal_lane(instrument->track_automation_lanes, instrument->track_automation_lane_count,
+            ENGINE_AUTOMATION_TARGET_PAN, automation_global, UINT64_MAX);
+        sample *= fminf(2, fmaxf(0, 1+volume));
+        pan = fminf(1, fmaxf(-1, pan));
         for (int ch = 0; ch < channels; ++ch) {
-            interleaved[i * channels + ch] = sample;
+            float balance = channels < 2 ? 1 : ch==0 && pan>0 ? 1-pan : ch==1 && pan<0 ? 1+pan : 1;
+            interleaved[i * channels + ch] = sample * balance;
         }
     }
 }

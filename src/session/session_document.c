@@ -101,20 +101,6 @@ static void session_automation_lanes_free(SessionAutomationLane** lanes, int* la
     }
 }
 
-static void session_store_active_eq_curve(EffectsPanelState* panel) {
-    if (!panel) {
-        return;
-    }
-    if (panel->eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK &&
-        panel->target == FX_PANEL_TARGET_TRACK &&
-        panel->target_track_index >= 0 &&
-        panel->target_track_index < panel->eq_curve_tracks_count &&
-        panel->eq_curve_tracks) {
-        panel->eq_curve_tracks[panel->target_track_index] = panel->eq_curve;
-    } else {
-        panel->eq_curve_master = panel->eq_curve;
-    }
-}
 
 void session_document_init(SessionDocument* doc) {
     if (!doc) {
@@ -341,7 +327,8 @@ static bool session_clip_copy_midi_notes(const EngineClip* src, SessionClip* dst
     return true;
 }
 
-bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
+// Builds an isolated document on the control thread, propagating every owned allocation failure.
+static bool session_document_capture_candidate(const AppState* state, SessionDocument* out_doc) {
     if (!state || !out_doc) {
         return false;
     }
@@ -369,6 +356,7 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
     if (state->tempo_map.event_count > 0) {
         out_doc->tempo_events = (SessionTempoEvent*)calloc((size_t)state->tempo_map.event_count,
                                                            sizeof(SessionTempoEvent));
+        if (!out_doc->tempo_events) return false;
         if (out_doc->tempo_events) {
             out_doc->tempo_event_count = state->tempo_map.event_count;
             for (int i = 0; i < state->tempo_map.event_count; ++i) {
@@ -381,6 +369,7 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
         out_doc->time_signature_events =
             (SessionTimeSignatureEvent*)calloc((size_t)state->time_signature_map.event_count,
                                                 sizeof(SessionTimeSignatureEvent));
+        if (!out_doc->time_signature_events) return false;
         if (out_doc->time_signature_events) {
             out_doc->time_signature_event_count = state->time_signature_map.event_count;
             for (int i = 0; i < state->time_signature_map.event_count; ++i) {
@@ -433,9 +422,23 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
     out_doc->midi_editor.pitch_viewport_clip_index = state->midi_editor_ui.pitch_viewport_clip_index;
     out_doc->midi_editor.pitch_viewport_top_note = state->midi_editor_ui.pitch_viewport_top_note;
     out_doc->midi_editor.pitch_viewport_row_count = state->midi_editor_ui.pitch_viewport_row_count;
-    EffectsPanelState* panel = &((AppState*)state)->effects_panel;
-    session_store_active_eq_curve(panel);
-    const EqCurveState* master_curve = &panel->eq_curve_master;
+    const EffectsPanelState* panel = &state->effects_panel;
+    EqCurveState master_copy = panel->eq_curve_master;
+    const EqCurveState* master_curve = &master_copy;
+    if (state->engine) {
+        EngineEqCurve accepted;
+        if (!engine_get_eq_curve(state->engine, -1, &accepted)) return false;
+        master_copy.low_cut.enabled = accepted.low_cut.enabled;
+        master_copy.low_cut.freq_hz = accepted.low_cut.freq_hz;
+        master_copy.high_cut.enabled = accepted.high_cut.enabled;
+        master_copy.high_cut.freq_hz = accepted.high_cut.freq_hz;
+        for (int i = 0; i < ENGINE_EQ_BANDS; ++i) {
+            master_copy.bands[i].enabled = accepted.bands[i].enabled;
+            master_copy.bands[i].freq_hz = accepted.bands[i].freq_hz;
+            master_copy.bands[i].gain_db = accepted.bands[i].gain_db;
+            master_copy.bands[i].q_width = accepted.bands[i].q_width;
+        }
+    }
     out_doc->effects_panel.view_mode = (int)panel->view_mode;
     out_doc->effects_panel.selected_index = panel->selected_slot_index;
     out_doc->effects_panel.open_index = panel->list_open_slot_index;
@@ -528,6 +531,18 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
         } else {
             session_eq_curve_from_state(&dst_track->eq, master_curve);
         }
+        EngineEqCurve accepted;
+        if (!engine_get_eq_curve(state->engine, t, &accepted)) return false;
+        dst_track->eq.low_cut.enabled = accepted.low_cut.enabled;
+        dst_track->eq.low_cut.freq_hz = accepted.low_cut.freq_hz;
+        dst_track->eq.high_cut.enabled = accepted.high_cut.enabled;
+        dst_track->eq.high_cut.freq_hz = accepted.high_cut.freq_hz;
+        for (int i = 0; i < ENGINE_EQ_BANDS; ++i) {
+            dst_track->eq.bands[i].enabled = accepted.bands[i].enabled;
+            dst_track->eq.bands[i].freq_hz = accepted.bands[i].freq_hz;
+            dst_track->eq.bands[i].gain_db = accepted.bands[i].gain_db;
+            dst_track->eq.bands[i].q_width = accepted.bands[i].q_width;
+        }
         dst_track->fx = NULL;
         dst_track->fx_count = 0;
 
@@ -586,7 +601,8 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
         }
 
         FxMasterSnapshot track_fx = {0};
-        if (state->engine && engine_fx_track_snapshot(state->engine, t, &track_fx) && track_fx.count > 0) {
+        if (!engine_fx_track_snapshot(state->engine, t, &track_fx)) return false;
+        if (track_fx.count > 0) {
             int fx_count = track_fx.count;
             if (fx_count > FX_MASTER_MAX) {
                 fx_count = FX_MASTER_MAX;
@@ -633,7 +649,8 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
     out_doc->master_fx_count = 0;
     out_doc->master_fx = NULL;
     FxMasterSnapshot snap = {0};
-    if (state->engine && engine_fx_master_snapshot(state->engine, &snap) && snap.count > 0) {
+    if (state->engine && !engine_fx_master_snapshot(state->engine, &snap)) return false;
+    if (snap.count > 0) {
         int count = snap.count;
         if (count > FX_MASTER_MAX) {
             count = FX_MASTER_MAX;
@@ -676,5 +693,22 @@ bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
         }
     }
 
+    return true;
+}
+
+
+// Publishes a complete validated capture without changing the caller's prior document on failure.
+bool session_document_capture(const AppState* state, SessionDocument* out_doc) {
+    if (!state || !out_doc || (state->engine && !engine_is_control_thread(state->engine))) return false;
+    SessionDocument candidate;
+    session_document_init(&candidate);
+    char error[256];
+    if (!session_document_capture_candidate(state, &candidate) ||
+        !session_document_validate(&candidate, error, sizeof(error))) {
+        session_document_free(&candidate);
+        return false;
+    }
+    session_document_free(out_doc);
+    *out_doc = candidate;
     return true;
 }

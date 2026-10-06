@@ -6,14 +6,16 @@ extern "C" {
 #endif
 
 // v1 targets your current design: float32, INTERLEAVED, in-place by default.
-// Backward-compatible refresh that adds OPTIONAL sidechain support.
+// Built-in source API; v2 adds optional latency and applied-reduction queries.
 // Existing effects keep working unchanged (process_sc may be NULL).
 
-#define FX_API_VERSION 1
+#define FX_API_VERSION 2
 #define FX_MAX_PARAMS  32
 
 // Flags
 #define FX_FLAG_INPLACE_OK   (1u << 0)  // process() may modify input buffer in-place
+#define FX_FLAG_SAMPLE_PARAM_SMOOTHING (1u << 3) // processor owns sample ramps; host supplies targets directly
+#define FX_FLAG_DYNAMIC_LATENCY (1u << 2) // query the instance; descriptor latency is not authoritative
 #define FX_FLAG_HAS_LATENCY  (1u << 1)  // fixed latency in samples is valid
 
 typedef struct FxHandle FxHandle;
@@ -54,10 +56,16 @@ typedef struct {
                        int channels,
                        int sc_channels);
 
-    // NON-RT. Safe to allocate/recompute (e.g., biquad coeffs).
+    // Called during preparation AND render-owned parameter updates.
+    // Implementations used with render smoothing must not allocate, lock, or log.
     void (*set_param)(FxHandle*, uint32_t param_idx, float value);
     void (*reset)(FxHandle*);     // clear histories, z-states
     void (*destroy)(FxHandle*);   // free heap owned by the instance
+    // OPTIONAL RT queries; latency is the active delay and max_latency is its prepared bound.
+    uint32_t (*latency)(FxHandle*);
+    uint32_t (*max_latency)(FxHandle*);
+    // OPTIONAL RT query: minimum applied gain in dB over the last block, before makeup.
+    float (*gain_reduction_db)(FxHandle*);
 } FxVTable;
 
 // Factory symbols each effect translation unit exposes.

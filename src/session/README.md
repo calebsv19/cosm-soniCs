@@ -1,5 +1,8 @@
 # Directory: src/session
 
+Session persistence now uses staged, validated atomic replacement with one previous valid `.bak` recovery copy. See [S2.1 saving contract and evidence](../../docs/improvement/S2-SAVING.md). This protects session-file publication; coherent capture/application and media durability remain separate work.
+
+
 Purpose: Session persistence helpers that translate between the live `AppState`/engine runtime and the on-disk JSON document described below.
 
 ## Session Document (`SessionDocument`)
@@ -22,7 +25,7 @@ Purpose: Session persistence helpers that translate between the live `AppState`/
     - MIDI clips persist `instrument_preset`, `instrument_inherits_track`, named-key `instrument_params`, and `midi_notes[]` with `start_frame`, `duration_frames`, `note`, and normalized `velocity`; missing `kind` is treated as audio for old sessions, missing `instrument_inherits_track` defaults to explicit per-region sound, missing `instrument_preset` defaults to Pure Sine, missing params default to the selected preset, and unknown future param keys are ignored.
 
 ## Implementation
-- `session_serialization.c`: Captures and restores `AppState`/engine state. Saving is handled by `session_save_to_file` (`session_document_capture` → `session_document_write_file`), while loading goes through `session_load_from_file` (`session_document_read_file` → validation → `session_apply_document`). Individual helpers can be reused for tooling/tests.
+- `session_document.c`, `session_io_write.c`, `session_io_read.c`, and `session_apply.c`: Capture, persist, and restore `AppState`/engine state. Saving is handled by `session_save_to_file` (`session_document_capture` → `session_document_write_file`), while loading goes through `session_load_from_file` (`session_document_read_recoverable` → primary or validated backup → `session_apply_document`). Individual helpers can be reused for tooling/tests.
 
 ### JSON Sketch
 ```json
@@ -120,3 +123,20 @@ Purpose: Session persistence helpers that translate between the live `AppState`/
   ]
 }
 ```
+
+
+### Atomic save and recovery
+
+`save_file.c` owns a same-directory candidate through flush, file sync, close, validation, rename, and directory sync. Existing destinations are preserved on prepublication failure. A directory-sync failure after rename is reported distinctly in logs because the new file is already published. New files are private; existing regular-file permission bits are retained; symlink destinations are rejected.
+
+The session writer validates candidate bytes and retains the previous valid primary as `<path>.bak` before replacement. Loading tries the validated backup only if primary reading/validation fails, logs recovery, and leaves files untouched. Temporary crash leftovers are ignored. Last-project markers publish after the session; registry dirty state clears only after its own successful publication. `make test-session-atomic-save` covers file-operation failures, process interruption, recovery, and project/marker ordering.
+
+### Coherent project transactions
+
+Capture is a control-thread operation that prepares a deep-owned document and replaces the previous snapshot only on success. Accepted EQ settings come from the engine rather than mutable UI drafts. Restore prepares a private offline engine, registry, maps, clips, automation, EQ, and FX before transferring project ownership; required failures, including missing media, preserve the old project and history. Successful commit clears obsolete history and editing state and remaps clip references after sorting. Input documents remain immutable. Inspector/library refresh follows commit; device activation remains the caller's separate step. See [the S2.2 contract](../../docs/improvement/S2-CAPTURE-RESTORE.md) and `make test-session-transaction`.
+
+
+S4.5 adds the optional engine property `output_queue_blocks` (integer 2..32). Serialization preserves the requested value, old documents default to 32, and parser/validation reject invalid values. Engine restoration uses the saved runtime configuration when constructing the replacement engine. The effective render-ahead target is computed at device startup and may be raised for callback headroom; it is not serialized as a physical latency promise.
+
+
+S4.7 invalidates asynchronous import generations only at successful project replacement, before retiring the old engine. Failed candidate preparation preserves pending work. Restore stays atomic and synchronous; pending imports are not serialized as published clips. See [S4.7](../../docs/improvement/S4.7-MEDIA.md).

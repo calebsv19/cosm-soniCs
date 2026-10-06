@@ -1,0 +1,14 @@
+{
+  "status": "rename_identity_and_release_ownership_software_verified",
+  "checks": "focused normal and ASan engine/input/MIDI; default make; diff check passed",
+  "native_acceptance": false,
+  "sha256": {
+    "src/input/inspector_input.c": "a2f77687c175eeb13a2b1048e63bc3f03b79db397a90356b7427aeb53eecf200",
+    "src/undo/undo_manager.c": "079fd4833b1793cb40962c79d6f24317b1d38979f77bb0f6dbcc7c904343bb8d",
+    "include/undo/undo_manager.h": "324d7eebd5446afaac1e2325a7b66dbb5d647a5a989cac82c569eda316358897",
+    "tests/engine_parameter_transaction_test.c": "4737d996178b2dd6fd4335c5693ae8f78d40bc68c7ab601ba88b1165c7d2664f",
+    "/tmp/daw-s5-rename-ownership-tests.log": "70ea88a0c9799a551590c4f23d16679b0b7eedeb1c4a979808c56192857377b9",
+    "/tmp/daw-s5-rename-asan.log": "ed501c4f560c6c5a3c95d08d2b3a8efebab53f11f587a99efda362669a3591f5",
+    "/tmp/daw-s5-rename-final-make.log": "0afbabb0d21aebd21072bcafae2407c74a469ea5acbd00f313a08cf2e3c8acc7"
+  }
+}

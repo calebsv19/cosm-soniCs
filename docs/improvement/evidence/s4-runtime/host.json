@@ -1,0 +1,11 @@
+{
+  "model": "Mac14,15",
+  "cpu": "Apple M2",
+  "logical_cpus": 8,
+  "memory_bytes": 17179869184,
+  "os": "macOS 15.7.4 (24G517)",
+  "compiler": "Apple clang 17.0.0 (clang-1700.6.4.2)",
+  "architecture": "arm64",
+  "hardware_source": "sysctl hw.model hw.memsize hw.ncpu machdep.cpu.brand_string",
+  "cpu_control": "No affinity, power-mode control, or exclusive-host guarantee."
+}

@@ -1,0 +1,109 @@
+{
+  "slice": "s4.1-runtime-audit",
+  "status": "measurement_complete_implementation_not_started",
+  "recorded_utc": "2026-09-21T16:25:24.791131+00:00",
+  "git_head": "d8bff97cccab2054f18ccc874838162d0423e539",
+  "worktree": "Uncommitted earlier S1-S3.7 changes preserved. This pass adds benchmark tooling and audit documentation only; no production behavior/default build policy changes.",
+  "methodology": {
+    "optimized_cases": 30,
+    "optimized_selected_samples": 90,
+    "comparison_cases": 5,
+    "comparison_samples": 15,
+    "repeats": 3,
+    "aggregation": "Median/range of per-process statistics, not pooled percentiles.",
+    "fixture_reconciliation": "Primary run: 84 successful samples and 3 invalid sparse-MIDI fixture rejections. Corrected future-note positions remain inside region. Followup replaces all 9 primary sparse-MIDI samples and adds overlap: 12 successful samples, resulting in 90 canonical optimized samples.",
+    "initial_harness_sha256": "92b537f56285948f5f55440cbdc02e03ee7fbe04a4325b753b8bc1715546393d",
+    "final_harness_sha256": "a2cace8348be469f4773ecb7e0e940f00de83f4428241afb9bf6939a6341e76a",
+    "harness_delta": "s4-runtime/harness-v1-to-v2.patch",
+    "host": "s4-runtime/host.json"
+  },
+  "checks": [
+    {
+      "command": "make -f make/performance.mk performance-build",
+      "exit_code": 0,
+      "log": "/tmp/daw-s4-o2-final-build.log",
+      "sha256": "01c6b6f91b2387ea5f5945e60257c2d3728d8be5abdebe73cb0ae6eef109c725",
+      "highlights": []
+    },
+    {
+      "command": "python3 tests/performance/run_workloads.py --binary build/performance/O2/targets/macOS-arm64/tests/runtime_workload_bench --output /tmp/daw-s4-o2 --repeats 3",
+      "exit_code": 1,
+      "log": "/tmp/daw-s4-o2-run.log",
+      "sha256": "5d08ed8846bcd8764faf6af5faa835c43ed0e8bed56ae20dfc06bc2c476bb5de",
+      "highlights": [
+        "completed=87 failures=3 output=/private/tmp/daw-s4-o2"
+      ]
+    },
+    {
+      "command": "python3 tests/performance/run_workloads.py --binary build/performance/O2/targets/macOS-arm64/tests/runtime_workload_bench --output /tmp/daw-s4-o2-followup --group followup --repeats 3",
+      "exit_code": 0,
+      "log": "/tmp/daw-s4-o2-followup.log",
+      "sha256": "102547f6f2af78630c734f8d437b4f6078dfe413b598275096bf9324992c435d",
+      "highlights": [
+        "completed=12 failures=0 output=/private/tmp/daw-s4-o2-followup"
+      ]
+    },
+    {
+      "command": "make -f make/performance.mk PERF_OPT_LEVEL=0 performance-build",
+      "exit_code": 0,
+      "log": "/tmp/daw-s4-o0-build.log",
+      "sha256": "0c9da4c1a2f694d53c9f4c9cab16f8944f1e772e531b37fde55d4a3ccb283a54",
+      "highlights": []
+    },
+    {
+      "command": "python3 tests/performance/run_workloads.py --binary build/performance/O0/targets/macOS-arm64/tests/runtime_workload_bench --output /tmp/daw-s4-o0 --group comparison --repeats 3",
+      "exit_code": 0,
+      "log": "/tmp/daw-s4-o0-run.log",
+      "sha256": "80928e205bf664c1d1e90189cbd927497c269734183a384e04b38787fc4b23c6",
+      "highlights": [
+        "completed=15 failures=0 output=/private/tmp/daw-s4-o0"
+      ]
+    },
+    {
+      "command": "make -f make/performance.mk test-export-render test-instrument-lifecycle test-engine-transport-clock",
+      "exit_code": 0,
+      "log": "/tmp/daw-s4-o2-correctness.log",
+      "sha256": "542c29733ea34f5d8d64f484ca1ffd56152c2f5316d75e8fb27e59aa331bcc4b",
+      "highlights": [
+        "export_render_test: 53 instrumented allocation failure boundaries passed",
+        "export_render_test: success (repeatability, ranges, preroll, release/FX tails, PDC, snapshot/live isolation, failures, normalization, deterministic WAV)",
+        "instrument_lifecycle_test: success (gate/release, early-off, partitions, alias reduction, automation, bounded voices, retirement, panic, zero guarded heap calls)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)"
+      ]
+    },
+    {
+      "command": "make",
+      "exit_code": 0,
+      "log": "/tmp/daw-s4-final-build.log",
+      "sha256": "b7abb8da9e64c406302cda20104a33766735b54470e0e586a48dbf39a52f14db",
+      "highlights": []
+    }
+  ],
+  "artifacts": {
+    "s4-runtime/followup/metadata.json": "15286b13ba22aadf4bcbbff9c68a64e311fa7a1e360b387cd74b11e67a18a0da",
+    "s4-runtime/followup/samples.jsonl": "7a61fb4c6971d22fcd3acd34ec44223fa0cadc6800f90383b7953e4be41d3a7f",
+    "s4-runtime/harness-v1-to-v2.patch": "b29102fbe6e10327f093b0fa43b7eda54922be5ed7de6a94e7784099cb92ec09",
+    "s4-runtime/host.json": "c8c97dfd7f6222399904ab5f5d926705796566ad6331b858bdfeec4416a28e9a",
+    "s4-runtime/layout.txt": "551e4deabc1ef04c204a3c08032309fed9b1aa0a583883aa269379509c5e3f6a",
+    "s4-runtime/optimized/metadata.json": "83d1a3c46bf720f2bfdd53db214f64bd4f68e5899f96cccadce5dc1607a3eacd",
+    "s4-runtime/optimized/samples.jsonl": "f3aebd121286f8f760ae62026e22bc53846a0adb0afec14432342c413944229b",
+    "s4-runtime/source-manifest.json": "8e8a86d26df1b6e74c6c9a9fb196133fc46977cef36cb1c30454da97b4a8d44f",
+    "s4-runtime/summary.json": "cc2dfcb4e6bb301a36752e9aa011638da891fb6800cdabc5194032502970bef3",
+    "s4-runtime/unoptimized/metadata.json": "fe10cc6777136d87b90e08c87e442e6008ee13eb547e6d688be5caf5b5b525bc",
+    "s4-runtime/unoptimized/samples.jsonl": "15b07d644b7f17f120f866a785ea90d1cf998483c524bbdcfba7b3bf9ec308c1"
+  },
+  "binaries": {
+    "build/performance/O2/targets/macOS-arm64/tests/runtime_workload_bench": "d722efde032ef259f6bf568c271566c7b9423de78ecc6636cdbe67b96489f325",
+    "build/performance/O0/targets/macOS-arm64/tests/runtime_workload_bench": "b11d47b2cb559b4d11a8d8c9c1a6d0734bea53a0389c0eaf800f5ab775e21f17",
+    "build/targets/macOS-arm64/toolchains/clang/bin/daw_app": "5bb4579ec1e2b799028be26491698b168fbec5bd45f9fdaec60b40a690f0c57b"
+  },
+  "proof_limits": [
+    "Short headless warm-file fixtures, no exclusive host/CPU pinning or sustained long-session qualification.",
+    "Actual worker/SDL dummy output; synthetic recording packets are not physical capture or calibrated output timing.",
+    "Default app flags remain unoptimized. Optimized existing export/instrument/transport checks passed, not full optimized app/UI/device qualification.",
+    "RSS is not live heap or leak proof; peaks include fixture construction and allocator retention.",
+    "Primary and corrected harness hashes differ only in future-note fixture positions and overlap fixture support; production runtime source was unchanged.",
+    "No new sanitizer/full stable-legacy rerun; measurement tooling is opt-in and production engine files unchanged.",
+    "No commit or release; stop before S4.2."
+  ]
+}

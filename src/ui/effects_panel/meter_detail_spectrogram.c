@@ -90,8 +90,7 @@ static void build_spectrogram_legacy_rgba(const float* frames,
         range = 1.0f;
     }
     for (int frame = 0; frame < max_frames; ++frame) {
-        float age = max_frames > 1 ? (float)frame / (float)(max_frames - 1) : 0.0f;
-        float age_fade = 1.0f - 0.35f * age;
+        const float age_fade = 1.0f; // Equal measured levels retain equal colors at every age.
         for (int bin = 0; bin < bins; ++bin) {
             float norm = 0.0f;
             if (frame < frame_count) {
@@ -189,6 +188,16 @@ void effects_meter_render_spectrogram(SDL_Renderer* renderer,
     SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
     SDL_RenderDrawRect(renderer, rect);
 
+    EffectsMeterHistoryGridContext measured_grid = {0};
+    if (spectrogram && spectrogram->sample_rate > 0) {
+        measured_grid.enabled = true;
+        measured_grid.history_span_seconds = (double)(ENGINE_SPECTROGRAM_HISTORY - 1) *
+            spectrogram->window_frames / spectrogram->sample_rate;
+    }
+    history_grid = &measured_grid; // Relative age of captured windows, independent of UI frame rate or beat mode.
+    char meaning[192];
+    snprintf(meaning, sizeof(meaning), "%s insert | Mid | flat -60..0 dBFS | %.2fs age, newest left",
+        spectrogram && spectrogram->track_id ? "Track" : "Master", measured_grid.history_span_seconds);
     const int body_h = ui_font_line_height(1.0f);
     const int title_h = ui_font_line_height(1.2f);
     const int pad = max_int(12, body_h / 2 + 8);
@@ -230,7 +239,7 @@ void effects_meter_render_spectrogram(SDL_Renderer* renderer,
     ui_draw_text_clipped(renderer,
                          rect->x + pad,
                          subtitle_y,
-                         "Track Output",
+                         spectrogram ? meaning : "Meter insert | Mid | flat dBFS | awaiting audio",
                          dim_color,
                          1.0f,
                          header_text_w);
@@ -251,7 +260,7 @@ void effects_meter_render_spectrogram(SDL_Renderer* renderer,
 
     char freq_buf[16];
     float min_hz = ENGINE_SPECTROGRAM_MIN_HZ;
-    float max_hz = ENGINE_SPECTROGRAM_MAX_HZ;
+    float max_hz = spectrogram && spectrogram->sample_rate > 0 ? fminf(ENGINE_SPECTROGRAM_MAX_HZ, spectrogram->sample_rate * .5f) : ENGINE_SPECTROGRAM_MAX_HZ;
     float mid_hz = sqrtf(min_hz * max_hz);
     int top_label_y = meter_rect.y;
     int mid_label_y = meter_rect.y + (meter_rect.h - body_h) / 2;

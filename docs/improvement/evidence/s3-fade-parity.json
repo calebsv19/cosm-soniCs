@@ -1,0 +1,101 @@
+{
+  "schema": 1,
+  "slice": "S3.1 existing audio fade parity",
+  "recorded_at": "2026-09-20T00:56:42.260644+00:00",
+  "head": "d8bff97cccab2054f18ccc874838162d0423e539",
+  "state": "Local uncommitted changes; earlier S1/S2 work preserved",
+  "runs": [
+    {
+      "command": "make test-stable test-legacy",
+      "exit_code": 0,
+      "log": "/tmp/daw-s31-regression.log",
+      "sha256": "57020a4fb1085cfd55c8c69548e522d34804c5e545752bd5769af953354ef4c6",
+      "selected_output": [
+        "fade_processing_test: success (four curves, render/clone/block/export/preview parity, capture, zero/short bounds)",
+        "media_durability_test: success (5 prepublication failures, directory uncertainty, RIFF limits, torn journal recovery)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "session_transaction_test: success (11 capture and 5 restore allocation boundaries, live capture, rollback, complete retry)",
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)",
+        "engine_parameter_transaction_test: success",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)",
+        "daw_pack_contract_parity_test: success",
+        "daw_trace_export_contract_test: success",
+        "daw_trace_export_async_contract_test: success",
+        "kit_viz_waveform_adapter_test: success",
+        "kit_viz_fx_preview_adapter_test: success",
+        "waveform_cache_pack_warmstart_test: success",
+        "layout_text_scaling_sweep_test: success",
+        "timeline_contract_test: success",
+        "midi_model_test: success",
+        "midi_instrument_render_test: success",
+        "midi_editor_shell_test: success",
+        "audio_capture_device_test: success",
+        "audio_output_device_test: success",
+        "effects_revision_test: success",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)",
+        "audio_recording_test: success",
+        "track_role_test: success",
+        "daw_data_path_contract_test: success",
+        "test-library-copy-vs-reference-contract: success",
+        "daw stable test lane passed",
+        "2026-09-19 17:53:36.050 session_serialization_test[17033:188905443] INFO: session_serialization_test: success (6898 bytes)",
+        "media_cache_stress_test: success (entries=0)",
+        "clip_overlap_priority_test: success (clips=3)",
+        "engine_smoke_test: success",
+        "shared_theme_font_adapter_test: success"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-fade-processing test-engine-parameter-transaction test-engine-source-lifetime",
+      "exit_code": 0,
+      "log": "/tmp/daw-s31-asan.log",
+      "sha256": "01cf5b9e7010304614151395d02fe31bf9a0513fcb011f97511de2e692bd1725",
+      "selected_output": [
+        "fade_processing_test: success (four curves, render/clone/block/export/preview parity, capture, zero/short bounds)",
+        "engine_parameter_transaction_test: success",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-tsan.mk test-fade-processing test-engine-parameter-transaction test-engine-source-lifetime",
+      "exit_code": 0,
+      "log": "/tmp/daw-s31-tsan.log",
+      "sha256": "b51db2b24d4d55cf7900afabe37a1671c0771d851acb79d83db90a2188aa6847",
+      "selected_output": [
+        "fade_processing_test: success (four curves, render/clone/block/export/preview parity, capture, zero/short bounds)",
+        "engine_parameter_transaction_test: success",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)"
+      ]
+    },
+    {
+      "command": "make",
+      "exit_code": 0,
+      "log": "/tmp/daw-s31-build.log",
+      "sha256": "d69fbc6d924887c8912e83dda9d0ff05a31d3697fcf80ab1580794c8261d0ed2",
+      "selected_output": []
+    }
+  ],
+  "source_sha256": {
+    "include/engine/fade_curve.h": "ac4bc75c73af61db84f4dcd673ccf868ac66f1e74cee2f85efa0c2ce696ce166",
+    "include/engine/sampler.h": "0a66288933b1bd43d3191d7cc81210f8cf5592fbe7f689b890a1954f57f4d6ee",
+    "include/ui/render_utils.h": "18652e4f41a530779b7837c72336f8260803484ad2ae3c61a39f451fbcdefd8e",
+    "src/engine/sampler.c": "da551c7351bff119855e68d37db623f234419a6773bf015272e4a16a23f05954",
+    "src/engine/engine_clips.c": "7bc60b9ef34ac930a8ddf3ea6fa3e60b5dd4e4056cec52912ea77a25d3564355",
+    "src/engine/engine_source_plan.c": "03864c325a9efc826b8546734a5ffde66c48c1e45868b2083fdfe75961b98d89",
+    "tests/fade_processing_test.c": "1266a4d7dc127832586a161bc3c6428ab85aa9f18ba163cbf6b2af8d3577f90d",
+    "tests/engine_parameter_transaction_test.c": "84131508315edd85608b00d58057be42848fd944b4a5f160ca0c9872a04c983b",
+    "tests/engine_source_lifetime_test.c": "3cb8dbf93c3c88129b12644bbf416b1193576edb45384b3362461d4d8f6ae135",
+    "make/sources-tests.mk": "0e1222e1dd924c583840c400ddeb88ef68a1a8f955c0a59477af15ffbdbb0524",
+    "make/rules-test-core.mk": "e80d241e1a2c75d5c8cec6b0b3eacb2c4ada6ace6f2caff96b103e639a4f3e9b"
+  },
+  "limits": [
+    "Existing nonlinear audio fade selections now sound like their displayed shapes; linear timing and curve IDs are preserved.",
+    "No new MIDI fade behavior, curve types, routing, crossfade semantics, or file formats.",
+    "Offline sample/state and threaded stress proof; no manual listening or screenshot acceptance.",
+    "Full suite preceded formatting-only changes to the new test; ASan and TSan ran the formatted test.",
+    "General export isolation/normalization/tails and S1 compound edit/caller feedback deferrals remain separate.",
+    "S3.2 not started; no commit, install, or release."
+  ]
+}

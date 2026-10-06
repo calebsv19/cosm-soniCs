@@ -118,6 +118,10 @@ bool audio_capture_device_open(AudioCaptureDevice* device,
     }
 
     AudioDeviceSpec spec = audio_capture_normalize_spec(desired);
+    if (spec.channels < 1 || spec.channels > 8 || spec.block_size > 65535) {
+        audio_capture_set_error(device, "capture requires 1-8 channels and a valid callback block size");
+        return false;
+    }
     SDL_Log("audio_capture_device: open request device=%s sample_rate=%d channels=%d block_size=%d",
             (device_name && device_name[0] != '\0') ? device_name : "default",
             spec.sample_rate,
@@ -132,9 +136,7 @@ bool audio_capture_device_open(AudioCaptureDevice* device,
     want.userdata = device;
 
     SDL_AudioSpec have = {0};
-    const int allowed_changes = SDL_AUDIO_ALLOW_FREQUENCY_CHANGE |
-                                SDL_AUDIO_ALLOW_CHANNELS_CHANGE |
-                                SDL_AUDIO_ALLOW_SAMPLES_CHANGE;
+    const int allowed_changes = SDL_AUDIO_ALLOW_SAMPLES_CHANGE;
     SDL_AudioDeviceID dev_id = SDL_OpenAudioDevice(device_name, SDL_TRUE, &want, &have, allowed_changes);
     if (dev_id == 0) {
         audio_capture_set_error(device, "SDL_OpenAudioDevice capture failed: %s", SDL_GetError());
@@ -143,7 +145,7 @@ bool audio_capture_device_open(AudioCaptureDevice* device,
                 SDL_GetError());
         return false;
     }
-    if (have.format != AUDIO_F32) {
+    if (have.format != AUDIO_F32 || have.freq != want.freq || have.channels != want.channels || !have.samples) {
         SDL_CloseAudioDevice(dev_id);
         audio_capture_set_error(device, "capture device returned unsupported format %u", (unsigned)have.format);
         SDL_Log("audio_capture_device: open failed device=%s reason=unsupported_format format=%u",

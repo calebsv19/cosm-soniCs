@@ -5,7 +5,8 @@ Purpose: Runtime configuration and fallback assets loaded during startup.
 ## Files
 - `engine.cfg`: INI-style settings parsed by `config_load_file` to seed engine defaults. Supported keys:
   - `sample_rate`: Target device sample rate (Hz).
-  - `block_size`: Audio callback block size (frames).
+  - `block_size`: DSP processing block size (frames); the obtained device callback size can differ.
+  - `output_queue_blocks`: Requested render-ahead target, integer 2..32 DSP blocks (default 32). The effective target is at least two device callbacks, rounded up to a DSP block. Set 8 or 4 for explicit lower-buffering trials; see [queue policy and acceptance limits](../docs/improvement/S4-EDITING-DEADLINES.md). Projects preserve this setting; older files default to 32.
   - `fade_default_in_ms` / `fade_default_out_ms`: Automatic fade durations applied to newly added clips (milliseconds).
   - `fade_presets_ms`: Comma-separated preset list (milliseconds) surfaced in the clip inspector.
   - `enable_engine_logs`: Enables extra SDL logging for engine operations (values: `on/off`, `true/false`, `1/0`).

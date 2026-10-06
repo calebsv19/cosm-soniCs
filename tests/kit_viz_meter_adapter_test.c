@@ -178,7 +178,7 @@ static void test_spectrogram_palette_and_range(void) {
     assert(rgba_bw[low_idx] < rgba_bw[high_idx]);
 }
 
-static void test_spectrogram_age_fade(void) {
+static void test_spectrogram_age_invariant(void) {
     const float frames[] = {
         -30.0f,
         -30.0f,
@@ -198,7 +198,7 @@ static void test_spectrogram_age_fade(void) {
     assert(r.code == CORE_OK);
     size_t newest = ((size_t)0 * 4u + 0u) * 4u;
     size_t oldest = ((size_t)0 * 4u + 3u) * 4u;
-    assert(rgba[newest] > rgba[oldest]);
+    assert(rgba[newest] == rgba[oldest]);
 }
 
 int main(void) {
@@ -208,7 +208,7 @@ int main(void) {
     test_scope_plot_deterministic();
     test_scope_mid_side_transform();
     test_spectrogram_palette_and_range();
-    test_spectrogram_age_fade();
+    test_spectrogram_age_invariant();
     puts("kit_viz_meter_adapter_test: ok");
     return 0;
 }

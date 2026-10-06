@@ -1,0 +1,14 @@
+{
+  "status": "verified_checkpoint_user_requested_pause",
+  "goal_complete": false,
+  "checks": "focused normal and ASan, full stable/legacy, default make and diff check passed",
+  "native_acceptance": false,
+  "sha256": {
+    "src/undo/undo_manager_stack.c": "5f0bc130cd89dc18befce93edd11a9b5027fbfcb61648447e7127e906575f9c4",
+    "tests/engine_parameter_transaction_test.c": "35c9be4e4ecfa2cfaed5811c973b144ae6e506257b3fbdbb71fa7d529df8494d",
+    "/tmp/daw-s5-history-exclusion-tests.log": "4334dee045b6a9375d13ca112f06121ac0afa05f41f4e2e4e269c75c26bc334c",
+    "/tmp/daw-s5-history-exclusion-asan.log": "ca985e1ae29ad6459122b3f9c915e3d1f06591c63d4c1edf1e04deb8e5baf0e7",
+    "/tmp/daw-s5-pause-regression.log": "1d38d66b146db8640e0bcb4618e22e892f393ad4305c272d85a58edc77cf2436",
+    "/tmp/daw-s5-pause-final-make.log": "d8285a16223c9e738f98c2eaa31289db566e0ec1f483ba0891fa69b958546f5a"
+  }
+}

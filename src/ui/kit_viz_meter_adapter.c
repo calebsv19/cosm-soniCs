@@ -151,8 +151,7 @@ CoreResult daw_kit_viz_meter_build_spectrogram_rgba(const float* frames,
     }
 
     for (uint32_t frame = 0; frame < max_frames; ++frame) {
-        float age = max_frames > 1u ? (float)frame / (float)(max_frames - 1u) : 0.0f;
-        float age_fade = 1.0f - 0.35f * age;
+        const float age_fade = 1.0f; // Preserve the calibrated color at every history age.
         for (uint32_t bin = 0; bin < bins; ++bin) {
             float t = 0.0f;
             if (frame < frame_count) {

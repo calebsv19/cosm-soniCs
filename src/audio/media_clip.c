@@ -1,4 +1,7 @@
 #include "audio/media_clip.h"
+#include "audio/resample.h"
+#include <math.h>
+#include <limits.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,14 +11,35 @@
 #include <spawn.h>
 #include <sys/wait.h>
 #include <errno.h>
+#include <signal.h>
+#include <sys/stat.h>
+#include <time.h>
 #if defined(__APPLE__)
 #include <AudioToolbox/AudioToolbox.h>
 #endif
 
 extern char **environ;
 
+// Scoped per-thread decode policy avoids sharing mutable cancellation state between callers.
+static _Thread_local const AudioMediaLoadControl* load_control;
+// Observes the owner cancellation flag between bounded decode/conversion chunks.
+static bool load_cancelled(void* unused) {
+    (void)unused;
+    return load_control && load_control->cancelled && load_control->cancelled(load_control->user);
+}
+// Rejects overflowing or over-budget source/output sample buffers before allocation.
+static bool load_size_allowed(uint64_t frames, int channels, int source_rate, int target_rate) {
+    if (load_cancelled(NULL) || channels <= 0 || source_rate <= 0 || frames > SIZE_MAX / sizeof(float) / (size_t)channels) return false;
+    long double output = floorl((long double)frames * (target_rate > 0 ? target_rate : source_rate) / source_rate + .5L);
+    if (output < 1) output = 1;
+    if (output > SIZE_MAX / sizeof(float) / (size_t)channels) return false;
+    if (!load_control || !load_control->max_sample_bytes) return true;
+    return frames * channels * sizeof(float) <= load_control->max_sample_bytes &&
+           output * channels * sizeof(float) <= load_control->max_sample_bytes;
+}
+
 static bool run_mp3_ffmpeg_decode_to_wav(const char* input_path, int target_sample_rate, const char* output_path) {
-    if (!input_path || !output_path) {
+    if (!input_path || !output_path || load_cancelled(NULL)) {
         return false;
     }
 
@@ -26,12 +50,7 @@ static bool run_mp3_ffmpeg_decode_to_wav(const char* input_path, int target_samp
         "ffmpeg"
     };
 
-    char rate_text[32];
-    int desired_rate = target_sample_rate > 0 ? target_sample_rate : 44100;
-    if (desired_rate <= 0) {
-        desired_rate = 44100;
-    }
-    (void)snprintf(rate_text, sizeof(rate_text), "%d", desired_rate);
+    (void)target_sample_rate; // Decode at source rate; the common offline converter owns resampling.
 
     const char* argv_common[] = {
         "-v", "error",
@@ -39,8 +58,7 @@ static bool run_mp3_ffmpeg_decode_to_wav(const char* input_path, int target_samp
         "-y",
         "-i", input_path,
         "-f", "wav",
-        "-acodec", "pcm_s16le",
-        "-ar", rate_text,
+        "-acodec", "pcm_f32le",
         output_path,
         NULL
     };
@@ -71,9 +89,21 @@ static bool run_mp3_ffmpeg_decode_to_wav(const char* input_path, int target_samp
         }
 
         int status = 0;
-        if (waitpid(pid, &status, 0) < 0) {
-            continue;
+        pid_t waited;
+        while ((waited = waitpid(pid, &status, WNOHANG)) == 0 || (waited < 0 && errno == EINTR)) {
+            struct stat st;
+            bool oversized = load_control && load_control->max_sample_bytes &&
+                !stat(output_path, &st) && st.st_size > 0 &&
+                (uint64_t)st.st_size > load_control->max_sample_bytes + UINT64_C(65536);
+            if (load_cancelled(NULL) || oversized) {
+                kill(pid, SIGKILL);
+                while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+                return false;
+            }
+            struct timespec pause = {0, 10000000};
+            nanosleep(&pause, NULL);
         }
+        if (waited < 0 || load_cancelled(NULL)) return false;
         if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
             return true;
         }
@@ -85,7 +115,7 @@ static bool run_mp3_ffmpeg_decode_to_wav(const char* input_path, int target_samp
 static bool audio_media_clip_load_mp3_ffmpeg_fallback(const char* path,
                                                       int target_sample_rate,
                                                       AudioMediaClip* out_clip) {
-    if (!path || !out_clip) {
+    if (!path || !out_clip || load_cancelled(NULL)) {
         return false;
     }
 
@@ -95,7 +125,6 @@ static bool audio_media_clip_load_mp3_ffmpeg_fallback(const char* path,
         return false;
     }
     close(fd);
-    unlink(temp_path);
 
     bool decoded = run_mp3_ffmpeg_decode_to_wav(path, target_sample_rate, temp_path);
     if (!decoded) {
@@ -137,10 +166,7 @@ void audio_media_clip_free(AudioMediaClip* clip) {
     clip->sample_rate = 0;
 }
 
-static float lerp(float a, float b, float t) {
-    return a + (b - a) * t;
-}
-
+// Validates decoded audio and converts it into the requested project sample rate.
 static bool finalize_clip(float* samples,
                           uint64_t frame_count,
                           int channels,
@@ -157,6 +183,9 @@ static bool finalize_clip(float* samples,
         desired_rate = source_rate;
     }
 
+    if (!load_size_allowed(frame_count, channels, source_rate, desired_rate)) { free(samples); return false; }
+    for (size_t n = 0; n < (size_t)frame_count * channels; ++n)
+        if ((n % 4096 == 0 && load_cancelled(NULL)) || !isfinite(samples[n])) { free(samples); return false; }
     if (source_rate == desired_rate) {
         out_clip->samples = samples;
         out_clip->frame_count = frame_count;
@@ -165,185 +194,107 @@ static bool finalize_clip(float* samples,
         return true;
     }
 
-    double ratio = (double)desired_rate / (double)source_rate;
-    uint64_t new_frames = (uint64_t)((double)frame_count * ratio + 0.5);
-    if (new_frames == 0) {
-        new_frames = 1;
-    }
-
-    float* resampled = (float*)malloc((size_t)new_frames * (size_t)channels * sizeof(float));
-    if (!resampled) {
-        free(samples);
-        return false;
-    }
-
-    double inv_ratio = (double)source_rate / (double)desired_rate;
-    for (uint64_t i = 0; i < new_frames; ++i) {
-        double src_pos = (double)i * inv_ratio;
-        uint64_t src_index = (uint64_t)src_pos;
-        if (src_index >= frame_count) {
-            src_index = frame_count - 1;
-        }
-        double frac = src_pos - (double)src_index;
-        uint64_t next_index = src_index + 1 < frame_count ? src_index + 1 : src_index;
-        for (int ch = 0; ch < channels; ++ch) {
-            float a = samples[src_index * (uint64_t)channels + (uint64_t)ch];
-            float b = samples[next_index * (uint64_t)channels + (uint64_t)ch];
-            resampled[i * (uint64_t)channels + (uint64_t)ch] = lerp(a, b, (float)frac);
-        }
-    }
-
+    float* resampled = NULL;
+    uint64_t new_frames = 0;
+    bool converted = audio_resample_controlled(samples, frame_count, channels, source_rate, desired_rate,
+                                    &resampled, &new_frames, load_cancelled, NULL);
     free(samples);
-    out_clip->samples = resampled;
-    out_clip->frame_count = new_frames;
-    out_clip->channels = channels;
-    out_clip->sample_rate = desired_rate;
+    if (!converted) return false;
+    *out_clip = (AudioMediaClip){.samples = resampled, .frame_count = new_frames,
+                               .channels = channels, .sample_rate = desired_rate};
     return true;
 }
 
-bool audio_media_clip_load_wav(const char* path, int target_sample_rate, AudioMediaClip* out_clip) {
-    if (!path || !out_clip) {
-        return false;
-    }
-
+// Loads bounded little-endian RIFF PCM/float audio while validating chunk and frame structure.
+static bool load_wav(const char* path, int target_sample_rate, AudioMediaClip* out_clip, AudioMediaInfo* info) {
+    if (!path || (!out_clip && !info)) return false;
     FILE* file = fopen(path, "rb");
-    if (!file) {
-        return false;
-    }
-
-    char chunk_id[4];
-    if (fread(chunk_id, 1, 4, file) != 4 || memcmp(chunk_id, "RIFF", 4) != 0) {
-        fclose(file);
-        return false;
-    }
-
-    uint32_t riff_size = 0;
-    if (!read_u32_le(file, &riff_size)) {
-        fclose(file);
-        return false;
-    }
-
-    if (fread(chunk_id, 1, 4, file) != 4 || memcmp(chunk_id, "WAVE", 4) != 0) {
-        fclose(file);
-        return false;
-    }
-
-    uint16_t format_tag = 0;
-    uint16_t channels = 0;
-    uint32_t sample_rate = 0;
-    uint16_t bits_per_sample = 0;
-    uint32_t data_chunk_size = 0;
-    long data_offset = 0;
-
-    while (!feof(file)) {
-        if (fread(chunk_id, 1, 4, file) != 4) {
-            break;
-        }
-        uint32_t chunk_size = 0;
-        if (!read_u32_le(file, &chunk_size)) {
-            break;
-        }
-
-        if (memcmp(chunk_id, "fmt ", 4) == 0) {
-            if (!read_u16_le(file, &format_tag)) {
-                break;
-            }
-            if (!read_u16_le(file, &channels)) {
-                break;
-            }
-            if (!read_u32_le(file, &sample_rate)) {
-                break;
-            }
-            uint32_t byte_rate;
-            uint16_t block_align;
-            if (!read_u32_le(file, &byte_rate)) {
-                break;
-            }
-            if (!read_u16_le(file, &block_align)) {
-                break;
-            }
-            if (!read_u16_le(file, &bits_per_sample)) {
-                break;
-            }
-            long remaining = (long)chunk_size - 16;
-            if (remaining > 0) {
-                fseek(file, remaining, SEEK_CUR);
-            }
-        } else if (memcmp(chunk_id, "data", 4) == 0) {
-            data_chunk_size = chunk_size;
-            data_offset = ftell(file);
-            fseek(file, chunk_size, SEEK_CUR);
-        } else {
-            fseek(file, chunk_size, SEEK_CUR);
-        }
-    }
-
-    bool pcm_int = (format_tag == 1);
-    bool pcm_float = (format_tag == 3);
-    if ((!pcm_int && !pcm_float) || channels == 0 || sample_rate == 0 || bits_per_sample == 0 || data_chunk_size == 0) {
-        fclose(file);
-        return false;
-    }
-
-    if (fseek(file, data_offset, SEEK_SET) != 0) {
-        fclose(file);
-        return false;
-    }
-
-    uint32_t bytes_per_sample = bits_per_sample / 8;
-    if (bytes_per_sample == 0) {
-        fclose(file);
-        return false;
-    }
-
-    uint64_t total_samples = data_chunk_size / bytes_per_sample;
-    uint64_t frame_count = total_samples / channels;
-    float* samples = (float*)malloc(sizeof(float) * (size_t)total_samples);
-    if (!samples) {
-        fclose(file);
-        return false;
-    }
-
-    bool ok = true;
-    for (uint64_t i = 0; i < frame_count && ok; ++i) {
-        for (uint16_t ch = 0; ch < channels; ++ch) {
-            float value = 0.0f;
-            if (pcm_int && bytes_per_sample == 2) {
-                int16_t sample16;
-                if (fread(&sample16, sizeof(int16_t), 1, file) != 1) {
-                    ok = false;
-                    break;
+    if (!file) return false;
+    float* samples = NULL;
+    bool ok = false, have_format = false, have_data = false;
+    char id[4]; uint32_t riff_size = 0;
+    if (fseek(file, 0, SEEK_END)) goto done;
+    long file_size = ftell(file);
+    if (file_size < 12 || fseek(file, 0, SEEK_SET)) goto done;
+    if (fread(id,1,4,file)!=4 || memcmp(id,"RIFF",4) || !read_u32_le(file,&riff_size) ||
+        fread(id,1,4,file)!=4 || memcmp(id,"WAVE",4)) goto done;
+    uint64_t end = (uint64_t)riff_size + 8;
+    if (end < 12 || end > (uint64_t)file_size) goto done;
+    uint16_t format = 0, channels = 0, bits = 0, block_align = 0;
+    uint32_t rate = 0, byte_rate = 0, data_size = 0;
+    uint64_t data_offset = 0;
+    for (uint64_t position = 12; position < end;) {
+        if (load_cancelled(NULL)) goto done;
+        if (end-position < 8 || fseek(file,(long)position,SEEK_SET)) goto done;
+        uint32_t size = 0;
+        if (fread(id,1,4,file)!=4 || !read_u32_le(file,&size)) goto done;
+        uint64_t payload = position+8, next = payload + size + (size & 1u);
+        if (next > end) goto done;
+        if (!memcmp(id,"fmt ",4)) {
+            if (have_format || size < 16) goto done;
+            if (!read_u16_le(file,&format) || !read_u16_le(file,&channels) || !read_u32_le(file,&rate) ||
+                !read_u32_le(file,&byte_rate) || !read_u16_le(file,&block_align) || !read_u16_le(file,&bits)) goto done;
+            if (format == 0xfffe) {
+                uint16_t extra, valid_bits; uint32_t mask; unsigned char guid[16];
+                static const unsigned char tail[12] = {0,0,16,0,128,0,0,170,0,56,155,113};
+                if (size < 40 || !read_u16_le(file,&extra) || extra < 22 || (uint32_t)extra+18 > size ||
+                    !read_u16_le(file,&valid_bits) || !read_u32_le(file,&mask) || fread(guid,1,16,file)!=16 ||
+                    memcmp(guid+4,tail,12) || guid[1] || guid[2] || guid[3] ||
+                    !valid_bits || valid_bits > bits) goto done;
+                format = guid[0];
+                if (format == 3 && valid_bits != bits) goto done;
+                if (mask) {
+                    unsigned mapped = 0;
+                    for (unsigned bit=0;bit<32;++bit) mapped += (mask>>bit)&1u;
+                    if (mapped != channels) goto done;
                 }
-                value = (float)sample16 / 32768.0f;
-            } else if (pcm_float && bytes_per_sample == 4 && bits_per_sample == 32) {
-                float sample32;
-                if (fread(&sample32, sizeof(float), 1, file) != 1) {
-                    ok = false;
-                    break;
-                }
-                value = sample32;
-            } else {
-                ok = false;
-                break;
             }
-            samples[i * channels + ch] = value;
+            have_format = true;
+        } else if (!memcmp(id,"data",4)) {
+            if (have_data) goto done;
+            have_data = true; data_offset = payload; data_size = size;
         }
+        position = next;
     }
-
-    if (!ok) {
-        free(samples);
-        fclose(file);
-        return false;
+    if (!have_format || !have_data || !channels || !rate || rate > INT_MAX || !data_size ||
+        !((format==1 && (bits==8 || bits==16 || bits==24 || bits==32)) || (format==3 && bits==32))) goto done;
+    uint32_t bytes = bits/8;
+    uint64_t expected_align = (uint64_t)channels * bytes;
+    if (block_align != expected_align || (uint64_t)rate*block_align != byte_rate || data_size%block_align) goto done;
+    uint64_t frames = data_size/block_align, total = frames*channels;
+    if (!frames || total > SIZE_MAX/sizeof(float) || fseek(file,(long)data_offset,SEEK_SET)) goto done;
+    if (info) {
+        *info = (AudioMediaInfo){frames, channels, (int)rate};
+        ok = true;
+        goto done;
     }
-
-    fclose(file);
-
-    return finalize_clip(samples, frame_count, (int)channels, (int)sample_rate, target_sample_rate, out_clip);
+    if (!load_size_allowed(frames, channels, (int)rate, target_sample_rate)) goto done;
+    samples = malloc((size_t)total*sizeof(float));
+    if (!samples) goto done;
+    for (uint64_t n=0;n<total;++n) {
+        if (n % 4096 == 0 && load_cancelled(NULL)) goto done;
+        unsigned char encoded[4]; uint32_t raw = 0;
+        if (fread(encoded,1,bytes,file)!=bytes) goto done;
+        for (uint32_t b=0;b<bytes;++b) raw |= (uint32_t)encoded[b] << (b*8);
+        float value;
+        if (format==3) memcpy(&value,&raw,sizeof(value));
+        else if (bits==8) value = ((int)raw-128)/128.0f;
+        else {
+            int64_t signed_sample = (int64_t)raw - ((raw & (1u<<(bits-1))) ? (INT64_C(1)<<bits) : 0);
+            value = (float)((double)signed_sample / (double)(INT64_C(1)<<(bits-1)));
+        }
+        if (!isfinite(value)) goto done;
+        samples[n] = value;
+    }
+    ok = finalize_clip(samples, frames, channels, (int)rate, target_sample_rate, out_clip);
+    samples = NULL; // finalize_clip consumes decoded storage on success and failure.
+done:
+    free(samples); fclose(file); return ok;
 }
 
 #if defined(__APPLE__)
 static bool audio_media_clip_load_mp3(const char* path, int target_sample_rate, AudioMediaClip* out_clip) {
-    if (!path || !out_clip) {
+    if (!path || !out_clip || load_cancelled(NULL)) {
         return false;
     }
 
@@ -377,9 +328,11 @@ static bool audio_media_clip_load_mp3(const char* path, int target_sample_rate, 
 
     int channels = (int)fileFormat.mChannelsPerFrame;
 
-    Float64 desiredRate = target_sample_rate > 0 ? (Float64)target_sample_rate : fileFormat.mSampleRate;
-    if (desiredRate <= 0.0) {
-        desiredRate = fileFormat.mSampleRate;
+    Float64 desiredRate = fileFormat.mSampleRate;
+    if (!isfinite(desiredRate) || desiredRate < 1 || desiredRate > INT_MAX ||
+        channels <= 0 || (unsigned)channels > UINT32_MAX / (4096u * sizeof(float))) {
+        ExtAudioFileDispose(file);
+        return false;
     }
 
     AudioStreamBasicDescription clientFormat = {0};
@@ -400,9 +353,10 @@ static bool audio_media_clip_load_mp3(const char* path, int target_sample_rate, 
 
     uint64_t total_frames = (frameCount > 0) ? (uint64_t)frameCount : 0;
     if (total_frames == 0) {
-        total_frames = 1; /* ensure allocation for streaming read */
+        total_frames = 4096; /* reserve the complete first unknown-length decode block */
     }
 
+    if (!load_size_allowed(total_frames, channels, (int)desiredRate, target_sample_rate)) { ExtAudioFileDispose(file); return false; }
     float* samples = (float*)malloc((size_t)total_frames * (size_t)channels * sizeof(float));
     if (!samples) {
         ExtAudioFileDispose(file);
@@ -411,6 +365,7 @@ static bool audio_media_clip_load_mp3(const char* path, int target_sample_rate, 
 
     uint64_t frames_read_total = 0;
     while (true) {
+        if (load_cancelled(NULL)) { free(samples); ExtAudioFileDispose(file); return false; }
         uint64_t frames_left = (frameCount > 0) ? (uint64_t)frameCount - frames_read_total : 4096;
         if (frameCount > 0 && frames_left == 0) {
             break;
@@ -434,6 +389,12 @@ static bool audio_media_clip_load_mp3(const char* path, int target_sample_rate, 
         frames_read_total += frames_to_read;
         if (frameCount <= 0) {
             /* extend buffer for streaming files with unknown length */
+            if (frames_read_total > SIZE_MAX / sizeof(float) / (size_t)channels - 4096) {
+                free(samples); ExtAudioFileDispose(file); return false;
+            }
+            if (!load_size_allowed(frames_read_total + 4096, channels, (int)desiredRate, target_sample_rate)) {
+                free(samples); ExtAudioFileDispose(file); return false;
+            }
             float* resized = (float*)realloc(samples, (frames_read_total + 4096) * (size_t)channels * sizeof(float));
             if (!resized) {
                 free(samples);
@@ -447,16 +408,13 @@ static bool audio_media_clip_load_mp3(const char* path, int target_sample_rate, 
 
     ExtAudioFileDispose(file);
 
-    size_t used_bytes = (size_t)frames_read_total * (size_t)channels * sizeof(float);
-    float* trimmed = (float*)realloc(samples, used_bytes);
-    if (trimmed) {
-        samples = trimmed;
-    }
-
     if (frames_read_total == 0) {
         free(samples);
         return audio_media_clip_load_mp3_ffmpeg_fallback(path, target_sample_rate, out_clip);
     }
+    size_t used_bytes = (size_t)frames_read_total * (size_t)channels * sizeof(float);
+    float* trimmed = (float*)realloc(samples, used_bytes);
+    if (trimmed) samples = trimmed;
 
     return finalize_clip(samples, frames_read_total, channels, (int)desiredRate, target_sample_rate, out_clip);
 }
@@ -467,7 +425,7 @@ static bool audio_media_clip_load_mp3(const char* path, int target_sample_rate, 
 #endif
 
 bool audio_media_clip_load(const char* path, int target_sample_rate, AudioMediaClip* out_clip) {
-    if (!path || !out_clip) {
+    if (!path || !out_clip || load_cancelled(NULL)) {
         return false;
     }
 
@@ -485,4 +443,59 @@ bool audio_media_clip_load(const char* path, int target_sample_rate, AudioMediaC
         return true;
     }
     return audio_media_clip_load_mp3(path, target_sample_rate, out_clip);
+}
+
+// Loads WAV samples using the same structural validation as metadata probing.
+bool audio_media_clip_load_wav(const char* path, int rate, AudioMediaClip* out) {
+    return load_wav(path, rate, out, NULL);
+}
+
+// Probes source format without reading or converting the complete sample payload.
+bool audio_media_probe(const char* path, AudioMediaInfo* out) {
+    if (!path || !out) return false;
+    if (load_wav(path, 0, NULL, out)) return true;
+    const char* extension = strrchr(path, '.');
+    if (!extension || strcasecmp(extension, ".mp3")) return false;
+#if defined(__APPLE__)
+    CFURLRef url = CFURLCreateFromFileSystemRepresentation(NULL, (const UInt8*)path, strlen(path), false);
+    if (!url) return false;
+    ExtAudioFileRef file = NULL;
+    OSStatus status = ExtAudioFileOpenURL(url, &file);
+    CFRelease(url);
+    if (status != noErr || !file) return false;
+    AudioStreamBasicDescription format = {0};
+    SInt64 frames = 0;
+    UInt32 size = sizeof(format);
+    bool ok = ExtAudioFileGetProperty(file, kExtAudioFileProperty_FileDataFormat, &size, &format) == noErr;
+    size = sizeof(frames);
+    ok = ok && ExtAudioFileGetProperty(file, kExtAudioFileProperty_FileLengthFrames, &size, &frames) == noErr;
+    ExtAudioFileDispose(file);
+    if (ok && frames > 0 && format.mChannelsPerFrame > 0 && format.mChannelsPerFrame <= INT_MAX &&
+        isfinite(format.mSampleRate) && format.mSampleRate >= 1 && format.mSampleRate <= INT_MAX) {
+        *out = (AudioMediaInfo){(uint64_t)frames, (int)format.mChannelsPerFrame, (int)format.mSampleRate};
+        return true;
+    }
+#endif
+    return false;
+}
+
+// Scopes decode policy to this call and retires any result canceled at the completion boundary.
+bool audio_media_clip_load_controlled(const char* path, int rate, AudioMediaClip* out,
+                                      const AudioMediaLoadControl* control) {
+    if (!out) return false;
+    const AudioMediaLoadControl* previous = load_control;
+    load_control = control;
+    AudioMediaClip result = {0};
+    bool ok = audio_media_clip_load(path, rate, &result) && !load_cancelled(NULL);
+    load_control = previous;
+    if (ok) *out = result;
+    else audio_media_clip_free(&result);
+    return ok;
+}
+
+// Scopes metadata cancellation to one worker request without modifying other callers.
+bool audio_media_probe_controlled(const char* path, AudioMediaInfo* out, const AudioMediaLoadControl* control) {
+    const AudioMediaLoadControl* previous=load_control; load_control=control;
+    AudioMediaInfo info={0}; bool ok=!load_cancelled(NULL) && audio_media_probe(path,&info) && !load_cancelled(NULL);
+    load_control=previous; if (ok && out) *out=info; return ok && out;
 }

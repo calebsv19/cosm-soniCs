@@ -1,0 +1,12 @@
+{
+  "status": "atomic_midi_left_trim_software_verified",
+  "checks": "normal focused, intercepted allocation sweep, ASan, default make, diff check passed",
+  "native_acceptance": false,
+  "identities": {
+    "/tmp/daw-s5-midi-trim-sweep.log": "9e094f19e8cba62841eb2729d8f9177169a2dbc01c6e00998dcdb724bd614d08",
+    "/tmp/daw-s5-midi-trim-asan.log": "cdbdddd8e12b1f5be71ea0b6c7a86df9b139f4f80f242a5513f2ddd370c6899f",
+    "/tmp/daw-s5-midi-trim-final-make.log": "d8285a16223c9e738f98c2eaa31289db566e0ec1f483ba0891fa69b958546f5a",
+    "src/input/timeline/timeline_midi_trim.c": "129e9b4ecfec8d6481ff6e8b2b41fd197fc205030a8295aeaa95294514286fcd",
+    "tests/engine_parameter_transaction_test.c": "820aa225d754ef99c7c7498ff244b41a391d1af561489b9f63293165c04c9dcb"
+  }
+}

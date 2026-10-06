@@ -664,28 +664,19 @@ bool daw_pack_path_from_wav(const char* wav_path, char* out_pack_path, size_t ou
     return true;
 }
 
-bool daw_pack_export_from_bounce(const char* pack_path,
+// Writes a supplied envelope through the existing shared pack format and project metadata path.
+static bool daw_pack_write_envelope(const char* pack_path,
                                  const AppState* state,
                                  const EngineBounceBuffer* bounce,
                                  uint64_t start_frame,
                                  uint64_t end_frame,
-                                 uint64_t project_duration_frames) {
-    if (!pack_path || !state || !bounce || !bounce->data || bounce->frame_count == 0 || bounce->channels <= 0) {
-        return false;
-    }
-
-    float* mins = NULL;
-    float* maxs = NULL;
-    uint64_t point_count = 0;
-    if (!build_waveform_envelope(bounce, DAW_PACK_SAMPLES_PER_PIXEL, &mins, &maxs, &point_count)) {
-        return false;
-    }
+                                 uint64_t project_duration_frames,
+                                 const float* mins, const float* maxs, uint64_t point_count, uint32_t samples_per_pixel) {
+    if (!pack_path || !state || !bounce || !bounce->frame_count || !mins || !maxs || !point_count) return false;
 
     DawPackMarker* markers = NULL;
     size_t marker_count = 0;
     if (!build_markers(state, &markers, &marker_count)) {
-        free(mins);
-        free(maxs);
         return false;
     }
 
@@ -693,7 +684,7 @@ bool daw_pack_export_from_bounce(const char* pack_path,
     header.version = DAW_PACK_VERSION;
     header.sample_rate = (uint32_t)bounce->sample_rate;
     header.channels = (uint32_t)bounce->channels;
-    header.samples_per_pixel = DAW_PACK_SAMPLES_PER_PIXEL;
+    header.samples_per_pixel = samples_per_pixel;
     header.point_count = point_count;
     header.start_frame = start_frame;
     header.end_frame = end_frame;
@@ -705,8 +696,6 @@ bool daw_pack_export_from_bounce(const char* pack_path,
     uint64_t json_size = 0;
     if (!root) {
         free(markers);
-        free(mins);
-        free(maxs);
         return false;
     }
     cJSON_AddStringToObject(root, "profile", "daw");
@@ -727,8 +716,6 @@ bool daw_pack_export_from_bounce(const char* pack_path,
     cJSON_Delete(root);
     if (!json_text) {
         free(markers);
-        free(mins);
-        free(maxs);
         return false;
     }
     json_size = (uint64_t)strlen(json_text);
@@ -740,8 +727,7 @@ bool daw_pack_export_from_bounce(const char* pack_path,
     CoreResult r = core_pack_writer_open(pack_path, &writer);
     if (r.code != CORE_OK) {
         free(markers);
-        free(mins);
-        free(maxs);
+        free(json_text);
         return false;
     }
 
@@ -781,8 +767,72 @@ bool daw_pack_export_from_bounce(const char* pack_path,
     }
 
     free(markers);
-    free(mins);
-    free(maxs);
     free(json_text);
     return ok;
+}
+
+// Preserves the original in-memory pack API and its exact fixed-resolution envelope.
+bool daw_pack_export_from_bounce(const char* path, const AppState* state, const EngineBounceBuffer* bounce,
+                                 uint64_t start, uint64_t end, uint64_t duration) {
+    float* mins = NULL;
+    float* maxs = NULL;
+    uint64_t count = 0;
+    if (!build_waveform_envelope(bounce, DAW_PACK_SAMPLES_PER_PIXEL, &mins, &maxs, &count)) return false;
+    bool ok = daw_pack_write_envelope(path, state, bounce, start, end, duration,
+                                      mins, maxs, count, DAW_PACK_SAMPLES_PER_PIXEL);
+    free(mins);
+    free(maxs);
+    return ok;
+}
+
+// Reserves at most 65536 envelope points and declares the actual resolution in the existing pack header.
+bool daw_pack_envelope_init(DawPackEnvelope* envelope, uint64_t frames, int rate, int channels) {
+    if (!envelope || !frames || rate <= 0 || channels <= 0) return false;
+    *envelope = (DawPackEnvelope){0};
+    uint64_t span = frames / 65536 + (frames % 65536 != 0);
+    if (span < DAW_PACK_SAMPLES_PER_PIXEL) span = DAW_PACK_SAMPLES_PER_PIXEL;
+    if (span > UINT32_MAX) return false;
+    envelope->samples_per_pixel = (uint32_t)span;
+    envelope->point_count = frames / span + (frames % span != 0);
+    envelope->metadata = (EngineBounceBuffer){.frame_count = frames, .channels = channels, .sample_rate = rate};
+    envelope->mins = malloc(envelope->point_count * sizeof(float));
+    envelope->maxs = malloc(envelope->point_count * sizeof(float));
+    if (!envelope->mins || !envelope->maxs) { daw_pack_envelope_free(envelope); return false; }
+    for (uint64_t i = 0; i < envelope->point_count; ++i) {
+        envelope->mins[i] = 1;
+        envelope->maxs[i] = -1;
+    }
+    return true;
+}
+
+// Accumulates normalized interleaved chunks using the same mono reduction as the original pack path.
+void daw_pack_envelope_append(DawPackEnvelope* envelope, const float* samples, uint64_t first,
+                               uint32_t frames, int channels) {
+    if (!envelope || !envelope->mins || !samples || channels != envelope->metadata.channels ||
+        first != envelope->received || frames > envelope->metadata.frame_count - first) return;
+    for (uint32_t i = 0; i < frames; ++i) {
+        float sum = 0;
+        for (int ch = 0; ch < channels; ++ch) sum += samples[(size_t)i * channels + ch];
+        float mono = clamp_unit(sum / channels);
+        uint64_t point = (first + i) / envelope->samples_per_pixel;
+        if (mono < envelope->mins[point]) envelope->mins[point] = mono;
+        if (mono > envelope->maxs[point]) envelope->maxs[point] = mono;
+    }
+    envelope->received += frames;
+}
+
+// Exports only a completely accumulated streaming envelope with the original project metadata.
+bool daw_pack_export_envelope(const char* path, const AppState* state, const DawPackEnvelope* envelope,
+                               uint64_t start, uint64_t end, uint64_t duration) {
+    if (!envelope || envelope->received != envelope->metadata.frame_count) return false;
+    return daw_pack_write_envelope(path, state, &envelope->metadata, start, end, duration,
+                                   envelope->mins, envelope->maxs, envelope->point_count, envelope->samples_per_pixel);
+}
+
+// Releases the fixed-capacity streaming envelope after success or cancellation.
+void daw_pack_envelope_free(DawPackEnvelope* envelope) {
+    if (!envelope) return;
+    free(envelope->mins);
+    free(envelope->maxs);
+    *envelope = (DawPackEnvelope){0};
 }

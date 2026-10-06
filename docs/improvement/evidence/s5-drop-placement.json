@@ -1,0 +1,29 @@
+{
+  "status": "compound_placement_checkpoint_not_complete_drop_acceptance",
+  "logs": [
+    {
+      "path": "/tmp/daw-s5-drop-asan.log",
+      "exit_code": 0,
+      "sha256": "772a28a4d2224d66dce66dd440a99ccc366a3bcc262443cd46fe459057cf653b"
+    },
+    {
+      "path": "/tmp/daw-s5-drop-final-tests.log",
+      "exit_code": 0,
+      "sha256": "08aa6a73cfc59a974d9a4db360ed4b1d6f6554d503642afba78f62d275bc2e69"
+    },
+    {
+      "path": "/tmp/daw-s5-drop-final-make.log",
+      "exit_code": 0,
+      "sha256": "c5257528d31cf1887f3cd5e3b4457b4b85124322e6fc1682cc2f5cd112d3b8fe"
+    }
+  ],
+  "remaining": [
+    "overlap transaction and neighbor history",
+    "undo-created-track retirement",
+    "ripple trim",
+    "compound duplicate/delete",
+    "other history identity migrations",
+    "native GUI acceptance",
+    "remaining S5 slices"
+  ]
+}

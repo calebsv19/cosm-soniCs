@@ -84,7 +84,7 @@ typedef struct {
     int multi_initial_track[TIMELINE_MAX_SELECTION];
     uint64_t multi_initial_start[TIMELINE_MAX_SELECTION];
     uint64_t multi_initial_offset[TIMELINE_MAX_SELECTION];
-    EngineSamplerSource** ripple_targets;
+    uint64_t* ripple_targets; // Stable identities of downstream audio and MIDI clips.
     int ripple_target_count;
     int64_t ripple_last_delta_frames;
     bool pending_shift_select;
@@ -206,6 +206,7 @@ typedef struct {
 
 // Keeps editing state for numeric inspector fields that map to clip timing.
 typedef struct {
+    uint64_t target_creation_index; // Binds typed values to the clip present at edit startup.
     bool editing_timeline_start;
     bool editing_timeline_end;
     bool editing_timeline_length;
@@ -241,6 +242,7 @@ typedef struct {
     int name_scroll;
     float gain;
     float playback_rate;
+    uint64_t name_creation_index; // Binds the rename buffer to its original clip.
     bool editing_name;
     int name_cursor;
     bool adjusting_gain;
@@ -384,6 +386,7 @@ typedef struct EffectsMeterHistory {
 
 typedef struct {
     bool eq_open;
+    uint64_t history_serial; // Identifies the track gesture reservation.
     bool dragging;
     FxSnapshotControl active_control;
     float pan;
@@ -404,6 +407,7 @@ typedef struct {
     bool hovered;
     bool dragging;
     bool pending_apply;
+    uint64_t history_serial; // Identifies the EQ gesture reservation.
     Uint32 last_apply_ticks;
     SDL_Point last_mouse;
     bool spectrum_ready;
@@ -466,6 +470,7 @@ typedef struct EffectsPanelState {
     int selected_slot_index;
     bool focused;
     bool dragging_slider;
+    uint64_t slider_history_serial; // Identifies the FX slider reservation.
     int active_slot_index;
     int active_param_index;
     int list_open_slot_index;
@@ -616,6 +621,7 @@ struct AppState {
     EngineRuntimeConfig runtime_cfg;
     DawDataPaths data_paths;
     Engine* engine;
+    struct DawMediaImport* media_import; // Application-lifetime owner shared by project candidates.
     TransportUI transport_ui;
     UILayoutRuntime layout_runtime;
     MediaRegistry media_registry;

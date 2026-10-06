@@ -19,3 +19,17 @@
 - `midi_preset_browser.c`: Shared grouped/scrollable factory preset browser renderer and hit-test helper used by both current MIDI instrument preset surfaces.
 - `midi_instrument_panel.c`: Bottom-pane instrument subview for the selected MIDI region, replacing the MIDI editor when opened from the editor header and owning the per-region preset browser, DAW-local parameter group tabs, compact knob-style controls routed by stable instrument parameter IDs, and a parameter-aware waveform/envelope preview for the selected preset.
 - `library_browser.c`: Asset browser panel for audio files.
+
+`ui_fade_curve_eval` delegates to the UI-independent engine curve helper so existing arrangement/inspector overlays and audio playback share the same shape definitions. Curve choices and overlay layout remain unchanged; see [S3.1](../../docs/improvement/S3-FADE-PARITY.md).
+
+Spectrum labels distinguish mid-signal dBFS from EQ gain and identify post-EQ/pre-pan or post-master-FX taps. Its display uses the full fixed dBFS range and no frame-rate-dependent smoothing. Spectrogram labels identify the meter insert and relative sample-window age; equal levels retain equal colors across history. See [S3.2](../../docs/improvement/S3-ANALYSIS-CALIBRATION.md).
+
+S3.3 labels limiter/compressor scopes `GR peak` for the most negative applied block gain before makeup. Other gain-ratio scopes are labeled `RMS delta`; their history scale is bipolar. Audio diagnostics include the latest worker DSP delay separately from queue delay. These labels do not claim hardware latency or external sidechain routing.
+
+
+S4.7 scans keep version-bound metadata and schedule owned background probing/content hashing. Drag previews reuse that metadata. The library status reports pending, completed, canceled or failed import; Ctrl/Cmd+Escape cancels pending work. See [S4.7](../../docs/improvement/S4.7-MEDIA.md).
+
+
+The rack spectrogram card now subscribes to the existing worker analyzer and renders its calibrated history directly. The selected spectrogram takes precedence when multiple meters are present; inactive cards explain how to select them, and bypassed cards are labeled. Raw lifetime audio totals are shown only with enable_timing_logs; recording status and edit rejection messages remain visible normally.
+
+Rack spectrogram cards expose W/B, B/W and Heat palette buttons. Palette choices use the existing effect parameter and undo transaction; display colors read back the accepted parameter, including after undo and project reload.

@@ -44,63 +44,6 @@ static const EngineClip* inspector_fade_get_clip_const(const AppState* state) {
     return &track->clips[state->inspector.clip_index];
 }
 
-// Captures clip state for undo when adjusting inspector fades.
-static bool inspector_fade_state_from_clip(const EngineClip* clip, int track_index, UndoClipState* out_state) {
-    if (!clip || !out_state) {
-        return false;
-    }
-    out_state->kind = engine_clip_get_kind(clip);
-    out_state->sampler = clip->sampler;
-    out_state->creation_index = clip->creation_index;
-    out_state->track_index = track_index;
-    out_state->start_frame = clip->timeline_start_frames;
-    out_state->offset_frames = clip->offset_frames;
-    out_state->duration_frames = clip->duration_frames;
-    out_state->fade_in_frames = clip->fade_in_frames;
-    out_state->fade_out_frames = clip->fade_out_frames;
-    out_state->fade_in_curve = clip->fade_in_curve;
-    out_state->fade_out_curve = clip->fade_out_curve;
-    out_state->gain = clip->gain;
-    if (out_state->duration_frames == 0 && clip->sampler) {
-        out_state->duration_frames = engine_sampler_get_frame_count(clip->sampler);
-    }
-    return true;
-}
-
-// Compares clip states to avoid no-op undo entries.
-static bool inspector_fade_state_equal(const UndoClipState* a, const UndoClipState* b) {
-    if (!a || !b) {
-        return true;
-    }
-    return a->track_index == b->track_index &&
-           a->start_frame == b->start_frame &&
-           a->offset_frames == b->offset_frames &&
-           a->duration_frames == b->duration_frames &&
-           a->fade_in_frames == b->fade_in_frames &&
-           a->fade_out_frames == b->fade_out_frames &&
-           a->fade_in_curve == b->fade_in_curve &&
-           a->fade_out_curve == b->fade_out_curve &&
-           fabsf(a->gain - b->gain) < 0.0001f;
-}
-
-// Begins a clip transform drag for fade adjustments.
-static void inspector_fade_begin_clip_drag(AppState* state) {
-    if (!state) {
-        return;
-    }
-    const EngineClip* clip = inspector_fade_get_clip_const(state);
-    if (!clip) {
-        return;
-    }
-    UndoCommand cmd = {0};
-    cmd.type = UNDO_CMD_CLIP_TRANSFORM;
-    if (!inspector_fade_state_from_clip(clip, state->inspector.track_index, &cmd.data.clip_transform.before)) {
-        return;
-    }
-    cmd.data.clip_transform.after = cmd.data.clip_transform.before;
-    undo_manager_begin_drag(&state->undo, &cmd);
-}
-
 // Returns the full clip length in frames for inspector fade calculations.
 static uint64_t inspector_fade_clip_length_frames(const EngineClip* clip) {
     if (!clip) {
@@ -358,11 +301,7 @@ static void inspector_fade_update_curves(AppState* state, bool update_in, bool u
     if (!clip) {
         return;
     }
-    UndoCommand cmd = {0};
-    cmd.type = UNDO_CMD_CLIP_TRANSFORM;
-    if (!inspector_fade_state_from_clip(clip, state->inspector.track_index, &cmd.data.clip_transform.before)) {
-        return;
-    }
+    if (!inspector_input_begin_clip_drag(state)) return;
     EngineFadeCurve next_in = clip->fade_in_curve;
     EngineFadeCurve next_out = clip->fade_out_curve;
     if (update_in) {
@@ -376,16 +315,10 @@ static void inspector_fade_update_curves(AppState* state, bool update_in, bool u
                                      state->inspector.clip_index,
                                      next_in,
                                      next_out)) {
+        undo_manager_cancel_drag(&state->undo);
         return;
     }
-    clip = inspector_fade_get_clip_mutable(state);
-    if (!inspector_fade_state_from_clip(clip, state->inspector.track_index, &cmd.data.clip_transform.after)) {
-        return;
-    }
-    cmd.data.clip_transform.before.sampler = cmd.data.clip_transform.after.sampler;
-    if (!inspector_fade_state_equal(&cmd.data.clip_transform.before, &cmd.data.clip_transform.after)) {
-        undo_manager_push(&state->undo, &cmd);
-    }
+    inspector_input_finish_clip_drag(state);
 }
 
 void inspector_fade_input_init(AppState* state) {
@@ -480,12 +413,12 @@ bool inspector_fade_input_handle_waveform_mouse_down(AppState* state,
             bool hit_right = dist_right <= edge_hit_px;
             if (hit_left || hit_right) {
                 inspector_input_commit_if_editing(state);
+                if (!inspector_input_begin_clip_drag(state)) return true;
                 if (hit_left && (!hit_right || dist_left <= dist_right)) {
                     inspector_fade_update_selection(state, true, false, shift_held);
                     state->inspector.adjusting_fade_in = true;
                     state->inspector.adjusting_fade_out = false;
                     state->inspector.fade_drag_from_waveform = true;
-                    inspector_fade_begin_clip_drag(state);
                     inspector_fade_update_from_waveform(state, true, point->x);
                     return true;
                 }
@@ -493,7 +426,6 @@ bool inspector_fade_input_handle_waveform_mouse_down(AppState* state,
                 state->inspector.adjusting_fade_out = true;
                 state->inspector.adjusting_fade_in = false;
                 state->inspector.fade_drag_from_waveform = true;
-                inspector_fade_begin_clip_drag(state);
                 inspector_fade_update_from_waveform(state, false, point->x);
                 return true;
             }
@@ -541,11 +473,11 @@ bool inspector_fade_input_handle_track_mouse_down(AppState* state,
         return false;
     }
     inspector_input_commit_if_editing(state);
+    if (!inspector_input_begin_clip_drag(state)) return true;
     inspector_fade_update_selection(state, is_fade_in, !is_fade_in, shift_held);
     state->inspector.adjusting_fade_in = is_fade_in;
     state->inspector.adjusting_fade_out = !is_fade_in;
     state->inspector.fade_drag_from_waveform = false;
-    inspector_fade_begin_clip_drag(state);
     inspector_fade_update_from_track(state, is_fade_in, point->x);
     return true;
 }
@@ -569,11 +501,14 @@ bool inspector_fade_input_handle_pending_drag(AppState* state, int mouse_x) {
     }
     int delta = abs(mouse_x - state->inspector.pending_fade_start_x);
     if (delta >= 3) {
+        if (!inspector_input_begin_clip_drag(state)) {
+            state->inspector.pending_fade_drag = false;
+            return true;
+        }
         state->inspector.adjusting_fade_in = state->inspector.pending_fade_in;
         state->inspector.adjusting_fade_out = !state->inspector.pending_fade_in;
         state->inspector.fade_drag_from_waveform = state->inspector.pending_fade_from_waveform;
         state->inspector.pending_fade_drag = false;
-        inspector_fade_begin_clip_drag(state);
         if (state->inspector.fade_drag_from_waveform) {
             inspector_fade_update_from_waveform(state, state->inspector.adjusting_fade_in, mouse_x);
         } else {

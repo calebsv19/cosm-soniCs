@@ -1,0 +1,58 @@
+{
+  "status": "complete_clipboard_paste_software_verified_S5_active",
+  "coverage": [
+    "complete mixed audio MIDI insertion before one publication",
+    "actual clipboard key events timing destination policy one undo entry",
+    "gain fades MIDI notes automation names and rendered audio",
+    "intercepted preparation allocation and publication failures",
+    "invalid later fields and missing media rejection",
+    "required destination growth and zero-track project restoration",
+    "guarded generated-track settings FX and unrelated clips",
+    "introduced identity moved outside snapshot rejection",
+    "repeated undo redo with selection and source file removal",
+    "focused normal ASan stable legacy default build"
+  ],
+  "limits": [
+    "native interaction pending",
+    "decode remains synchronous with existing admission limits",
+    "remaining composed trim split history identities and failure feedback",
+    "broader S5 slices remain"
+  ],
+  "logs": [
+    {
+      "path": "/tmp/daw-s5-paste-empty-tests.log",
+      "exit_code": 0,
+      "sha256": "f07237a9e3ea645a73d0eefa9593465f839db346338f34b0a8e895eb719b494d"
+    },
+    {
+      "path": "/tmp/daw-s5-paste-asan.log",
+      "exit_code": 0,
+      "sha256": "5c4627bcf5a04e65ef67947057c6a9414f20210d2adaf0fa6ea87003564df744"
+    },
+    {
+      "path": "/tmp/daw-s5-paste-regression.log",
+      "exit_code": 0,
+      "sha256": "8ee34284a071a4e33df81e223edffe071e7d117f2f3bca39958e88625f00d410"
+    },
+    {
+      "path": "/tmp/daw-s5-paste-final-make.log",
+      "exit_code": 0,
+      "sha256": "0afbabb0d21aebd21072bcafae2407c74a469ea5acbd00f313a08cf2e3c8acc7"
+    },
+    {
+      "path": "/tmp/daw-s5-paste-docs.log",
+      "exit_code": 0,
+      "sha256": "6f0d23f0fbb9c497c8d13fa58e7c6dbe8ec7f463b140df2f03be991aee4151ed"
+    }
+  ],
+  "source_sha256": {
+    "src/engine/engine_clip_history.c": "62925ee884b812e030b21324230289ff12aba78f63b33eb00de64f4990a1a371",
+    "include/engine/engine.h": "d84952d248e07487a5c49df863b2d39914cb3e12c8873c5f2c1ee6bbef2bb622",
+    "src/input/timeline/timeline_clipboard.c": "da48da40211297dc3ad5592054014362abe90ed17c82bdcad1609d945e8062d6",
+    "src/undo/undo_manager.c": "34bac369fcce03607199961ac63259e359d3eb49dc3c2bde8f6f48713b5c3fe9",
+    "src/undo/undo_manager_clone.c": "1ac9292916bacf2234b83536121118ec8f5ff2cea64abdc3e7e95274fad254d6",
+    "include/undo/undo_manager.h": "797678b3522929f044628aea5c7b0661930103e8b4aecb2a04eba7aedfe90369",
+    "tests/engine_parameter_transaction_test.c": "8b713b242acfd7264cb31d8e603e86259e10e48d5c88d8faf857ebbd8218ae17",
+    "tests/timeline_midi_region_test.c": "6791c79b05d9d41aa540c8517ff5feb022ab4faaf591b30ea6ce482ee29fe94a"
+  }
+}

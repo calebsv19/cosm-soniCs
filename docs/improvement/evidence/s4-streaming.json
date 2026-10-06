@@ -1,0 +1,1249 @@
+{
+  "checks": [
+    {
+      "command": "make test-stable test-legacy",
+      "exit_code": 0,
+      "highlights": [
+        "mixer_publication_test: success (coalescing, structural ordering, exact full-revision parity, histories, two failures, deferred retirement)",
+        "midi_scheduling_test: success (all presets, exact prior-scan parity, automation/release growth, seeks, export, formats, wrap, reserve failure, zero render heap calls)",
+        "region_scheduling_test: success (bounds, overlap/order, track lookup, ramps, seeks, resets, wrap, rollback, zero render heap calls)",
+        "export_render_test: 56 instrumented allocation failure boundaries passed",
+        "export_render_test: 57 streaming allocation failure boundaries passed",
+        "export_render_test: success (repeatability, ranges, preroll, release/FX tails, PDC, snapshot/live isolation, failures, normalization, deterministic WAV)",
+        "control_transitions_test: success (Gain ramps, partitions, retarget, reset, zero endpoint, revision handoff, bypass, mixer gain/pan/mute/solo)",
+        "media_conversion_test: success (PCM8/16/24/32, float, extensible, malformed input, rate pairs, filtering, allocation failures)",
+        "instrument_lifecycle_test: success (gate/release, early-off, partitions, alias reduction, automation, bounded voices, retirement, panic, zero guarded heap calls)",
+        "dynamics_processing_test: success (delay, ceiling, linking, release, knee, detectors, makeup, alignment, revisions, mixer, bounce, live edits, preparation failures, zero render heap calls)",
+        "analysis_calibration_test: success (tones, endpoints, power mean, real workers, gaps, epochs, mid, insert metadata)",
+        "fade_processing_test: success (four curves, render/clone/block/export/preview parity, capture, zero/short bounds)",
+        "media_durability_test: success (5 prepublication failures, directory uncertainty, RIFF limits, torn journal recovery)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 300 live sequences, 4/8/32-block queue targets, complete worker budgets)",
+        "session_transaction_test: success (11 capture and 5 restore allocation boundaries, live capture, rollback, complete retry)",
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)",
+        "engine_parameter_transaction_test: success",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)",
+        "daw_pack_contract_parity_test: success",
+        "daw_trace_export_contract_test: success",
+        "daw_trace_export_async_contract_test: success",
+        "kit_viz_waveform_adapter_test: success",
+        "kit_viz_fx_preview_adapter_test: success",
+        "waveform_cache_pack_warmstart_test: success",
+        "layout_text_scaling_sweep_test: success",
+        "timeline_contract_test: success",
+        "midi_model_test: success",
+        "midi_instrument_render_test: success",
+        "midi_editor_shell_test: success",
+        "audio_capture_device_test: success",
+        "audio_output_device_test: success",
+        "effects_revision_test: success",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)",
+        "audio_recording_test: success",
+        "track_role_test: success",
+        "daw_data_path_contract_test: success",
+        "test-library-copy-vs-reference-contract: success",
+        "daw stable test lane passed",
+        "2026-09-21 14:03:30.746 session_serialization_test[78583:204981098] INFO: session_serialization_test: success (6928 bytes)",
+        "media_cache_stress_test: success (entries=0)",
+        "clip_overlap_priority_test: success (clips=3)",
+        "engine_smoke_test: success",
+        "shared_theme_font_adapter_test: success"
+      ],
+      "log": "/tmp/daw-s46-regression.log",
+      "note": "Initial broad regression before final attribution counters; superseded by closeout regression when listed.",
+      "sha256": "faa0742d09c5a825843df2b2cb4ff5daf2978d0d7c9ec406564784b256346625"
+    },
+    {
+      "command": "make -f make/performance.mk performance-build test-audio-recording test-export-render test-media-durability test-pack-contract",
+      "exit_code": 0,
+      "highlights": [
+        "audio_recording_test: success",
+        "export_render_test: 56 instrumented allocation failure boundaries passed",
+        "export_render_test: 57 streaming allocation failure boundaries passed",
+        "export_render_test: success (repeatability, ranges, preroll, release/FX tails, PDC, snapshot/live isolation, failures, normalization, deterministic WAV)",
+        "media_durability_test: success (5 prepublication failures, directory uncertainty, RIFF limits, torn journal recovery)",
+        "daw_pack_contract_parity_test: success"
+      ],
+      "log": "/tmp/daw-s46-optimized.log",
+      "sha256": "5c2ec5079f292526104ebf896125d565ff144be91e85c00a5dd57aecbbad8083"
+    },
+    {
+      "command": "python3 tests/performance/run_workloads.py --binary build/performance/O2/targets/macOS-arm64/tests/runtime_workload_bench --output /tmp/daw-s46-streaming-20260921 --repeats 3 --group streaming --queue-blocks 32",
+      "exit_code": 1,
+      "highlights": [
+        "completed=24 failures=3 output=/private/tmp/daw-s46-streaming-20260921"
+      ],
+      "log": "/tmp/daw-s46-workloads.log",
+      "note": "Three zero-total-capture-gap assertions failed. Raw samples are retained; cause subsequently attributed, not suppressed.",
+      "sha256": "af6c979912e30c43d0dfc82ff0ec8e6dc39652b0062ba958b6dc40878c0257f5"
+    },
+    {
+      "command": "make -f make/performance.mk performance-build test-audio-recording",
+      "exit_code": 2,
+      "highlights": [
+        "tests/performance/runtime_workload_bench.c:346:5: error: call to undeclared function 'media_registry_free'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]"
+      ],
+      "log": "/tmp/daw-s46-clock-attribution.log",
+      "note": "Benchmark-only cleanup symbol typo; corrected to media_registry_shutdown before any attributed workload ran.",
+      "sha256": "4d52626816b5ab7de726789575b7af4f9f0174b6a40f1bbee23e59fa9eb7a90f"
+    },
+    {
+      "command": "make -f make/performance.mk performance-build test-audio-recording",
+      "exit_code": 0,
+      "highlights": [
+        "audio_recording_test: success"
+      ],
+      "log": "/tmp/daw-s46-clock-attribution-fixed.log",
+      "note": "Adds forced clock-gap sample-position proof and separate queue/clock loss counters.",
+      "sha256": "bb72aa73886167952fb28566d62f19a779a7f71977e612984ad084f0ff3cfaaf"
+    },
+    {
+      "command": "python3 tests/performance/run_workloads.py --binary build/performance/O2/targets/macOS-arm64/tests/runtime_workload_bench --output /tmp/daw-s46-streaming-attributed-20260921 --repeats 3 --group streaming --queue-blocks 32",
+      "exit_code": 0,
+      "highlights": [
+        "completed=24 failures=0 output=/private/tmp/daw-s46-streaming-attributed-20260921"
+      ],
+      "log": "/tmp/daw-s46-workloads-attributed.log",
+      "note": "Pipeline gate: no queue loss, exact finalized source-clock duration; measured clock-read gaps remain an open capture-quality issue.",
+      "sha256": "147bc9867f613d17b971e62176e3e24d7c8b571fa263b33e507071fe918f03cb"
+    },
+    {
+      "command": "python3 /tmp/daw-s46-check-measurements.py",
+      "exit_code": 0,
+      "highlights": [
+        "streaming_pipeline_contract_passed=1 samples=24 capture_quality_clock_gaps_open=1"
+      ],
+      "log": "/tmp/daw-s46-measurements-check.log",
+      "sha256": "8395aae3b574e77b8afdeabec355d014b291a9c88fb98c72d2013d36d31bcb97"
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-audio-recording test-media-durability test-export-render test-pack-contract",
+      "exit_code": 0,
+      "highlights": [
+        "audio_recording_test: success",
+        "media_durability_test: success (5 prepublication failures, directory uncertainty, RIFF limits, torn journal recovery)",
+        "export_render_test: 56 instrumented allocation failure boundaries passed",
+        "export_render_test: 57 streaming allocation failure boundaries passed",
+        "export_render_test: success (repeatability, ranges, preroll, release/FX tails, PDC, snapshot/live isolation, failures, normalization, deterministic WAV)",
+        "daw_pack_contract_parity_test: success"
+      ],
+      "log": "/tmp/daw-s46-asan-closeout.log",
+      "sha256": "945d124140fe764ced5706977dcb498dbf8cb2d5b17c94a816c25466abc0aed8"
+    },
+    {
+      "command": "make -f /tmp/daw-s1-tsan.mk test-audio-recording test-export-render",
+      "exit_code": 0,
+      "highlights": [
+        "audio_recording_test: success",
+        "export_render_test: 56 instrumented allocation failure boundaries passed",
+        "export_render_test: 57 streaming allocation failure boundaries passed",
+        "export_render_test: success (repeatability, ranges, preroll, release/FX tails, PDC, snapshot/live isolation, failures, normalization, deterministic WAV)"
+      ],
+      "log": "/tmp/daw-s46-tsan-closeout.log",
+      "sha256": "be21ac3d5c780a9c54ada6dfa75459235c110a07a654fe612f89e26b6c6b2605"
+    },
+    {
+      "command": "make test-stable test-legacy",
+      "exit_code": 0,
+      "highlights": [
+        "mixer_publication_test: success (coalescing, structural ordering, exact full-revision parity, histories, two failures, deferred retirement)",
+        "midi_scheduling_test: success (all presets, exact prior-scan parity, automation/release growth, seeks, export, formats, wrap, reserve failure, zero render heap calls)",
+        "region_scheduling_test: success (bounds, overlap/order, track lookup, ramps, seeks, resets, wrap, rollback, zero render heap calls)",
+        "export_render_test: 56 instrumented allocation failure boundaries passed",
+        "export_render_test: 57 streaming allocation failure boundaries passed",
+        "export_render_test: success (repeatability, ranges, preroll, release/FX tails, PDC, snapshot/live isolation, failures, normalization, deterministic WAV)",
+        "control_transitions_test: success (Gain ramps, partitions, retarget, reset, zero endpoint, revision handoff, bypass, mixer gain/pan/mute/solo)",
+        "media_conversion_test: success (PCM8/16/24/32, float, extensible, malformed input, rate pairs, filtering, allocation failures)",
+        "instrument_lifecycle_test: success (gate/release, early-off, partitions, alias reduction, automation, bounded voices, retirement, panic, zero guarded heap calls)",
+        "dynamics_processing_test: success (delay, ceiling, linking, release, knee, detectors, makeup, alignment, revisions, mixer, bounce, live edits, preparation failures, zero render heap calls)",
+        "analysis_calibration_test: success (tones, endpoints, power mean, real workers, gaps, epochs, mid, insert metadata)",
+        "fade_processing_test: success (four curves, render/clone/block/export/preview parity, capture, zero/short bounds)",
+        "media_durability_test: success (5 prepublication failures, directory uncertainty, RIFF limits, torn journal recovery)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 300 live sequences, 4/8/32-block queue targets, complete worker budgets)",
+        "session_transaction_test: success (11 capture and 5 restore allocation boundaries, live capture, rollback, complete retry)",
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)",
+        "engine_parameter_transaction_test: success",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)",
+        "daw_pack_contract_parity_test: success",
+        "daw_trace_export_contract_test: success",
+        "daw_trace_export_async_contract_test: success",
+        "kit_viz_waveform_adapter_test: success",
+        "kit_viz_fx_preview_adapter_test: success",
+        "waveform_cache_pack_warmstart_test: success",
+        "layout_text_scaling_sweep_test: success",
+        "timeline_contract_test: success",
+        "midi_model_test: success",
+        "midi_instrument_render_test: success",
+        "midi_editor_shell_test: success",
+        "audio_capture_device_test: success",
+        "audio_output_device_test: success",
+        "effects_revision_test: success",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)",
+        "audio_recording_test: success",
+        "track_role_test: success",
+        "daw_data_path_contract_test: success",
+        "test-library-copy-vs-reference-contract: success",
+        "daw stable test lane passed",
+        "2026-09-21 14:17:49.157 session_serialization_test[13559:205103581] INFO: session_serialization_test: success (6928 bytes)",
+        "media_cache_stress_test: success (entries=0)",
+        "clip_overlap_priority_test: success (clips=3)",
+        "engine_smoke_test: success",
+        "shared_theme_font_adapter_test: success"
+      ],
+      "log": "/tmp/daw-s46-regression-closeout.log",
+      "sha256": "daa11486397e08ae07d8fa8a63e8ddea99884ab83ade54270671700bb30ad9bb"
+    },
+    {
+      "command": "make",
+      "exit_code": 0,
+      "highlights": [],
+      "log": "/tmp/daw-s46-make.log",
+      "sha256": "117e7595596ca04e176bb91b32980ff7d8a925783898d46e9805d4e232807ccd"
+    },
+    {
+      "command": "doc_sync_verify.sh daw HEAD~1 HEAD /tmp/daw-s46-docverify-final",
+      "exit_code": 0,
+      "highlights": [
+        "findings=0",
+        "verify_ok=1"
+      ],
+      "log": "/tmp/daw-s46-docverify-final.log",
+      "sha256": "fa542d19a1dfe0d37c28fd1b7191f98131784f87133576ba9368d1061f77577d"
+    }
+  ],
+  "limits": [
+    "Fixed-project output-duration memory bounds exclude source media, prepared DSP/project metadata, and finished-WAV decode/cache.",
+    "Explicit buffer bounce API still returns full output audio in memory.",
+    "Finish/cancel may wait for storage; export remains synchronous with cancellation, not a background job.",
+    "Disk spool increases disk use and elapsed time; RIFF size limits remain.",
+    "Normal input/output qualification is separate from SDL dummy workloads; clock-read input gaps remain open despite zero output gaps.",
+    "Optional core_pack sidecar has its prior separate publication contract.",
+    "No shared library/version/adoption change, no commit, no release, no S4.7 implementation."
+  ],
+  "measurements": {
+    "export_10s": {
+      "block": {
+        "max": 128,
+        "median": 128,
+        "min": 128
+      },
+      "clips_per_track": {
+        "max": 1,
+        "median": 1,
+        "min": 1
+      },
+      "export_ms": {
+        "max": 123.453458,
+        "median": 122.397375,
+        "min": 122.200125
+      },
+      "fx_chain": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "notes_per_clip": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "output_bytes": {
+        "max": 3840000,
+        "median": 3840000,
+        "min": 3840000
+      },
+      "peak_rss_platform_units": {
+        "max": 77021184,
+        "median": 50511872,
+        "min": 43368448
+      },
+      "process_cpu_ms_excluding_fixture": {
+        "max": 173.725,
+        "median": 163.554,
+        "min": 160.959
+      },
+      "process_wall_ms_excluding_fixture": {
+        "max": 184.3385,
+        "median": 164.295916,
+        "min": 161.633958
+      },
+      "rate": {
+        "max": 48000,
+        "median": 48000,
+        "min": 48000
+      },
+      "realtime_factor": {
+        "max": 81.832977,
+        "median": 81.701099,
+        "min": 81.002186
+      },
+      "rss_after_setup": {
+        "max": 77021184,
+        "median": 50511872,
+        "min": 43302912
+      },
+      "rss_before_export": {
+        "max": 77021184,
+        "median": 50511872,
+        "min": 43302912
+      },
+      "rss_holding_export": {
+        "max": 77021184,
+        "median": 50511872,
+        "min": 43302912
+      },
+      "seconds": {
+        "max": 10.0,
+        "median": 10.0,
+        "min": 10.0
+      },
+      "setup_ms": {
+        "max": 56.589834,
+        "median": 37.453541,
+        "min": 35.020415
+      },
+      "tracks": {
+        "max": 32,
+        "median": 32,
+        "min": 32
+      },
+      "write_ms": {
+        "max": 3.942041,
+        "median": 3.902416,
+        "min": 3.811916
+      }
+    },
+    "export_120s": {
+      "block": {
+        "max": 128,
+        "median": 128,
+        "min": 128
+      },
+      "clips_per_track": {
+        "max": 1,
+        "median": 1,
+        "min": 1
+      },
+      "export_ms": {
+        "max": 346.914417,
+        "median": 342.423,
+        "min": 340.389042
+      },
+      "fx_chain": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "notes_per_clip": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "output_bytes": {
+        "max": 46080000,
+        "median": 46080000,
+        "min": 46080000
+      },
+      "peak_rss_platform_units": {
+        "max": 96632832,
+        "median": 96600064,
+        "min": 96600064
+      },
+      "process_cpu_ms_excluding_fixture": {
+        "max": 418.505,
+        "median": 415.255,
+        "min": 412.723
+      },
+      "process_wall_ms_excluding_fixture": {
+        "max": 420.381083,
+        "median": 416.953041,
+        "min": 414.825417
+      },
+      "rate": {
+        "max": 48000,
+        "median": 48000,
+        "min": 48000
+      },
+      "realtime_factor": {
+        "max": 352.537788,
+        "median": 350.443749,
+        "min": 345.906639
+      },
+      "rss_after_setup": {
+        "max": 50528256,
+        "median": 50495488,
+        "min": 50495488
+      },
+      "rss_before_export": {
+        "max": 50528256,
+        "median": 50495488,
+        "min": 50495488
+      },
+      "rss_holding_export": {
+        "max": 96632832,
+        "median": 96600064,
+        "min": 96600064
+      },
+      "seconds": {
+        "max": 120.0,
+        "median": 120.0,
+        "min": 120.0
+      },
+      "setup_ms": {
+        "max": 35.679041,
+        "median": 34.622375,
+        "min": 34.515167
+      },
+      "tracks": {
+        "max": 32,
+        "median": 32,
+        "min": 32
+      },
+      "write_ms": {
+        "max": 38.608084,
+        "median": 37.552458,
+        "min": 37.511875
+      }
+    },
+    "export_stream_10s": {
+      "block": {
+        "max": 128,
+        "median": 128,
+        "min": 128
+      },
+      "clips_per_track": {
+        "max": 1,
+        "median": 1,
+        "min": 1
+      },
+      "export_ms": {
+        "max": 133.78975,
+        "median": 133.6025,
+        "min": 132.602625
+      },
+      "fx_chain": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "notes_per_clip": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "output_bytes": {
+        "max": 1920044,
+        "median": 1920044,
+        "min": 1920044
+      },
+      "peak_rss_platform_units": {
+        "max": 50528256,
+        "median": 50528256,
+        "min": 50495488
+      },
+      "process_cpu_ms_excluding_fixture": {
+        "max": 167.748,
+        "median": 167.429,
+        "min": 165.076
+      },
+      "process_wall_ms_excluding_fixture": {
+        "max": 169.464916,
+        "median": 168.981375,
+        "min": 166.5235
+      },
+      "rate": {
+        "max": 48000,
+        "median": 48000,
+        "min": 48000
+      },
+      "realtime_factor": {
+        "max": 75.413288,
+        "median": 74.848899,
+        "min": 74.744141
+      },
+      "render_buffer_bytes": {
+        "max": 2048,
+        "median": 2048,
+        "min": 2048
+      },
+      "rss_after_setup": {
+        "max": 50528256,
+        "median": 50528256,
+        "min": 50495488
+      },
+      "rss_before_export": {
+        "max": 50528256,
+        "median": 50528256,
+        "min": 50495488
+      },
+      "rss_sampled_peak_export": {
+        "max": 50528256,
+        "median": 50528256,
+        "min": 50495488
+      },
+      "seconds": {
+        "max": 10.0,
+        "median": 10.0,
+        "min": 10.0
+      },
+      "setup_ms": {
+        "max": 35.385875,
+        "median": 34.681832,
+        "min": 33.430875
+      },
+      "tracks": {
+        "max": 32,
+        "median": 32,
+        "min": 32
+      }
+    },
+    "export_stream_120s": {
+      "block": {
+        "max": 128,
+        "median": 128,
+        "min": 128
+      },
+      "clips_per_track": {
+        "max": 1,
+        "median": 1,
+        "min": 1
+      },
+      "export_ms": {
+        "max": 453.480625,
+        "median": 447.997375,
+        "min": 444.140291
+      },
+      "fx_chain": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "notes_per_clip": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "output_bytes": {
+        "max": 23040044,
+        "median": 23040044,
+        "min": 23040044
+      },
+      "peak_rss_platform_units": {
+        "max": 50544640,
+        "median": 50528256,
+        "min": 50528256
+      },
+      "process_cpu_ms_excluding_fixture": {
+        "max": 488.848,
+        "median": 481.2,
+        "min": 479.759
+      },
+      "process_wall_ms_excluding_fixture": {
+        "max": 492.082334,
+        "median": 489.51825,
+        "min": 482.990667
+      },
+      "rate": {
+        "max": 48000,
+        "median": 48000,
+        "min": 48000
+      },
+      "realtime_factor": {
+        "max": 270.1849,
+        "median": 267.858712,
+        "min": 264.619905
+      },
+      "render_buffer_bytes": {
+        "max": 2048,
+        "median": 2048,
+        "min": 2048
+      },
+      "rss_after_setup": {
+        "max": 50544640,
+        "median": 50528256,
+        "min": 50528256
+      },
+      "rss_before_export": {
+        "max": 50544640,
+        "median": 50528256,
+        "min": 50528256
+      },
+      "rss_sampled_peak_export": {
+        "max": 50544640,
+        "median": 50528256,
+        "min": 50528256
+      },
+      "seconds": {
+        "max": 120.0,
+        "median": 120.0,
+        "min": 120.0
+      },
+      "setup_ms": {
+        "max": 47.354292,
+        "median": 35.348917,
+        "min": 34.377792
+      },
+      "tracks": {
+        "max": 32,
+        "median": 32,
+        "min": 32
+      }
+    },
+    "live_fx32_export_stream": {
+      "block": {
+        "max": 128,
+        "median": 128,
+        "min": 128
+      },
+      "callback_delta": {
+        "max": 1669,
+        "median": 1664,
+        "min": 1660
+      },
+      "callback_frames": {
+        "max": 128,
+        "median": 128,
+        "min": 128
+      },
+      "clips_per_track": {
+        "max": 1,
+        "median": 1,
+        "min": 1
+      },
+      "export_ms": {
+        "max": 1570.088458,
+        "median": 1567.939,
+        "min": 1566.667333
+      },
+      "fx_chain": {
+        "max": 1,
+        "median": 1,
+        "min": 1
+      },
+      "lifetime_command_max_ms": {
+        "max": 3.008291,
+        "median": 3.0065,
+        "min": 3.005166
+      },
+      "lifetime_render_max_ms": {
+        "max": 5.814125,
+        "median": 3.543416,
+        "min": 3.132375
+      },
+      "lifetime_service_max_ms": {
+        "max": 0.032166,
+        "median": 0.01575,
+        "min": 0.002125
+      },
+      "lifetime_worker_max_ms": {
+        "max": 5.814625,
+        "median": 3.543834,
+        "min": 3.132875
+      },
+      "live_cpu_ms": {
+        "max": 2641.053,
+        "median": 2609.162,
+        "min": 2586.746
+      },
+      "live_edit_max_ms": {
+        "max": 0.0,
+        "median": 0.0,
+        "min": 0.0
+      },
+      "live_wall_ms": {
+        "max": 4005.865833,
+        "median": 4004.822917,
+        "min": 4000.90925
+      },
+      "notes_per_clip": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "output_bytes": {
+        "max": 5760044,
+        "median": 5760044,
+        "min": 5760044
+      },
+      "peak_rss_platform_units": {
+        "max": 198803456,
+        "median": 186613760,
+        "min": 182927360
+      },
+      "process_cpu_ms_excluding_fixture": {
+        "max": 3017.361,
+        "median": 2974.578,
+        "min": 2946.849
+      },
+      "process_wall_ms_excluding_fixture": {
+        "max": 4840.672083,
+        "median": 4824.86346,
+        "min": 4815.550416
+      },
+      "queue_high_water_frames": {
+        "max": 4096,
+        "median": 4096,
+        "min": 4096
+      },
+      "queue_target_frames": {
+        "max": 4096,
+        "median": 4096,
+        "min": 4096
+      },
+      "rate": {
+        "max": 48000,
+        "median": 48000,
+        "min": 48000
+      },
+      "realtime_factor": {
+        "max": 19.148928,
+        "median": 19.133397,
+        "min": 19.107204
+      },
+      "render_block_delta": {
+        "max": 1670,
+        "median": 1663,
+        "min": 1660
+      },
+      "render_buffer_bytes": {
+        "max": 2048,
+        "median": 2048,
+        "min": 2048
+      },
+      "render_over_budget_delta": {
+        "max": 2,
+        "median": 1,
+        "min": 1
+      },
+      "rss_after_setup": {
+        "max": 165396480,
+        "median": 153288704,
+        "min": 149569536
+      },
+      "rss_before_export": {
+        "max": 165756928,
+        "median": 153632768,
+        "min": 149897216
+      },
+      "rss_sampled_peak_export": {
+        "max": 198787072,
+        "median": 186613760,
+        "min": 182910976
+      },
+      "seconds": {
+        "max": 30.0,
+        "median": 30.0,
+        "min": 30.0
+      },
+      "setup_ms": {
+        "max": 199.044291,
+        "median": 185.849417,
+        "min": 181.0515
+      },
+      "spectrogram_dropped_delta": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "spectrogram_published_delta": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "spectrum_dropped_delta": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "spectrum_published_delta": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "spectrum_queued_delta": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "tracks": {
+        "max": 32,
+        "median": 32,
+        "min": 32
+      },
+      "underrun_callback_delta": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "underrun_frame_delta": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "worker_cycle_delta": {
+        "max": 3708,
+        "median": 3703,
+        "min": 3675
+      },
+      "worker_over_budget_delta": {
+        "max": 2,
+        "median": 1,
+        "min": 1
+      },
+      "worker_render_cycle_delta": {
+        "max": 1670,
+        "median": 1663,
+        "min": 1660
+      }
+    },
+    "live_fx8_record_worker": {
+      "block": {
+        "max": 128,
+        "median": 128,
+        "min": 128
+      },
+      "capture_clock_missing_frames": {
+        "max": 1408,
+        "median": 1280,
+        "min": 1280
+      },
+      "capture_missing_frames": {
+        "max": 1408,
+        "median": 1280,
+        "min": 1280
+      },
+      "capture_queue_dropped_frames": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "captured_frames": {
+        "max": 265344,
+        "median": 265088,
+        "min": 263808
+      },
+      "checkpoint_frames": {
+        "max": 264960,
+        "median": 264832,
+        "min": 263296
+      },
+      "clips_per_track": {
+        "max": 1,
+        "median": 1,
+        "min": 1
+      },
+      "finalized_frames": {
+        "max": 265344,
+        "median": 265088,
+        "min": 263808
+      },
+      "fx_chain": {
+        "max": 1,
+        "median": 1,
+        "min": 1
+      },
+      "notes_per_clip": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "peak_rss_platform_units": {
+        "max": 85688320,
+        "median": 82116608,
+        "min": 73629696
+      },
+      "preview_buffers_bytes": {
+        "max": 786432,
+        "median": 786432,
+        "min": 786432
+      },
+      "process_cpu_ms_excluding_fixture": {
+        "max": 1097.016,
+        "median": 1087.35,
+        "min": 1076.274
+      },
+      "process_wall_ms_excluding_fixture": {
+        "max": 5733.218542,
+        "median": 5726.900083,
+        "min": 5722.308416
+      },
+      "rate": {
+        "max": 48000,
+        "median": 48000,
+        "min": 48000
+      },
+      "recorded_frames": {
+        "max": 264960,
+        "median": 264832,
+        "min": 263296
+      },
+      "rss_after_setup": {
+        "max": 45547520,
+        "median": 45481984,
+        "min": 40763392
+      },
+      "rss_before_recording": {
+        "max": 55623680,
+        "median": 55525376,
+        "min": 50806784
+      },
+      "rss_holding_recording": {
+        "max": 72597504,
+        "median": 72548352,
+        "min": 67747840
+      },
+      "seconds": {
+        "max": 5.0,
+        "median": 5.0,
+        "min": 5.0
+      },
+      "setup_ms": {
+        "max": 40.474083,
+        "median": 34.419624,
+        "min": 31.59025
+      },
+      "tracks": {
+        "max": 8,
+        "median": 8,
+        "min": 8
+      },
+      "ui_poll_max_ms": {
+        "max": 0.05875,
+        "median": 0.055166,
+        "min": 0.054418
+      },
+      "underrun_frames_delta": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "worker_over_budget_delta": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      }
+    },
+    "record_10s": {
+      "block": {
+        "max": 128,
+        "median": 128,
+        "min": 128
+      },
+      "budget_ms": {
+        "max": 100.0,
+        "median": 100.0,
+        "min": 100.0
+      },
+      "checkpoint_frames": {
+        "max": 480000,
+        "median": 480000,
+        "min": 480000
+      },
+      "clips_per_track": {
+        "max": 1,
+        "median": 1,
+        "min": 1
+      },
+      "fx_chain": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "max_ms": {
+        "max": 0.398666,
+        "median": 0.362833,
+        "min": 0.350833
+      },
+      "mean_ms": {
+        "max": 0.33608,
+        "median": 0.315199,
+        "min": 0.313599
+      },
+      "notes_per_clip": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "over_budget": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "p50_ms": {
+        "max": 0.3505,
+        "median": 0.336542,
+        "min": 0.33525
+      },
+      "p95_ms": {
+        "max": 0.383876,
+        "median": 0.349583,
+        "min": 0.344625
+      },
+      "p99_ms": {
+        "max": 0.397959,
+        "median": 0.357375,
+        "min": 0.345834
+      },
+      "peak_rss_platform_units": {
+        "max": 30916608,
+        "median": 30916608,
+        "min": 30900224
+      },
+      "process_cpu_ms_excluding_fixture": {
+        "max": 59.094,
+        "median": 50.445,
+        "min": 50.119
+      },
+      "process_wall_ms_excluding_fixture": {
+        "max": 61.723416,
+        "median": 52.818583,
+        "min": 52.507168
+      },
+      "rate": {
+        "max": 48000,
+        "median": 48000,
+        "min": 48000
+      },
+      "recorded_frames": {
+        "max": 480000,
+        "median": 480000,
+        "min": 480000
+      },
+      "recording_wall_ms": {
+        "max": 35.292916,
+        "median": 33.283791,
+        "min": 33.061
+      },
+      "rss_after_setup": {
+        "max": 13516800,
+        "median": 13516800,
+        "min": 13516800
+      },
+      "rss_before_recording": {
+        "max": 14598144,
+        "median": 14598144,
+        "min": 14581760
+      },
+      "rss_holding_recording": {
+        "max": 30867456,
+        "median": 30867456,
+        "min": 30851072
+      },
+      "samples": {
+        "max": 100,
+        "median": 100,
+        "min": 100
+      },
+      "seconds": {
+        "max": 10.0,
+        "median": 10.0,
+        "min": 10.0
+      },
+      "setup_ms": {
+        "max": 25.652709,
+        "median": 18.85725,
+        "min": 18.765918
+      },
+      "take_capacity_bytes": {
+        "max": 524288,
+        "median": 524288,
+        "min": 524288
+      },
+      "take_used_bytes": {
+        "max": 524288,
+        "median": 524288,
+        "min": 524288
+      },
+      "tracks": {
+        "max": 1,
+        "median": 1,
+        "min": 1
+      }
+    },
+    "record_60s": {
+      "block": {
+        "max": 128,
+        "median": 128,
+        "min": 128
+      },
+      "budget_ms": {
+        "max": 100.0,
+        "median": 100.0,
+        "min": 100.0
+      },
+      "checkpoint_frames": {
+        "max": 2880000,
+        "median": 2880000,
+        "min": 2880000
+      },
+      "clips_per_track": {
+        "max": 1,
+        "median": 1,
+        "min": 1
+      },
+      "fx_chain": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "max_ms": {
+        "max": 0.408667,
+        "median": 0.387709,
+        "min": 0.382083
+      },
+      "mean_ms": {
+        "max": 0.340658,
+        "median": 0.337663,
+        "min": 0.336837
+      },
+      "notes_per_clip": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "over_budget": {
+        "max": 0,
+        "median": 0,
+        "min": 0
+      },
+      "p50_ms": {
+        "max": 0.34175,
+        "median": 0.340416,
+        "min": 0.340125
+      },
+      "p95_ms": {
+        "max": 0.367332,
+        "median": 0.361208,
+        "min": 0.356626
+      },
+      "p99_ms": {
+        "max": 0.389834,
+        "median": 0.376708,
+        "min": 0.363958
+      },
+      "peak_rss_platform_units": {
+        "max": 32063488,
+        "median": 32063488,
+        "min": 29704192
+      },
+      "process_cpu_ms_excluding_fixture": {
+        "max": 221.552,
+        "median": 220.515,
+        "min": 214.789
+      },
+      "process_wall_ms_excluding_fixture": {
+        "max": 235.808001,
+        "median": 234.594959,
+        "min": 228.867166
+      },
+      "rate": {
+        "max": 48000,
+        "median": 48000,
+        "min": 48000
+      },
+      "recorded_frames": {
+        "max": 2880000,
+        "median": 2880000,
+        "min": 2880000
+      },
+      "recording_wall_ms": {
+        "max": 210.958333,
+        "median": 209.1645,
+        "min": 208.705875
+      },
+      "rss_after_setup": {
+        "max": 13516800,
+        "median": 13516800,
+        "min": 10731520
+      },
+      "rss_before_recording": {
+        "max": 14598144,
+        "median": 14598144,
+        "min": 12271616
+      },
+      "rss_holding_recording": {
+        "max": 32014336,
+        "median": 32014336,
+        "min": 29163520
+      },
+      "samples": {
+        "max": 600,
+        "median": 600,
+        "min": 600
+      },
+      "seconds": {
+        "max": 60.0,
+        "median": 60.0,
+        "min": 60.0
+      },
+      "setup_ms": {
+        "max": 24.558709,
+        "median": 23.945625,
+        "min": 19.294707
+      },
+      "take_capacity_bytes": {
+        "max": 524288,
+        "median": 524288,
+        "min": 524288
+      },
+      "take_used_bytes": {
+        "max": 524288,
+        "median": 524288,
+        "min": 524288
+      },
+      "tracks": {
+        "max": 1,
+        "median": 1,
+        "min": 1
+      }
+    }
+  },
+  "open_findings": [
+    {
+      "behavior": "Existing bounded full-clock read may reject input; source-clock gaps remain explicit silence and finalized duration is exact.",
+      "id": "capture_clock_snapshot_rejection",
+      "next_step": "Bounded capture-clock correctness follow-up preserving coherent transport epoch gating; do not substitute an unchecked stale clock.",
+      "observed_frames_per_five_second_dummy_take": [
+        1280,
+        1408
+      ],
+      "queue_dropped_frames": 0,
+      "status": "open"
+    }
+  ],
+  "recorded_utc": "2026-09-21T21:21:33.202789+00:00",
+  "slice": "S4.6",
+  "source_sha256": {
+    "include/app/audio_recording.h": "7b194c369a605bd05205e420abdfafcaa22ee86457ea019c7ed9172176b6fdc6",
+    "include/audio/take_journal.h": "eadc22f3cfa0a4e24fe2445ea6a270e2748c332a402948721422228abc54ee02",
+    "include/audio/wav_writer.h": "4e2b67bccd80d9781952e1a9c7e560d3376464cb9500fa3fc5330a38c480abf5",
+    "include/engine/engine.h": "82f701258c6963b2e8f46e494d2192441139730eb8e57e1fd10c595751fda20f",
+    "include/export/daw_pack_export.h": "d701a43124581b4e2a2d30650e96735afdfdb264266d189f1dc1a2d91fbe8715",
+    "make/rules-test-core.mk": "c6687afed26c43afc55e9c0a9be4e6d4ba452061cfdfbf3ab119420858df3b61",
+    "src/app/audio_recording.c": "321f18a1a7a822a94da65bb4b7040f7df329829dc36bfe860c245d7c9a27cefa",
+    "src/app/main_bounce.c": "f495a456a97b88f33564be9edb3a58c18f1dd04c816b4d827aa18834ae2b8186",
+    "src/audio/take_journal.c": "cc3a56f9b4617fe7baa3ff7dcf9b00e50bcd4308cec0e366b664858d2a238201",
+    "src/audio/wav_writer.c": "ac2000b3229fab5bc50a1ef06d6a00b09180592b6344c9d14efa7c47ff4698c1",
+    "src/engine/engine_io.c": "269c1ec1050047bbbd278a2e5beac51437a5615fa6d90871e59f1cee6387ed70",
+    "src/export/daw_pack_export.c": "e410b2b054dfd6ea4d0432ddd00e50c2e11bda0014939420da0e3f96994ac54a",
+    "src/ui/overlay/timeline_view_runtime_overlays.c": "e8dae587be394a664a94ea281bed703490e5d5139fe846ac3c2baa8bb24535ac",
+    "tests/audio_recording_test.c": "1a29accb09ad084edaf0a9d505cfb6015e30577f866595283edb931f3e8ec494",
+    "tests/daw_pack_contract_parity_test.c": "772eb84ed43a9f829a3bca6107d757be0392eefd67c2b22532d478ecf1dcb5f3",
+    "tests/export_render_test.c": "d66b6415b9504662fe67dacdbf8b8037217f7cd4c1a08f354c5ef27347592aec",
+    "tests/media_durability_test.c": "5f8df1d564307b7a6c2214360c691f5870e0b23c331f70c8a1efce211830b2f7",
+    "tests/performance/run_workloads.py": "ec780a52552a63e3b190119ff4b1b7801a6fdde15754533c55e23ab9435d7d1e",
+    "tests/performance/runtime_workload_bench.c": "62327229d2679baa20066bc7e77d8e6dd00ec444e8aa127558745a82fba3774f"
+  },
+  "status": "implemented_at_documented_memory_and_io_boundary_capture_quality_open",
+  "sub_slices": {
+    "S4.6a": "Worker-owned timeline journal drain, bounded recent preview, exact-length streamed finalization and prefix recovery. Gap-free input qualification remains open.",
+    "S4.6b": "Single captured render, anonymous disk spool, two-pass peak normalization, cancellable progress, chunked durable WAV, bounded optional pack overview."
+  },
+  "workload_bundle": {
+    "path": "docs/improvement/evidence/s4-streaming-workloads.json",
+    "sha256": "8a18782f0140529aba4c317bb21fce921ae0b573ce623735b13a5d316c13ef26"
+  }
+}

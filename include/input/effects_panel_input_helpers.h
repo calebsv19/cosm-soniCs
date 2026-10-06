@@ -10,7 +10,7 @@ int find_slot_index_by_id(const EffectsPanelState* panel, FxInstId id);
 bool panel_targets_track(const EffectsPanelState* panel);
 void sync_meter_modes_from_slot_params(EffectsPanelState* panel, const FxSlotUIState* slot);
 void fx_instance_from_slot(const FxSlotUIState* slot, SessionFxInstance* out_instance);
-void begin_fx_param_drag(AppState* state, int slot_index, int param_index);
+bool begin_fx_param_drag(AppState* state, int slot_index, int param_index);
 
 void effects_panel_toggle_preview(EffectsPanelState* panel, int slot_index);
 void effects_panel_set_all_previews(EffectsPanelState* panel, bool open);

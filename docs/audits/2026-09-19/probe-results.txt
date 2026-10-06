@@ -1,0 +1,6 @@
+COMMAND: size=96 capacity=8192 accepted=85 queued=8192 partial=32
+COMMAND AFTER RETRY: seek=12345 expected=98765 leftover=0
+GAIN: normal=0.25 track_zero=0.25 clip_zero=0.25 expected=0
+FADE: linear_quarter=0.0625 exponential_quarter=0.0625 expected_exponential=0.0118415
+SPECTRUM: window indices 0=384 127=511 128=896 255=1023 (gap at window index 128)
+LIMITER: lookahead_ms=5 expected_delay_near=240 measured_first_impulse_frame=1

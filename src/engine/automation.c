@@ -44,44 +44,28 @@ void engine_automation_lane_free(EngineAutomationLane* lane) {
     lane->point_capacity = 0;
 }
 
+// Copies through replacement storage so allocation failure and self-copy preserve the original lane.
 bool engine_automation_lane_copy(const EngineAutomationLane* src, EngineAutomationLane* dst) {
-    if (!src || !dst) {
-        return false;
-    }
-    engine_automation_lane_free(dst);
-    dst->target = src->target;
-    if (src->point_count <= 0) {
-        return true;
-    }
-    dst->points = (EngineAutomationPoint*)malloc(sizeof(EngineAutomationPoint) * (size_t)src->point_count);
-    if (!dst->points) {
-        dst->point_capacity = 0;
-        dst->point_count = 0;
-        return false;
-    }
-    memcpy(dst->points, src->points, sizeof(EngineAutomationPoint) * (size_t)src->point_count);
-    dst->point_count = src->point_count;
-    dst->point_capacity = src->point_count;
+    if (!src || !dst) return false;
+    EngineAutomationTarget target = src->target;
+    if (!engine_automation_lane_set_points(dst, src->points, src->point_count)) return false;
+    dst->target = target;
     return true;
 }
 
+// Prepares all points before releasing old storage, including when the input aliases that storage.
 bool engine_automation_lane_set_points(EngineAutomationLane* lane, const EngineAutomationPoint* points, int count) {
-    if (!lane) {
-        return false;
+    if (!lane || count < 0 || (count > 0 && !points) ||
+        (size_t)count > SIZE_MAX / sizeof(EngineAutomationPoint)) return false;
+    EngineAutomationPoint* replacement = NULL;
+    if (count > 0) {
+        replacement = malloc(sizeof(*replacement) * (size_t)count);
+        if (!replacement) return false;
+        memcpy(replacement, points, sizeof(*replacement) * (size_t)count);
     }
-    engine_automation_lane_free(lane);
-    if (!points || count <= 0) {
-        return true;
-    }
-    lane->points = (EngineAutomationPoint*)malloc(sizeof(EngineAutomationPoint) * (size_t)count);
-    if (!lane->points) {
-        lane->point_capacity = 0;
-        lane->point_count = 0;
-        return false;
-    }
-    memcpy(lane->points, points, sizeof(EngineAutomationPoint) * (size_t)count);
-    lane->point_count = count;
-    lane->point_capacity = count;
+    free(lane->points);
+    lane->points = replacement;
+    lane->point_count = lane->point_capacity = count;
     automation_sort_points(lane);
     return true;
 }

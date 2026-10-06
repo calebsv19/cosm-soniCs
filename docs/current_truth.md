@@ -1,6 +1,6 @@
 # soniCs Current Truth
 
-Last updated: 2026-08-27
+Last updated: 2026-09-22 (runtime improvement checkpoint; older release claims retain their original scope)
 
 ## Program Identity
 - Repository directory: `daw/`
@@ -8,6 +8,19 @@ Last updated: 2026-08-27
 - Primary runtime entry:
   - `src/app/main.c` -> `daw_app_main_run()`
   - wrapper shell: `include/daw/daw_app_main.h`, `src/app/daw_app_main.c`
+
+## Current Development Checkpoint — Runtime Improvements
+
+The S1–S3 implementation below is local uncommitted work, not a shipped release. The [runtime improvement plan](improvement/PLAN.md) is separate from the earlier scaffold `DAW-S*` numbering.
+
+- S1 has a bounded engine-foundation closeout with explicit compound-edit, undo-identity, rejection-feedback, and physical-acceptance deferrals.
+- S2's six software slices cover save durability, coherent project capture/restore, software clocks/transport, recording recovery, and diagnostics at their documented boundaries.
+- S3.1–S3.3 closeouts cover fade parity, analysis calibration, and repaired dynamics/processing delay.
+- [S3.4](improvement/S3-CONTROL-TRANSITIONS.md), [S3.5](improvement/S3-MEDIA-CONVERSION.md), and [S3.6](improvement/S3-INSTRUMENT-LIFECYCLE.md) now document control transitions, supported import/conversion, and instrument gate/release/alias improvements. Their receipts bind tests to their recorded source snapshots; S3.7 subsequently changes shared engine paths. Final application build and selected normal/ASan/TSan checks passed; physical listening/device acceptance is not claimed.
+- [S3.7 export](improvement/S3-EXPORT.md) is complete at its software boundary: independent authored capture, private DSP reset, bounded preroll/tails, explicit normalization, and deterministic requested WAV writing. Stable/legacy, selected ASan/TSan, and final build checks passed; see [the current export receipt](improvement/evidence/s3-export.json). S3.7's stop before S4 was honored; the later S4.1 audit is summarized below.
+- [S4.1 runtime audit](improvement/S4-RUNTIME-AUDIT.md) now records 30 optimized workload configurations (90 selected samples), five unoptimized comparisons (15 samples), source findings, and proposed S4 slices. This adds opt-in benchmark tooling, not engine optimizations or a new default build policy. Selected optimized export/instrument/transport checks and final default `make` passed. This is the historical baseline; subsequent S4 implementation is summarized below. Physical-device, long-session, and GUI performance remain unqualified.
+
+- [S4 implementation](improvement/S4-IMPLEMENTATION.md) now adds track-local audio source bounds, per-block MIDI candidates with prepared base pitch, and compact published meter banks. Exact rendering/reference checks, regression, sanitizer, and matched optimized workloads cover these software boundaries. The audit baseline sparse 32×32 median fell from 0.588416 to 0.058624 ms in the recorded S4.3 scheduling run; sparse MIDI 1×1024 fell from 0.053250 to 0.006000 ms. Published meter storage saves 435,456 bytes per double-buffered capacity slot/master. [S4.4b/S4.5](improvement/S4-EDITING-DEADLINES.md) now add compact ordered mixer updates, indexed source-history transfer, whole busy-worker timing, and callback-aware 2..32-block queue targets (default 32). Config/project round trips preserve requested policy. [S4.6](improvement/S4-STREAMING.md) now adds worker-owned recording checkpoints, 65,536-frame recent previews, streamed recovery/finalization, and two-pass streamed file exports with cancellation and bounded waveform packs. The [capture-clock follow-up](improvement/S4-CAPTURE-CLOCK.md) now retains anchored samples when diagnostic reads are busy, using an independently published valid transport epoch. Nine strict live dummy captures—including three 30-second intervals—reported zero missing input/output. [S4.7a–d](improvement/S4.7-MEDIA.md) now add background metadata/content probing and decoding, four owned request slots, cooperative cancellation, prepared cache adoption, generation-safe insertion, warm reuse and periodic retired-plan collection. Library drops and interactive recording/bounce insertion use pending/completed/failed states. [S4.8 analyzer compute](improvement/S4.8-ANALYSIS.md) now reuses worker-owned window/oscillator coefficients and exposes consumer backlog/timing counters, preserving calibrated results with measured lower CPU. Its live probes retained analyzer throughput but found occasional whole-workload deadline misses and two output-gap runs; those entered [S4.9 sustained assessment](improvement/S4.9-ACCEPTANCE.md). That assessment is complete with 8/8 workflow, 7/8 continuity and 0/8 strict timing passes. A heavy 96 kHz case lost 8,320 output frames; long-session RSS and physical/interactive qualification remain open. Empty and populated GUI frames rendered successfully, with visible effects-layout crowding. Full-file pinned media and explicit synchronous restore/offline APIs remain limits. Changes are uncommitted.
 
 ## Current Shipped State
 - The managed Vulkan adoption is committed locally as `5fa5d6e` (shared
@@ -42,7 +55,7 @@ Last updated: 2026-08-27
 - Public release version is now `0.2.0`.
 - MIDI regions are first-class engine/session objects with timeline creation/selection, piano-roll editing, QWERTY audition/recording, note clipboard/duplicate commands, quantize, velocity editing, bounce-to-WAV, and session round-trip coverage.
 - Built-in MIDI instruments now use grouped factory presets, per-region overrides, track-level instrument defaults, and instrument parameter automation for region-local and inherited track-level lanes.
-- Audio recording now has a DAW-local SDL capture wrapper and recording coordinator that arms from timeline `R`, captures only while transport is moving, previews the active waveform with role-aware status text, reports active/error recording status in the timeline, refuses MIDI-only audio targets with a clear status message, finalizes to `recordings/recording*.wav`, and inserts the result as a normal undoable/session-persisted audio clip on the selected empty, audio, or mixed track.
+- Audio recording now has a DAW-local SDL capture wrapper and recording coordinator that arms from timeline `R`, captures only while transport is moving, previews the active waveform with role-aware status text, reports active/error recording status in the timeline, refuses MIDI-only audio targets with a clear status message, finalizes to its unique `recordings/take-*.wav`, and inserts the result as a normal undoable/session-persisted audio clip on the selected empty, audio, or mixed track.
 - Latest manual packaged-app proof recorded selected-track recording,
   record-armed solo setup, live waveform preview, and play/pause-gated capture
   as functioning well enough for the current audio-recording lane.
@@ -185,3 +198,19 @@ Last updated: 2026-08-27
 - Full lane history is in:
   - `/Users/calebsv/Desktop/CodeWork/docs/private_program_docs/daw/`
 - This file is the compressed public current-state contract.
+
+## S4 bounded closeout
+
+The [S4 closeout](improvement/S4-CLOSEOUT.md) completes the bounded software follow-up: best-effort render-worker priority with refusal/restart diagnostics, 20 repeated ownership lifetimes, four sustained profiles, and acceptance-discovered transport/modal input corrections. All four profiles passed continuity; only two passed the strict timing gate, so universal zero-miss timing remains unqualified. Native dummy-audio save/reopen and silent default CoreAudio callback delivery passed; listening and microphone alignment remain separate. [S5 functional slices](improvement/S5-FUNCTIONAL-SLICES.md) begin with action/history integrity and truthful workflow feedback.
+
+## S5 implementation boundary
+
+The [S5 ledger](improvement/S5-IMPLEMENTATION.md) records partial action/history work: atomic compound transforms and previews, guarded generated-track placement history, retained neighbor content and topology for slide drops, and persistent save/load failure dialogs. Full S5.1 is not complete: remaining compound trim/split entry points, remaining history identities and native gesture acceptance remain open. These later source changes do not inherit the S4 binary performance qualification automatically.
+
+Later S5.1 checkpoints add transactional duplicate/delete/paste, key-event undo/delete and edit-repeat suppression, atomic MIDI left trim, complete selection remapping for single-clip sorting, and pre-reserved numeric inspector history with checked frame conversion and retained rejected input. Inspector rename/drag history, visible failure explanations and native interaction acceptance remain incomplete; the ledger separates each verified subset from those open behaviors.
+
+The current gesture audit confirms trim and ripple movement are separate modes. Audio left trim now publishes bounds/position atomically, and ripple movement includes downstream MIDI clips through stable target identities. A new ripple-trim gesture is not implied.
+
+Timeline selection duplicate/delete now publishes complete audio/MIDI actions with one reserved history entry and explicit selection restoration. Ctrl/Cmd-D uses event-local modifiers; native shortcut and gesture rehearsal remains pending.
+
+Clipboard paste now prepares complete audio/MIDI content and required topology before one publication and one reserved undo entry, including guarded generated-track retirement and empty-project restoration. Missing media/preparation rejection preserves the prior authored project. Native acceptance remains pending.

@@ -1,6 +1,7 @@
 #include "engine/midi.h"
 
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 
 static int engine_midi_note_compare(const void* a, const void* b) {
@@ -86,7 +87,7 @@ bool engine_midi_note_is_valid(const EngineMidiNote* note) {
     if (note->note > ENGINE_MIDI_NOTE_MAX) {
         return false;
     }
-    if (note->velocity < 0.0f || note->velocity > 1.0f) {
+    if (!isfinite(note->velocity) || note->velocity < 0.0f || note->velocity > 1.0f) {
         return false;
     }
     return true;

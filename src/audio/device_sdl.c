@@ -3,6 +3,7 @@
 #include <SDL2/SDL.h>
 #include <string.h>
 
+// Clears each callback buffer before rendering complete float frames into it.
 static void sdl_audio_trampoline(void* userdata, Uint8* stream, int len) {
     AudioDevice* device = (AudioDevice*)userdata;
     if (!device) {
@@ -19,8 +20,11 @@ static void sdl_audio_trampoline(void* userdata, Uint8* stream, int len) {
     }
 }
 
+// Opens a paused float endpoint with a fixed engine rate and channel layout.
 bool audio_device_open(AudioDevice* device, const AudioDeviceSpec* desired, AudioDeviceCallback cb, void* userdata) {
-    if (!device || !desired) {
+    if (!device || !desired || !cb || desired->sample_rate <= 0 ||
+        desired->channels < 1 || desired->channels > 255 ||
+        desired->block_size < 1 || desired->block_size > 65535) {
         return false;
     }
 
@@ -45,21 +49,26 @@ bool audio_device_open(AudioDevice* device, const AudioDeviceSpec* desired, Audi
 
     SDL_AudioSpec have = {0};
     SDL_AudioDeviceID dev_id = SDL_OpenAudioDevice(NULL, 0, &want, &have,
-                                                   SDL_AUDIO_ALLOW_ANY_CHANGE);
+                                                   SDL_AUDIO_ALLOW_SAMPLES_CHANGE);
     if (dev_id == 0) {
         SDL_Log("SDL_OpenAudioDevice failed: %s", SDL_GetError());
         return false;
     }
 
+    // SDL may convert the hardware format internally; our callback must remain float.
+    if (have.format != AUDIO_F32 || have.freq != want.freq ||
+        have.channels != want.channels || have.samples == 0) {
+        SDL_Log("SDL output endpoint violated the requested float/rate/channel contract");
+        SDL_CloseAudioDevice(dev_id);
+        SDL_zero(*device);
+        return false;
+    }
     device->device_id = dev_id;
     device->spec.sample_rate = have.freq;
     device->spec.channels = have.channels;
     device->spec.block_size = have.samples;
     device->is_open = true;
 
-    if (have.format != AUDIO_F32) {
-        SDL_Log("Warning: obtained audio format is not float32, got format %u", (unsigned)have.format);
-    }
     return true;
 }
 

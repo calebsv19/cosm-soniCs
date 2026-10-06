@@ -80,26 +80,45 @@ static bool clip_state_equal(const UndoClipState* a, const UndoClipState* b) {
                   sizeof(EngineMidiNote) * (size_t)a->midi_note_count) == 0;
 }
 
-static void inspector_begin_clip_drag(AppState* state) {
-    if (!state) {
-        return;
-    }
+// Reserves complete clip history before an inspector gain/fade operation may mutate content.
+bool inspector_input_begin_clip_drag(AppState* state) {
+    if (!state || state->undo.active_drag_valid) return false;
     const EngineClip* clip = inspector_get_clip_const(state);
-    if (!clip) {
-        return;
-    }
-    UndoCommand cmd = {0};
-    cmd.type = UNDO_CMD_CLIP_TRANSFORM;
-    if (!undo_clip_state_from_engine_clip(clip, state->inspector.track_index, &cmd.data.clip_transform.before)) {
-        return;
-    }
-    if (!undo_clip_state_clone(&cmd.data.clip_transform.after, &cmd.data.clip_transform.before)) {
-        undo_clip_state_clear(&cmd.data.clip_transform.before);
-        return;
-    }
-    undo_manager_begin_drag(&state->undo, &cmd);
+    if (!clip) return false;
+    UndoCommand cmd = {.type = UNDO_CMD_CLIP_TRANSFORM};
+    if (!undo_clip_state_capture(state->engine, clip, state->inspector.track_index, &cmd.data.clip_transform.before)) return false;
+    bool ready = undo_clip_state_clone(&cmd.data.clip_transform.after, &cmd.data.clip_transform.before) &&
+                 undo_manager_begin_drag(&state->undo, &cmd);
     undo_clip_state_clear(&cmd.data.clip_transform.before);
     undo_clip_state_clear(&cmd.data.clip_transform.after);
+    return ready;
+}
+
+// Finalizes scalar gain/fade history without allocating notes or changing another gesture's command.
+void inspector_input_finish_clip_drag(AppState* state) {
+    if (!state || !state->engine || !state->undo.active_drag_valid ||
+        state->undo.active_drag.type != UNDO_CMD_CLIP_TRANSFORM) return;
+    UndoCommand* cmd = &state->undo.active_drag;
+    const EngineTrack* tracks = engine_get_tracks(state->engine);
+    for (int t = 0; t < engine_get_track_count(state->engine); ++t) {
+        for (int c = 0; c < tracks[t].clip_count; ++c) {
+            const EngineClip* clip = &tracks[t].clips[c];
+            if (clip->creation_index != cmd->data.clip_transform.before.creation_index) continue;
+            UndoClipState* after = &cmd->data.clip_transform.after;
+            after->gain = clip->gain;
+            after->fade_in_frames = clip->fade_in_frames;
+            after->fade_out_frames = clip->fade_out_frames;
+            after->fade_in_curve = clip->fade_in_curve;
+            after->fade_out_curve = clip->fade_out_curve;
+            if (!clip_state_equal(&cmd->data.clip_transform.before, after)) {
+                (void)undo_manager_commit_drag(&state->undo, cmd);
+                return;
+            }
+            undo_manager_cancel_drag(&state->undo);
+            return;
+        }
+    }
+    undo_manager_cancel_drag(&state->undo);
 }
 
 static void inspector_stop_text_input(AppState* state) {
@@ -373,6 +392,7 @@ void inspector_input_begin_rename(AppState* state) {
     state->inspector.name[sizeof(state->inspector.name) - 1] = '\0';
     state->inspector.name_cursor = (int)strlen(state->inspector.name);
     state->inspector.editing_name = true;
+    state->inspector.name_creation_index = clip->creation_index;
     state->inspector.name_scroll = 0;
     inspector_update_name_scroll(state);
     SDL_StartTextInput();
@@ -384,20 +404,23 @@ void inspector_input_commit_if_editing(AppState* state) {
     }
     if (state->inspector.editing_name) {
         EngineClip* clip = inspector_get_clip_mutable(state);
+        if (!clip || !state->engine || state->undo.active_drag_valid ||
+            clip->creation_index != state->inspector.name_creation_index) return;
         if (clip && state->engine) {
             if (strncmp(clip->name, state->inspector.name, sizeof(clip->name)) != 0) {
                 UndoCommand cmd = {0};
                 cmd.type = UNDO_CMD_CLIP_RENAME;
-                cmd.data.clip_rename.sampler = clip->sampler;
-                cmd.data.clip_rename.track_index = state->inspector.track_index;
+                cmd.data.clip_rename.creation_index = clip->creation_index;
                 strncpy(cmd.data.clip_rename.before_name, clip->name, sizeof(cmd.data.clip_rename.before_name) - 1);
                 cmd.data.clip_rename.before_name[sizeof(cmd.data.clip_rename.before_name) - 1] = '\0';
                 strncpy(cmd.data.clip_rename.after_name, state->inspector.name, sizeof(cmd.data.clip_rename.after_name) - 1);
                 cmd.data.clip_rename.after_name[sizeof(cmd.data.clip_rename.after_name) - 1] = '\0';
-                engine_clip_set_name(state->engine, state->inspector.track_index, state->inspector.clip_index, state->inspector.name);
-                undo_manager_push(&state->undo, &cmd);
-            } else {
-                engine_clip_set_name(state->engine, state->inspector.track_index, state->inspector.clip_index, state->inspector.name);
+                if (!undo_manager_begin_drag(&state->undo, &cmd)) return;
+                if (!engine_clip_set_name(state->engine, state->inspector.track_index, state->inspector.clip_index, state->inspector.name)) {
+                    undo_manager_cancel_drag(&state->undo);
+                    return;
+                }
+                (void)undo_manager_commit_drag(&state->undo, &state->undo.active_drag);
             }
         }
         inspector_stop_text_input(state);
@@ -593,8 +616,8 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                 }
 
                 if (SDL_PointInRect(&p, &layout.gain_track_rect)) {
+                    if (!inspector_input_begin_clip_drag(state)) return;
                     state->inspector.adjusting_gain = true;
-                    inspector_begin_clip_drag(state);
                     inspector_update_gain_from_mouse(state, p.x);
                     return;
                 }
@@ -613,6 +636,8 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
         break;
     case SDL_MOUSEBUTTONUP:
         if (event->button.button == SDL_BUTTON_LEFT) {
+            bool owns_clip_drag = state->inspector.adjusting_gain || state->inspector.adjusting_fade_in ||
+                                  state->inspector.adjusting_fade_out;
             state->inspector.adjusting_gain = false;
             inspector_fade_input_handle_mouse_up(state);
             if (state->automation_ui.dragging_from_inspector) {
@@ -620,26 +645,7 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                 state->automation_ui.dragging_from_inspector = false;
                 automation_commit_edit(state);
             }
-            if (state->undo.active_drag_valid) {
-                UndoCommand* cmd = &state->undo.active_drag;
-                if (cmd->type == UNDO_CMD_CLIP_TRANSFORM) {
-                    const EngineClip* clip = inspector_get_clip_const(state);
-                    if (clip) {
-                        UndoClipState after = {0};
-                        if (undo_clip_state_from_engine_clip(clip, state->inspector.track_index, &after)) {
-                            undo_clip_state_clear(&cmd->data.clip_transform.after);
-                            cmd->data.clip_transform.after = after;
-                            cmd->data.clip_transform.before.sampler = after.sampler;
-                            if (!clip_state_equal(&cmd->data.clip_transform.before,
-                                                  &cmd->data.clip_transform.after)) {
-                                undo_manager_commit_drag(&state->undo, cmd);
-                                return;
-                            }
-                        }
-                    }
-                }
-                undo_manager_cancel_drag(&state->undo);
-            }
+            if (owns_clip_drag) inspector_input_finish_clip_drag(state);
         }
         break;
     case SDL_MOUSEMOTION:

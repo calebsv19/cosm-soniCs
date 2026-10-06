@@ -9,6 +9,7 @@
 #include "effects/effects_api.h"
 #include "effects/effects_manager.h"
 #include "effects/param_utils.h"
+#include "effects/sample_ramp.h"
 
 // -------------------------------
 // Internal types
@@ -19,6 +20,8 @@ typedef struct FxInstance {
     FxVTable  vt;
     FxDesc    desc;
     bool      enabled;
+    bool      rendered;
+    FxSampleRamp bypass;
     FxInstId  id;
     FxTypeId  type;
     uint32_t  param_count;
@@ -31,10 +34,13 @@ typedef struct FxInstance {
     uint32_t  param_spec_count;
 } FxInstance;
 
+// Owns one serial chain and its prepared parallel-track compensation history.
 typedef struct FxChain {
     FxInstance* items;
     int count;
     int capacity;
+    float* alignment;
+    uint32_t alignment_capacity, alignment_write, latency;
 } FxChain;
 
 struct EffectsManager {
@@ -44,6 +50,7 @@ struct EffectsManager {
 
     // Interleaved scratch (size = max_block * max_channels)
     float* scratch;
+    float* bypass_dry; // Prepared dry block used by zero-latency bypass transitions.
     int    scratch_frames;   // == max_block
     int    scratch_channels; // == max_channels
 
@@ -58,6 +65,8 @@ struct EffectsManager {
     FxChain* tracks;
     int track_count;
     int track_capacity;
+    uint32_t track_latency, master_latency;
+    bool alignment_dirty, block_prepared;
 
     // Simple built-in registry table
     FxRegistryEntry* reg;
@@ -82,6 +91,9 @@ static void chain_free(FxChain* c) {
             inst->vt.destroy(inst->handle);
         }
     }
+    free(c->alignment);
+    c->alignment = NULL;
+    c->alignment_capacity = c->alignment_write = c->latency = 0;
     free(c->items);
     c->items = NULL;
     c->count = 0;
@@ -144,7 +156,6 @@ static float fxm_compute_rms(const float* buffer, int frames, int channels) {
 static bool ensure_track_capacity(EffectsManager* fm, int track_count) {
     if (!fm || track_count < 0) return false;
     if (track_count <= fm->track_capacity) {
-        fm->track_count = track_count;
         return true;
     }
     int new_cap = fm->track_capacity == 0 ? 4 : fm->track_capacity;
@@ -153,13 +164,10 @@ static bool ensure_track_capacity(EffectsManager* fm, int track_count) {
     if (!n) return false;
     // initialize new slots
     for (int i = fm->track_capacity; i < new_cap; ++i) {
-        n[i].items = NULL;
-        n[i].count = 0;
-        n[i].capacity = 0;
+        memset(&n[i], 0, sizeof(n[i]));
     }
     fm->tracks = n;
     fm->track_capacity = new_cap;
-    fm->track_count = track_count;
     return true;
 }
 
@@ -265,7 +273,8 @@ bool fxm_registry_get_desc(const EffectsManager* fm, FxTypeId type, FxDesc* out_
 // -------------------------------
 
 EffectsManager* fxm_create(const FxConfig* cfg) {
-    if (!cfg) return NULL;
+    if (!cfg || cfg->sample_rate <= 0 || cfg->max_block <= 0 || cfg->max_channels <= 0 ||
+        (size_t)cfg->max_block > SIZE_MAX / sizeof(float) / (size_t)cfg->max_channels) return NULL;
     EffectsManager* fm = (EffectsManager*)calloc(1, sizeof(EffectsManager));
     if (!fm) return NULL;
 
@@ -277,7 +286,10 @@ EffectsManager* fxm_create(const FxConfig* cfg) {
     // Interleaved scratch
     size_t samples = (size_t)fm->max_block * (size_t)fm->max_channels;
     fm->scratch = (float*)malloc(samples * sizeof(float));
+    fm->bypass_dry = (float*)malloc(samples * sizeof(float));
+    if (!fm->bypass_dry) { free(fm->scratch); free(fm); return NULL; }
     if (!fm->scratch) {
+        free(fm->bypass_dry);
         free(fm);
         return NULL;
     }
@@ -327,6 +339,7 @@ void fxm_destroy(EffectsManager* fm) {
         }
         free(fm->tracks);
     }
+    free(fm->bypass_dry);
     free(fm->scratch);
     free(fm->reg);
     free(fm);
@@ -358,11 +371,18 @@ static bool instantiate_fx(EffectsManager* fm, const FxRegistryEntry* ent, FxIns
         return false;
     }
 
+    if ((desc.flags & FX_FLAG_DYNAMIC_LATENCY) && (!vt.latency || !vt.max_latency)) {
+        if (vt.destroy) vt.destroy(handle);
+        return false;
+    }
+
     // Populate output
     out_inst->handle  = handle;
     out_inst->vt      = vt;
     out_inst->desc    = desc;
     out_inst->enabled = true;
+    out_inst->rendered = false;
+    fx_sample_ramp_reset(&out_inst->bypass, 1);
     out_inst->type    = ent->id;
     out_inst->param_count = desc.num_params > FX_MAX_PARAMS ? FX_MAX_PARAMS : desc.num_params;
     out_inst->param_specs = ent->param_specs;
@@ -398,6 +418,199 @@ static bool instantiate_fx(EffectsManager* fm, const FxRegistryEntry* ent, FxIns
 // Master chain API
 // -------------------------------
 
+// Builds independent handles while copying identities and parameter targets from a control chain.
+static bool chain_clone_for_render(EffectsManager* destination, FxChain* output, const FxChain* input) {
+    for (int i = 0; i < input->count; ++i) {
+        const FxInstance* source = &input->items[i];
+        const FxRegistryEntry* entry = reg_find_by_id(destination, source->type);
+        FxInstance instance = {0};
+        if (!entry || !instantiate_fx(destination, entry, &instance)) return false;
+        FxInstance* slot = chain_insert(output, output->count);
+        if (!slot) {
+            if (instance.vt.destroy) instance.vt.destroy(instance.handle);
+            return false;
+        }
+        *slot = instance;
+        slot->id = source->id;
+        slot->enabled = source->enabled;
+        for (uint32_t p = 0; p < slot->param_count; ++p) {
+            slot->param_values[p] = source->param_values[p];
+            slot->param_current[p] = source->param_values[p];
+            slot->param_mode[p] = source->param_mode[p];
+            slot->param_beats[p] = source->param_beats[p];
+            if (slot->vt.set_param) slot->vt.set_param(slot->handle, p, slot->param_values[p]);
+        }
+    }
+    return true;
+}
+
+// Replaces a prepared chain atomically while retaining stable effect identities.
+bool fxm_copy_track(EffectsManager* destination, int track_index, const EffectsManager* source, int source_index) {
+    if (!destination || !source || track_index < 0 || track_index >= destination->track_count ||
+        source_index < 0 || source_index >= source->track_count) return false;
+    FxChain candidate = {0};
+    if (!chain_clone_for_render(destination, &candidate, &source->tracks[source_index])) {
+        chain_free(&candidate);
+        return false;
+    }
+    chain_free(&destination->tracks[track_index]);
+    destination->tracks[track_index] = candidate;
+    if (destination->next_inst_id < source->next_inst_id) destination->next_inst_id = source->next_inst_id;
+    destination->alignment_dirty = true;
+    return true;
+}
+
+// Captures only the requested chain rather than retaining unrelated project effects.
+EffectsManager* fxm_clone_track_for_history(const EffectsManager* control, int track_index) {
+    if (!control || track_index < 0 || track_index >= control->track_count) return NULL;
+    FxConfig config = {.sample_rate = control->sample_rate, .max_block = control->max_block,
+                       .max_channels = control->max_channels, .pool = control->pool};
+    EffectsManager* snapshot = fxm_create(&config);
+    if (!snapshot) return NULL;
+    if ((control->reg_count && !fxm_register_builtin(snapshot, control->reg, control->reg_count)) ||
+        !fxm_set_track_count(snapshot, 1) || !fxm_copy_track(snapshot, 0, control, track_index)) {
+        fxm_destroy(snapshot);
+        return NULL;
+    }
+    return snapshot;
+}
+
+// Creates a complete independently destroyable render revision without reading live DSP history.
+EffectsManager* fxm_clone_for_render(const EffectsManager* control) {
+    if (!control) return NULL;
+    FxConfig config = {.sample_rate = control->sample_rate, .max_block = control->max_block,
+                       .max_channels = control->max_channels, .pool = control->pool};
+    EffectsManager* prepared = fxm_create(&config);
+    if (!prepared) return NULL;
+    if ((control->reg_count && !fxm_register_builtin(prepared, control->reg, control->reg_count)) ||
+        !fxm_set_track_count(prepared, control->track_count) ||
+        !chain_clone_for_render(prepared, &prepared->master, &control->master)) goto fail;
+    for (int t = 0; t < control->track_count; ++t) {
+        if (!chain_clone_for_render(prepared, &prepared->tracks[t], &control->tracks[t])) goto fail;
+    }
+    if (!fxm_prepare_delay_compensation(prepared)) goto fail;
+    prepared->next_inst_id = control->next_inst_id;
+    return prepared;
+fail:
+    fxm_destroy(prepared);
+    return NULL;
+}
+
+// Exchanges compatible handles so tails and smoothing history survive edits while new targets apply.
+static void chain_transfer_render_state(FxChain* prepared, FxChain* previous) {
+    for (int i = 0; i < prepared->count; ++i) {
+        FxInstance* next = &prepared->items[i];
+        for (int j = 0; j < previous->count; ++j) {
+            FxInstance* old = &previous->items[j];
+            if (next->id != old->id || next->type != old->type || next->param_count != old->param_count) continue;
+            if (next->vt.process != old->vt.process || next->vt.destroy != old->vt.destroy ||
+                next->vt.set_param != old->vt.set_param) continue;
+            FxHandle* replacement = next->handle;
+            next->handle = old->handle;
+            old->handle = replacement;
+            next->rendered = old->rendered;
+            next->bypass = old->bypass;
+            for (uint32_t p = 0; p < next->param_count; ++p) {
+                float current = next->param_current[p];
+                next->param_current[p] = old->param_current[p];
+                old->param_current[p] = current;
+            }
+            break;
+        }
+    }
+}
+
+// Reports serial signal delay or its preparation bound, excluding bypassed effects when active.
+static uint32_t chain_latency(const FxChain* chain, bool maximum) {
+    uint64_t total = 0;
+    for (int i = 0; i < chain->count; ++i) {
+        const FxInstance* inst = &chain->items[i];
+        if (!maximum && !inst->enabled) continue;
+        if (maximum && inst->vt.max_latency) total += inst->vt.max_latency(inst->handle);
+        else if (inst->vt.latency) total += inst->vt.latency(inst->handle);
+        else if (inst->desc.flags & FX_FLAG_HAS_LATENCY) total += inst->desc.latency_samples;
+    }
+    return total >= UINT32_MAX ? UINT32_MAX : (uint32_t)total;
+}
+
+// Allocates compensation rings off the render thread for every possible current-chain delay.
+bool fxm_prepare_delay_compensation(EffectsManager* fm) {
+    if (!fm) return false;
+    uint32_t maximum = 0;
+    for (int t = 0; t < fm->track_count; ++t) {
+        uint32_t bound = chain_latency(&fm->tracks[t], true);
+        if (bound > maximum) maximum = bound;
+    }
+    if (maximum == UINT32_MAX || (size_t)maximum + 1 > SIZE_MAX / sizeof(float) / fm->max_channels) return false;
+    uint32_t capacity = maximum ? maximum + 1 : 0;
+    for (int t = 0; t < fm->track_count; ++t) {
+        FxChain* chain = &fm->tracks[t];
+        if (chain->alignment_capacity == capacity) continue;
+        float* data = capacity ? calloc((size_t)capacity * fm->max_channels, sizeof(float)) : NULL;
+        if (capacity && !data) return false;
+        free(chain->alignment);
+        chain->alignment = data;
+        chain->alignment_capacity = capacity;
+        chain->alignment_write = 0;
+        fm->alignment_dirty = true;
+    }
+    return true;
+}
+
+// Detects routing edits that invalidate captured audio in a latency-bearing chain.
+static bool chain_timing_topology_changed(const FxChain* next, const FxChain* old) {
+    if (!chain_latency(next, true) && !chain_latency(old, true)) return false;
+    if (next->count != old->count) return true;
+    for (int i = 0; i < next->count; ++i)
+        if (next->items[i].id != old->items[i].id || next->items[i].enabled != old->items[i].enabled) return true;
+    return false;
+}
+
+// Transfers a compatible alignment ring with the same ownership swap used for DSP handles.
+static void chain_transfer_alignment(FxChain* next, FxChain* old) {
+    next->latency = old->latency;
+    if (next->alignment_capacity != old->alignment_capacity) return;
+    float* data = next->alignment;
+    next->alignment = old->alignment;
+    old->alignment = data;
+    uint32_t position = next->alignment_write;
+    next->alignment_write = old->alignment_write;
+    old->alignment_write = position;
+}
+
+// Adopts histories only across format-compatible revisions with a valid one-to-one track mapping.
+bool fxm_transfer_render_state(EffectsManager* prepared, EffectsManager* previous,
+                              const int* old_track_indices, int track_count) {
+    if (!prepared || !previous || prepared == previous || track_count != prepared->track_count ||
+        (track_count && !old_track_indices) || prepared->sample_rate != previous->sample_rate ||
+        prepared->max_block != previous->max_block || prepared->max_channels != previous->max_channels) return false;
+    for (int t = 0; t < track_count; ++t) {
+        int old = old_track_indices[t];
+        if (old < -1 || old >= previous->track_count) return false;
+        for (int earlier = 0; old >= 0 && earlier < t; ++earlier) {
+            if (old_track_indices[earlier] == old) return false;
+        }
+    }
+    prepared->alignment_dirty = previous->alignment_dirty ||
+        chain_timing_topology_changed(&prepared->master, &previous->master);
+    prepared->track_latency = previous->track_latency;
+    prepared->master_latency = previous->master_latency;
+    prepared->master.latency = previous->master.latency;
+    chain_transfer_render_state(&prepared->master, &previous->master);
+    for (int t = 0; t < track_count; ++t) {
+        if (old_track_indices[t] >= 0) {
+            FxChain* next = &prepared->tracks[t];
+            FxChain* old = &previous->tracks[old_track_indices[t]];
+            prepared->alignment_dirty |= chain_timing_topology_changed(next, old) ||
+                next->alignment_capacity != old->alignment_capacity;
+            chain_transfer_render_state(next, old);
+            chain_transfer_alignment(next, old);
+        }
+        else if (prepared->tracks[t].alignment_capacity) prepared->alignment_dirty = true;
+    }
+    return true;
+}
+
 bool fxm_set_track_count(EffectsManager* fm, int track_count) {
     if (!fm || track_count < 0) return false;
     int prev = fm->track_count;
@@ -411,6 +624,29 @@ bool fxm_set_track_count(EffectsManager* fm, int track_count) {
         }
     }
     fm->track_count = track_count;
+    return true;
+}
+
+// Inserts a new chain without recreating the effects belonging to shifted tracks.
+bool fxm_insert_track(EffectsManager* fm, int track_index) {
+    if (!fm || track_index < 0 || track_index > fm->track_count) return false;
+    int previous_count = fm->track_count;
+    if (!ensure_track_capacity(fm, previous_count + 1)) return false;
+    memmove(&fm->tracks[track_index + 1], &fm->tracks[track_index],
+            (size_t)(previous_count - track_index) * sizeof(FxChain));
+    memset(&fm->tracks[track_index], 0, sizeof(FxChain));
+    fm->track_count = previous_count + 1;
+    return true;
+}
+
+// Deletes only the removed track's effects and moves surviving chain ownership in place.
+bool fxm_remove_track(EffectsManager* fm, int track_index) {
+    if (!fm || track_index < 0 || track_index >= fm->track_count) return false;
+    chain_free(&fm->tracks[track_index]);
+    memmove(&fm->tracks[track_index], &fm->tracks[track_index + 1],
+            (size_t)(fm->track_count - track_index - 1) * sizeof(FxChain));
+    --fm->track_count;
+    memset(&fm->tracks[fm->track_count], 0, sizeof(FxChain));
     return true;
 }
 
@@ -458,7 +694,9 @@ static bool fxm_apply_param_change(FxInstance* inst,
                                    float beat_value,
                                    const TempoState* tempo,
                                    bool force_immediate) {
-    if (!inst || pidx >= inst->desc.num_params) {
+    if (!inst || pidx >= inst->desc.num_params || pidx >= FX_MAX_PARAMS || !inst->vt.set_param ||
+        !isfinite(value) || !isfinite(beat_value) || mode < FX_PARAM_MODE_NATIVE || mode > FX_PARAM_MODE_BEAT_RATE ||
+        (mode != FX_PARAM_MODE_NATIVE && beat_value <= 0.0f)) {
         return false;
     }
     const EffectParamSpec* spec = NULL;
@@ -501,7 +739,7 @@ static bool fxm_apply_param_change(FxInstance* inst,
     }
     bool smooth = false;
     if (!force_immediate && spec && !fx_param_is_discrete(spec)) {
-        smooth = spec->smoothing_ms > 0.0f;
+        smooth = spec->smoothing_ms > 0.0f && !(inst->desc.flags & FX_FLAG_SAMPLE_PARAM_SMOOTHING);
     }
     if (!smooth) {
         if (pidx < FX_MAX_PARAMS) {
@@ -631,6 +869,7 @@ static FxInstance* track_get_by_id(EffectsManager* fm, int track_index, FxInstId
 FxInstId fxm_track_add(EffectsManager* fm, int track_index, FxTypeId type) {
     if (!fm || track_index < 0) return (FxInstId)0;
     if (!ensure_track_capacity(fm, track_index + 1)) return (FxInstId)0;
+    if (fm->track_count <= track_index) fm->track_count = track_index + 1;
     FxChain* chain = &fm->tracks[track_index];
 
     const FxRegistryEntry* ent = reg_find_by_id(fm, type);
@@ -747,7 +986,8 @@ static void fxm_apply_param_smoothing(EffectsManager* fm, FxInstance* inst, int 
         if (inst->param_specs && p < inst->param_spec_count) {
             spec = &inst->param_specs[p];
         }
-        bool smooth = spec && !fx_param_is_discrete(spec) && spec->smoothing_ms > 0.0f;
+        bool smooth = spec && !fx_param_is_discrete(spec) && spec->smoothing_ms > 0.0f &&
+            !(inst->desc.flags & FX_FLAG_SAMPLE_PARAM_SMOOTHING);
         if (!smooth) {
             inst->param_current[p] = target;
             inst->vt.set_param(inst->handle, p, target);
@@ -771,111 +1011,189 @@ static void fxm_apply_param_smoothing(EffectsManager* fm, FxInstance* inst, int 
 }
 
 // -------------------------------
+// Clears DSP and compensation histories while retaining the current smoothed controls.
+static void chain_clear_timing(FxChain* chain, int channels) {
+    for (int i = 0; i < chain->count; ++i) {
+        FxInstance* inst = &chain->items[i];
+        if (inst->vt.reset) inst->vt.reset(inst->handle);
+        fx_sample_ramp_reset(&inst->bypass, inst->enabled ? 1 : 0);
+        inst->rendered = false;
+    }
+    if (chain->alignment)
+        memset(chain->alignment, 0, (size_t)chain->alignment_capacity * channels * sizeof(float));
+    chain->alignment_write = 0;
+}
+
+// Applies controls once, then establishes a single track-alignment delay for the whole render block.
+void fxm_begin_render_block(EffectsManager* fm, int frames) {
+    if (!fm || frames <= 0) return;
+    uint32_t maximum = 0;
+    bool changed = fm->alignment_dirty;
+    for (int t = -1; t < fm->track_count; ++t) {
+        FxChain* chain = t < 0 ? &fm->master : &fm->tracks[t];
+        for (int i = 0; i < chain->count; ++i)
+            if (chain->items[i].enabled) fxm_apply_param_smoothing(fm, &chain->items[i], frames);
+        uint32_t latency = chain_latency(chain, false);
+        changed |= latency != chain->latency;
+        chain->latency = latency;
+        if (t >= 0 && latency > maximum) maximum = latency;
+    }
+    changed |= maximum != fm->track_latency;
+    fm->track_latency = maximum;
+    fm->master_latency = fm->master.latency;
+    if (changed) {
+        chain_clear_timing(&fm->master, fm->max_channels);
+        for (int t = 0; t < fm->track_count; ++t) chain_clear_timing(&fm->tracks[t], fm->max_channels);
+    }
+    fm->alignment_dirty = false;
+    fm->block_prepared = true;
+}
+
+// Delays a processed track to the longest active serial chain before the master sum.
+void fxm_align_track(EffectsManager* fm, int track, float* io, int frames, int channels) {
+    if (!fm || track < 0 || track >= fm->track_count || !io || frames <= 0 ||
+        channels <= 0 || channels > fm->max_channels) return;
+    FxChain* chain = &fm->tracks[track];
+    uint32_t delay = fm->track_latency - chain->latency;
+    if (!delay) return;
+    if (!chain->alignment || delay >= chain->alignment_capacity) {
+        // A caller skipped non-RT preparation; never silently emit a misaligned track.
+        memset(io, 0, (size_t)frames * channels * sizeof(float));
+        return;
+    }
+    for (int n = 0; n < frames; ++n) {
+        uint32_t read = (chain->alignment_write + chain->alignment_capacity - delay) % chain->alignment_capacity;
+        for (int ch = 0; ch < channels; ++ch) {
+            chain->alignment[(size_t)chain->alignment_write * fm->max_channels + ch] = io[(size_t)n * channels + ch];
+            io[(size_t)n * channels + ch] = chain->alignment[(size_t)read * fm->max_channels + ch];
+        }
+        chain->alignment_write = (chain->alignment_write + 1) % chain->alignment_capacity;
+    }
+}
+
+// Returns the common project-rate output delay of the prepared render block.
+uint64_t fxm_processing_latency(const EffectsManager* fm) {
+    return fm ? (uint64_t)fm->track_latency + fm->master_latency : 0;
+}
+
 // Real-time render (master bus)
 // -------------------------------
 
-void fxm_render_master(EffectsManager* fm, float* interleaved_io, int frames, int channels) {
-    if (!fm || !interleaved_io || frames <= 0 || channels <= 0) return;
-
-    // Safety: if incoming block exceeds configured scratch, clamp (or early out).
-    if (frames > fm->scratch_frames || channels > fm->scratch_channels) {
-        // In a debug build you may assert; here we just clamp work to safe region.
-        int safe_frames = (frames > fm->scratch_frames) ? fm->scratch_frames : frames;
-        int safe_channels = (channels > fm->scratch_channels) ? fm->scratch_channels : channels;
-        frames = safe_frames;
-        channels = safe_channels;
-    }
-
-    float* io = interleaved_io;
-    float* scratch = fm->scratch;
-    const int n = frames * channels;
-
-    for (int i = 0; i < fm->master.count; ++i) {
-        FxInstance* inst = &fm->master.items[i];
-        if (!inst->enabled) continue;
-        const bool emit_gr = fm->scope_cb && fxm_scope_is_gr_type(inst->type);
-        float in_rms = 0.0f;
-        if (emit_gr) {
-            in_rms = fxm_compute_rms(io, frames, channels);
+// Renders a serial chain and crossfades bypass only where dry and wet have equal signal latency.
+static void fxm_render_chain(EffectsManager* fm, FxChain* chain, bool master, int track,
+                             float* io, int frames, int channels) {
+    if (!io || frames <= 0 || channels <= 0 || frames > fm->max_block || channels > fm->max_channels) return;
+    size_t samples = (size_t)frames * channels;
+    for (int i = 0; i < chain->count; ++i) {
+        FxInstance* inst = &chain->items[i];
+        bool has_latency = inst->vt.max_latency ? inst->vt.max_latency(inst->handle) > 0 :
+            ((inst->desc.flags & FX_FLAG_HAS_LATENCY) && inst->desc.latency_samples > 0);
+        float target = inst->enabled ? 1 : 0;
+        if (!inst->rendered || has_latency) fx_sample_ramp_reset(&inst->bypass, target);
+        else if (target != inst->bypass.target) {
+            if (target == 1 && inst->bypass.current == 0 && inst->vt.reset) inst->vt.reset(inst->handle);
+            fx_sample_ramp_target(&inst->bypass, target, (uint32_t)(fm->sample_rate / 200));
         }
-        if (inst->type >= 100u && inst->type <= 109u) {
-            if (fm->meter_cb) {
-                fm->meter_cb(fm->meter_cb_user, true, -1, inst->id, inst->type, io, frames, channels);
-            }
+        if (!inst->enabled && inst->bypass.current == 0 && !inst->bypass.remaining) {
+            inst->rendered = true;
+            if (fm->scope_cb && inst->vt.gain_reduction_db)
+                fm->scope_cb(fm->scope_cb_user, master, track, inst->id, inst->type, 0);
             continue;
         }
-
-        fxm_apply_param_smoothing(fm, inst, frames);
-        const bool inplace_ok = (inst->desc.flags & FX_FLAG_INPLACE_OK) != 0;
-        if (inplace_ok) {
-            // process in-place: out == in
-            inst->vt.process(inst->handle, io, io, frames, channels);
-            if (emit_gr) {
-                float out_rms = fxm_compute_rms(io, frames, channels);
-                float gr_db = 20.0f * log10f((out_rms + 1e-12f) / (in_rms + 1e-12f));
-                fm->scope_cb(fm->scope_cb_user, true, -1, inst->id, inst->type, gr_db);
+        if (inst->type >= 100u && inst->type <= 109u) {
+            if (inst->enabled && fm->meter_cb)
+                fm->meter_cb(fm->meter_cb_user, master, track, inst->id, inst->type, io, frames, channels);
+            continue;
+        }
+        if (!inst->handle || !inst->vt.process) continue;
+        if (!fm->block_prepared) fxm_apply_param_smoothing(fm, inst, frames);
+        bool emit = fm->scope_cb && fxm_scope_is_gr_type(inst->type);
+        float before = emit && !inst->vt.gain_reduction_db ? fxm_compute_rms(io, frames, channels) : 0;
+        bool blend = inst->bypass.remaining || inst->bypass.current != 1;
+        if (blend) memcpy(fm->bypass_dry, io, samples * sizeof(float));
+        if (inst->desc.flags & FX_FLAG_INPLACE_OK) inst->vt.process(inst->handle, io, io, frames, channels);
+        else {
+            inst->vt.process(inst->handle, io, fm->scratch, frames, channels);
+            memcpy(io, fm->scratch, samples * sizeof(float));
+        }
+        inst->rendered = true;
+        if (emit) {
+            float value = inst->vt.gain_reduction_db ? inst->vt.gain_reduction_db(inst->handle) :
+                20 * log10f((fxm_compute_rms(io, frames, channels) + 1e-12f) / (before + 1e-12f));
+            fm->scope_cb(fm->scope_cb_user, master, track, inst->id, inst->type, value);
+        }
+        if (blend) for (int frame = 0; frame < frames; ++frame) {
+            float wet = fx_sample_ramp_next(&inst->bypass);
+            for (int ch = 0; ch < channels; ++ch) {
+                size_t n = (size_t)frame * channels + ch;
+                io[n] = fm->bypass_dry[n] * (1 - wet) + io[n] * wet;
             }
-        } else {
-            // out-of-place: process to scratch, then copy back to io
-            inst->vt.process(inst->handle, io, scratch, frames, channels);
-            if (emit_gr) {
-                float out_rms = fxm_compute_rms(scratch, frames, channels);
-                float gr_db = 20.0f * log10f((out_rms + 1e-12f) / (in_rms + 1e-12f));
-                fm->scope_cb(fm->scope_cb_user, true, -1, inst->id, inst->type, gr_db);
-            }
-            memcpy(io, scratch, (size_t)n * sizeof(float));
         }
     }
 }
 
-// -------------------------------
-// Track render
-// -------------------------------
+// Processes the master and closes the block's shared parameter-update boundary.
+void fxm_render_master(EffectsManager* fm, float* io, int frames, int channels) {
+    if (!fm) return;
+    fxm_render_chain(fm, &fm->master, true, -1, io, frames, channels);
+    fm->block_prepared = false;
+}
 
-void fxm_render_track(EffectsManager* fm, int track_index, float* interleaved_io, int frames, int channels) {
-    if (!fm || !fm->tracks || track_index < 0 || track_index >= fm->track_count) return;
-    FxChain* chain = &fm->tracks[track_index];
-    if (chain->count == 0) return;
-    int n = frames * channels;
-    if (n <= 0) return;
-    float* scratch = fm->scratch;
-    if (!scratch) return;
+// Processes one track while leaving compensation and master summing to the engine.
+void fxm_render_track(EffectsManager* fm, int track, float* io, int frames, int channels) {
+    if (!fm || track < 0 || track >= fm->track_count) return;
+    fxm_render_chain(fm, &fm->tracks[track], false, track, io, frames, channels);
+}
+
+// Resets one exclusively owned chain without allocating or changing its authored parameters.
+static void chain_reset_render_state(FxChain* chain) {
     for (int i = 0; i < chain->count; ++i) {
-        FxInstance* inst = &chain->items[i];
-        if (!inst->enabled) continue;
-        FxHandle* h = inst->handle;
-        if (!h || !inst->vt.process) continue;
-        const bool emit_gr = fm->scope_cb && fxm_scope_is_gr_type(inst->type);
-        float in_rms = 0.0f;
-        if (emit_gr) {
-            in_rms = fxm_compute_rms(interleaved_io, frames, channels);
+        FxInstance* instance = &chain->items[i];
+        for (uint32_t p = 0; p < instance->param_count; ++p) {
+            instance->param_current[p] = instance->param_values[p];
+            if (instance->vt.set_param) instance->vt.set_param(instance->handle, p, instance->param_current[p]);
         }
-        if (inst->type >= 100u && inst->type <= 109u) {
-            if (fm->meter_cb) {
-                fm->meter_cb(fm->meter_cb_user, false, track_index, inst->id, inst->type, interleaved_io, frames, channels);
-            }
-            continue;
-        }
-
-        fxm_apply_param_smoothing(fm, inst, frames);
-        if (inst->desc.flags & FX_FLAG_INPLACE_OK) {
-            inst->vt.process(h, interleaved_io, interleaved_io, frames, channels);
-            if (emit_gr) {
-                float out_rms = fxm_compute_rms(interleaved_io, frames, channels);
-                float gr_db = 20.0f * log10f((out_rms + 1e-12f) / (in_rms + 1e-12f));
-                fm->scope_cb(fm->scope_cb_user, false, track_index, inst->id, inst->type, gr_db);
-            }
-        } else {
-            if (n > fm->scratch_frames * fm->scratch_channels) {
-                continue;
-            }
-            inst->vt.process(h, interleaved_io, scratch, frames, channels);
-            if (emit_gr) {
-                float out_rms = fxm_compute_rms(scratch, frames, channels);
-                float gr_db = 20.0f * log10f((out_rms + 1e-12f) / (in_rms + 1e-12f));
-                fm->scope_cb(fm->scope_cb_user, false, track_index, inst->id, inst->type, gr_db);
-            }
-            memcpy(interleaved_io, scratch, (size_t)n * sizeof(float));
-        }
+        if (instance->vt.reset) instance->vt.reset(instance->handle);
     }
+}
+
+// Clears all render-owned delay, dynamics, and filter histories at an explicit transport discontinuity.
+void fxm_reset_render_state(EffectsManager* fm) {
+    if (!fm) return;
+    fm->block_prepared = false;
+    chain_clear_timing(&fm->master, fm->max_channels);
+    for (int t = 0; t < fm->track_count; ++t) chain_clear_timing(&fm->tracks[t], fm->max_channels);
+    chain_reset_render_state(&fm->master);
+    for (int t = 0; t < fm->track_count; ++t) chain_reset_render_state(&fm->tracks[t]);
+}
+
+// Prepares a complete restored instance on a disposable manager before engine publication.
+bool fxm_restore_instance(EffectsManager* fm, int track_index, int position, const FxMasterInstanceInfo* info) {
+    if (!fm || !info || !info->id || info->id == UINT32_MAX || info->param_count > FX_MAX_PARAMS ||
+        track_index < -1 || track_index >= fm->track_count) return false;
+    FxChain* chain = track_index < 0 ? &fm->master : &fm->tracks[track_index];
+    if (position < 0 || position > chain->count) return false;
+    for (int t = -1; t < fm->track_count; ++t) {
+        FxChain* existing = t < 0 ? &fm->master : &fm->tracks[t];
+        for (int i = 0; i < existing->count; ++i) if (existing->items[i].id == info->id) return false;
+    }
+    for (uint32_t p = 0; p < info->param_count; ++p)
+        if (!isfinite(info->params[p]) || !isfinite(info->param_beats[p]) ||
+            info->param_mode[p] < FX_PARAM_MODE_NATIVE || info->param_mode[p] > FX_PARAM_MODE_BEAT_RATE ||
+            (info->param_mode[p] != FX_PARAM_MODE_NATIVE && info->param_beats[p] <= 0)) return false;
+    FxInstId generated = track_index < 0 ? fxm_master_add(fm, info->type) : fxm_track_add(fm, track_index, info->type);
+    if (!generated) return false;
+    FxInstance* added = &chain->items[chain->count - 1];
+    if (added->param_count != info->param_count) return false;
+    added->id = info->id;
+    if (fm->next_inst_id <= info->id) fm->next_inst_id = info->id + 1;
+    for (uint32_t p = 0; p < info->param_count; ++p) {
+        bool ok = track_index < 0 ?
+            fxm_master_set_param_with_mode(fm, info->id, p, info->params[p], info->param_mode[p], info->param_beats[p]) :
+            fxm_track_set_param_with_mode(fm, track_index, info->id, p, info->params[p], info->param_mode[p], info->param_beats[p]);
+        if (!ok) return false;
+    }
+    return track_index < 0 ?
+        fxm_master_set_enabled(fm, info->id, info->enabled) && fxm_master_reorder(fm, info->id, position) :
+        fxm_track_set_enabled(fm, track_index, info->id, info->enabled) && fxm_track_reorder(fm, track_index, info->id, position);
 }

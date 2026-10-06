@@ -1,84 +1,82 @@
-// fx_gain.c - simple linear gain (interleaved, in-place)
-#include <stdlib.h>
-#include <math.h>
+// Existing Gain effect with a 20 ms sample-counted amplitude transition.
 #include "effects/effects_api.h"
+#include "effects/sample_ramp.h"
+#include <math.h>
+#include <stdbool.h>
+#include <stdlib.h>
 
-#ifndef M_LN10
-#define M_LN10 2.302585093f
-#endif
-
+// Owns the audible gain ramp and distinguishes authored initialization from live edits.
 typedef struct FxGain {
-    float gain_lin;   // linear amplitude
+    FxSampleRamp gain;
+    uint32_t ramp_samples;
+    bool rendered;
 } FxGain;
 
-static inline float db_to_lin(float db) {
-    // 20*log10(x) => x = 10^(db/20)
-    return powf(10.0f, db * (1.0f / 20.0f));
-}
-
-static void gain_process(FxHandle* h, const float* in, float* out, int frames, int channels) {
-    (void)in; // in==out (in-place); manager may pass same pointer
-    FxGain* g = (FxGain*)h;
-    const int n = frames * channels;
-    float* p = out;
-    const float k = g->gain_lin;
-
-    for (int i = 0; i < n; ++i) {
-        p[i] = p[i] * k;
+// Applies one shared gain per frame for in-place or separate interleaved buffers.
+static void gain_process(FxHandle* handle, const float* in, float* out, int frames, int channels) {
+    FxGain* gain = (FxGain*)handle;
+    if (!in || !out || frames <= 0 || channels <= 0)
+        return;
+    gain->rendered = true;
+    for (int frame = 0; frame < frames; ++frame) {
+        float value = fx_sample_ramp_next(&gain->gain);
+        for (int ch = 0; ch < channels; ++ch)
+            out[(size_t)frame * channels + ch] = in[(size_t)frame * channels + ch] * value;
     }
 }
 
-static void gain_set_param(FxHandle* h, uint32_t idx, float value) {
-    FxGain* g = (FxGain*)h;
-    switch (idx) {
-        case 0: // gain_dB
-            if (value < -96.0f) value = -96.0f;
-            if (value > 24.0f)  value = 24.0f;
-            g->gain_lin = db_to_lin(value);
-            break;
-        default:
-            break;
-    }
+// Accepts finite dB values and ramps only after the instance has begun rendering.
+static void gain_set_param(FxHandle* handle, uint32_t index, float value) {
+    FxGain* gain = (FxGain*)handle;
+    if (index || !isfinite(value))
+        return;
+    float linear = powf(10, fminf(24, fmaxf(-96, value)) * .05f);
+    if (gain->rendered)
+        fx_sample_ramp_target(&gain->gain, linear, gain->ramp_samples);
+    else
+        fx_sample_ramp_reset(&gain->gain, linear);
 }
 
-static void gain_reset(FxHandle* h) {
-    (void)h; // stateless
+// Snaps to the accepted target for deterministic initialization or transport reset.
+static void gain_reset(FxHandle* handle) {
+    FxGain* gain = (FxGain*)handle;
+    fx_sample_ramp_reset(&gain->gain, gain->gain.target);
+    gain->rendered = false;
 }
 
-static void gain_destroy(FxHandle* h) {
-    free(h);
-}
+// Releases the control state prepared before rendering.
+static void gain_destroy(FxHandle* handle) { free(handle); }
 
-int gain_get_desc(FxDesc *out) {
-    if (!out) return 0;
-    out->name          = "Gain";
-    out->api_version   = FX_API_VERSION;
-    out->flags         = FX_FLAG_INPLACE_OK;  // safe to process in-place
-    out->num_inputs    = 1;
-    out->num_outputs   = 1;
-    out->num_params    = 1;
-    out->param_names[0]    = "gain_dB";
-    out->param_defaults[0] = 0.0f;
-    out->latency_samples   = 0;
+// Describes the existing Gain control and its processor-owned sample smoothing.
+int gain_get_desc(FxDesc* out) {
+    if (!out)
+        return 0;
+    *out = (FxDesc){.name = "Gain",
+                    .api_version = FX_API_VERSION,
+                    .flags = FX_FLAG_INPLACE_OK | FX_FLAG_SAMPLE_PARAM_SMOOTHING,
+                    .num_inputs = 1,
+                    .num_outputs = 1,
+                    .num_params = 1,
+                    .param_names = {"gain_dB"},
+                    .param_defaults = {0}};
     return 1;
 }
 
-int gain_create(const FxDesc* desc, FxHandle **out_handle, FxVTable *out_vt,
-                uint32_t sample_rate, uint32_t max_block, uint32_t max_channels) {
-    (void)desc; (void)sample_rate; (void)max_block; (void)max_channels;
-
-    FxGain* g = (FxGain*)calloc(1, sizeof(FxGain));
-    if (!g) return 0;
-
-    // defaults
-    g->gain_lin = 1.0f;
-
-    out_vt->process   = gain_process;
-    out_vt->set_param = gain_set_param;
-    out_vt->reset     = gain_reset;
-    out_vt->destroy   = gain_destroy;
-
-    *out_handle = (FxHandle*)g;
+// Prepares the existing default unity gain and the rate-scaled transition length.
+int gain_create(const FxDesc* desc, FxHandle** out, FxVTable* vt, uint32_t rate, uint32_t block,
+                uint32_t channels) {
+    (void)desc;
+    (void)block;
+    (void)channels;
+    if (!out || !vt || !rate)
+        return 0;
+    FxGain* gain = calloc(1, sizeof(*gain));
+    if (!gain)
+        return 0;
+    gain->ramp_samples = (uint32_t)fmax(1, round(rate * .020));
+    fx_sample_ramp_reset(&gain->gain, 1);
+    *vt = (FxVTable){
+        .process = gain_process, .set_param = gain_set_param, .reset = gain_reset, .destroy = gain_destroy};
+    *out = (FxHandle*)gain;
     return 1;
 }
-

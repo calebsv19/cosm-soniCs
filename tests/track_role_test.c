@@ -129,9 +129,26 @@ static void test_invalid_track_resolve_fails_without_changing_contract(void) {
     engine_destroy(engine);
 }
 
+// Ensures array insertion/removal cannot make a replacement track inherit a deleted identity.
+static void test_runtime_identity_survives_movement(void) {
+    Engine* engine = create_engine();
+    uint64_t original = engine_get_tracks(engine)[0].runtime_id;
+    expect(original != 0, "missing runtime track identity");
+    expect(engine_insert_track(engine, 0), "identity insert");
+    uint64_t inserted = engine_get_tracks(engine)[0].runtime_id;
+    expect(inserted != 0 && inserted != original, "insert reused identity");
+    expect(engine_get_tracks(engine)[1].runtime_id == original, "array movement changed identity");
+    expect(engine_remove_track(engine, 0), "identity remove");
+    expect(engine_get_tracks(engine)[0].runtime_id == original, "remove changed surviving identity");
+    expect(engine_insert_track(engine, 0), "identity replacement");
+    expect(engine_get_tracks(engine)[0].runtime_id != inserted, "replacement inherited deleted identity");
+    engine_destroy(engine);
+}
+
 int main(void) {
     mkdir("tmp", 0755);
     test_empty_track_role();
+    test_runtime_identity_survives_movement();
     test_audio_track_role();
     test_midi_track_role();
     test_mixed_track_role();

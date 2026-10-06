@@ -1,0 +1,168 @@
+{
+  "slice": "s3-media-conversion",
+  "status": "complete_at_documented_software_boundary",
+  "recorded_utc": "2026-09-20T06:26:12.942001+00:00",
+  "git_head": "d8bff97cccab2054f18ccc874838162d0423e539",
+  "worktree": "Uncommitted; preserves earlier S1-S3.3 work; no commit or release performed.",
+  "checks": [
+    {
+      "command": "make test-stable test-legacy",
+      "exit_code": 0,
+      "log": "/tmp/daw-s346-final-regression.log",
+      "sha256": "c1cce58bdbde6e4544d5b935bafae48b958d4ade84b1fb04843e8f70b787a8c6",
+      "highlights": [
+        "control_transitions_test: success (Gain ramps, partitions, retarget, reset, zero endpoint, revision handoff, bypass, mixer gain/pan/mute/solo)",
+        "media_conversion_test: passband 0.49984994, downsample alias 0.000003577",
+        "media_conversion_test: success (PCM8/16/24/32, float, extensible, malformed input, rate pairs, filtering, allocation failures)",
+        "instrument_lifecycle_test: folded 20kHz saw component 0.15631458 -> 0.04420133",
+        "instrument_lifecycle_test: success (gate/release, early-off, partitions, alias reduction, automation, bounded voices, retirement, panic, zero guarded heap calls)",
+        "dynamics_processing_test: success (delay, ceiling, linking, release, knee, detectors, makeup, alignment, revisions, mixer, bounce, live edits, preparation failures, zero render heap calls)",
+        "analysis_calibration_test: success (tones, endpoints, power mean, real workers, gaps, epochs, mid, insert metadata)",
+        "fade_processing_test: success (four curves, render/clone/block/export/preview parity, capture, zero/short bounds)",
+        "media_durability_test: success (5 prepublication failures, directory uncertainty, RIFF limits, torn journal recovery)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "session_transaction_test: success (11 capture and 5 restore allocation boundaries, live capture, rollback, complete retry)",
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)",
+        "engine_parameter_transaction_test: success",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)",
+        "daw_pack_contract_parity_test: success",
+        "daw_trace_export_contract_test: success",
+        "daw_trace_export_async_contract_test: success",
+        "kit_viz_waveform_adapter_test: success",
+        "kit_viz_fx_preview_adapter_test: success",
+        "waveform_cache_pack_warmstart_test: success",
+        "layout_text_scaling_sweep_test: success",
+        "timeline_contract_test: success",
+        "midi_model_test: success",
+        "midi_instrument_render_test: success",
+        "midi_editor_shell_test: success",
+        "audio_capture_device_test: success",
+        "audio_output_device_test: success",
+        "effects_revision_test: success",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)",
+        "audio_recording_test: success",
+        "track_role_test: success",
+        "daw_data_path_contract_test: success",
+        "test-library-copy-vs-reference-contract: success",
+        "daw stable test lane passed",
+        "2026-09-19 23:23:23.186 session_serialization_test[37190:190480893] INFO: session_serialization_test: success (6898 bytes)",
+        "media_cache_stress_test: success (entries=0)",
+        "clip_overlap_priority_test: success (clips=3)",
+        "engine_smoke_test: success",
+        "shared_theme_font_adapter_test: success"
+      ]
+    },
+    {
+      "command": "make",
+      "exit_code": 0,
+      "log": "/tmp/daw-s346-final-build.log",
+      "sha256": "117e7595596ca04e176bb91b32980ff7d8a925783898d46e9805d4e232807ccd",
+      "highlights": []
+    },
+    {
+      "command": "make test-media-conversion",
+      "exit_code": 0,
+      "log": "/tmp/daw-s35-normal-final.log",
+      "sha256": "1a2cba852272d0a84f159254d7975fd9a68854cfd5ee8800f5fbeb958ca07626",
+      "highlights": [
+        "media_conversion_test: passband 0.49984994, downsample alias 0.000003577",
+        "media_conversion_test: success (PCM8/16/24/32, float, extensible, malformed input, rate pairs, filtering, allocation failures)"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-media-conversion",
+      "exit_code": 0,
+      "log": "/tmp/daw-s35-asan-final.log",
+      "sha256": "8160ce03e8231d432e7f6e1f09cdc9f047fa4040460d67355227d98c6e54719d",
+      "highlights": [
+        "media_conversion_test: passband 0.49984994, downsample alias 0.000003577",
+        "media_conversion_test: success (PCM8/16/24/32, float, extensible, malformed input, rate pairs, filtering, allocation failures)"
+      ]
+    },
+    {
+      "command": "make test-control-transitions test-media-conversion test-instrument-lifecycle test-midi-instrument-render test-dynamics-processing test-engine-transport-clock",
+      "exit_code": 0,
+      "log": "/tmp/daw-s346-final-normal.log",
+      "sha256": "5685381e3d796c3b271ee9bcd234bed37769eaf1db140c3570ded1b402738137",
+      "highlights": [
+        "control_transitions_test: success (Gain ramps, partitions, retarget, reset, zero endpoint, revision handoff, bypass, mixer gain/pan/mute/solo)",
+        "media_conversion_test: passband 0.49984994, downsample alias 0.000003577",
+        "media_conversion_test: success (PCM8/16/24/32, float, extensible, malformed input, rate pairs, filtering, allocation failures)",
+        "instrument_lifecycle_test: folded 20kHz saw component 0.15631458 -> 0.04420133",
+        "instrument_lifecycle_test: success (gate/release, early-off, partitions, alias reduction, automation, bounded voices, retirement, panic, zero guarded heap calls)",
+        "midi_instrument_render_test: success",
+        "dynamics_processing_test: success (delay, ceiling, linking, release, knee, detectors, makeup, alignment, revisions, mixer, bounce, live edits, preparation failures, zero render heap calls)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-control-transitions test-media-conversion test-instrument-lifecycle test-midi-instrument-render test-dynamics-processing test-engine-parameter-transaction test-engine-command-delivery",
+      "exit_code": 0,
+      "log": "/tmp/daw-s346-asan.log",
+      "sha256": "9747b4504a70edbc15fec9b5f534925cf0611cbfb0106b5771e1859aaf8628b2",
+      "highlights": [
+        "control_transitions_test: success (Gain ramps, partitions, retarget, reset, zero endpoint, revision handoff, bypass, mixer gain/pan/mute/solo)",
+        "media_conversion_test: passband 0.49984994, downsample alias 0.000003577",
+        "media_conversion_test: success (PCM8/16/24/32, float, extensible, malformed input, rate pairs, filtering, allocation failures)",
+        "instrument_lifecycle_test: folded 20kHz saw component 0.15631458 -> 0.04420133",
+        "instrument_lifecycle_test: success (gate/release, early-off, partitions, alias reduction, automation, bounded voices, retirement, panic, zero guarded heap calls)",
+        "midi_instrument_render_test: success",
+        "dynamics_processing_test: success (delay, ceiling, linking, release, knee, detectors, makeup, alignment, revisions, mixer, bounce, live edits, preparation failures, zero render heap calls)",
+        "engine_parameter_transaction_test: success",
+        "engine_command_delivery_test: success (100000 concurrent packets)"
+      ]
+    },
+    {
+      "command": "build/targets/macOS-arm64/tests/media_conversion_test /tmp/daw-s35-fixture.mp3",
+      "exit_code": 0,
+      "log": "/tmp/daw-s35-mp3-native-final.log",
+      "sha256": "f12c6103a6a5410e2e3d36040616aeaa719bd6c027141b5a321ead30019a896c",
+      "highlights": [
+        "media_conversion_test: passband 0.49984994, downsample alias 0.000003577",
+        "media_conversion_test: MP3 decode and duration conversion passed",
+        "media_conversion_test: success (PCM8/16/24/32, float, extensible, malformed input, rate pairs, filtering, allocation failures)"
+      ]
+    },
+    {
+      "command": "/tmp/daw-s35-fallback-test /tmp/daw-s35-fixture.mp3",
+      "exit_code": 0,
+      "log": "/tmp/daw-s35-mp3-fallback-final.log",
+      "sha256": "f12c6103a6a5410e2e3d36040616aeaa719bd6c027141b5a321ead30019a896c",
+      "highlights": [
+        "media_conversion_test: passband 0.49984994, downsample alias 0.000003577",
+        "media_conversion_test: MP3 decode and duration conversion passed",
+        "media_conversion_test: success (PCM8/16/24/32, float, extensible, malformed input, rate pairs, filtering, allocation failures)"
+      ]
+    }
+  ],
+  "source_sha256": {
+    "include/audio/resample.h": "05885cf1776be29b67bc1965db0439c2673e03db82afc4807175ec5df944f119",
+    "src/audio/resample.c": "138de269a7cf919950005a27db059d40f1ba9c0561482279e869d0a26834a964",
+    "src/audio/media_clip.c": "e472487ffe162f8b0357994e652c2083907c340103d30b4eec6d4da92e83cde9",
+    "tests/media_conversion_test.c": "beb320ab3f46ca630188236b88b551e38d897e6500053bb283db9eb4a36cb10a",
+    "make/rules-test-core.mk": "766e638fbc3d2653de131563c5f3519cbcb9eabbb134d96ba0eef72c3457a4d4",
+    "make/sources-tests.mk": "7e414c2be64cfee72293b34a992c12bdca28bd472ab39f03795e837b7fcb974a",
+    "make/sources-app.mk": "3b23a9bb5ff1314a8d6cd36c686b7d836a48e40f07375ae43652848d0a596f79"
+  },
+  "proof_limits": [
+    "No physical device latency, listening, or visual acceptance claimed.",
+    "Sanitizers cover exercised application/test paths, not all vendored libraries or possible schedules.",
+    "S3.7 export isolation/tail architecture is not implemented by this sequence."
+  ],
+  "evidence_notes": [
+    "Full final stable/legacy covers final production sources; a subsequent unsupported-format test assertion passed normal and ASan checks. Final build follows all changes.",
+    "Earlier broad sanitizer logs precede the final extra handoff assertions; final handoff runs cover the final test versions.",
+    "MP3 fallback is forced with -U__APPLE__ on macOS using installed FFmpeg, not a Linux platform qualification."
+  ],
+  "build_artifact": {
+    "path": "/Users/calebsv/Desktop/CodeWork/daw/build/targets/macOS-arm64/toolchains/clang/bin/daw_app",
+    "sha256": "d3cfaac797cce0e92d4fab03f05e1701fa77b042c4f28c493ebe804ebb4b71ad"
+  },
+  "documentation_verification": {
+    "report": "/tmp/daw-s346-stale-refs.json",
+    "sha256": "e5d934eb74e5931ec281b51311c7aeee875736c3a1366e5dbabe768554129b0a",
+    "findings": 0
+  }
+}

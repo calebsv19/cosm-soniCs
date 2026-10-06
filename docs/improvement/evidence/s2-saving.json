@@ -1,0 +1,121 @@
+{
+  "recorded_at_utc": "2026-09-19T21:41:53.083640+00:00",
+  "base_head": "d8bff97cccab2054f18ccc874838162d0423e539",
+  "scope": "S2.1 atomic session publication, one valid previous save, recovery and metadata ordering",
+  "process_evidence": "Every listed command was observed to terminate with exit code zero through the original exec session. Full regression preceded final test-only edge additions, which passed separately in normal and ASan runs.",
+  "runs": [
+    {
+      "command": "make test-session-atomic-save test-session test-data-path-contract",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s2-save-integration.log",
+      "full_log_sha256": "beba28fbc2ef12bcf016844d75b035ced2ff340c8ec3775ffd5ea100bc322438",
+      "acceptance_lines": [
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)",
+        "2026-09-19 14:37:25.183 session_serialization_test[77405:187844310] INFO: session_serialization_test: success (6898 bytes)",
+        "daw_data_path_contract_test: success"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-session-atomic-save test-session test-data-path-contract",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s2-save-asan.log",
+      "full_log_sha256": "c1ddab7494b47845a5e56f604b7f68bb0d55a81dd5e84fd3693c4b927b5c846b",
+      "acceptance_lines": [
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)",
+        "2026-09-19 14:38:08.018 session_serialization_test[79796:187850063] INFO: session_serialization_test: success (6898 bytes)",
+        "daw_data_path_contract_test: success"
+      ]
+    },
+    {
+      "command": "make test-stable test-legacy",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s2-save-regression.log",
+      "full_log_sha256": "648a6dd64402b15cf2e5cad3f1b6a3aa63af6bf58a170941b405b4c03b58db32",
+      "acceptance_lines": [
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)",
+        "engine_parameter_transaction_test: success",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)",
+        "daw_pack_contract_parity_test: success",
+        "daw_trace_export_contract_test: success",
+        "daw_trace_export_async_contract_test: success",
+        "kit_viz_waveform_adapter_test: success",
+        "kit_viz_fx_preview_adapter_test: success",
+        "kit_viz_meter_adapter_test: ok",
+        "waveform_cache_pack_warmstart_test: success",
+        "layout_text_scaling_sweep_test: success",
+        "timeline_contract_test: success",
+        "midi_model_test: success",
+        "midi_instrument_render_test: success",
+        "timeline_midi_region_test: ok",
+        "midi_editor_shell_test: success",
+        "audio_capture_device_test: success",
+        "audio_output_device_test: success",
+        "effects_revision_test: success",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)",
+        "audio_recording_test: success",
+        "track_role_test: success",
+        "daw_data_path_contract_test: success",
+        "daw_workspace_authoring_host_test: ok",
+        "test-library-copy-vs-reference-contract: success",
+        "daw stable test lane passed",
+        "[legacy] running test-session",
+        "2026-09-19 14:39:33.506 session_serialization_test[83636:187860725] INFO: session_serialization_test: success (6898 bytes)",
+        "[legacy] running test-cache",
+        "media_cache_stress_test: success (entries=0)",
+        "[legacy] running test-overlap",
+        "clip_overlap_priority_test: success (clips=3)",
+        "[legacy] running test-smoke",
+        "engine_smoke_test: success",
+        "[legacy] running test-shared-theme-font-adapter",
+        "shared_theme_font_adapter_test: success"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-session-atomic-save",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s2-save-asan-final.log",
+      "full_log_sha256": "a8f2a347ceb124c0a70df8884bfdbd4b9652b1cdad691069b0f4746a80f11c4b",
+      "acceptance_lines": [
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)"
+      ]
+    },
+    {
+      "command": "make test-session-atomic-save",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s2-save-final.log",
+      "full_log_sha256": "b8626b8c9a439abaaeefed92769a3948e0bf11edd5d836c9c46074f899509e1e",
+      "acceptance_lines": [
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)"
+      ]
+    },
+    {
+      "command": "make",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s2-save-build.log",
+      "full_log_sha256": "b990b64b09abca8ae021cd16c63993cac32c232faadfa11cc563058e6f5a610d",
+      "acceptance_lines": []
+    }
+  ],
+  "source_sha256": {
+    "include/daw/save_file.h": "825b1e0511b8487517fdcdfd1652030a6522744d0cc60bb07f6bac9eabbb9d12",
+    "src/session/save_file.c": "d447cc35d943e1ef32f90ec6f9a4fd82a35f3cb07a969df33301a584b5ec3ba1",
+    "include/session.h": "71fcf0e2b3a556dbba3f30c6c03f0f34f7ae5ed44010c574feac2ada8cefe792",
+    "src/session/session_io_write.c": "4f8ecaf9d1e61bf82c076fd804e2320861705f7457517d3b3c13a7c99ae2fe8b",
+    "src/session/session_io_read.c": "ab3d29b9fc6e35e759baccf6a157c97f14af1a7f9ca0406350eeb81fd4668eb0",
+    "src/session/session_apply.c": "b3b5a2539d132bf6cd21183753b02271ddc48eeaa2d53747baed2b0eab453b63",
+    "src/session/project_manager.c": "3a2e979e350e641ee5ca574610b97549f6776416f71e19f5f33fbfd64e90cc03",
+    "src/audio/media_registry.c": "3021d493a5ea0b3fdd7cc478092fad8320fffa370471ca6b8e7f3bb66ed6bceb",
+    "tests/session_atomic_save_test.c": "ab684303c74585c10752c6b06675d8e0a51966618991d027d5fba5c149f7a099",
+    "make/sources-app.mk": "5434d1938d486e116d5f4b821cf17faba0557f854504b82c04e28796793462fe",
+    "make/sources-tests.mk": "88826e6cd9c223c63589546c0303e6e78e541a7002d3b6ed68341b9465c0afcb",
+    "make/rules-test-core.mk": "f090b8bfbf95e78d47f9371cd09e1d7ca51f369ded610168bdae90d246e53072"
+  },
+  "asan_wrapper": "override BUILD_DIR := /tmp/daw-s1-asan-isolated\ninclude /Users/calebsv/Desktop/CodeWork/daw/Makefile\nCFLAGS += -fsanitize=address -fno-omit-frame-pointer -g\nLDFLAGS += -fsanitize=address\n",
+  "limits": [
+    "Test-local syscall failure injection and child-process interruption, not physical power loss.",
+    "No full project/media multi-file transaction, coherent capture/apply proof, or recovery UI acceptance.",
+    "Shared dependency sources unchanged; not every vendored library is sanitizer-instrumented."
+  ]
+}

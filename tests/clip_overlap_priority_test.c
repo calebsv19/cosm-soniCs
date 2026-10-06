@@ -326,7 +326,8 @@ int main(void) {
     expect(third->duration_frames == five_seconds - (third->timeline_start_frames - (six_second_frame)),
            "multi overlap: right duration incorrect");
 
-    int final_count = track->clip_count;
+    // Reacquire the borrowed track after later additions may have grown its owning array.
+    int final_count = engine_get_tracks(engine)[track_index].clip_count;
     engine_destroy(engine);
     for (size_t i = 0; i < sizeof(kClipPaths) / sizeof(kClipPaths[0]); ++i) {
         (void)unlink(kClipPaths[i]);

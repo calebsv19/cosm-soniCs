@@ -1,0 +1,20 @@
+--- initial/runtime_workload_bench.c
++++ tests/performance/runtime_workload_bench.c
+@@ -86,7 +86,7 @@
+         assert(engine_track_set_gain(e, t, 1.0f / w->tracks));
+         for (int c = 0; c < w->clips; ++c) {
+             int index = -1;
+-            uint64_t start = (uint64_t)c * w->rate * 16;
++            uint64_t start = strstr(w->mode, "overlap") ? 0 : (uint64_t)c * w->rate * 16;
+             if (w->notes) {
+                 assert(engine_add_midi_clip_to_track(e, t, start, (uint64_t)w->rate * 3600, &index));
+                 EngineInstrumentParams params = engine_instrument_default_params(ENGINE_INSTRUMENT_PRESET_PURE_SINE);
+@@ -94,7 +94,7 @@
+                 assert(engine_clip_midi_set_instrument_params(e, t, index, params));
+                 for (int n = 0; n < w->notes; ++n) {
+                     bool sparse = strstr(w->mode, "sparse") != NULL;
+-                    uint64_t note_start = sparse && n ? (uint64_t)(n + 1) * w->rate * 8 : 0;
++                    uint64_t note_start = sparse && n ? (uint64_t)(n + 8) * w->rate : 0;
+                     EngineMidiNote note = {note_start, (uint64_t)w->rate * 8, (uint8_t)(48 + n % 24), .5f};
+                     assert(engine_clip_midi_add_note(e, t, index, note, NULL));
+                 }

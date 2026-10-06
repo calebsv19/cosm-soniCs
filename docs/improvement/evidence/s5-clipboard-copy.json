@@ -1,0 +1,43 @@
+{
+  "status": "clipboard_replacement_prerequisite_verified_paste_transaction_open",
+  "coverage": [
+    "candidate allocation failure preserves previous clipboard",
+    "later copied-entry failure releases prepared owned content",
+    "invalid later selected entry rejects complete replacement",
+    "old clipboard remains usable for paste",
+    "successful copy replaces complete selection",
+    "rejected destination-track creation returns without looping",
+    "normal and ASan focused tests plus default build"
+  ],
+  "remaining": [
+    "atomic paste insertion properties topology and history",
+    "native clipboard interaction acceptance",
+    "broader S5 slices"
+  ],
+  "logs": [
+    {
+      "path": "/tmp/daw-s5-clipboard-copy-final-tests.log",
+      "exit_code": 0,
+      "sha256": "923b99b8b57825b75f2baae806ec54f854fecbdb6fa3dfe64abb72733d37f377"
+    },
+    {
+      "path": "/tmp/daw-s5-clipboard-copy-asan.log",
+      "exit_code": 0,
+      "sha256": "33fc85f21fb39c11ba1116fc1b180872745d2a36b424552ebf57164ae892fc8d"
+    },
+    {
+      "path": "/tmp/daw-s5-clipboard-copy-final-make.log",
+      "exit_code": 0,
+      "sha256": "d8285a16223c9e738f98c2eaa31289db566e0ec1f483ba0891fa69b958546f5a"
+    },
+    {
+      "path": "/tmp/daw-s5-clipboard-copy-docs.log",
+      "exit_code": 0,
+      "sha256": "bef084d5e259d54aa3ce1a0eb8100c76a742a03fedbf71ba23912db268aaf443"
+    }
+  ],
+  "source_sha256": {
+    "src/input/timeline/timeline_clipboard.c": "81734a6ad5c22684fc4458c33f93e611fd7e0aeca4e58387258bd7c3d94a7ab2",
+    "tests/engine_parameter_transaction_test.c": "42f3ff818c56493f8454c048ea334fbbfca749a5e2cd2dded4da2236938a9a31"
+  }
+}

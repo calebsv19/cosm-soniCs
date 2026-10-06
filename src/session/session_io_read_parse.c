@@ -12,6 +12,7 @@ static SessionTrack* session_document_append_track(SessionDocument* doc) {
     doc->tracks = resized;
     SessionTrack* track = &doc->tracks[new_count - 1];
     memset(track, 0, sizeof(*track));
+    track->gain = 1.0f; // Missing legacy fields default to unity; explicit zero remains silence.
     track->midi_instrument_enabled = false;
     track->midi_instrument_preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
     track->midi_instrument_params = engine_instrument_default_params(track->midi_instrument_preset);

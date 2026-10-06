@@ -289,7 +289,7 @@ static bool engine_fx_meter_copy_lufs_state(const EngineFxMeterBank* bank,
     return false;
 }
 
-static bool engine_fx_meter_find_in_bank(const EngineFxMeterBank* bank,
+static bool engine_fx_meter_find_in_bank(const EngineFxMeterSnapshotBank* bank,
                                          FxInstId id,
                                          EngineFxMeterSnapshot* out_snapshot) {
     if (!bank || !out_snapshot || id == 0) {
@@ -409,19 +409,20 @@ static void engine_fx_meter_tap_callback(void* user,
                                          const float* interleaved,
                                          int frames,
                                          int channels) {
-    Engine* engine = (Engine*)user;
+    EngineMixState* mix = user;
+    Engine* engine = mix ? mix->owner : NULL;
     if (!engine || !interleaved || frames <= 0 || channels <= 0 || id == 0) {
         return;
     }
     EngineFxLufsState lufs_state;
     SDL_zero(lufs_state);
     EngineFxMeterBank* bank = NULL;
-    if (!is_master && (!engine->track_fx_meters ||
+    if (!is_master && (!mix->track_fx_meters ||
                        track_index < 0 ||
-                       track_index >= engine->track_fx_meter_capacity)) {
+                       track_index >= mix->track_count)) {
         return;
     }
-    bank = is_master ? &engine->master_fx_meters : &engine->track_fx_meters[track_index];
+    bank = is_master ? &mix->master_fx_meters : &mix->track_fx_meters[track_index];
     if (bank) {
         engine_fx_meter_copy_lufs_state(bank, id, &lufs_state);
     }
@@ -442,7 +443,7 @@ static void engine_fx_meter_tap_callback(void* user,
         engine_spectrogram_update_fx(engine, is_master, track_index, id, interleaved, frames, channels);
     }
 
-    bank = is_master ? &engine->master_fx_meters : &engine->track_fx_meters[track_index];
+    bank = is_master ? &mix->master_fx_meters : &mix->track_fx_meters[track_index];
     if (bank) {
         EngineFxMeterTap* tap = engine_fx_meter_get_or_add_tap(bank, id);
         if (tap) {
@@ -450,23 +451,8 @@ static void engine_fx_meter_tap_callback(void* user,
         }
     }
 
-    const int write_index = engine_meter_write_index(engine);
-    EngineFxMeterBank* snap_bank = NULL;
-    if (is_master) {
-        snap_bank = &engine->master_fx_meter_snapshots[write_index];
-    } else if (engine->track_fx_meter_snapshots &&
-               track_index >= 0 &&
-               track_index < engine->track_fx_meter_capacity) {
-        snap_bank = &engine->track_fx_meter_snapshots[(size_t)write_index * (size_t)engine->track_fx_meter_capacity +
-                                                      (size_t)track_index];
-    }
-    if (snap_bank) {
-        EngineFxMeterTap* tap = engine_fx_meter_get_or_add_tap(snap_bank, id);
-        if (tap) {
-            tap->snapshot = snapshot;
-            tap->snapshot.valid = true;
-        }
-    }
+    EngineFxMeterTap* snapshot_tap = engine_fx_meter_get_or_add_tap(bank, id);
+    if (snapshot_tap) snapshot_tap->snapshot = snapshot;
 
     // Notify main-thread UI that FX meter-visible data changed; posting is coalesced.
     (void)daw_mainthread_message_post(DAW_MAINTHREAD_MSG_ENGINE_FX_METER,
@@ -487,11 +473,11 @@ void engine_fx_meter_clear_all(Engine* engine) {
     SDL_zero(engine->master_fx_meter_snapshots);
     if (engine->track_fx_meter_snapshots) {
         size_t count = (size_t)engine->track_fx_meter_capacity * 2u;
-        memset(engine->track_fx_meter_snapshots, 0, sizeof(EngineFxMeterBank) * count);
+        memset(engine->track_fx_meter_snapshots, 0, sizeof(*engine->track_fx_meter_snapshots) * count);
     }
 }
 
-bool engine_get_master_meter_snapshot(const Engine* engine, EngineMeterSnapshot* out_snapshot) {
+static bool engine_get_master_meter_snapshot_unlocked(const Engine* engine, EngineMeterSnapshot* out_snapshot) {
     if (!engine || !out_snapshot) {
         return false;
     }
@@ -500,7 +486,7 @@ bool engine_get_master_meter_snapshot(const Engine* engine, EngineMeterSnapshot*
     return true;
 }
 
-bool engine_get_track_meter_snapshot(const Engine* engine, int track_index, EngineMeterSnapshot* out_snapshot) {
+static bool engine_get_track_meter_snapshot_unlocked(const Engine* engine, int track_index, EngineMeterSnapshot* out_snapshot) {
     if (!engine || !out_snapshot || track_index < 0) {
         return false;
     }
@@ -514,7 +500,7 @@ bool engine_get_track_meter_snapshot(const Engine* engine, int track_index, Engi
     return true;
 }
 
-bool engine_get_master_fx_meter_snapshot(const Engine* engine, FxInstId id, EngineFxMeterSnapshot* out_snapshot) {
+static bool engine_get_master_fx_meter_snapshot_unlocked(const Engine* engine, FxInstId id, EngineFxMeterSnapshot* out_snapshot) {
     if (!engine || !out_snapshot) {
         return false;
     }
@@ -524,7 +510,7 @@ bool engine_get_master_fx_meter_snapshot(const Engine* engine, FxInstId id, Engi
     return ok;
 }
 
-bool engine_get_track_fx_meter_snapshot(const Engine* engine,
+static bool engine_get_track_fx_meter_snapshot_unlocked(const Engine* engine,
                                         int track_index,
                                         FxInstId id,
                                         EngineFxMeterSnapshot* out_snapshot) {
@@ -539,7 +525,7 @@ bool engine_get_track_fx_meter_snapshot(const Engine* engine,
     }
     bool ok = false;
     int read_index = engine_meter_read_index(engine);
-    const EngineFxMeterBank* bank = &engine->track_fx_meter_snapshots[(size_t)read_index *
+    const EngineFxMeterSnapshotBank* bank = &engine->track_fx_meter_snapshots[(size_t)read_index *
                                                                       (size_t)engine->track_fx_meter_capacity +
                                                                       (size_t)track_index];
     ok = engine_fx_meter_find_in_bank(bank, id, out_snapshot);
@@ -555,13 +541,89 @@ void engine_set_active_fx_meter(Engine* engine, bool is_master, int track_index,
     engine->active_fx_meter_track = track_index;
 }
 
+// Registers the active independently owned meter accumulator after offline preparation.
 void engine_register_fx_meter_tap(Engine* engine) {
-    if (!engine || !engine->fxm_mutex) {
-        return;
+    engine_bind_fx_meter_tap(engine_render_mix_state(engine));
+}
+
+// Connects effect taps exclusively to the containing render revision's accumulator.
+void engine_bind_fx_meter_tap(EngineMixState* mix) {
+    if (mix && mix->fxm) fxm_set_meter_tap_callback(mix->fxm, engine_fx_meter_tap_callback, mix);
+}
+
+// Copies compact meter values without exposing the worker's mutable LUFS histories.
+static void copy_meter_bank(EngineFxMeterSnapshotBank* destination, const EngineFxMeterBank* source, uint64_t identity) {
+    destination->runtime_id = identity;
+    destination->count = source->count;
+    for (int i = 0; i < source->count; ++i) {
+        destination->taps[i].id = source->taps[i].id;
+        destination->taps[i].snapshot = source->taps[i].snapshot;
     }
-    SDL_LockMutex(engine->fxm_mutex);
-    if (engine->fxm) {
-        fxm_set_meter_tap_callback(engine->fxm, engine_fx_meter_tap_callback, engine);
+}
+
+// Publishes a coherent frame opportunistically; UI contention never blocks audio rendering.
+void engine_publish_mix_meters(EngineMixState* mix) {
+    Engine* engine = mix ? mix->owner : NULL;
+    if (!engine || !engine->meter_mutex || SDL_TryLockMutex(engine->meter_mutex) != 0) return;
+    int index = engine_meter_write_index(engine);
+    engine->master_meter_snapshots[index] = (EngineMeterSnapshot){
+        .peak = mix->master_meter.peak, .rms = mix->master_meter.rms,
+        .clipped = mix->master_meter.clip_hold > 0};
+    copy_meter_bank(&engine->master_fx_meter_snapshots[index], &mix->master_fx_meters, 0);
+    int count = mix->track_count < engine->track_meter_capacity ? mix->track_count : engine->track_meter_capacity;
+    for (int t = 0; t < count; ++t) {
+        EngineMeterState* meter = &mix->track_meters[t];
+        engine->track_meter_snapshots[(size_t)index * engine->track_meter_capacity + t] = (EngineMeterSnapshot){
+            .peak = meter->peak, .rms = meter->rms, .clipped = meter->clip_hold > 0,
+            .runtime_id = mix->tracks[t].runtime_id};
+        if (t < engine->track_fx_meter_capacity)
+            copy_meter_bank(&engine->track_fx_meter_snapshots[(size_t)index * engine->track_fx_meter_capacity + t],
+                            &mix->track_fx_meters[t], mix->tracks[t].runtime_id);
     }
-    SDL_UnlockMutex(engine->fxm_mutex);
+    atomic_store_explicit(&engine->meter_snapshot_index, index, memory_order_release);
+    SDL_UnlockMutex(engine->meter_mutex);
+}
+
+// Copies the latest coherent master meter frame under the publication lock.
+bool engine_get_master_meter_snapshot(const Engine* engine, EngineMeterSnapshot* output) {
+    if (!engine || !engine->meter_mutex) return false;
+    SDL_LockMutex(engine->meter_mutex);
+    bool ok = engine_get_master_meter_snapshot_unlocked(engine, output);
+    SDL_UnlockMutex(engine->meter_mutex);
+    return ok;
+}
+
+// Rejects meter frames belonging to a removed or shifted track lifetime.
+bool engine_get_track_meter_snapshot(const Engine* engine, int track, EngineMeterSnapshot* output) {
+    if (!engine || !engine->meter_mutex || SDL_ThreadID() != engine->control_thread_id ||
+        track < 0 || track >= engine->track_count) return false;
+    SDL_LockMutex(engine->meter_mutex);
+    bool ok = engine_get_track_meter_snapshot_unlocked(engine, track, output);
+    if (ok) ok = output->runtime_id == engine->tracks[track].runtime_id;
+    SDL_UnlockMutex(engine->meter_mutex);
+    return ok;
+}
+
+// Copies a coherent master effect snapshot without reading DSP accumulation storage.
+bool engine_get_master_fx_meter_snapshot(const Engine* engine, FxInstId id, EngineFxMeterSnapshot* output) {
+    if (!engine || !engine->meter_mutex) return false;
+    SDL_LockMutex(engine->meter_mutex);
+    bool ok = engine_get_master_fx_meter_snapshot_unlocked(engine, id, output);
+    SDL_UnlockMutex(engine->meter_mutex);
+    return ok;
+}
+
+// Copies a coherent effect snapshot only when its track identity still matches the editable model.
+bool engine_get_track_fx_meter_snapshot(const Engine* engine, int track, FxInstId id, EngineFxMeterSnapshot* output) {
+    if (!engine || !engine->meter_mutex || SDL_ThreadID() != engine->control_thread_id ||
+        track < 0 || track >= engine->track_count) return false;
+    SDL_LockMutex(engine->meter_mutex);
+    bool ok = engine_get_track_fx_meter_snapshot_unlocked(engine, track, id, output);
+    if (ok) {
+        const EngineFxMeterSnapshotBank* bank = &engine->track_fx_meter_snapshots[
+            (size_t)engine_meter_read_index(engine) * engine->track_fx_meter_capacity + track];
+        ok = bank->runtime_id == engine->tracks[track].runtime_id;
+    }
+    SDL_UnlockMutex(engine->meter_mutex);
+    return ok;
 }

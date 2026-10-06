@@ -59,7 +59,7 @@ bool midi_editor_seek_to_editor_x(AppState* state,
     }
     frame = midi_editor_clamp_frame(frame, clip_frames);
     uint64_t absolute_frame = selection->clip->timeline_start_frames + frame;
-    bool was_playing = engine_transport_is_playing(state->engine);
+    bool was_playing = engine_transport_requested_playing(state->engine);
     input_manager_reset_meter_history_on_seek(state);
     engine_transport_seek(state->engine, absolute_frame);
     if (was_playing) {
@@ -440,7 +440,7 @@ bool midi_editor_transport_relative_frame(const AppState* state,
     if (!state || !state->engine || !clip || !out_frame) {
         return false;
     }
-    uint64_t transport_frame = engine_get_transport_frame(state->engine);
+    uint64_t transport_frame = engine_get_presentation_frame(state->engine);
     if (transport_frame < clip->timeline_start_frames) {
         return false;
     }

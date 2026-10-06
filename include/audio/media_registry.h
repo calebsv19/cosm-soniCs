@@ -42,3 +42,8 @@ bool media_registry_update_path(MediaRegistry* registry,
                                 const char* id,
                                 const char* new_path,
                                 const char* new_name);
+
+// Computes the existing content identity on a worker without mutating the registry.
+bool media_registry_prepare_entry(const char* path, MediaRegistryEntry* out, bool (*cancelled)(void*), void* user);
+// Adopts prepared identity/metadata on control without reading the source file.
+bool media_registry_adopt_entry(MediaRegistry* registry, const MediaRegistryEntry* entry);

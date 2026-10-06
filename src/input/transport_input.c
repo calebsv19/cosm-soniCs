@@ -103,7 +103,7 @@ static float playhead_seconds(const AppState* state) {
     if (sample_rate <= 0) {
         return 0.0f;
     }
-    uint64_t frame = engine_get_transport_frame(state->engine);
+    uint64_t frame = engine_get_presentation_frame(state->engine);
     return (float)((double)frame / (double)sample_rate);
 }
 
@@ -117,7 +117,7 @@ static double playhead_beats(const AppState* state) {
     if (sample_rate <= 0) {
         return 0.0;
     }
-    uint64_t frame = engine_get_transport_frame(state->engine);
+    uint64_t frame = engine_get_presentation_frame(state->engine);
     double seconds = (double)frame / (double)sample_rate;
     return tempo_map_seconds_to_beats(&state->tempo_map, seconds);
 }
@@ -411,8 +411,7 @@ static void transport_seek_to(AppState* state, float t) {
     if (t < 0.0f) t = 0.0f;
     if (t > 1.0f) t = 1.0f;
     uint64_t frame = (uint64_t)llroundf(t * (float)total_frames);
-    input_manager_reset_meter_history_on_seek(state);
-    engine_transport_seek(state->engine, frame);
+    if (engine_transport_seek(state->engine, frame)) input_manager_reset_meter_history_on_seek(state);
 }
 
 void transport_input_init(InputManager* manager) {

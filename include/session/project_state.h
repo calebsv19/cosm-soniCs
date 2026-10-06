@@ -16,6 +16,7 @@ typedef struct {
 // Tracks the active Save Project text-entry modal.
 typedef struct {
     bool active;
+    char error[128];
     char buffer[SESSION_NAME_MAX];
     int cursor;
 } ProjectSavePrompt;
@@ -23,6 +24,7 @@ typedef struct {
 // Tracks the active Load Project modal list and selection state.
 typedef struct {
     bool active;
+    char error[128];
     ProjectInfo entries[64];
     int count;
     int selected_index;

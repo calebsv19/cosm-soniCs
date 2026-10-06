@@ -154,7 +154,7 @@ static bool midi_editor_handle_scroll(AppState* state, const SDL_Event* event) {
                 frame = frame + step > clip_frames ? clip_frames : frame + step;
             }
             uint64_t absolute_frame = selection.clip->timeline_start_frames + frame;
-            bool was_playing = engine_transport_is_playing(state->engine);
+            bool was_playing = engine_transport_requested_playing(state->engine);
             input_manager_reset_meter_history_on_seek(state);
             engine_transport_seek(state->engine, absolute_frame);
             if (was_playing) {

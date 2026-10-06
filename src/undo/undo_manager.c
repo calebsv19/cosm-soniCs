@@ -16,55 +16,6 @@
 #include <stdio.h>
 #include <string.h>
 
-// Builds a parameter array using spec IDs when available to preserve stable mapping.
-static uint32_t undo_fx_collect_params(const SessionFxInstance* fx,
-                                       const EffectParamSpec* specs,
-                                       uint32_t spec_count,
-                                       float* out_values,
-                                       FxParamMode* out_modes,
-                                       float* out_beats) {
-    if (!fx || !out_values || !out_modes || !out_beats) {
-        return 0;
-    }
-    uint32_t count = fx->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : fx->param_count;
-    if (!specs || spec_count == 0) {
-        for (uint32_t p = 0; p < count; ++p) {
-            out_values[p] = fx->params[p];
-            out_modes[p] = fx->param_mode[p];
-            out_beats[p] = fx->param_beats[p];
-        }
-        return count;
-    }
-    count = spec_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : spec_count;
-    for (uint32_t p = 0; p < count; ++p) {
-        out_values[p] = specs[p].default_value;
-        out_modes[p] = FX_PARAM_MODE_NATIVE;
-        out_beats[p] = 0.0f;
-    }
-    if (fx->param_id_count > 0) {
-        for (uint32_t i = 0; i < fx->param_id_count && i < FX_MAX_PARAMS; ++i) {
-            int idx = fx_param_spec_find_index(specs, count, fx->param_ids[i]);
-            if (idx < 0) {
-                continue;
-            }
-            out_values[idx] = fx->param_values_by_id[i];
-            out_modes[idx] = fx->param_modes_by_id[i];
-            out_beats[idx] = fx->param_beats_by_id[i];
-        }
-    } else {
-        uint32_t copy_count = fx->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : fx->param_count;
-        if (copy_count > count) {
-            copy_count = count;
-        }
-        for (uint32_t p = 0; p < copy_count; ++p) {
-            out_values[p] = fx->params[p];
-            out_modes[p] = fx->param_mode[p];
-            out_beats[p] = fx->param_beats[p];
-        }
-    }
-    return count;
-}
-
 static float clamp_float(float value, float min, float max) {
     if (value < min) return min;
     if (value > max) return max;
@@ -276,17 +227,23 @@ static bool apply_automation_edit(AppState* state, UndoAutomationEdit* edit, boo
     return ok;
 }
 
+// Resolves captured destination identity and rejects removed tracks without falling back to another index.
+static int undo_clip_destination(const Engine* engine, const UndoClipState* target) {
+    if (!target->track_runtime_id) return target->track_index;
+    const EngineTrack* tracks = engine_get_tracks(engine);
+    for (int t = 0; tracks && t < engine_get_track_count(engine); ++t)
+        if (tracks[t].runtime_id == target->track_runtime_id) return t;
+    return -1;
+}
+
+// Resolves stable clip identity and restores all transform fields with one engine commit.
 static bool apply_clip_state(AppState* state, const UndoClipState* target) {
     if (!state || !target) {
         return false;
     }
     int current_track = -1;
     int current_clip = -1;
-    if (target->sampler) {
-        if (!timeline_find_clip_by_sampler(state, target->sampler, &current_track, &current_clip)) {
-            return false;
-        }
-    } else if (target->kind == ENGINE_CLIP_KIND_MIDI && target->creation_index > 0) {
+    if (target->creation_index > 0) {
         const EngineTrack* tracks = engine_get_tracks(state->engine);
         int track_count = engine_get_track_count(state->engine);
         if (!tracks) {
@@ -299,7 +256,7 @@ static bool apply_clip_state(AppState* state, const UndoClipState* target) {
             }
             for (int c = 0; c < track->clip_count; ++c) {
                 const EngineClip* clip = &track->clips[c];
-                if (clip && clip->kind == ENGINE_CLIP_KIND_MIDI &&
+                if (clip && clip->kind == target->kind &&
                     clip->creation_index == target->creation_index) {
                     current_track = t;
                     current_clip = c;
@@ -313,109 +270,42 @@ static bool apply_clip_state(AppState* state, const UndoClipState* target) {
         if (current_clip < 0) {
             return false;
         }
-    } else {
+    } else if (!target->sampler ||
+               !timeline_find_clip_by_sampler(state, target->sampler, &current_track, &current_clip)) {
         return false;
     }
-    int final_track = current_track;
-    int final_clip = current_clip;
-    if (target->track_index >= 0 && target->track_index != current_track) {
-        int moved_index = timeline_move_clip_to_track(state, current_track, current_clip,
-                                                      target->track_index, target->start_frame);
-        if (moved_index >= 0) {
-            final_track = target->track_index;
-            final_clip = moved_index;
-        }
-    }
-    if (final_track < 0 || final_clip < 0) {
-        return false;
-    }
-    bool is_midi = target->kind == ENGINE_CLIP_KIND_MIDI;
-    if (is_midi) {
-        const EngineTrack* tracks = engine_get_tracks(state->engine);
-        int track_count = engine_get_track_count(state->engine);
-        if (!tracks || final_track < 0 || final_track >= track_count) {
-            return false;
-        }
-        const EngineTrack* track = &tracks[final_track];
-        if (!track || final_clip < 0 || final_clip >= track->clip_count) {
-            return false;
-        }
-        const uint64_t current_duration = track->clips[final_clip].duration_frames;
-        if (target->duration_frames < current_duration) {
-            if (!engine_clip_midi_set_notes(state->engine,
-                                            final_track,
-                                            final_clip,
-                                            target->midi_notes,
-                                            target->midi_note_count)) {
-                return false;
-            }
-            if (!engine_clip_set_region(state->engine,
-                                        final_track,
-                                        final_clip,
-                                        0,
-                                        target->duration_frames)) {
-                return false;
-            }
-        } else {
-            if (!engine_clip_set_region(state->engine,
-                                        final_track,
-                                        final_clip,
-                                        0,
-                                        target->duration_frames)) {
-                return false;
-            }
-            if (!engine_clip_midi_set_notes(state->engine,
-                                            final_track,
-                                            final_clip,
-                                            target->midi_notes,
-                                            target->midi_note_count)) {
-                return false;
-            }
-        }
-    } else {
-        engine_clip_set_region(state->engine, final_track, final_clip,
-                               target->offset_frames, target->duration_frames);
-    }
-    engine_clip_set_timeline_start(state->engine, final_track, final_clip,
-                                   target->start_frame, NULL);
-    engine_clip_set_fades(state->engine, final_track, final_clip,
-                          target->fade_in_frames, target->fade_out_frames);
-    engine_clip_set_fade_curves(state->engine,
-                                final_track,
-                                final_clip,
-                                target->fade_in_curve,
-                                target->fade_out_curve);
-    engine_clip_set_gain(state->engine, final_track, final_clip, target->gain);
-    if (is_midi) {
-        engine_clip_midi_set_instrument_preset(state->engine,
-                                               final_track,
-                                               final_clip,
-                                               target->instrument_preset);
-        engine_clip_midi_set_instrument_params(state->engine,
-                                               final_track,
-                                               final_clip,
-                                               target->instrument_params);
-        engine_clip_midi_set_inherits_track_instrument(state->engine,
-                                                       final_track,
-                                                       final_clip,
-                                                       target->instrument_inherits_track);
-    }
-    return true;
+    EngineClipTransform transform = {
+        .start_frame = target->start_frame, .offset_frames = target->offset_frames,
+        .duration_frames = target->duration_frames, .gain = target->gain,
+        .fade_in_frames = target->fade_in_frames, .fade_out_frames = target->fade_out_frames,
+        .fade_in_curve = target->fade_in_curve, .fade_out_curve = target->fade_out_curve,
+        .instrument_preset = target->instrument_preset, .instrument_params = target->instrument_params,
+        .instrument_inherits_track = target->instrument_inherits_track,
+        .midi_notes = target->midi_notes, .midi_note_count = target->midi_note_count,
+    };
+    int destination = undo_clip_destination(state->engine, target);
+    if (destination < 0) return false;
+    return engine_transform_clip(state->engine, current_track, current_clip, destination, &transform, NULL);
 }
 
+// Resolves rename history by stable clip identity and rejects removed targets.
 static bool apply_clip_rename(AppState* state, const UndoClipRename* edit, bool apply_after) {
-    if (!state || !edit || !edit->sampler) {
+    if (!state || !state->engine || !edit || !edit->creation_index) {
         return false;
     }
-    int track_index = -1;
-    int clip_index = -1;
-    if (!timeline_find_clip_by_sampler(state, edit->sampler, &track_index, &clip_index)) {
-        return false;
+    const EngineTrack* tracks = engine_get_tracks(state->engine);
+    for (int t = 0; t < engine_get_track_count(state->engine); ++t) {
+        for (int c = 0; c < tracks[t].clip_count; ++c) {
+            if (tracks[t].clips[c].creation_index == edit->creation_index) {
+                const char* name = apply_after ? edit->after_name : edit->before_name;
+                return engine_clip_set_name(state->engine, t, c, name);
+            }
+        }
     }
-    const char* name = apply_after ? edit->after_name : edit->before_name;
-    return engine_clip_set_name(state->engine, track_index, clip_index, name);
+    return false;
 }
 
+// Restores mixer/instrument history with one engine commit before updating the panel snapshot.
 static bool apply_track_snapshot(AppState* state, const UndoTrackSnapshotEdit* edit, bool apply_after) {
     if (!state || !edit) {
         return false;
@@ -436,15 +326,13 @@ static bool apply_track_snapshot(AppState* state, const UndoTrackSnapshotEdit* e
     if (edit->track_index < 0) {
         return false;
     }
-    engine_track_set_gain(state->engine, edit->track_index, gain);
-    engine_track_set_pan(state->engine, edit->track_index, pan);
-    engine_track_set_muted(state->engine, edit->track_index, muted);
-    engine_track_set_solo(state->engine, edit->track_index, solo);
-    engine_track_midi_set_instrument_enabled(state->engine, edit->track_index, midi_enabled);
-    if (midi_enabled) {
-        engine_track_midi_set_instrument_preset(state->engine, edit->track_index, midi_preset);
-        engine_track_midi_set_instrument_params(state->engine, edit->track_index, midi_params);
-    }
+    EngineTrackSettings settings = {
+        .gain = gain, .pan = pan, .muted = muted, .solo = solo,
+        .instrument_enabled = midi_enabled,
+        .instrument_preset = edit->instrument_state_captured || midi_enabled ? midi_preset : engine_track_midi_instrument_preset(state->engine, edit->track_index),
+        .instrument_params = edit->instrument_state_captured || midi_enabled ? midi_params : engine_track_midi_instrument_params(state->engine, edit->track_index),
+    };
+    if (!engine_track_set_settings(state->engine, edit->track_index, &settings)) return false;
     state->effects_panel.track_snapshot.gain = gain;
     state->effects_panel.track_snapshot.pan = pan;
     state->effects_panel.track_snapshot.muted = muted;
@@ -484,163 +372,45 @@ static bool apply_library_rename(AppState* state, const UndoLibraryRename* edit,
     return true;
 }
 
-static bool apply_session_track(AppState* state, int track_index, const SessionTrack* track) {
-    if (!state || !track || !state->engine) {
-        return false;
+// Restores or removes a complete retained track without touching a neighboring row.
+static bool apply_track_edit(AppState* state, const UndoCommand* command, bool apply_after) {
+    const EngineClipContentSnapshot* target = apply_after ? command->clip_content_after : command->clip_content_before;
+    const EngineClipContentSnapshot* removed = apply_after ? command->clip_content_before : command->clip_content_after;
+    if (target) {
+        int index = command->data.track_edit.track_index;
+        int count = engine_get_track_count(state->engine);
+        const EngineTrack* tracks = engine_get_tracks(state->engine);
+        if (index < 0 || index > count ||
+            (index > 0 ? tracks[index - 1].runtime_id : 0) != command->data.track_edit.left_track_id ||
+            (index < count ? tracks[index].runtime_id : 0) != command->data.track_edit.right_track_id) return false;
+        return engine_track_history_insert(state->engine, index, target);
     }
-    engine_track_set_name(state->engine, track_index, track->name);
-    engine_track_set_gain(state->engine, track_index, track->gain == 0.0f ? 1.0f : track->gain);
-    engine_track_set_pan(state->engine, track_index, track->pan);
-    engine_track_set_muted(state->engine, track_index, track->muted);
-    engine_track_set_solo(state->engine, track_index, track->solo);
-    engine_track_midi_set_instrument_enabled(state->engine,
-                                             track_index,
-                                             track->midi_instrument_enabled);
-    if (track->midi_instrument_enabled) {
-        engine_track_midi_set_instrument_preset(state->engine,
-                                                track_index,
-                                                track->midi_instrument_preset);
-        engine_track_midi_set_instrument_params(state->engine,
-                                                track_index,
-                                                track->midi_instrument_params);
-    }
-
-    if (state->effects_panel.eq_curve_tracks &&
-        track_index < state->effects_panel.eq_curve_tracks_count) {
-        EqCurveState eq_curve = {0};
-        eq_curve_from_session(&eq_curve, &track->eq);
-        state->effects_panel.eq_curve_tracks[track_index] = eq_curve;
-        EngineEqCurve engine_curve;
-        eq_curve_to_engine(&eq_curve, &engine_curve);
-        engine_set_track_eq_curve(state->engine, track_index, &engine_curve);
-    }
-
-    for (int c = 0; c < track->clip_count; ++c) {
-        const SessionClip* clip = &track->clips[c];
-        int clip_index = -1;
-        if (clip->kind == ENGINE_CLIP_KIND_MIDI) {
-            if (!engine_add_midi_clip_to_track(state->engine,
-                                               track_index,
-                                               clip->start_frame,
-                                               clip->duration_frames,
-                                               &clip_index)) {
-                continue;
-            }
-        } else {
-            if (clip->media_path[0] == '\0') {
-                continue;
-            }
-            if (!engine_add_clip_to_track_with_id(state->engine,
-                                                  track_index,
-                                                  clip->media_path,
-                                                  clip->media_id,
-                                                  clip->start_frame,
-                                                  &clip_index)) {
-                continue;
-            }
-        }
-        engine_clip_set_region(state->engine, track_index, clip_index, clip->offset_frames, clip->duration_frames);
-        engine_clip_set_gain(state->engine, track_index, clip_index, clip->gain == 0.0f ? 1.0f : clip->gain);
-        engine_clip_set_name(state->engine, track_index, clip_index, clip->name);
-        engine_clip_set_fades(state->engine, track_index, clip_index, clip->fade_in_frames, clip->fade_out_frames);
-        engine_clip_set_fade_curves(state->engine,
-                                    track_index,
-                                    clip_index,
-                                    clip->fade_in_curve,
-                                    clip->fade_out_curve);
-        if (clip->kind == ENGINE_CLIP_KIND_MIDI) {
-            engine_clip_midi_set_instrument_preset(state->engine,
-                                                   track_index,
-                                                   clip_index,
-                                                   clip->instrument_preset);
-            engine_clip_midi_set_instrument_params(state->engine,
-                                                   track_index,
-                                                   clip_index,
-                                                   clip->instrument_params);
-            engine_clip_midi_set_inherits_track_instrument(state->engine,
-                                                           track_index,
-                                                           clip_index,
-                                                           clip->instrument_inherits_track);
-        }
-        for (int n = 0; n < clip->midi_note_count; ++n) {
-            engine_clip_midi_add_note(state->engine, track_index, clip_index, clip->midi_notes[n], NULL);
-        }
-    }
-
-    if (track->fx_count > 0) {
-        engine_fx_set_track_count(state->engine, engine_get_track_count(state->engine));
-        for (int f = 0; f < track->fx_count && f < FX_MASTER_MAX; ++f) {
-            const SessionFxInstance* fx = &track->fx[f];
-            if (!fx || fx->type == 0) {
-                continue;
-            }
-            FxInstId id = engine_fx_track_add(state->engine, track_index, fx->type);
-            if (id == 0) {
-                continue;
-            }
-            const EffectParamSpec* specs = NULL;
-            uint32_t spec_count = 0;
-            engine_fx_registry_get_param_specs(state->engine, fx->type, &specs, &spec_count);
-            float values[FX_MAX_PARAMS];
-            FxParamMode modes[FX_MAX_PARAMS];
-            float beats[FX_MAX_PARAMS];
-            uint32_t pcount = undo_fx_collect_params(fx, specs, spec_count, values, modes, beats);
-            for (uint32_t p = 0; p < pcount; ++p) {
-                FxParamMode mode = modes[p];
-                float beat_value = beats[p];
-                float native_value = values[p];
-                const EffectParamSpec* spec = (specs && p < spec_count) ? &specs[p] : NULL;
-                bool use_sync = (mode != FX_PARAM_MODE_NATIVE) && fx_param_spec_is_syncable(spec);
-                if (use_sync) {
-                    native_value = fx_param_spec_beats_to_native(spec, beat_value, &state->tempo);
-                }
-                if (use_sync) {
-                    engine_fx_track_set_param_with_mode(state->engine, track_index, id, p, native_value, mode, beat_value);
-                } else {
-                    engine_fx_track_set_param(state->engine, track_index, id, p, native_value);
-                }
-            }
-            if (!fx->enabled) {
-                engine_fx_track_set_enabled(state->engine, track_index, id, false);
-            }
-        }
-    }
-    return true;
+    return removed && engine_track_history_remove(state->engine, removed);
 }
 
-static bool apply_track_edit(AppState* state, const UndoTrackEdit* edit, bool apply_after) {
-    if (!state || !edit || !state->engine) {
-        return false;
+// Reserves all track history before the engine can add or remove authored content.
+bool undo_manager_edit_track(AppState* state, int track_index, bool add) {
+    if (!state || !state->engine || state->undo.active_drag_valid || track_index < 0 ||
+        track_index > engine_get_track_count(state->engine)) return false;
+    EngineClipContentSnapshot* snapshot = engine_track_history_capture(state->engine, add ? -1 : track_index);
+    if (!snapshot) return undo_manager_reject(&state->undo, "Track edit not applied: history preparation failed.");
+    UndoCommand command = {.type = UNDO_CMD_TRACK_EDIT};
+    command.data.track_edit.track_index = track_index;
+    const EngineTrack* tracks = engine_get_tracks(state->engine);
+    command.data.track_edit.left_track_id = track_index > 0 ? tracks[track_index - 1].runtime_id : 0;
+    int right = add ? track_index : track_index + 1;
+    command.data.track_edit.right_track_id = right < engine_get_track_count(state->engine) ? tracks[right].runtime_id : 0;
+    if (add) command.clip_content_after = snapshot;
+    else command.clip_content_before = snapshot;
+    bool reserved = undo_manager_begin_drag(&state->undo, &command);
+    engine_clip_content_release(snapshot);
+    if (!reserved) return false;
+    bool accepted = apply_track_edit(state, &state->undo.active_drag, true);
+    if (!accepted) {
+        undo_manager_cancel_drag(&state->undo);
+        return undo_manager_reject(&state->undo, "Track edit not applied: target changed or preparation failed.");
     }
-    const SessionTrack* target = NULL;
-    if (apply_after) {
-        if (edit->has_after) {
-            target = &edit->after;
-        }
-    } else {
-        if (edit->has_before) {
-            target = &edit->before;
-        }
-    }
-    int track_index = edit->track_index;
-    int track_count = engine_get_track_count(state->engine);
-    if (!target) {
-        if (track_index >= 0 && track_index < track_count) {
-            return engine_remove_track(state->engine, track_index);
-        }
-        return false;
-    }
-    if (track_index < 0) {
-        track_index = track_count;
-    }
-    if (track_index < track_count) {
-        engine_remove_track(state->engine, track_index);
-    }
-    if (!engine_insert_track(state->engine, track_index)) {
-        return false;
-    }
-    effects_panel_ensure_eq_curve_tracks(state, engine_get_track_count(state->engine));
-    return apply_session_track(state, track_index, target);
+    return undo_manager_commit_drag(&state->undo, &state->undo.active_drag);
 }
 
 static int find_clip_by_creation_index(const EngineTrack* track, uint64_t creation_index) {
@@ -689,16 +459,17 @@ static bool apply_eq_curve(AppState* state, const UndoEqCurveEdit* edit, bool ap
     EngineEqCurve engine_curve;
     eq_curve_to_engine(&ui_curve, &engine_curve);
     if (edit->is_master) {
+        if (!engine_set_master_eq_curve(state->engine, &engine_curve)) return false;
         state->effects_panel.eq_curve_master = ui_curve;
         if (state->effects_panel.eq_detail.view_mode == EQ_DETAIL_VIEW_MASTER) {
             state->effects_panel.eq_curve = ui_curve;
         }
-        engine_set_master_eq_curve(state->engine, &engine_curve);
         return true;
     }
     if (edit->track_index < 0) {
         return false;
     }
+    if (!engine_set_track_eq_curve(state->engine, edit->track_index, &engine_curve)) return false;
     if (state->effects_panel.eq_curve_tracks &&
         edit->track_index < state->effects_panel.eq_curve_tracks_count) {
         state->effects_panel.eq_curve_tracks[edit->track_index] = ui_curve;
@@ -707,7 +478,6 @@ static bool apply_eq_curve(AppState* state, const UndoEqCurveEdit* edit, bool ap
         state->effects_panel.target_track_index == edit->track_index) {
         state->effects_panel.eq_curve = ui_curve;
     }
-    engine_set_track_eq_curve(state->engine, edit->track_index, &engine_curve);
     return true;
 }
 
@@ -756,41 +526,18 @@ static bool apply_fx_edit(AppState* state, UndoFxEdit* edit, bool apply_after) {
         case UNDO_FX_EDIT_ADD:
         case UNDO_FX_EDIT_REMOVE: {
             bool do_add = (edit->kind == UNDO_FX_EDIT_ADD) ? apply_after : !apply_after;
-            const SessionFxInstance* inst = do_add ? &edit->after_state : &edit->before_state;
+            const SessionFxInstance* inst = apply_after ? &edit->after_state : &edit->before_state;
             if (do_add) {
-                FxInstId id = is_track
-                                  ? engine_fx_track_add(state->engine, track_index, inst->type)
-                                  : engine_fx_master_add(state->engine, inst->type);
-                if (id == 0) {
-                    return false;
+                FxMasterInstanceInfo restored = {.id = edit->id, .type = inst->type,
+                    .enabled = inst->enabled, .param_count = inst->param_count};
+                if (inst->param_count > FX_MAX_PARAMS) return false;
+                for (uint32_t p = 0; p < inst->param_count; ++p) {
+                    restored.params[p] = inst->params[p];
+                    restored.param_mode[p] = inst->param_mode[p];
+                    restored.param_beats[p] = inst->param_beats[p];
                 }
-                edit->id = id;
-                for (uint32_t i = 0; i < inst->param_count; ++i) {
-                    FxParamMode mode = inst->param_mode[i];
-                    float beat_value = inst->param_beats[i];
-                    if (mode != FX_PARAM_MODE_NATIVE) {
-                        is_track
-                            ? engine_fx_track_set_param_with_mode(state->engine, track_index, id, i,
-                                                                  inst->params[i], mode, beat_value)
-                            : engine_fx_master_set_param_with_mode(state->engine, id, i,
-                                                                   inst->params[i], mode, beat_value);
-                    } else {
-                        is_track
-                            ? engine_fx_track_set_param(state->engine, track_index, id, i, inst->params[i])
-                            : engine_fx_master_set_param(state->engine, id, i, inst->params[i]);
-                    }
-                }
-                if (inst->enabled) {
-                    is_track
-                        ? engine_fx_track_set_enabled(state->engine, track_index, id, true)
-                        : engine_fx_master_set_enabled(state->engine, id, true);
-                }
-                int index = apply_after ? edit->after_index : edit->before_index;
-                if (index >= 0) {
-                    is_track
-                        ? engine_fx_track_reorder(state->engine, track_index, id, index)
-                        : engine_fx_master_reorder(state->engine, id, index);
-                }
+                int position = apply_after ? edit->after_index : edit->before_index;
+                if (!engine_fx_restore_instance(state->engine, is_track ? track_index : -1, position, &restored)) return false;
             } else {
                 bool removed = is_track
                                    ? engine_fx_track_remove(state->engine, track_index, edit->id)
@@ -807,10 +554,65 @@ static bool apply_fx_edit(AppState* state, UndoFxEdit* edit, bool apply_after) {
     }
 }
 
+// Returns the track address fields for history families that act on track-owned processing.
+static bool undo_command_track_fields(UndoCommand* command, int** index, uint64_t** identity) {
+    if (command->type == UNDO_CMD_FX_EDIT && command->data.fx_edit.target == UNDO_FX_TARGET_TRACK) {
+        *index = &command->data.fx_edit.track_index; *identity = &command->data.fx_edit.track_runtime_id;
+    } else if (command->type == UNDO_CMD_EQ_CURVE && !command->data.eq_curve_edit.is_master) {
+        *index = &command->data.eq_curve_edit.track_index; *identity = &command->data.eq_curve_edit.track_runtime_id;
+    } else if (command->type == UNDO_CMD_TRACK_SNAPSHOT && !command->data.track_snapshot_edit.is_master) {
+        *index = &command->data.track_snapshot_edit.track_index; *identity = &command->data.track_snapshot_edit.track_runtime_id;
+    } else return false;
+    return true;
+}
+
+// Captures track identity before an application history entry is reserved or recorded.
+bool undo_command_bind_track(AppState* state, UndoCommand* command) {
+    if (!state || !state->engine || !command) return false;
+    int* index; uint64_t* identity;
+    if (!undo_command_track_fields(command, &index, &identity)) return true;
+    if (*index < 0 || *index >= engine_get_track_count(state->engine)) return false;
+    *identity = engine_get_tracks(state->engine)[*index].runtime_id;
+    return true;
+}
+
 bool undo_apply(AppState* state, UndoCommand* command, bool apply_after) {
     if (!state || !command || !state->engine) {
         return false;
     }
+    int* track_index; uint64_t* track_id;
+    if (undo_command_track_fields(command, &track_index, &track_id) && *track_id) {
+        int resolved = -1;
+        const EngineTrack* tracks = engine_get_tracks(state->engine);
+        for (int t = 0; t < engine_get_track_count(state->engine); ++t)
+            if (tracks[t].runtime_id == *track_id) { resolved = t; break; }
+        if (resolved < 0) return false;
+        *track_index = resolved;
+    }
+    if (command->type == UNDO_CMD_TRACK_EDIT) return apply_track_edit(state, command, apply_after);
+    if (command->type == UNDO_CMD_CLIP_CONTENT && (command->clip_content_before || command->clip_content_after)) {
+        UndoClipContentSelection* edit = &command->data.clip_content_selection;
+        if (edit->created_count > 0) {
+            int expected = edit->created_start + (apply_after ? 0 : edit->created_count);
+            if (!edit->created_tracks || engine_get_track_count(state->engine) != expected) return false;
+            if (!apply_after) for (int i = 0; i < edit->created_count; ++i) {
+                int t = edit->created_start + i;
+                const EngineTrack* track = &engine_get_tracks(state->engine)[t];
+                UndoCreatedTrack current; undo_created_track_capture(track, &current);
+                FxMasterSnapshot fx;
+                if (memcmp(&current, &edit->created_tracks[i], sizeof(current)) != 0 ||
+                    track->midi_instrument_automation_lane_count != 0 ||
+                    !engine_fx_track_snapshot(state->engine, t, &fx) || fx.count != 0) return false;
+            }
+        }
+        bool ok = engine_clip_content_restore(state->engine, apply_after ? command->clip_content_after : command->clip_content_before);
+        if (ok && apply_after) for (int i = 0; i < edit->created_count; ++i)
+            undo_created_track_capture(&engine_get_tracks(state->engine)[edit->created_start + i], &edit->created_tracks[i]);
+        return ok;
+    }
+    if ((command->clip_content_before || command->clip_content_after) &&
+        !(command->type == UNDO_CMD_MULTI_CLIP_TRANSFORM && command->data.multi_clip_transform.created_count > 0))
+        return engine_clip_content_restore(state->engine, apply_after ? command->clip_content_after : command->clip_content_before);
     switch (command->type) {
         case UNDO_CMD_CLIP_TRANSFORM: {
             const UndoClipTransform* clip = &command->data.clip_transform;
@@ -822,14 +624,56 @@ bool undo_apply(AppState* state, UndoCommand* command, bool apply_after) {
         case UNDO_CMD_CLIP_RENAME:
             return apply_clip_rename(state, &command->data.clip_rename, apply_after);
         case UNDO_CMD_MULTI_CLIP_TRANSFORM: {
-            const UndoMultiClipTransform* multi = &command->data.multi_clip_transform;
-            bool ok = true;
-            for (int i = 0; i < multi->count; ++i) {
-                const UndoClipState* target = apply_after ? &multi->after[i] : &multi->before[i];
-                if (!apply_clip_state(state, target)) {
-                    ok = false;
+            UndoMultiClipTransform* multi = &command->data.multi_clip_transform;
+            if (multi->count <= 0 || !multi->before || !multi->after) return false;
+            if (multi->created_count > 0) {
+                int expected = multi->created_start + (apply_after ? 0 : multi->created_count);
+                if (!multi->created_tracks || engine_get_track_count(state->engine) != expected) return false;
+                if (!apply_after) for (int i = 0; i < multi->created_count; ++i) {
+                    int t = multi->created_start + i;
+                    const EngineTrack* track = &engine_get_tracks(state->engine)[t];
+                    UndoCreatedTrack current; undo_created_track_capture(track, &current);
+                    FxMasterSnapshot fx;
+                    if (memcmp(&current, &multi->created_tracks[i], sizeof(current)) != 0 ||
+                        track->midi_instrument_automation_lane_count != 0 ||
+                        !engine_fx_track_snapshot(state->engine, t, &fx) || fx.count != 0) return false;
                 }
             }
+            if (command->clip_content_before || command->clip_content_after) {
+                bool ok = engine_clip_content_restore(state->engine, apply_after ? command->clip_content_after : command->clip_content_before);
+                if (ok && apply_after) for (int i = 0; i < multi->created_count; ++i)
+                    undo_created_track_capture(&engine_get_tracks(state->engine)[multi->created_start + i], &multi->created_tracks[i]);
+                return ok;
+            }
+            EngineClipBatchTransform* edits = calloc((size_t)multi->count, sizeof(*edits));
+            if (!edits) return false;
+            for (int i = 0; i < multi->count; ++i) {
+                const UndoClipState* target = apply_after ? &multi->after[i] : &multi->before[i];
+                edits[i].creation_index = target->creation_index;
+                edits[i].destination_track = undo_clip_destination(state->engine, target);
+                if (apply_after && multi->created_count > 0 && target->track_index >= multi->created_start &&
+                    target->track_index < multi->created_start + multi->created_count)
+                    edits[i].destination_track = target->track_index;
+                edits[i].transform = (EngineClipTransform){
+                    .start_frame = target->start_frame, .offset_frames = target->offset_frames,
+                    .duration_frames = target->duration_frames, .gain = target->gain,
+                    .fade_in_frames = target->fade_in_frames, .fade_out_frames = target->fade_out_frames,
+                    .fade_in_curve = target->fade_in_curve, .fade_out_curve = target->fade_out_curve,
+                    .instrument_preset = target->instrument_preset, .instrument_params = target->instrument_params,
+                    .instrument_inherits_track = target->instrument_inherits_track,
+                    .midi_notes = target->midi_notes, .midi_note_count = target->midi_note_count,
+                };
+            }
+            bool ok = !apply_after && multi->created_count > 0
+                ? engine_transform_clips_trim_tracks(state->engine, edits, multi->count, multi->created_start)
+                : engine_transform_clips(state->engine, edits, multi->count);
+            if (ok && apply_after && multi->created_count > 0) {
+                for (int i = 0; i < multi->created_count; ++i)
+                    undo_created_track_capture(&engine_get_tracks(state->engine)[multi->created_start + i], &multi->created_tracks[i]);
+                for (int i = 0; i < multi->count; ++i)
+                    multi->after[i].track_runtime_id = engine_get_tracks(state->engine)[edits[i].destination_track].runtime_id;
+            }
+            free(edits);
             return ok;
         }
         case UNDO_CMD_AUTOMATION_EDIT:
@@ -853,7 +697,7 @@ bool undo_apply(AppState* state, UndoCommand* command, bool apply_after) {
         case UNDO_CMD_FX_EDIT:
             return apply_fx_edit(state, &command->data.fx_edit, apply_after);
         case UNDO_CMD_TRACK_EDIT:
-            return apply_track_edit(state, &command->data.track_edit, apply_after);
+            return apply_track_edit(state, command, apply_after);
         case UNDO_CMD_TRACK_RENAME:
             return apply_track_rename(state, &command->data.track_rename, apply_after);
         case UNDO_CMD_LIBRARY_RENAME:
@@ -864,4 +708,43 @@ bool undo_apply(AppState* state, UndoCommand* command, bool apply_after) {
         default:
             return false;
     }
+}
+
+// Applies a discrete action through the same reservation and rejection rules as gestures.
+bool undo_manager_apply_edit(AppState* state, UndoCommand* command) {
+    if (!state || !command || !undo_command_bind_track(state, command) ||
+        !undo_manager_begin_drag(&state->undo, command)) return false;
+    if (!undo_apply(state, &state->undo.active_drag, true)) {
+        undo_manager_cancel_drag(&state->undo);
+        return undo_manager_reject(&state->undo, "Edit not applied: target changed or preparation failed.");
+    }
+    return undo_manager_commit_drag(&state->undo, &state->undo.active_drag);
+}
+
+// Transfers complete effect history from a prepared engine candidate without post-edit allocation.
+FxInstId undo_manager_add_effect(AppState* state, int track_index, FxTypeId type) {
+    if (!state || !state->engine) return 0;
+    UndoCommand command = {.type = UNDO_CMD_FX_EDIT};
+    command.data.fx_edit.target = track_index < 0 ? UNDO_FX_TARGET_MASTER : UNDO_FX_TARGET_TRACK;
+    command.data.fx_edit.track_index = track_index;
+    command.data.fx_edit.kind = UNDO_FX_EDIT_ADD;
+    command.data.fx_edit.before_index = -1;
+    if (!undo_command_bind_track(state, &command) || !undo_manager_begin_drag(&state->undo, &command)) return 0;
+    FxMasterInstanceInfo result; int position;
+    FxInstId id = engine_fx_add_capture(state->engine, track_index, type, &result, &position);
+    if (!id) {
+        undo_manager_cancel_drag(&state->undo);
+        undo_manager_reject(&state->undo, "Effect not added: preparation failed.");
+        return 0;
+    }
+    UndoFxEdit* edit = &state->undo.active_drag.data.fx_edit;
+    edit->id = id; edit->after_index = position;
+    edit->after_state.type = result.type; edit->after_state.enabled = result.enabled;
+    edit->after_state.param_count = result.param_count;
+    for (uint32_t p = 0; p < result.param_count; ++p) {
+        edit->after_state.params[p] = result.params[p];
+        edit->after_state.param_mode[p] = result.param_mode[p];
+        edit->after_state.param_beats[p] = result.param_beats[p];
+    }
+    return undo_manager_commit_drag(&state->undo, &state->undo.active_drag) ? id : 0;
 }

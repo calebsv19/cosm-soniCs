@@ -1,0 +1,108 @@
+{
+  "recorded_at_utc": "2026-09-19T21:25:13.754482+00:00",
+  "base_head": "d8bff97cccab2054f18ccc874838162d0423e539",
+  "scope": "bounded clip-transform acceptance and S1 checklist reconciliation; broader S1 remains partial",
+  "process_evidence": "Each listed command was observed to terminate with exit code 0 through its original exec session. Full logs remain temporary; selected acceptance lines and hashes are retained here.",
+  "runs": [
+    {
+      "name": "asan",
+      "command": "make -f /tmp/daw-s1-asan.mk test-engine-parameter-transaction test-engine-source-lifetime test-timeline-midi-region",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s1-closeout-asan.log",
+      "full_log_sha256": "d031360a8366614a984ab3271f94fdb25882a75e689497c172b3fdf35d97cc28",
+      "full_log_bytes": 382781,
+      "acceptance_lines": [
+        "engine_parameter_transaction_test: success",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)",
+        "timeline_midi_region_test: ok"
+      ]
+    },
+    {
+      "name": "regression",
+      "command": "make test-stable test-legacy",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s1-closeout-regression.log",
+      "full_log_sha256": "fc58722d7c7b4b14212edca03c7cd837da7feb1dba0344fca3b6ecfff1c050f6",
+      "full_log_bytes": 563927,
+      "acceptance_lines": [
+        "engine_parameter_transaction_test: success",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)",
+        "daw_pack_contract_parity_test: success",
+        "daw_trace_export_contract_test: success",
+        "daw_trace_export_async_contract_test: success",
+        "kit_viz_waveform_adapter_test: success",
+        "kit_viz_fx_preview_adapter_test: success",
+        "kit_viz_meter_adapter_test: ok",
+        "waveform_cache_pack_warmstart_test: success",
+        "layout_text_scaling_sweep_test: success",
+        "timeline_contract_test: success",
+        "midi_model_test: success",
+        "midi_instrument_render_test: success",
+        "timeline_midi_region_test: ok",
+        "midi_editor_shell_test: success",
+        "audio_capture_device_test: success",
+        "audio_output_device_test: success",
+        "effects_revision_test: success",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)",
+        "audio_recording_test: success",
+        "track_role_test: success",
+        "daw_data_path_contract_test: success",
+        "daw_workspace_authoring_host_test: ok",
+        "test-library-copy-vs-reference-contract: success",
+        "daw stable test lane passed",
+        "[legacy] running test-session",
+        "2026-09-19 14:21:52.186 session_serialization_test[56663:187773424] INFO: session_serialization_test: success (6898 bytes)",
+        "[legacy] running test-cache",
+        "media_cache_stress_test: success (entries=0)",
+        "[legacy] running test-overlap",
+        "clip_overlap_priority_test: success (clips=3)",
+        "[legacy] running test-smoke",
+        "engine_smoke_test: success",
+        "[legacy] running test-shared-theme-font-adapter",
+        "shared_theme_font_adapter_test: success"
+      ]
+    },
+    {
+      "name": "tsan",
+      "command": "make -f /tmp/daw-s1-tsan.mk test-engine-parameter-transaction test-engine-source-lifetime",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s1-closeout-tsan.log",
+      "full_log_sha256": "40a979ec0f0f9899e77d29eff537569e7c77767c4d4de26e04345591a51b562d",
+      "full_log_bytes": 352853,
+      "acceptance_lines": [
+        "engine_parameter_transaction_test: success",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)"
+      ]
+    },
+    {
+      "name": "build",
+      "command": "make",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s1-closeout-build.log",
+      "full_log_sha256": "a1eefaac210122a86ae71237346f131300c276f83a45c02762d61d7d434d63dc",
+      "full_log_bytes": 49881,
+      "acceptance_lines": []
+    }
+  ],
+  "reviewed_source_sha256": {
+    "include/engine/engine.h": "ac37d5a6637e56554877d4c543ac579c20f02d423289e916015aa6a65a08a80e",
+    "src/engine/engine_clips.c": "a2cbffa5ff0cba19b2c3f353b70e30664ad8639fbec2201a1e5c8d6386a6ec44",
+    "src/undo/undo_manager.c": "bf975a3e15c33c094e581161811a7062a3e8e7dd918f9dc37075ceacd1fc07bd",
+    "tests/engine_parameter_transaction_test.c": "8fb7bef77c7fb1f0ca6f06ff250cc24edc2523bfb9ea74ed269f630da3204a29",
+    "tests/engine_source_lifetime_test.c": "bdc7c5f7ab3555c31310001417f12d56e89a54933037950c5e460f9558524938",
+    "tests/timeline_midi_region_test.c": "d61c7f382a75a383f744fd26ff353f50875118ea35f16b89c87c376a1359356c",
+    "make/sources-tests.mk": "9dcb899d2760b216ee97fbd6b1e979d928404f67c4ffbb1ac5c4b80d6cd89e31"
+  },
+  "sanitizer_wrappers": {
+    "/tmp/daw-s1-asan.mk": "override BUILD_DIR := /tmp/daw-s1-asan-isolated\ninclude /Users/calebsv/Desktop/CodeWork/daw/Makefile\nCFLAGS += -fsanitize=address -fno-omit-frame-pointer -g\nLDFLAGS += -fsanitize=address\n",
+    "/tmp/daw-s1-tsan.mk": "override BUILD_DIR := /tmp/daw-s1-tsan-isolated\ninclude /Users/calebsv/Desktop/CodeWork/daw/Makefile\nCFLAGS += -fsanitize=thread -fno-omit-frame-pointer -g\nLDFLAGS += -fsanitize=thread\n"
+  },
+  "limits": [
+    "Not every vendored dependency is sanitizer-instrumented.",
+    "Concurrent source stress covers the shared transfer path, not a dedicated concurrent complete-transform scenario.",
+    "No physical-device, listening, manual visual, installation, or release acceptance.",
+    "No broader compound transaction implementation in this closeout."
+  ]
+}

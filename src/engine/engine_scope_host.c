@@ -2,6 +2,7 @@
 #include "core/loop/daw_mainthread_messages.h"
 
 #include <stdlib.h>
+#include <limits.h>
 #include <string.h>
 
 // Initializes a scope bank with empty taps and ready ring buffers.
@@ -195,48 +196,54 @@ int engine_get_fx_scope_samples(const Engine* engine,
     if (!engine) {
         return 0;
     }
-    return engine_scope_read_samples(&engine->scope_host, is_master, track_index, id, kind, out_samples, max_samples);
+    SDL_LockMutex(engine->meter_mutex);
+    int count = engine_scope_read_samples(&engine->scope_host, is_master, track_index, id, kind, out_samples, max_samples);
+    SDL_UnlockMutex(engine->meter_mutex);
+    return count;
 }
 
 void engine_scope_write_gr(Engine* engine, bool is_master, int track_index, FxInstId id, float gr_db) {
     if (!engine) {
         return;
     }
+    if (SDL_TryLockMutex(engine->meter_mutex) != 0) return;
     engine_scope_write_scalar(&engine->scope_host,
                               is_master,
                               track_index,
                               id,
                               ENGINE_SCOPE_STREAM_GAIN_REDUCTION,
                               gr_db);
+    SDL_UnlockMutex(engine->meter_mutex);
 }
 
-bool engine_scope_ensure_track_capacity(Engine* engine, int required_tracks) {
-    if (!engine || required_tracks <= engine->scope_host.track_capacity) {
-        return true;
+// Builds new scope banks separately and preserves the old host on any allocation failure.
+static bool engine_scope_ensure_track_capacity_locked(Engine* engine, int required_tracks) {
+    if (!engine || required_tracks < 0) return false;
+    EngineScopeHost* host = &engine->scope_host;
+    if (required_tracks <= host->track_capacity) return true;
+    int capacity = host->track_capacity > 0 ? host->track_capacity : 1;
+    while (capacity < required_tracks) {
+        if (capacity > INT_MAX / 2) return false;
+        capacity *= 2;
     }
-    int new_capacity = engine->scope_host.track_capacity;
-    if (new_capacity < 1) {
-        new_capacity = 1;
-    }
-    while (new_capacity < required_tracks) {
-        new_capacity *= 2;
-    }
-    EngineFxScopeBank* resized = (EngineFxScopeBank*)realloc(engine->scope_host.tracks,
-                                                             sizeof(EngineFxScopeBank) * (size_t)new_capacity);
-    if (!resized) {
-        return false;
-    }
-    engine->scope_host.tracks = resized;
-    for (int i = engine->scope_host.track_capacity; i < new_capacity; ++i) {
-        if (!engine_scope_init_bank(&engine->scope_host.tracks[i])) {
+    if ((size_t)capacity > SIZE_MAX / sizeof(EngineFxScopeBank)) return false;
+    EngineFxScopeBank* banks = calloc((size_t)capacity, sizeof(*banks));
+    if (!banks) return false;
+    for (int t = host->track_capacity; t < capacity; ++t) {
+        if (!engine_scope_init_bank(&banks[t])) {
+            for (int done = host->track_capacity; done < t; ++done) engine_scope_free_bank(&banks[done]);
+            free(banks);
             return false;
         }
     }
-    engine->scope_host.track_capacity = new_capacity;
+    if (host->track_capacity) memcpy(banks, host->tracks, (size_t)host->track_capacity * sizeof(*banks));
+    free(host->tracks);
+    host->tracks = banks;
+    host->track_capacity = capacity;
     return true;
 }
 
-bool engine_scope_insert_track_bank(Engine* engine, int track_index) {
+static bool engine_scope_insert_track_bank_locked(Engine* engine, int track_index) {
     if (!engine || track_index < 0 || track_index > engine->track_count) {
         return false;
     }
@@ -249,7 +256,7 @@ bool engine_scope_insert_track_bank(Engine* engine, int track_index) {
     return true;
 }
 
-void engine_scope_remove_track_bank(Engine* engine, int track_index) {
+static void engine_scope_remove_track_bank_locked(Engine* engine, int track_index) {
     if (!engine || !engine->scope_host.tracks ||
         track_index < 0 || track_index >= engine->track_count) {
         return;
@@ -288,6 +295,11 @@ void engine_register_fx_scope_tap(Engine* engine) {
     SDL_UnlockMutex(engine->fxm_mutex);
 }
 
+// Connects a prepared render effect manager to the existing scope delivery adapter.
+void engine_bind_fx_scope_tap(Engine* engine, EffectsManager* fxm) {
+    if (engine && fxm) fxm_set_scope_tap_callback(fxm, engine_fx_scope_tap_callback, engine);
+}
+
 // Initializes scope host storage for a newly created engine.
 bool engine_scope_host_init(Engine* engine, int track_capacity) {
     if (!engine) {
@@ -304,7 +316,7 @@ void engine_scope_host_free(Engine* engine) {
     engine_scope_free(&engine->scope_host);
 }
 
-void engine_scope_reset_track_bank(Engine* engine, int track_index) {
+static void engine_scope_reset_track_bank_locked(Engine* engine, int track_index) {
     if (!engine || !engine->scope_host.tracks) {
         return;
     }
@@ -318,4 +330,38 @@ void engine_scope_reset_track_bank(Engine* engine, int track_index) {
         bank->taps[i].kind = ENGINE_SCOPE_STREAM_NONE;
         ringbuf_reset(&bank->taps[i].buffer);
     }
+}
+
+// Serializes control-side scope storage changes with nonblocking worker delivery.
+bool engine_scope_ensure_track_capacity(Engine* engine, int required_tracks) {
+    if (!engine) return false;
+    SDL_LockMutex(engine->meter_mutex);
+    bool ok = engine_scope_ensure_track_capacity_locked(engine, required_tracks);
+    SDL_UnlockMutex(engine->meter_mutex);
+    return ok;
+}
+
+// Serializes control-side scope storage changes with nonblocking worker delivery.
+bool engine_scope_insert_track_bank(Engine* engine, int track_index) {
+    if (!engine) return false;
+    SDL_LockMutex(engine->meter_mutex);
+    bool ok = engine_scope_insert_track_bank_locked(engine, track_index);
+    SDL_UnlockMutex(engine->meter_mutex);
+    return ok;
+}
+
+// Serializes control-side scope storage changes with nonblocking worker delivery.
+void engine_scope_remove_track_bank(Engine* engine, int track_index) {
+    if (!engine) return;
+    SDL_LockMutex(engine->meter_mutex);
+    engine_scope_remove_track_bank_locked(engine, track_index);
+    SDL_UnlockMutex(engine->meter_mutex);
+}
+
+// Serializes control-side scope storage changes with nonblocking worker delivery.
+void engine_scope_reset_track_bank(Engine* engine, int track_index) {
+    if (!engine) return;
+    SDL_LockMutex(engine->meter_mutex);
+    engine_scope_reset_track_bank_locked(engine, track_index);
+    SDL_UnlockMutex(engine->meter_mutex);
 }

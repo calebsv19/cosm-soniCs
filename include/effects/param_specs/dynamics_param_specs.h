@@ -28,7 +28,7 @@ static const EffectParamSpec kLimiterParamSpecs[] = {
         .curve = FX_PARAM_CURVE_LINEAR,
         .ui_hint = FX_PARAM_UI_SLIDER,
         .flags = FX_PARAM_FLAG_AUTOMATABLE,
-        .smoothing_ms = 10.0f
+        .smoothing_ms = 0.0f // Integer delay changes once at the render block boundary.
     },
     {
         .id = "release_ms",

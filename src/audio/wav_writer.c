@@ -1,135 +1,151 @@
 #include "audio/wav_writer.h"
+#include "daw/save_file.h"
 
 #include <math.h>
 #include <stdio.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 
-static void write_u32_le(FILE* f, uint32_t v){
-    unsigned char b[4];
-    b[0] = (unsigned char)(v & 0xff);
-    b[1] = (unsigned char)((v >> 8) & 0xff);
-    b[2] = (unsigned char)((v >> 16) & 0xff);
-    b[3] = (unsigned char)((v >> 24) & 0xff);
-    fwrite(b, 1, 4, f);
+// Encodes a little-endian integer independently of the host byte order.
+static void wav_u32(unsigned char* bytes, uint32_t value) {
+    for (int i = 0; i < 4; ++i) bytes[i] = (unsigned char)(value >> (i * 8));
 }
 
-static void write_u16_le(FILE* f, uint16_t v){
-    unsigned char b[2];
-    b[0] = (unsigned char)(v & 0xff);
-    b[1] = (unsigned char)((v >> 8) & 0xff);
-    fwrite(b, 1, 2, f);
+// Encodes a little-endian RIFF short.
+static void wav_u16(unsigned char* bytes, uint16_t value) {
+    bytes[0] = (unsigned char)value;
+    bytes[1] = (unsigned char)(value >> 8);
 }
 
-static inline uint32_t lcg_advance(uint32_t* state) {
-    *state = (*state * 1664525u) + 1013904223u;
+// Advances the deterministic dither generator.
+static uint32_t lcg_advance(uint32_t* state) {
+    *state = *state * 1664525u + 1013904223u;
     return *state;
 }
 
-bool wav_write_pcm16_dithered(const char* path,
-                              const float* data,
-                              uint64_t frames,
-                              int channels,
-                              int sample_rate,
-                              uint32_t dither_seed) {
-    if (!path || !data || frames == 0 || channels <= 0 || sample_rate <= 0) {
+// Opens a private WAV candidate with a provisional header and bounded conversion state.
+bool wav_stream_begin(WavStreamWriter* writer, const char* path, int channels, int rate,
+                      uint32_t seed, bool floating) {
+    if (!writer) return false;
+    *writer = (WavStreamWriter){0};
+    unsigned width = floating ? 4 : 2;
+    if (!path || channels < 1 || channels > UINT16_MAX / (int)width || rate < 1 ||
+        (uint64_t)rate * channels * width > UINT32_MAX) return false;
+    writer->channels = channels;
+    writer->rate = rate;
+    writer->floating = floating;
+    writer->dither = seed != 0;
+    writer->rng = seed;
+    if (!daw_save_file_begin(&writer->save, path)) return false;
+    writer->active = true;
+    unsigned char header[44] = {0};
+    if (fwrite(header, 1, sizeof(header), writer->save.file) != sizeof(header)) {
+        wav_stream_abort(writer);
         return false;
     }
+    return true;
+}
 
-    FILE* f = fopen(path, "wb");
-    if (!f) {
+// Converts complete interleaved frames while carrying deterministic dither across chunk boundaries.
+bool wav_stream_append(WavStreamWriter* writer, const float* data, uint64_t frames) {
+    if (!writer || !writer->active || writer->failed) return false;
+    if (!data || !frames) { writer->failed = true; return false; }
+    unsigned width = writer->floating ? 4 : 2;
+    uint64_t limit = (UINT32_MAX - 36u) / ((uint64_t)writer->channels * width);
+    if (frames > limit - writer->frames || frames > SIZE_MAX / sizeof(float) / writer->channels) {
+        writer->failed = true;
         return false;
     }
-
-    const uint16_t bits_per_sample = 16;
-    const uint16_t audio_format = 1; // PCM
-    uint32_t data_bytes = (uint32_t)(frames * (uint64_t)channels * (bits_per_sample / 8));
-    uint32_t riff_size = 36 + data_bytes;
-
-    // RIFF header
-    fwrite("RIFF", 1, 4, f);
-    write_u32_le(f, riff_size);
-    fwrite("WAVE", 1, 4, f);
-
-    // fmt chunk
-    fwrite("fmt ", 1, 4, f);
-    write_u32_le(f, 16); // PCM fmt chunk size
-    write_u16_le(f, audio_format);
-    write_u16_le(f, (uint16_t)channels);
-    write_u32_le(f, (uint32_t)sample_rate);
-    uint32_t byte_rate = (uint32_t)(sample_rate * channels * (bits_per_sample / 8));
-    uint16_t block_align = (uint16_t)(channels * (bits_per_sample / 8));
-    write_u32_le(f, byte_rate);
-    write_u16_le(f, block_align);
-    write_u16_le(f, bits_per_sample);
-
-    // data chunk
-    fwrite("data", 1, 4, f);
-    write_u32_le(f, data_bytes);
-
-    const float lsb = 1.0f / 32768.0f;
-    bool apply_dither = dither_seed != 0;
-    uint32_t rng = dither_seed;
-    for (uint64_t i = 0; i < frames; ++i) {
-        for (int ch = 0; ch < channels; ++ch) {
-            float v = data[i * (uint64_t)channels + (uint64_t)ch];
-            if (apply_dither) {
-                float r1 = (float)(lcg_advance(&rng) & 0xFFFFFF) / (float)0x1000000;
-                float r2 = (float)(lcg_advance(&rng) & 0xFFFFFF) / (float)0x1000000;
-                float tpdf = (r1 + r2 - 1.0f) * lsb;
-                v += tpdf;
+    unsigned char chunk[16384];
+    uint64_t total = frames * writer->channels;
+    for (uint64_t offset = 0; offset < total;) {
+        size_t count = total - offset;
+        if (count > sizeof(chunk) / width) count = sizeof(chunk) / width;
+        for (size_t i = 0; i < count; ++i) {
+            float value = data[offset + i];
+            if (!isfinite(value)) { writer->failed = true; return false; }
+            if (writer->floating) {
+                uint32_t bits;
+                memcpy(&bits, &value, sizeof(bits));
+                wav_u32(chunk + i * width, bits);
+            } else {
+                if (writer->dither) {
+                    float a = (float)(lcg_advance(&writer->rng) & 0xffffff) / 16777216.0f;
+                    float b = (float)(lcg_advance(&writer->rng) & 0xffffff) / 16777216.0f;
+                    value += (a + b - 1) / 32768.0f;
+                }
+                if (value > 1) value = 1;
+                if (value < -1) value = -1;
+                wav_u16(chunk + i * width, (uint16_t)(int16_t)lrintf(value * 32767.0f));
             }
-            if (v > 1.0f) v = 1.0f;
-            if (v < -1.0f) v = -1.0f;
-            int16_t s = (int16_t)lrintf(v * 32767.0f);
-            write_u16_le(f, (uint16_t)s);
         }
+        if (fwrite(chunk, width, count, writer->save.file) != count) {
+            writer->failed = true;
+            return false;
+        }
+        offset += count;
     }
-
-    fclose(f);
+    writer->frames += frames;
     return true;
 }
 
-bool wav_write_pcm16(const char* path, const float* data, uint64_t frames, int channels, int sample_rate) {
-    return wav_write_pcm16_dithered(path, data, frames, channels, sample_rate, 0);
+// Removes an unpublished candidate while preserving any preceding destination.
+void wav_stream_abort(WavStreamWriter* writer) {
+    if (!writer || !writer->active) return;
+    daw_save_file_abort(&writer->save);
+    writer->active = false;
 }
 
-bool wav_write_f32(const char* path, const float* data, uint64_t frames, int channels, int sample_rate) {
-    if (!path || !data || frames == 0 || channels <= 0 || sample_rate <= 0) {
-        return false;
+// Seals the actual frame count before durable publication and reports directory uncertainty separately.
+DawSaveResult wav_stream_finish(WavStreamWriter* writer) {
+    if (!writer || !writer->active) return DAW_SAVE_FAILED;
+    if (writer->failed || !writer->frames) { wav_stream_abort(writer); return DAW_SAVE_FAILED; }
+    unsigned width = writer->floating ? 4 : 2;
+    uint32_t bytes = (uint32_t)(writer->frames * writer->channels * width);
+    unsigned char header[44] = {0};
+    memcpy(header, "RIFF", 4); wav_u32(header + 4, 36 + bytes); memcpy(header + 8, "WAVEfmt ", 8);
+    wav_u32(header + 16, 16); wav_u16(header + 20, writer->floating ? 3 : 1);
+    wav_u16(header + 22, (uint16_t)writer->channels); wav_u32(header + 24, (uint32_t)writer->rate);
+    wav_u32(header + 28, (uint32_t)writer->rate * writer->channels * width);
+    wav_u16(header + 32, (uint16_t)(writer->channels * width));
+    wav_u16(header + 34, (uint16_t)(width * 8)); memcpy(header + 36, "data", 4); wav_u32(header + 40, bytes);
+    if (fseek(writer->save.file, 0, SEEK_SET) != 0 ||
+        fwrite(header, 1, sizeof(header), writer->save.file) != sizeof(header) ||
+        !daw_save_file_prepare(&writer->save)) {
+        wav_stream_abort(writer);
+        return DAW_SAVE_FAILED;
     }
+    writer->active = false;
+    return daw_save_file_commit(&writer->save);
+}
 
-    FILE* f = fopen(path, "wb");
-    if (!f) {
-        return false;
-    }
+// Delegates contiguous callers to the same checked streaming conversion and publication path.
+static DawSaveResult wav_write_atomic(const char* path, const float* data, uint64_t frames,
+                                     int channels, int rate, uint32_t seed, bool floating) {
+    WavStreamWriter writer;
+    if (!data || !frames || !wav_stream_begin(&writer, path, channels, rate, seed, floating))
+        return DAW_SAVE_FAILED;
+    if (!wav_stream_append(&writer, data, frames)) { wav_stream_abort(&writer); return DAW_SAVE_FAILED; }
+    return wav_stream_finish(&writer);
+}
 
-    const uint16_t bits_per_sample = 32;
-    const uint16_t audio_format = 3; // IEEE float
-    uint32_t data_bytes = (uint32_t)(frames * (uint64_t)channels * (bits_per_sample / 8));
-    uint32_t riff_size = 36 + data_bytes;
+// Returns the exact publication/durability result for recorded PCM audio.
+DawSaveResult wav_write_pcm16_dithered_result(const char* path, const float* data, uint64_t frames,
+                                             int channels, int rate, uint32_t seed) {
+    return wav_write_atomic(path, data, frames, channels, rate, seed, false);
+}
 
-    fwrite("RIFF", 1, 4, f);
-    write_u32_le(f, riff_size);
-    fwrite("WAVE", 1, 4, f);
+// Reports success only after both file and directory synchronization succeed.
+bool wav_write_pcm16_dithered(const char* path, const float* data, uint64_t frames, int channels, int rate, uint32_t seed) {
+    return wav_write_pcm16_dithered_result(path, data, frames, channels, rate, seed) == DAW_SAVE_SYNCED;
+}
 
-    fwrite("fmt ", 1, 4, f);
-    write_u32_le(f, 16);
-    write_u16_le(f, audio_format);
-    write_u16_le(f, (uint16_t)channels);
-    write_u32_le(f, (uint32_t)sample_rate);
-    uint32_t byte_rate = (uint32_t)(sample_rate * channels * (bits_per_sample / 8));
-    uint16_t block_align = (uint16_t)(channels * (bits_per_sample / 8));
-    write_u32_le(f, byte_rate);
-    write_u16_le(f, block_align);
-    write_u16_le(f, bits_per_sample);
+// Writes checked PCM16 without adding dither.
+bool wav_write_pcm16(const char* path, const float* data, uint64_t frames, int channels, int rate) {
+    return wav_write_pcm16_dithered(path, data, frames, channels, rate, 0);
+}
 
-    fwrite("data", 1, 4, f);
-    write_u32_le(f, data_bytes);
-
-    size_t total = (size_t)frames * (size_t)channels;
-    fwrite(data, sizeof(float), total, f);
-    fclose(f);
-    return true;
+// Writes checked float32 WAV data without quantization or host-endian assumptions.
+bool wav_write_f32(const char* path, const float* data, uint64_t frames, int channels, int rate) {
+    return wav_write_atomic(path, data, frames, channels, rate, 0, true) == DAW_SAVE_SYNCED;
 }

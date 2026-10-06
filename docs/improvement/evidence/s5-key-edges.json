@@ -1,0 +1,19 @@
+{
+  "status": "software_checks_passed_native_postfix_unqualified",
+  "checks": {
+    "/tmp/daw-s5-key-edge-tests.log": {
+      "sha256": "2ec394c60e87e3979a7cff92a6c3e1f356e84a210274ddf0bd027a3ca9fd03ff"
+    },
+    "/tmp/daw-s5-key-edge-asan.log": {
+      "sha256": "cde2a2aaa39a9fabdfba718c91630442b12ad1d69d36ef160f18e945687e1bdd"
+    },
+    "/tmp/daw-s5-key-edge-regression.log": {
+      "sha256": "7b69dfa3c2e4abc53522aaf5007c667be10e931e617159a090dd73dd693cb044"
+    },
+    "/tmp/daw-s5-key-edge-final-make.log": {
+      "sha256": "d8285a16223c9e738f98c2eaa31289db566e0ec1f483ba0891fa69b958546f5a"
+    }
+  },
+  "native": "AXError.cannotComplete; isolated process stopped with exit 0; no post-fix UI acceptance claimed",
+  "remaining": "MIDI composed trim, other history identities and visible rejection, native workflow acceptance, subsequent S5 slices"
+}

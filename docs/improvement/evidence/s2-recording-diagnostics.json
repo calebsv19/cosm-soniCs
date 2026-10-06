@@ -1,0 +1,198 @@
+{
+  "schema": 1,
+  "slices": [
+    "S2.5",
+    "S2.6"
+  ],
+  "recorded_at": "2026-09-19T23:31:31.858351+00:00",
+  "head": "d8bff97cccab2054f18ccc874838162d0423e539",
+  "state": "local uncommitted working tree; prior S1-S2 changes preserved",
+  "runs": [
+    {
+      "command": "make test-media-durability test-audio-recording test-session",
+      "exit_code": 0,
+      "log": "/tmp/daw-s25-targeted.log",
+      "sha256": "16fa14a651140290d85e965259e17f7fb1e856b965d7c1d59e6528bdaecf8c48",
+      "selected_output": [
+        "media_durability_test: success (5 prepublication failures, directory uncertainty, RIFF limits, torn journal recovery)",
+        "audio_recording_test: success",
+        "2026-09-19 16:21:06.725 session_serialization_test[43311:188422651] INFO: session_serialization_test: success (6898 bytes)"
+      ]
+    },
+    {
+      "command": "make test-audio-recording",
+      "exit_code": 0,
+      "log": "/tmp/daw-s25-recording.log",
+      "sha256": "676b9c6278738291f4e74c7faf9c4efde3308ff41d51984139d6db28867b6920",
+      "selected_output": [
+        "audio_recording_test: success"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-media-durability test-audio-recording test-session-transaction test-session-atomic-save",
+      "exit_code": 0,
+      "log": "/tmp/daw-s25-asan.log",
+      "sha256": "a5afc444c51576ab481ac7175d3de05ed7550eb3378620d2ebfb900fb03945ee",
+      "selected_output": [
+        "media_durability_test: success (5 prepublication failures, directory uncertainty, RIFF limits, torn journal recovery)",
+        "audio_recording_test: success",
+        "session_transaction_test: success (11 capture and 5 restore allocation boundaries, live capture, rollback, complete retry)",
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-tsan.mk test-audio-recording",
+      "exit_code": 0,
+      "log": "/tmp/daw-s25-tsan.log",
+      "sha256": "90fec66704e99c672369f43e6dc45e63952280571970008dd5c893a8a80b9628",
+      "selected_output": [
+        "audio_recording_test: success"
+      ]
+    },
+    {
+      "command": "make test-stable test-legacy",
+      "exit_code": 0,
+      "log": "/tmp/daw-s25-s26-regression.log",
+      "sha256": "be51427dee782282c884e70c035b43964fe919405232671ea9f0a259eaf4f3b0",
+      "selected_output": [
+        "media_durability_test: success (5 prepublication failures, directory uncertainty, RIFF limits, torn journal recovery)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "session_transaction_test: success (11 capture and 5 restore allocation boundaries, live capture, rollback, complete retry)",
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)",
+        "engine_parameter_transaction_test: success",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)",
+        "daw_pack_contract_parity_test: success",
+        "daw_trace_export_contract_test: success",
+        "daw_trace_export_async_contract_test: success",
+        "kit_viz_waveform_adapter_test: success",
+        "kit_viz_fx_preview_adapter_test: success",
+        "waveform_cache_pack_warmstart_test: success",
+        "layout_text_scaling_sweep_test: success",
+        "timeline_contract_test: success",
+        "midi_model_test: success",
+        "midi_instrument_render_test: success",
+        "midi_editor_shell_test: success",
+        "audio_capture_device_test: success",
+        "audio_output_device_test: success",
+        "effects_revision_test: success",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)",
+        "audio_recording_test: success",
+        "track_role_test: success",
+        "daw_data_path_contract_test: success",
+        "test-library-copy-vs-reference-contract: success",
+        "daw stable test lane passed",
+        "2026-09-19 16:26:00.159 session_serialization_test[58681:188471253] INFO: session_serialization_test: success (6898 bytes)",
+        "media_cache_stress_test: success (entries=0)",
+        "clip_overlap_priority_test: success (clips=3)",
+        "engine_smoke_test: success",
+        "shared_theme_font_adapter_test: success"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-engine-transport-clock test-engine-command-delivery test-audio-recording test-media-durability",
+      "exit_code": 0,
+      "log": "/tmp/daw-s25-s26-asan.log",
+      "sha256": "c27a8126bff300b00e4c68dde229ab8b22f0683961f3e5ad17232691c1068ae3",
+      "selected_output": [
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "audio_recording_test: success",
+        "media_durability_test: success (5 prepublication failures, directory uncertainty, RIFF limits, torn journal recovery)"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-tsan.mk test-engine-transport-clock test-engine-command-delivery test-audio-recording",
+      "exit_code": 0,
+      "log": "/tmp/daw-s25-s26-tsan.log",
+      "sha256": "ff3e0f0a097e8733ff5ae1e06b7c66b92df214fd60d167d61e3a647e2632c06e",
+      "selected_output": [
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "audio_recording_test: success"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-tsan.mk test-audio-recording",
+      "exit_code": 0,
+      "log": "/tmp/daw-s25-s26-live-tsan.log",
+      "sha256": "fa30a5eddbbb889f3565f4198d4542af1131b9a4438bb1d9c4d50eb2b893bd53",
+      "selected_output": [
+        "audio_recording_test: success"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-audio-recording",
+      "exit_code": 0,
+      "log": "/tmp/daw-s25-s26-live-asan.log",
+      "sha256": "5656b964c39d50900a21f08500860f08abb1695f952976cb6de296f49ccc60f4",
+      "selected_output": [
+        "audio_recording_test: success"
+      ]
+    },
+    {
+      "command": "make test-audio-recording",
+      "exit_code": 0,
+      "log": "/tmp/daw-s25-s26-final-recording.log",
+      "sha256": "bf5a3362f6c0cd10c2a7309f55d26afde81f9813c4c8c44f7c5b366f437cf77e",
+      "selected_output": [
+        "audio_recording_test: success"
+      ]
+    },
+    {
+      "command": "make",
+      "exit_code": 0,
+      "log": "/tmp/daw-s25-s26-build.log",
+      "sha256": "d69fbc6d924887c8912e83dda9d0ff05a31d3697fcf80ab1580794c8261d0ed2",
+      "selected_output": []
+    },
+    {
+      "command": "Built application --recover-take JOURNAL /tmp/daw-s25-cli-recovered.wav",
+      "exit_code": 0,
+      "log": "/tmp/daw-s25-recovery-cli.log",
+      "sha256": "a8b85effa3d6294aca802dab13ef006096f52a357ebddf964ec54da10bfffddc",
+      "selected_output": [
+        "Recovered 128 frames at 48000 Hz, 1 channels; project start 0; incomplete tail no",
+        "exit: 0"
+      ]
+    }
+  ],
+  "source_sha256": {
+    "include/app/audio_recording.h": "f6a592083363e67e46d3dd00b29f8e98a5b82a878ca45d70d3e2faf9d8745d2f",
+    "include/audio/wav_writer.h": "744f963f67113df4face05f8e3dcd1ad4947ae2a9a7d521023a0c48e19a8c1b5",
+    "include/audio/take_journal.h": "bfe114900db2ecf15d1067ef166ed83c800bbba244e41f224f955e9d1611ebd1",
+    "include/engine/engine.h": "7092fff887afa0f1a85a7939af6fc523528f83b34c8745fe61f91643403c5e9c",
+    "include/engine/engine_internal.h": "dc36efe90b2428230f2862e571ad0a05b0307cf4f382d0fee1d082132c195497",
+    "src/app/audio_recording.c": "4f6d76537479f55e1590e73bd4486ac7c5403a32c9bfa25b49bdab12be27a0dc",
+    "src/app/main.c": "1f24b66697401eb87b131dbdcbc1dd5592d7c8cb66364febdffb7d4f7d953f60",
+    "src/audio/wav_writer.c": "27f1de009c47ebbd35a4db6ba4e02733691dba1b130cb2abc45d04ea1a39e64b",
+    "src/audio/take_journal.c": "26b8d9bdea39b9f3ffb0a0537224971b6073ce3a93d740759df8898154bb75b5",
+    "src/audio/audio_capture_device_sdl.c": "5910ae78f94ebf345bc779396b99bdd208804cb1165d19546a75403c8bd41e6c",
+    "src/engine/engine_clock.c": "4323be80fcc7fdc79354a9a7e54c259991995fe5fd7352eefbbd06983b85696a",
+    "src/engine/engine_core.c": "b89691c909e752dfa967a11d52b0fa874f83502e17422c5be98fad20d9ebff2e",
+    "src/engine/engine_core_commands.c": "f5ef215bef7456f8cdd2e28c29bd50d21c577caa0e83ebad2ee6caa44662d1c0",
+    "src/engine/engine_audio.c": "1dedd9d5f2bec8dd676c08c712c2ed327b656e4bea0bf105effd6a6d1e9cef7e",
+    "src/session/session_apply.c": "1bd7e7a8e09b31b9a3add6767c2882ceef7ee231145e61eac65fd809906a2885",
+    "src/ui/overlay/timeline_view_runtime_overlays.c": "f06627d08245787437ec078304c3af1fc3c5787eb9c207c3bf662d6439c373f1",
+    "tests/audio_recording_test.c": "f01f314e6290ad4bfdc14f5d71919754d98a3a6b9418e6a9518170fbf77180a3",
+    "tests/media_durability_test.c": "f5ce2d9fde550023bedc6ca75c04e9b5236270264be638e93f7b708646fd01ac",
+    "tests/engine_transport_clock_test.c": "0a66a2060bc646293ec032b72a020159a9ffdc8c744c55b94e326b178fbe85d7",
+    "make/rules-test-core.mk": "6e64ae0e869ce857118cbef8c2597ebf7bc9047c94b32a5964e35700f57e6ddc",
+    "make/sources-app.mk": "7e61014114e445c0c9e0ac6f27f8b6d9b336b164431e80c1cd161f7b17f5a035",
+    "make/sources-tests.mk": "c4da4e6ae4054d4eebe14b427b3a7de0733c0734ef79d2d32233606f6d5ca020"
+  },
+  "sanitizer_wrappers": {
+    "/tmp/daw-s1-asan.mk": "override BUILD_DIR := /tmp/daw-s1-asan-isolated\ninclude /Users/calebsv/Desktop/CodeWork/daw/Makefile\nCFLAGS += -fsanitize=address -fno-omit-frame-pointer -g\nLDFLAGS += -fsanitize=address\n",
+    "/tmp/daw-s1-tsan.mk": "override BUILD_DIR := /tmp/daw-s1-tsan-isolated\ninclude /Users/calebsv/Desktop/CodeWork/daw/Makefile\nCFLAGS += -fsanitize=thread -fno-omit-frame-pointer -g\nLDFLAGS += -fsanitize=thread\n"
+  },
+  "proof_limits": [
+    "Software clocks and SDL dummy endpoints, not physical input/output latency or hardware xrun proof.",
+    "Final concurrent aligned-capture test was added after the full stable/legacy run; that test passed normal, ASan, and TSan afterwards.",
+    "WAV and journal durability checks do not establish power-cut durability on every filesystem.",
+    "Journals require explicit recovery and manual import; no automatic recovery browser or cleanup.",
+    "RAM-backed preview/recovery and synchronous main-thread checkpoint IO remain S4 work.",
+    "Timeline status integration compiled and formatter tested; manual visual acceptance not performed.",
+    "No installation, release, commit, or S3 implementation."
+  ]
+}

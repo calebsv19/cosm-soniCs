@@ -2,6 +2,7 @@
 
 #include "engine/instrument.h"
 #include "engine/midi.h"
+#include <math.h>
 
 static bool engine_midi_note_fits_duration(const EngineMidiNote* note, uint64_t duration_frames) {
     if (!engine_midi_note_is_valid(note)) {
@@ -25,8 +26,9 @@ bool engine_midi_notes_fit_duration(const EngineMidiNoteList* notes, uint64_t du
     return true;
 }
 
+// Looks up an existing MIDI clip on its owning control thread.
 static EngineClip* engine_get_midi_clip_mutable(Engine* engine, int track_index, int clip_index) {
-    if (!engine || track_index < 0 || track_index >= engine->track_count) {
+    if (!engine || SDL_ThreadID() != engine->control_thread_id || track_index < 0 || track_index >= engine->track_count) {
         return NULL;
     }
     EngineTrack* track = &engine->tracks[track_index];
@@ -40,83 +42,109 @@ static EngineClip* engine_get_midi_clip_mutable(Engine* engine, int track_index,
     return clip;
 }
 
-bool engine_clip_midi_add_note(Engine* engine,
-                               int track_index,
-                               int clip_index,
-                               EngineMidiNote note,
-                               int* out_note_index) {
-    EngineClip* clip = engine_get_midi_clip_mutable(engine, track_index, clip_index);
-    if (!clip) {
+// Publishes replacement notes while preserving the original allocation on rejection.
+static bool engine_midi_commit_notes(Engine* engine, EngineClip* clip, EngineMidiNoteList* replacement) {
+    EngineMidiNoteList previous = clip->midi_notes;
+    clip->midi_notes = *replacement;
+    if (!engine_request_rebuild_sources(engine)) {
+        clip->midi_notes = previous;
+        engine_midi_note_list_free(replacement);
         return false;
     }
-    if (!engine_midi_note_fits_duration(&note, clip->duration_frames)) {
-        return false;
-    }
-    bool ok = engine_midi_note_list_insert(&clip->midi_notes, note, out_note_index);
-    if (ok) {
-        engine_request_rebuild_sources(engine);
-    }
-    return ok;
+    engine_midi_note_list_free(&previous);
+    engine_midi_note_list_init(replacement);
+    return true;
 }
 
-bool engine_clip_midi_update_note(Engine* engine,
-                                  int track_index,
-                                  int clip_index,
-                                  int note_index,
-                                  EngineMidiNote note,
-                                  int* out_note_index) {
+// Prepares the add note edit before exposing changed notes or output indices.
+bool engine_clip_midi_add_note(Engine* engine, int track_index, int clip_index, EngineMidiNote note, int* out_note_index) {
     EngineClip* clip = engine_get_midi_clip_mutable(engine, track_index, clip_index);
-    if (!clip) {
+    if (!clip || !engine_midi_note_fits_duration(&note, clip->duration_frames)) return false;
+    EngineMidiNoteList replacement = {0};
+    if (!engine_midi_note_list_set(&replacement, clip->midi_notes.notes, clip->midi_notes.note_count)) return false;
+    int result = 0;
+    if (!engine_midi_note_list_insert(&replacement, note, &result)) {
+        engine_midi_note_list_free(&replacement);
         return false;
     }
-    if (!engine_midi_note_fits_duration(&note, clip->duration_frames)) {
-        return false;
-    }
-    bool ok = engine_midi_note_list_update(&clip->midi_notes, note_index, note, out_note_index);
-    if (ok) {
-        engine_request_rebuild_sources(engine);
-    }
-    return ok;
+    if (!engine_midi_commit_notes(engine, clip, &replacement)) return false;
+    if (out_note_index) *out_note_index = result;
+    return true;
 }
 
+// Prepares the update note edit before exposing changed notes or output indices.
+bool engine_clip_midi_update_note(Engine* engine, int track_index, int clip_index, int note_index, EngineMidiNote note, int* out_note_index) {
+    EngineClip* clip = engine_get_midi_clip_mutable(engine, track_index, clip_index);
+    if (!clip || !engine_midi_note_fits_duration(&note, clip->duration_frames)) return false;
+    EngineMidiNoteList replacement = {0};
+    if (!engine_midi_note_list_set(&replacement, clip->midi_notes.notes, clip->midi_notes.note_count)) return false;
+    int result = 0;
+    if (!engine_midi_note_list_update(&replacement, note_index, note, &result)) {
+        engine_midi_note_list_free(&replacement);
+        return false;
+    }
+    if (!engine_midi_commit_notes(engine, clip, &replacement)) return false;
+    if (out_note_index) *out_note_index = result;
+    return true;
+}
+
+// Prepares the remove note edit before exposing changed notes or output indices.
 bool engine_clip_midi_remove_note(Engine* engine, int track_index, int clip_index, int note_index) {
     EngineClip* clip = engine_get_midi_clip_mutable(engine, track_index, clip_index);
-    if (!clip) {
+    if (!clip || note_index < 0 || note_index >= clip->midi_notes.note_count) return false;
+    EngineMidiNoteList replacement = {0};
+    if (!engine_midi_note_list_set(&replacement, clip->midi_notes.notes, clip->midi_notes.note_count)) return false;
+    if (!engine_midi_note_list_remove(&replacement, note_index)) {
+        engine_midi_note_list_free(&replacement);
         return false;
     }
-    bool ok = engine_midi_note_list_remove(&clip->midi_notes, note_index);
-    if (ok) {
-        engine_request_rebuild_sources(engine);
-    }
-    return ok;
+    if (!engine_midi_commit_notes(engine, clip, &replacement)) return false;
+    return true;
 }
 
-bool engine_clip_midi_set_notes(Engine* engine,
-                                int track_index,
-                                int clip_index,
-                                const EngineMidiNote* notes,
-                                int note_count) {
+// Replaces all notes with a validated independent list and retains old notes on rejection.
+bool engine_clip_midi_set_notes(Engine* engine, int track_index, int clip_index,
+                                const EngineMidiNote* notes, int note_count) {
     EngineClip* clip = engine_get_midi_clip_mutable(engine, track_index, clip_index);
-    if (!clip || note_count < 0) {
+    if (!clip) return false;
+    EngineMidiNoteList replacement = {0};
+    if (!engine_midi_note_list_set(&replacement, notes, note_count)) return false;
+    if (!engine_midi_notes_fit_duration(&replacement, clip->duration_frames)) {
+        engine_midi_note_list_free(&replacement);
         return false;
     }
-    if (note_count > 0 && !notes) {
-        return false;
-    }
-    EngineMidiNoteList replacement;
-    engine_midi_note_list_init(&replacement);
-    bool ok = engine_midi_note_list_set(&replacement, notes, note_count);
-    if (ok) {
-        ok = engine_midi_notes_fit_duration(&replacement, clip->duration_frames);
-    }
-    if (ok) {
-        engine_midi_note_list_free(&clip->midi_notes);
-        clip->midi_notes = replacement;
-        engine_midi_note_list_init(&replacement);
-        engine_request_rebuild_sources(engine);
-    }
-    engine_midi_note_list_free(&replacement);
-    return ok;
+    return engine_midi_commit_notes(engine, clip, &replacement);
+}
+
+// Looks up a control-owned track without implicit structural changes.
+static EngineTrack* engine_midi_track_for_edit(Engine* engine, int index) {
+    if (!engine || SDL_ThreadID() != engine->control_thread_id || index < 0 || index >= engine->track_count) return NULL;
+    return &engine->tracks[index];
+}
+
+// Restores track instrument metadata when a complete render revision cannot be prepared.
+static bool engine_midi_commit_track(Engine* engine, EngineTrack* track, const EngineTrack* previous) {
+    if (engine_request_rebuild_sources(engine)) return true;
+    track->midi_instrument_enabled = previous->midi_instrument_enabled;
+    track->midi_instrument_preset = previous->midi_instrument_preset;
+    track->midi_instrument_params = previous->midi_instrument_params;
+    return false;
+}
+
+// Restores clip instrument metadata when a complete render revision cannot be prepared.
+static bool engine_midi_commit_clip(Engine* engine, EngineClip* clip, const EngineClip* previous) {
+    if (engine_request_rebuild_sources(engine)) return true;
+    clip->instrument_inherits_track = previous->instrument_inherits_track;
+    clip->instrument_preset = previous->instrument_preset;
+    clip->instrument_params = previous->instrument_params;
+    return false;
+}
+
+// Rejects non-finite instrument values before sanitization or publication.
+static bool engine_midi_params_finite(EngineInstrumentParams params) {
+    for (int i = 0; i < ENGINE_INSTRUMENT_PARAM_COUNT; ++i)
+        if (!isfinite(engine_instrument_params_get(params, (EngineInstrumentParamId)i))) return false;
+    return true;
 }
 
 int engine_clip_midi_note_count(const EngineClip* clip) {
@@ -166,14 +194,16 @@ EngineInstrumentParams engine_track_midi_instrument_params(const Engine* engine,
     return engine_instrument_params_sanitize(preset, engine->tracks[track_index].midi_instrument_params);
 }
 
+// Publishes a track preset and its defaults or restores the previous instrument settings.
 bool engine_track_midi_set_instrument_preset(Engine* engine,
                                              int track_index,
                                              EngineInstrumentPresetId preset) {
-    EngineTrack* track = engine_get_track_mutable(engine, track_index);
+    EngineTrack* track = engine_midi_track_for_edit(engine, track_index);
     if (!track) {
         return false;
     }
     EngineInstrumentPresetId clamped = engine_instrument_preset_clamp(preset);
+    EngineTrack previous = *track;
     if (track->midi_instrument_enabled &&
         track->midi_instrument_preset == clamped) {
         return true;
@@ -181,8 +211,7 @@ bool engine_track_midi_set_instrument_preset(Engine* engine,
     track->midi_instrument_enabled = true;
     track->midi_instrument_preset = clamped;
     track->midi_instrument_params = engine_instrument_default_params(clamped);
-    engine_request_rebuild_sources(engine);
-    return true;
+    return engine_midi_commit_track(engine, track, &previous);
 }
 
 static bool engine_instrument_params_equal(EngineInstrumentParams a, EngineInstrumentParams b) {
@@ -195,11 +224,12 @@ static bool engine_instrument_params_equal(EngineInstrumentParams a, EngineInstr
     return true;
 }
 
+// Publishes finite track instrument parameters or restores the previous settings.
 bool engine_track_midi_set_instrument_params(Engine* engine,
                                              int track_index,
                                              EngineInstrumentParams params) {
-    EngineTrack* track = engine_get_track_mutable(engine, track_index);
-    if (!track) {
+    EngineTrack* track = engine_midi_track_for_edit(engine, track_index);
+    if (!track || !engine_midi_params_finite(params)) {
         return false;
     }
     EngineInstrumentPresetId preset = engine_instrument_preset_clamp(track->midi_instrument_preset);
@@ -208,25 +238,27 @@ bool engine_track_midi_set_instrument_params(Engine* engine,
         engine_instrument_params_equal(track->midi_instrument_params, clamped)) {
         return true;
     }
+    EngineTrack previous = *track;
     track->midi_instrument_enabled = true;
     track->midi_instrument_params = clamped;
-    engine_request_rebuild_sources(engine);
-    return true;
+    return engine_midi_commit_track(engine, track, &previous);
 }
 
+// Publishes the track instrument enabled state or restores it on rejection.
 bool engine_track_midi_set_instrument_enabled(Engine* engine, int track_index, bool enabled) {
-    EngineTrack* track = engine_get_track_mutable(engine, track_index);
+    EngineTrack* track = engine_midi_track_for_edit(engine, track_index);
     if (!track) {
         return false;
     }
     if (track->midi_instrument_enabled == enabled) {
         return true;
     }
+    EngineTrack previous = *track;
     track->midi_instrument_enabled = enabled;
-    engine_request_rebuild_sources(engine);
-    return true;
+    return engine_midi_commit_track(engine, track, &previous);
 }
 
+// Publishes clip inheritance changes without retaining a rejected setting.
 bool engine_clip_midi_set_inherits_track_instrument(Engine* engine,
                                                     int track_index,
                                                     int clip_index,
@@ -238,9 +270,9 @@ bool engine_clip_midi_set_inherits_track_instrument(Engine* engine,
     if (clip->instrument_inherits_track == inherits_track) {
         return true;
     }
+    EngineClip previous = *clip;
     clip->instrument_inherits_track = inherits_track;
-    engine_request_rebuild_sources(engine);
-    return true;
+    return engine_midi_commit_clip(engine, clip, &previous);
 }
 
 EngineInstrumentPresetId engine_clip_midi_effective_instrument_preset(const Engine* engine,
@@ -281,6 +313,7 @@ EngineInstrumentParams engine_clip_midi_effective_instrument_params(const Engine
     return engine_clip_midi_instrument_params(clip);
 }
 
+// Publishes a clip preset override and defaults or restores the prior override.
 bool engine_clip_midi_set_instrument_preset(Engine* engine,
                                             int track_index,
                                             int clip_index,
@@ -293,11 +326,11 @@ bool engine_clip_midi_set_instrument_preset(Engine* engine,
     if (clip->instrument_preset == clamped && !clip->instrument_inherits_track) {
         return true;
     }
+    EngineClip previous = *clip;
     clip->instrument_preset = clamped;
     clip->instrument_params = engine_instrument_default_params(clamped);
     clip->instrument_inherits_track = false;
-    engine_request_rebuild_sources(engine);
-    return true;
+    return engine_midi_commit_clip(engine, clip, &previous);
 }
 
 EngineInstrumentParams engine_clip_midi_instrument_params(const EngineClip* clip) {
@@ -308,12 +341,13 @@ EngineInstrumentParams engine_clip_midi_instrument_params(const EngineClip* clip
     return engine_instrument_params_sanitize(preset, clip->instrument_params);
 }
 
+// Publishes a finite clip parameter override or restores its prior inheritance and settings.
 bool engine_clip_midi_set_instrument_params(Engine* engine,
                                             int track_index,
                                             int clip_index,
                                             EngineInstrumentParams params) {
     EngineClip* clip = engine_get_midi_clip_mutable(engine, track_index, clip_index);
-    if (!clip) {
+    if (!clip || !engine_midi_params_finite(params)) {
         return false;
     }
     EngineInstrumentPresetId preset = clip->instrument_inherits_track
@@ -325,20 +359,21 @@ bool engine_clip_midi_set_instrument_params(Engine* engine,
     if (engine_instrument_params_equal(clip->instrument_params, clamped) && !clip->instrument_inherits_track) {
         return true;
     }
+    EngineClip previous = *clip;
     clip->instrument_preset = preset;
     clip->instrument_params = clamped;
     clip->instrument_inherits_track = false;
-    engine_request_rebuild_sources(engine);
-    return true;
+    return engine_midi_commit_clip(engine, clip, &previous);
 }
 
+// Validates one instrument parameter before applying the transactional override.
 bool engine_clip_midi_set_instrument_param(Engine* engine,
                                            int track_index,
                                            int clip_index,
                                            EngineInstrumentParamId param,
                                            float value) {
     EngineClip* clip = engine_get_midi_clip_mutable(engine, track_index, clip_index);
-    if (!clip) {
+    if (!clip || param < 0 || param >= ENGINE_INSTRUMENT_PARAM_COUNT || !isfinite(value)) {
         return false;
     }
     EngineInstrumentPresetId preset = clip->instrument_inherits_track

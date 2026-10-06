@@ -1,0 +1,69 @@
+{
+  "status": "compound_timeline_duplicate_delete_software_verified_S5_active",
+  "coverage": [
+    "mixed audio MIDI complete selection duplicate delete",
+    "one publication with intercepted allocation and publication rejection",
+    "missing repeated target rejection",
+    "MIDI notes automation and decoded media retention",
+    "actual Ctrl Cmd D key event with event-local modifiers",
+    "one reserved undo entry and selection restoration",
+    "repeated undo redo after source unlink",
+    "rejected application actions preserve redo and selection",
+    "focused normal ASan tests full stable legacy tests default make"
+  ],
+  "retained_failures": [
+    "shortcut initially read current global modifier state",
+    "primary selection initially disagreed with restored inspector anchor"
+  ],
+  "limits": [
+    "native GUI acceptance pending",
+    "paste other compound edits other history identities and visible rejection remain"
+  ],
+  "logs": [
+    {
+      "path": "/tmp/daw-s5-content-edit-tests.log",
+      "exit_code": 2,
+      "sha256": "6f12d517790a4151bc3c387660b25335eb802861f411dc8f312ac9bc4c6f25d1"
+    },
+    {
+      "path": "/tmp/daw-s5-content-edit-retest.log",
+      "exit_code": 2,
+      "sha256": "f3515b81e4f39d8d3ece2fcc13b984feebeefee75f2ca82e64babffff225de1f"
+    },
+    {
+      "path": "/tmp/daw-s5-content-edit-final-tests.log",
+      "exit_code": 0,
+      "sha256": "3f4a879f96f37d9ac7402c27b527319448610da5c262818c90f7127b678cb369"
+    },
+    {
+      "path": "/tmp/daw-s5-content-edit-asan.log",
+      "exit_code": 0,
+      "sha256": "3e19014c9f3ef247f8866634f867b323b8c097d5e010b444c3b9daaf473aaf52"
+    },
+    {
+      "path": "/tmp/daw-s5-content-edit-regression.log",
+      "exit_code": 0,
+      "sha256": "c6f8c8c6c5aec209922002bc5681bb65e306d20cc37ddbbd0cbbea222d41b37b"
+    },
+    {
+      "path": "/tmp/daw-s5-content-edit-final-make.log",
+      "exit_code": 0,
+      "sha256": "0afbabb0d21aebd21072bcafae2407c74a469ea5acbd00f313a08cf2e3c8acc7"
+    },
+    {
+      "path": "/tmp/daw-s5-content-edit-docs.log",
+      "exit_code": 0,
+      "sha256": "85ca01e8cd6d54659f6767836f5faa97c37cab48ce3081faa02784321177bf9c"
+    }
+  ],
+  "source_sha256": {
+    "src/engine/engine_clip_history.c": "3a6597773bfcb83d32ac1a2dfb65d125e09021ee298c2b1603f4e3145d451be1",
+    "src/input/timeline/timeline_selection.c": "f411482e368cb612bc99c30152bc82d451f0e17dea73212efba2b03bed4c5094",
+    "src/input/timeline/timeline_input_keyboard.c": "5c445ddff035283e5b43a78631fa3ca33feb458834b733eb43c43d8210240167",
+    "src/undo/undo_manager_clone.c": "c97dc9766ac5a1723a053c504edf2632178c25d1a357fcc47c17acba7f09fd65",
+    "src/undo/undo_manager_stack.c": "b44dc0bdd553a0123f5ac70f89919d29e40533602ef32490859e9cd0a1af942d",
+    "include/undo/undo_manager.h": "75630b3560d9fcfaf73bbadc1f443ae5914f2d7737964a0b8c679439ad7ea48d",
+    "tests/engine_parameter_transaction_test.c": "a92da9da9cbcb564f0802c15544ef0e53aa19c15d65f0b3ca84d07b20fe9eaa3",
+    "tests/timeline_midi_region_test.c": "6d7da313794ace8068292cbe931b042cee60087ce012bf1bd245ea0d5af2cbf7"
+  }
+}

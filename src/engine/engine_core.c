@@ -7,14 +7,19 @@
 #include "core_time.h"
 
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 
+// Services accepted edits and produces queued audio while measuring each complete busy iteration.
 static int engine_worker_main(void* userdata) {
     Engine* engine = (Engine*)userdata;
     if (!engine) {
         return -1;
     }
     engine->worker_thread_id = SDL_ThreadID();
+    // Prefer prompt render-ahead service without requiring privileged real-time scheduling.
+    atomic_store(&engine->diag_worker_priority_status,
+                 SDL_SetThreadPriority(SDL_THREAD_PRIORITY_HIGH) == 0 ? 1 : -1);
     engine->render_warned_fxm_mutex = false;
     engine->render_warned_meter_mutex = false;
     int channels = engine_graph_get_channels(engine->graph);
@@ -22,11 +27,9 @@ static int engine_worker_main(void* userdata) {
         channels = engine->output_queue.channels > 0 ? engine->output_queue.channels : 2;
     }
     const int block = engine->config.block_size;
-    float* block_buffer = (float*)malloc((size_t)block * (size_t)channels * sizeof(float));
-    float* track_buffer = (float*)malloc((size_t)block * (size_t)channels * sizeof(float));
-    if (!block_buffer || !track_buffer) {
-        return -1;
-    }
+    float* block_buffer = engine->render_buffer;
+    float* track_buffer = engine->render_track_buffer;
+    if (!block_buffer || !track_buffer) return -1;
 
     uint64_t last_report_ns = core_time_now_ns();
     uint64_t last_transport_notify_ns = last_report_ns;
@@ -34,38 +37,34 @@ static int engine_worker_main(void* userdata) {
     int accum_blocks = 0;
 
     while (atomic_load_explicit(&engine->worker_running, memory_order_acquire)) {
+        uint64_t cycle_started_ns = core_time_now_ns();
         engine_process_commands(engine);
         bool transport_playing = atomic_load_explicit(&engine->transport_playing, memory_order_acquire);
-        bool audition_active = engine->midi_audition_notes.note_count > 0;
+        engine_midi_audition_retire(engine);
+        bool audition_active = engine->midi_audition_notes.note_count > 0 || engine->midi_audition_tail_until > 0;
+        uint64_t service_ns = core_time_diff_ns(core_time_now_ns(), cycle_started_ns);
         if (!transport_playing && !audition_active) {
+            engine_diagnostics_worker(engine, service_ns, service_ns, false);
             SDL_Delay(2);
             continue;
         }
 
-        if (audio_queue_space_frames(&engine->output_queue) < (size_t)block) {
+        size_t queued = audio_queue_available_frames(&engine->output_queue);
+        size_t target = atomic_load_explicit(&engine->output_target_frames, memory_order_relaxed);
+        if (queued > target || target - queued < (size_t)block ||
+            audio_queue_space_frames(&engine->output_queue) < (size_t)block) {
+            engine_diagnostics_worker(engine, core_time_diff_ns(core_time_now_ns(), cycle_started_ns), service_ns, false);
             SDL_Delay(1);
             continue;
         }
 
-        if (!engine->config.enable_timing_logs) {
+        if (!atomic_load(&engine->runtime_timing_logs)) {
             accum_ms = 0.0;
             accum_blocks = 0;
             last_report_ns = core_time_now_ns();
         }
 
-        int graph_channels = engine_graph_get_channels(engine->graph);
-        if (graph_channels <= 0) {
-            graph_channels = channels;
-        }
-        if (graph_channels != channels) {
-            float* new_buffer = (float*)realloc(block_buffer, (size_t)block * (size_t)graph_channels * sizeof(float));
-            if (!new_buffer) {
-                break;
-            }
-            block_buffer = new_buffer;
-            channels = graph_channels;
-        }
-
+        uint64_t render_started_ns = core_time_now_ns();
         int frames_remaining = block;
         int produced = 0;
         while (frames_remaining > 0) {
@@ -81,7 +80,7 @@ static int engine_worker_main(void* userdata) {
                 : engine->transport_frame + engine->midi_audition_idle_frame;
             bool loop_active = loop_enabled && loop_end > loop_start;
             bool loop_this_block = false;
-            if (loop_active) {
+            if (loop_active && transport_playing) {
                 if (current >= loop_start && current < loop_end) {
                     uint64_t loop_len = loop_end - loop_start;
                     uint64_t frames_until_end = loop_end - current;
@@ -104,7 +103,7 @@ static int engine_worker_main(void* userdata) {
                 chunk = frames_remaining;
             }
 
-            uint64_t start_ns = engine->config.enable_timing_logs ? core_time_now_ns() : 0;
+            uint64_t start_ns = atomic_load(&engine->runtime_timing_logs) ? core_time_now_ns() : 0;
 
             engine_spectrum_begin_block(engine);
             engine_spectrogram_begin_block(engine);
@@ -119,16 +118,18 @@ static int engine_worker_main(void* userdata) {
             } else {
                 engine_mix_midi_audition_only(engine, render_frame, chunk, out_ptr, track_buffer, channels);
             }
+            engine_spectrum_update(engine, out_ptr, chunk, channels);
 
             if (transport_playing) {
-                engine->transport_frame += (uint64_t)chunk;
+                uint64_t frame = engine->transport_frame;
+                engine->transport_frame = engine_clock_advance(frame, (uint64_t)chunk, 0, 0);
             } else {
                 engine->midi_audition_idle_frame += (uint64_t)chunk;
             }
             produced += chunk;
             frames_remaining -= chunk;
 
-            if (engine->config.enable_timing_logs) {
+            if (atomic_load(&engine->runtime_timing_logs)) {
                 uint64_t end_ns = core_time_now_ns();
                 double elapsed_ms = core_time_ns_to_seconds(core_time_diff_ns(end_ns, start_ns)) * 1000.0;
                 accum_ms += elapsed_ms;
@@ -137,6 +138,9 @@ static int engine_worker_main(void* userdata) {
                     double avg_ms = accum_ms / (double)accum_blocks;
                     size_t queued = audio_queue_available_frames(&engine->output_queue);
                     engine_timing_trace(engine, "worker avg render %.3fms (%d blocks) queue=%zu", avg_ms, accum_blocks, queued);
+                    char health[256];
+                    (void)engine_format_diagnostics(engine, health, sizeof(health));
+                    engine_timing_trace(engine, "%s", health);
                     accum_ms = 0.0;
                     accum_blocks = 0;
                     last_report_ns = end_ns;
@@ -148,14 +152,14 @@ static int engine_worker_main(void* userdata) {
                 uint64_t loop_end_cur = atomic_load_explicit(&engine->loop_end_frame, memory_order_acquire);
                 if (atomic_load_explicit(&engine->loop_enabled, memory_order_acquire) && loop_end_cur > loop_start_cur &&
                     engine->transport_frame >= loop_end_cur) {
+                    engine_midi_audition_apply_all_off(engine);
                     engine->transport_frame = loop_start_cur;
-                    engine_graph_reset(engine->graph);
+                    engine_graph_reset(engine_render_source_graph(engine));
                 }
             }
         }
 
         engine_sanitize_block(block_buffer, (size_t)block * (size_t)channels);
-        engine_spectrum_update(engine, block_buffer, block, channels);
 
         uint64_t now_ns = core_time_now_ns();
         if (transport_playing && core_time_diff_ns(now_ns, last_transport_notify_ns) >= 16000000ULL) {
@@ -165,11 +169,11 @@ static int engine_worker_main(void* userdata) {
             last_transport_notify_ns = now_ns;
         }
 
-        audio_queue_write(&engine->output_queue, block_buffer, (size_t)block);
+        engine_clock_write(engine, block_buffer, (size_t)block);
+        engine_diagnostics_render(engine, core_time_diff_ns(core_time_now_ns(), render_started_ns), (size_t)block);
+        engine_diagnostics_worker(engine, core_time_diff_ns(core_time_now_ns(), cycle_started_ns), service_ns, true);
     }
 
-    free(block_buffer);
-    free(track_buffer);
     return 0;
 }
 
@@ -183,21 +187,51 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
     } else {
         config_set_defaults(&engine->config);
     }
+    if (engine->config.output_queue_blocks < 2 || engine->config.output_queue_blocks > 32)
+        engine->config.output_queue_blocks = 32;
+    atomic_init(&engine->output_target_frames, 0);
+    atomic_init(&engine->diag_worker_priority_status, 0);
+    atomic_init(&engine->diag_worker_cycles, 0);
+    atomic_init(&engine->diag_worker_render_cycles, 0);
+    atomic_init(&engine->diag_worker_over_budget, 0);
+    atomic_init(&engine->diag_worker_max_ns, 0);
+    atomic_init(&engine->diag_service_max_ns, 0);
+    engine->tempo = tempo_state_default(engine->config.sample_rate);
     engine->device_started = false;
     engine->worker_thread = NULL;
+    engine->control_thread_id = SDL_ThreadID();
+    atomic_init(&engine->worker_thread_id, 0);
+    atomic_init(&engine->runtime_engine_logs, engine->config.enable_engine_logs);
+    atomic_init(&engine->runtime_timing_logs, engine->config.enable_timing_logs);
+    engine_analysis_init(&engine->spectrum_stream);
+    engine_analysis_init(&engine->spectrogram_stream);
+    atomic_init(&engine->pending_source_plan, NULL);
+    atomic_init(&engine->retired_source_plans, NULL);
+    atomic_init(&engine->command_safety_pending, 0);
+    atomic_init(&engine->diag_processing_latency, 0);
+    atomic_init(&engine->diag_callback_count, 0);
+    atomic_init(&engine->diag_underrun_callbacks, 0);
+    atomic_init(&engine->diag_underrun_frames, 0);
+    atomic_init(&engine->diag_render_blocks, 0);
+    atomic_init(&engine->diag_render_over_budget, 0);
+    atomic_init(&engine->diag_render_max_ns, 0);
+    atomic_init(&engine->diag_command_max_age_ns, 0);
+    atomic_init(&engine->diag_command_last_age_ns, 0);
+    atomic_init(&engine->diag_queue_high_water_frames, 0);
+    atomic_init(&engine->commands_accepted, 0);
+    atomic_init(&engine->commands_rejected, 0);
+    atomic_init(&engine->commands_applied, 0);
+    atomic_init(&engine->command_safety_fallbacks, 0);
     atomic_init(&engine->worker_running, false);
     atomic_init(&engine->transport_playing, false);
+    atomic_init(&engine->playback_requested_token, 0);
+    atomic_init(&engine->playback_applied_token, 0);
+    atomic_init(&engine->playback_safety_token, 0);
     atomic_init(&engine->rebuild_sources_pending, false);
     atomic_init(&engine->record_armed_track_index, -1);
     atomic_init(&engine->loop_enabled, false);
     atomic_init(&engine->loop_start_frame, 0);
     atomic_init(&engine->loop_end_frame, 0);
-    atomic_init(&engine->spectrum_enabled, false);
-    atomic_init(&engine->spectrum_view, ENGINE_SPECTRUM_VIEW_MASTER);
-    atomic_init(&engine->spectrum_target_track, -1);
-    atomic_init(&engine->spectrogram_enabled, false);
-    atomic_init(&engine->spectrogram_target_track, -1);
-    atomic_init(&engine->spectrogram_target_id, 0);
     if (!ringbuf_init(&engine->command_queue, sizeof(EngineCommand) * 64)) {
         free(engine);
         return NULL;
@@ -398,8 +432,8 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         free(engine);
         return NULL;
     }
-    engine->track_fx_meter_snapshots = (EngineFxMeterBank*)calloc((size_t)engine->track_capacity * 2u,
-                                                                  sizeof(EngineFxMeterBank));
+    engine->track_fx_meter_snapshots = calloc((size_t)engine->track_capacity * 2u,
+                                               sizeof(*engine->track_fx_meter_snapshots));
     if (!engine->track_fx_meter_snapshots) {
         free(engine->track_fx_meters);
         engine->track_fx_meters = NULL;
@@ -451,12 +485,27 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
         engine_eq_init(&engine->tracks[i].track_eq, (float)engine->config.sample_rate, engine_graph_get_channels(engine->graph));
     }
     engine->track_count = 0;
-    engine->transport_frame = 0;
+    atomic_init(&engine->transport_frame, 0);
+    atomic_init(&engine->clock_epoch, 0);
+    atomic_init(&engine->clock_capture_epoch, 0);
+    atomic_init(&engine->clock_render_seq, 0);
+    atomic_init(&engine->clock_callback_seq, 0);
+    atomic_init(&engine->clock_origin, 0);
+    atomic_init(&engine->clock_fallback_frame, 0);
+    atomic_init(&engine->clock_rendered, 0);
+    atomic_init(&engine->clock_consumed, 0);
+    atomic_init(&engine->clock_callback_start, 0);
+    atomic_init(&engine->clock_callback_frames, 0);
+    atomic_init(&engine->clock_callback_ns, 0);
+    atomic_init(&engine->clock_loop_start, 0);
+    atomic_init(&engine->clock_loop_end, 0);
+    atomic_init(&engine->clock_advancing, 0);
+    atomic_init(&engine->transport_requested_serial, 0);
+    atomic_init(&engine->transport_applied_serial, 0);
+
     engine->next_clip_id = 1;
     engine->spectrum_history_index = 0;
     engine->spectrum_bins = ENGINE_SPECTRUM_BINS;
-    engine->spectrum_block_counter = 0;
-    engine->spectrum_block_skip = 4;
     engine->spectrum_update_active = false;
     engine->spectrum_update_master = false;
     engine->spectrum_update_track = false;
@@ -464,17 +513,9 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
     engine->spectrum_thread = NULL;
     atomic_init(&engine->spectrum_running, false);
     ringbuf_reset(&engine->spectrum_queue);
-    engine->spectrum_window_index = 0;
-    engine->spectrum_window_filled = 0;
-    engine->spectrum_avg_index = 0;
-    engine->spectrum_avg_count = 0;
-    engine->spectrum_last_view = -1;
-    engine->spectrum_last_track = -1;
     engine->spectrogram_thread = NULL;
     atomic_init(&engine->spectrogram_running, false);
     ringbuf_reset(&engine->spectrogram_queue);
-    engine->spectrogram_block_counter = 0;
-    engine->spectrogram_block_skip = 4;
     engine->spectrogram_update_active = false;
     engine->spectrogram_state.head = 0;
     engine->spectrogram_state.count = 0;
@@ -507,6 +548,13 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
     engine->active_fx_meter_track = -1;
     engine->midi_audition_source = engine_instrument_source_create();
     engine_midi_note_list_init(&engine->midi_audition_notes);
+    engine->midi_audition_notes.notes = calloc(256, sizeof(EngineMidiNote));
+    engine->midi_audition_notes.note_capacity = 256;
+    if (!engine->midi_audition_notes.notes ||
+        !engine_instrument_source_reserve_notes(engine->midi_audition_source, 256)) {
+        engine_destroy(engine);
+        return NULL;
+    }
     engine->midi_audition_preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
     engine->midi_audition_params = engine_instrument_default_params(engine->midi_audition_preset);
     engine->midi_audition_idle_frame = 0;
@@ -514,10 +562,19 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
 
     engine_graph_clear_sources(engine->graph);
     engine_graph_add_source(engine->graph, &engine->tone_ops, engine->tone_source, 1.0f, -1);
-    engine_graph_reset(engine->graph);
+    engine_graph_reset(engine_render_source_graph(engine));
 
     audio_media_cache_init(&engine->media_cache, engine->config.enable_cache_logs);
     engine_add_track(engine);
+    FxConfig fxcfg = {.sample_rate = engine->config.sample_rate, .max_block = engine->config.block_size,
+                      .max_channels = engine_graph_get_channels(engine->graph)};
+    engine->fxm = fxm_create(&fxcfg);
+    if (!engine->fxm) { engine_destroy(engine); return NULL; }
+    fx_register_builtins_all(engine->fxm);
+    if (!engine_request_rebuild_sources(engine)) {
+        engine_destroy(engine);
+        return NULL;
+    }
     return engine;
 }
 
@@ -526,6 +583,7 @@ void engine_destroy(Engine* engine) {
         return;
     }
     engine_stop(engine);
+    engine_source_plan_shutdown(engine);
     audio_device_close(&engine->device);
 
     // >>> NEW: destroy effects manager <<<
@@ -556,6 +614,7 @@ void engine_destroy(Engine* engine) {
     engine->tracks = NULL;
     engine->track_count = 0;
     engine->track_capacity = 0;
+    engine_audio_source_clear_all(engine);
     free(engine->audio_sources);
     engine->audio_sources = NULL;
     engine->audio_source_count = 0;
@@ -573,6 +632,7 @@ void engine_destroy(Engine* engine) {
     engine->track_fx_meter_capacity = 0;
     free(engine->track_fx_meter_snapshots);
     engine->track_fx_meter_snapshots = NULL;
+    engine_clip_history_invalidate(engine);
     audio_media_cache_shutdown(&engine->media_cache);
     ringbuf_free(&engine->command_queue);
     audio_queue_free(&engine->output_queue);
@@ -601,170 +661,94 @@ void engine_destroy(Engine* engine) {
     free(engine);
 }
 
+// Opens the callback endpoint and starts all workers with one rollback path for partial startup.
 bool engine_start(Engine* engine) {
-    if (!engine) {
-        return false;
-    }
-
-    AudioDeviceSpec want = {
-        .sample_rate = engine->config.sample_rate,
-        .block_size = engine->config.block_size,
-        .channels = 2
-    };
-    EngineFxSnapshot fx_snap = {0};
-    bool had_fxm = engine_fx_snapshot_all(engine, &fx_snap);
-
-    if (!engine->device.is_open) {
-        if (!audio_device_open(&engine->device, &want, engine_audio_callback, engine)) {
-            SDL_Log("engine_start: failed to open audio device");
-            free(fx_snap.tracks);
-            return false;
-        }
-    }
-    const AudioDeviceSpec* have = &engine->device.spec;
-    engine->config.sample_rate = have->sample_rate;
-    engine->config.block_size = have->block_size;
-
-    size_t capacity_frames = (size_t)engine->config.block_size * 32;
-    if (engine->output_queue.channels != have->channels || engine->output_queue.buffer.data == NULL) {
+    if (!engine || SDL_ThreadID() != engine->control_thread_id) return false;
+    if (engine->device_started) return true;
+    if (engine->worker_thread || engine->spectrum_thread || engine->spectrogram_thread) engine_stop(engine);
+    AudioDeviceSpec want = {.sample_rate = engine->config.sample_rate, .block_size = engine->config.block_size,
+                            .channels = engine_graph_get_channels(engine->graph)};
+    if (!engine->device.is_open && !audio_device_open(&engine->device, &want, engine_audio_callback, engine)) goto fail;
+    size_t target = engine_output_target_frames(want.block_size, engine->device.spec.block_size,
+                                               engine->config.output_queue_blocks);
+    if (!target) goto fail;
+    size_t capacity = target > (size_t)want.block_size * 32 ? target : (size_t)want.block_size * 32;
+    if (!engine->output_queue.buffer.data || engine->output_queue.channels != want.channels ||
+        engine->output_queue.buffer.capacity / (size_t)engine->output_queue.frame_stride_bytes < capacity) {
         audio_queue_free(&engine->output_queue);
-        if (!audio_queue_init(&engine->output_queue, have->channels, capacity_frames)) {
-            SDL_Log("engine_start: failed to init audio queue");
-            return false;
-        }
-    } else {
-        audio_queue_clear(&engine->output_queue);
+        if (!audio_queue_init(&engine->output_queue, want.channels, capacity)) goto fail;
     }
-
+    atomic_store_explicit(&engine->output_target_frames, target, memory_order_relaxed);
+    // Callback buffer size may differ; the DSP block size and project rate remain stable.
+    size_t samples = (size_t)engine->config.block_size * (size_t)want.channels;
+    if (!engine->render_buffer) engine->render_buffer = calloc(samples, sizeof(float));
+    if (!engine->render_track_buffer) engine->render_track_buffer = calloc(samples, sizeof(float));
+    if (!engine->render_buffer || !engine->render_track_buffer) goto fail;
+    engine_cancel_commands(engine);
     ringbuf_reset(&engine->command_queue);
-    atomic_store_explicit(&engine->rebuild_sources_pending, false, memory_order_release);
     ringbuf_reset(&engine->spectrum_queue);
     ringbuf_reset(&engine->spectrogram_queue);
-    if (engine_graph_configure(engine->graph, have->sample_rate, have->channels, engine->config.block_size) != 0) {
-        SDL_Log("engine_start: failed to configure graph");
-        return false;
-    }
-    engine_rebuild_sources(engine);
-
-    FxConfig fxcfg = {
-        .sample_rate  = have->sample_rate,
-        .max_block    = engine->config.block_size,
-        .max_channels = have->channels,
-        .pool         = NULL, // not needed for interleaved v1
-    };
-
-    SDL_LockMutex(engine->fxm_mutex);
-    if (engine->fxm) {
-        fxm_destroy(engine->fxm);
-        engine->fxm = NULL;
-    }
-
-    EffectsManager* new_fxm = fxm_create(&fxcfg);
-    if (!new_fxm) {
-        SDL_UnlockMutex(engine->fxm_mutex);
-        SDL_Log("engine_start: failed to create effects manager");
-        return false;
-    }
-
-    fx_register_builtins_all(new_fxm);
-    engine->fxm = new_fxm;
-
-    if (had_fxm) {
-        engine_fx_restore_all(engine, &fx_snap);
-    }
-    free(fx_snap.tracks);
-
-    SDL_UnlockMutex(engine->fxm_mutex);
-
-    engine_register_fx_meter_tap(engine);
-    engine_register_fx_scope_tap(engine);
-    engine_fx_meter_clear_all(engine);
-
-    engine->transport_frame = 0;
-
-    atomic_store_explicit(&engine->worker_running, true, memory_order_release);
+    engine->spectrum_stream.filled = 0;
+    engine->spectrogram_stream.filled = 0;
+    if (!engine_request_rebuild_sources(engine)) goto fail;
+    engine_clock_discontinuity(engine, engine->transport_frame, false, atomic_load(&engine->transport_playing));
+    atomic_store(&engine->diag_worker_priority_status, 0);
+    atomic_store(&engine->worker_running, true);
     engine->worker_thread = SDL_CreateThread(engine_worker_main, "engine_worker", engine);
-    if (!engine->worker_thread) {
-        SDL_Log("engine_start: failed to create worker thread: %s", SDL_GetError());
-        atomic_store_explicit(&engine->worker_running, false, memory_order_release);
-        return false;
-    }
-
-    atomic_store_explicit(&engine->spectrum_running, true, memory_order_release);
+    if (!engine->worker_thread) goto fail;
+    atomic_store(&engine->spectrum_running, true);
     engine->spectrum_thread = SDL_CreateThread(engine_spectrum_thread_main, "engine_spectrum", engine);
-    if (!engine->spectrum_thread) {
-        SDL_Log("engine_start: failed to create spectrum thread: %s", SDL_GetError());
-        atomic_store_explicit(&engine->spectrum_running, false, memory_order_release);
-        atomic_store_explicit(&engine->worker_running, false, memory_order_release);
-        SDL_WaitThread(engine->worker_thread, NULL);
-        engine->worker_thread = NULL;
-        return false;
-    }
-
-    atomic_store_explicit(&engine->spectrogram_running, true, memory_order_release);
+    if (!engine->spectrum_thread) goto fail;
+    atomic_store(&engine->spectrogram_running, true);
     engine->spectrogram_thread = SDL_CreateThread(engine_spectrogram_thread_main, "engine_spectrogram", engine);
-    if (!engine->spectrogram_thread) {
-        SDL_Log("engine_start: failed to create spectrogram thread: %s", SDL_GetError());
-        atomic_store_explicit(&engine->spectrogram_running, false, memory_order_release);
-        atomic_store_explicit(&engine->spectrum_running, false, memory_order_release);
-        SDL_WaitThread(engine->spectrum_thread, NULL);
-        engine->spectrum_thread = NULL;
-        atomic_store_explicit(&engine->worker_running, false, memory_order_release);
-        SDL_WaitThread(engine->worker_thread, NULL);
-        engine->worker_thread = NULL;
-        return false;
-    }
-
-    if (!audio_device_start(&engine->device)) {
-        SDL_Log("engine_start: failed to start audio device");
-        atomic_store_explicit(&engine->spectrogram_running, false, memory_order_release);
-        SDL_WaitThread(engine->spectrogram_thread, NULL);
-    engine->spectrogram_thread = NULL;
-    engine->tempo = tempo_state_default(engine->config.sample_rate);
-        atomic_store_explicit(&engine->spectrum_running, false, memory_order_release);
-        SDL_WaitThread(engine->spectrum_thread, NULL);
-        engine->spectrum_thread = NULL;
-        atomic_store_explicit(&engine->worker_running, false, memory_order_release);
-        SDL_WaitThread(engine->worker_thread, NULL);
-        engine->worker_thread = NULL;
-        return false;
-    }
+    if (!engine->spectrogram_thread) goto fail;
+    if (!audio_device_start(&engine->device)) goto fail;
     engine->device_started = true;
-
-    SDL_Log("Audio device running: %d Hz, %d channels, block size %d",
-            have->sample_rate, have->channels, have->block_size);
-
+    engine_trace(engine, "Audio running: %d Hz, %d channels, DSP block %d, callback block %d",
+                 want.sample_rate, want.channels, engine->config.block_size, engine->device.spec.block_size);
     return true;
+fail:
+    engine_trace(engine, "engine_start: rolling back incomplete startup: %s", SDL_GetError());
+    engine_stop(engine);
+    audio_device_close(&engine->device);
+    return false;
 }
 
+// Stops publication before joining consumers and reclaims storage only after every reader exits.
 void engine_stop(Engine* engine) {
-    if (!engine) {
-        return;
-    }
-    if (engine->device_started) {
-        audio_device_stop(&engine->device);
-        engine->device_started = false;
-    }
-    if (engine->spectrum_thread) {
-        atomic_store_explicit(&engine->spectrum_running, false, memory_order_release);
-        SDL_WaitThread(engine->spectrum_thread, NULL);
-        engine->spectrum_thread = NULL;
-    }
-    if (engine->spectrogram_thread) {
-        atomic_store_explicit(&engine->spectrogram_running, false, memory_order_release);
-        SDL_WaitThread(engine->spectrogram_thread, NULL);
-        engine->spectrogram_thread = NULL;
-    }
-    if (engine->worker_thread) {
-        atomic_store_explicit(&engine->worker_running, false, memory_order_release);
-        SDL_WaitThread(engine->worker_thread, NULL);
-        engine->worker_thread = NULL;
-    }
-    engine->worker_thread_id = 0;
-    atomic_store_explicit(&engine->transport_playing, false, memory_order_release);
-    atomic_store_explicit(&engine->rebuild_sources_pending, false, memory_order_release);
-    engine_graph_reset(engine->graph);
-    engine->transport_frame = 0;
+    if (!engine || SDL_ThreadID() != engine->control_thread_id) return;
+    if (engine->device.is_open) audio_device_stop(&engine->device);
+    engine->device_started = false;
+    atomic_store(&engine->worker_running, false);
+    atomic_store(&engine->spectrum_running, false);
+    atomic_store(&engine->spectrogram_running, false);
+    if (engine->worker_thread) { SDL_WaitThread(engine->worker_thread, NULL); engine->worker_thread = NULL; }
+    if (engine->spectrum_thread) { SDL_WaitThread(engine->spectrum_thread, NULL); engine->spectrum_thread = NULL; }
+    if (engine->spectrogram_thread) { SDL_WaitThread(engine->spectrogram_thread, NULL); engine->spectrogram_thread = NULL; }
+    atomic_store(&engine->worker_thread_id, 0);
+    atomic_store(&engine->diag_worker_priority_status, 0);
+    engine_cancel_commands(engine);
+    engine_source_plan_apply(engine);
+    engine_source_plan_collect(engine);
+    atomic_store(&engine->transport_playing, false);
+    atomic_store(&engine->playback_requested_token, 0);
+    atomic_store(&engine->playback_applied_token, 0);
+    atomic_store(&engine->playback_safety_token, 0);
+    atomic_store(&engine->rebuild_sources_pending, false);
+    engine_midi_audition_apply_all_off(engine);
+    engine_graph_reset(engine_render_source_graph(engine));
+    engine_clock_discontinuity(engine, 0, false, false);
+    atomic_store(&engine->transport_requested_serial, 0);
+    atomic_store(&engine->transport_applied_serial, 0);
+    engine->spectrum_stream.filled = 0;
+    engine->spectrogram_stream.filled = 0;
+    engine_analysis_invalidate(&engine->spectrum_stream);
+    engine_analysis_invalidate(&engine->spectrogram_stream);
+    // All queue endpoints are now quiescent, so resetting both indices is safe.
+    ringbuf_reset(&engine->output_queue.buffer);
+    atomic_store(&engine->output_queue.flush_head, 0);
+    free(engine->render_buffer); engine->render_buffer = NULL;
+    free(engine->render_track_buffer); engine->render_track_buffer = NULL;
 }
 
 const EngineRuntimeConfig* engine_get_config(const Engine* engine) {
@@ -785,43 +769,40 @@ size_t engine_get_queued_frames(const Engine* engine) {
     if (!engine) {
         return 0;
     }
-    return audio_queue_available_frames(&engine->output_queue);
+    EngineClockSnapshot snapshot;
+    return engine_get_clock_snapshot(engine, &snapshot) ? (size_t)snapshot.queued_frames : 0;
 }
 
+// Validates tempo on its sole control writer and transfers one complete value to the worker.
 bool engine_set_tempo_state(Engine* engine, const TempoState* tempo) {
-    if (!engine || !tempo) {
-        return false;
-    }
+    if (!engine || SDL_ThreadID() != engine->control_thread_id || !tempo ||
+        !isfinite(tempo->bpm) || !isfinite(tempo->sample_rate)) return false;
+    TempoState accepted = *tempo;
+    // Tempo conversions always use the immutable project rate, including after device restart.
+    accepted.sample_rate = engine->config.sample_rate;
+    tempo_state_clamp(&accepted);
     if (!engine->device_started || !engine->worker_thread) {
-        engine->tempo = *tempo;
-        if (engine->tempo.sample_rate <= 0.0) {
-            engine->tempo.sample_rate = engine->config.sample_rate;
-        }
-        tempo_state_clamp(&engine->tempo);
+        engine->tempo = accepted;
         return true;
     }
-    EngineCommand cmd = {
-        .type = ENGINE_CMD_SET_TEMPO,
-    };
-    cmd.payload.tempo.tempo = *tempo;
-    if (!engine_post_command(engine, &cmd)) {
-        SDL_Log("engine_set_tempo_state: command queue full");
-        return false;
-    }
-    return true;
+    EngineCommand cmd = {.type = ENGINE_CMD_SET_TEMPO, .payload.tempo.tempo = accepted};
+    return engine_post_command(engine, &cmd);
 }
 
+// Queues an owned graph revision whose source userdata must remain valid until engine shutdown.
 bool engine_queue_graph_swap(Engine* engine, EngineGraph* new_graph) {
     if (!engine || !new_graph) {
         return false;
     }
+    EngineSourcePlan* plan = engine_source_plan_wrap_graph(engine, new_graph);
+    if (!plan) return false;
     EngineCommand cmd = {
         .type = ENGINE_CMD_GRAPH_SWAP,
-        .payload.graph_swap.new_graph = new_graph,
+        .payload.graph_swap.plan = plan,
     };
     if (!engine_post_command(engine, &cmd)) {
         SDL_Log("engine_queue_graph_swap: command queue full");
-        engine_graph_destroy(new_graph);
+        engine_source_plan_discard(engine, plan);
         return false;
     }
     return true;
@@ -834,6 +815,8 @@ void engine_set_logging(Engine* engine, bool engine_logs, bool cache_logs, bool 
     engine->config.enable_engine_logs = engine_logs;
     engine->config.enable_cache_logs = cache_logs;
     engine->config.enable_timing_logs = timing_logs;
+    atomic_store(&engine->runtime_timing_logs, timing_logs);
+    atomic_store(&engine->runtime_engine_logs, engine_logs);
     audio_media_cache_set_verbose(&engine->media_cache, cache_logs);
     SDL_Log("engine logging flags: engine=%s cache=%s timing=%s",
             engine_logs ? "on" : "off",

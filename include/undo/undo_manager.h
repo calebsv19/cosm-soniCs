@@ -27,7 +27,8 @@ typedef enum {
     UNDO_CMD_EQ_CURVE,
     UNDO_CMD_TRACK_SNAPSHOT,
     UNDO_CMD_LIBRARY_RENAME,
-    UNDO_CMD_MIDI_NOTE_EDIT
+    UNDO_CMD_MIDI_NOTE_EDIT,
+    UNDO_CMD_CLIP_CONTENT
 } UndoCommandType;
 
 // Stores clip parameters for undo/redo transforms.
@@ -35,6 +36,7 @@ typedef struct {
     EngineClipKind kind;
     struct EngineSamplerSource* sampler;
     uint64_t creation_index;
+    uint64_t track_runtime_id;
     int track_index;
     uint64_t start_frame;
     uint64_t offset_frames;
@@ -63,14 +65,36 @@ typedef struct {
     struct EngineSamplerSource* sampler;
 } UndoClipAddRemove;
 
+// Identifies an audio or MIDI rename target without borrowing sampler storage or mutable indices.
 typedef struct {
-    struct EngineSamplerSource* sampler;
-    int track_index;
+    uint64_t creation_index;
     char before_name[ENGINE_CLIP_NAME_MAX];
     char after_name[ENGINE_CLIP_NAME_MAX];
 } UndoClipRename;
 
+// Captures authored settings of a gesture-created track without borrowing runtime-owned storage.
 typedef struct {
+    uint64_t runtime_id;
+    EngineTrackSettings settings;
+    EngineEqCurve eq;
+    char name[ENGINE_CLIP_NAME_MAX];
+} UndoCreatedTrack;
+
+// Owns before/after selection identities for a complete clip-content action.
+typedef struct {
+    int created_start;
+    int created_count;
+    UndoCreatedTrack* created_tracks;
+    int count;
+    uint64_t* before;
+    uint64_t* after;
+} UndoClipContentSelection;
+
+// Owns a compound transform and guards for any trailing tracks created by the gesture.
+typedef struct {
+    int created_start;
+    int created_count;
+    UndoCreatedTrack* created_tracks;
     int count;
     UndoClipState* before;
     UndoClipState* after;
@@ -78,6 +102,8 @@ typedef struct {
 
 typedef struct {
     int track_index;
+    uint64_t left_track_id;
+    uint64_t right_track_id;
     bool has_before;
     bool has_after;
     SessionTrack before;
@@ -124,6 +150,7 @@ typedef enum {
 typedef struct {
     UndoFxTarget target;
     int track_index;
+    uint64_t track_runtime_id;
     UndoFxEditKind kind;
     FxInstId id;
     int before_index;
@@ -136,6 +163,7 @@ typedef struct {
 typedef struct {
     bool is_master;
     int track_index;
+    uint64_t track_runtime_id;
     SessionEqCurve before;
     SessionEqCurve after;
 } UndoEqCurveEdit;
@@ -143,6 +171,7 @@ typedef struct {
 typedef struct {
     bool is_master;
     int track_index;
+    uint64_t track_runtime_id;
     float gain_before;
     float gain_after;
     float pan_before;
@@ -151,6 +180,7 @@ typedef struct {
     bool muted_after;
     bool solo_before;
     bool solo_after;
+    bool instrument_state_captured; // Distinguishes complete captures from older scalar-only commands.
     bool midi_instrument_enabled_before;
     bool midi_instrument_enabled_after;
     EngineInstrumentPresetId midi_instrument_preset_before;
@@ -174,13 +204,17 @@ typedef struct {
     EngineMidiNote* after_notes;
 } UndoMidiNoteEdit;
 
+// Owns one edit command and optional complete clip-content states for destructive overlap history.
 typedef struct {
     UndoCommandType type;
+    EngineClipContentSnapshot* clip_content_before;
+    EngineClipContentSnapshot* clip_content_after;
     union {
         UndoClipTransform clip_transform;
         UndoClipAddRemove clip_add_remove;
         UndoClipRename clip_rename;
         UndoMultiClipTransform multi_clip_transform;
+        UndoClipContentSelection clip_content_selection;
         UndoAutomationEdit automation_edit;
         UndoTempoMapEdit tempo_map_edit;
         UndoTrackEdit track_edit;
@@ -203,6 +237,9 @@ typedef struct {
     int max_commands;
     UndoCommand active_drag;
     bool active_drag_valid;
+    uint64_t drag_serial; // Identifies each successful reservation across clear/cancel.
+    const char* rejection_message; // Borrows a static message for the current rejection notice.
+    uint32_t rejection_ticks;
 } UndoManager;
 
 void undo_manager_init(UndoManager* manager);
@@ -218,5 +255,26 @@ bool undo_manager_can_redo(const UndoManager* manager);
 bool undo_manager_undo(UndoManager* manager, struct AppState* state);
 bool undo_manager_redo(UndoManager* manager, struct AppState* state);
 bool undo_clip_state_from_engine_clip(const EngineClip* clip, int track_index, UndoClipState* out_state);
+// Captures transform history with a stable destination track identity.
+bool undo_clip_state_capture(const Engine* engine, const EngineClip* clip, int track_index, UndoClipState* out_state);
 bool undo_clip_state_clone(UndoClipState* dst, const UndoClipState* src);
 void undo_clip_state_clear(UndoClipState* state);
+
+// Captures comparable authored track settings with initialized padding and no borrowed ownership.
+void undo_created_track_capture(const EngineTrack* track, UndoCreatedTrack* out);
+
+// Adds or removes one complete track only after reserving its retained history.
+bool undo_manager_edit_track(struct AppState* state, int track_index, bool add);
+
+// Binds track-addressed mixer, EQ and effect history to the current track lifetime.
+bool undo_command_bind_track(struct AppState* state, UndoCommand* command);
+
+// Reserves a complete discrete command before applying its engine edit.
+bool undo_manager_apply_edit(struct AppState* state, UndoCommand* command);
+// Adds an effect with pre-reserved history and an atomic captured result (-1 selects master).
+FxInstId undo_manager_add_effect(struct AppState* state, int track_index, FxTypeId type);
+
+// Records a short-lived static rejection message and returns false to the caller.
+bool undo_manager_reject(UndoManager* manager, const char* message);
+// Returns the current rejection notice while its five-second display interval is active.
+const char* undo_manager_rejection_message(const UndoManager* manager);

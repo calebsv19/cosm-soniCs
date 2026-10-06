@@ -1,0 +1,49 @@
+{
+  "binary": "/Users/calebsv/Desktop/CodeWork/daw/build/performance/O2/targets/macOS-arm64/tests/media_import_bench",
+  "binary_sha256": "89d002f6eef5fed1e818e5f445a58f0d9f0d54b1f2a37995550513cfac71e137",
+  "samples": [
+    {
+      "rate": 48000,
+      "repeat": 1,
+      "command": [
+        "/Users/calebsv/Desktop/CodeWork/daw/build/performance/O2/targets/macOS-arm64/tests/media_import_bench",
+        "48000"
+      ],
+      "exit_code": -6,
+      "elapsed_seconds": 1.957875250838697,
+      "measurements": [
+        {
+          "phase": "scan",
+          "source_rate": 48000,
+          "files": 5,
+          "cold_main_ms": 101.304084,
+          "warm_main_ms": 0.081375
+        },
+        {
+          "phase": "cold",
+          "source_rate": 48000,
+          "elapsed_ms": 296.99175,
+          "submit_max_ms": 0.106333,
+          "poll_max_ms": 1.10575,
+          "rss_peak": 126337024,
+          "ready_peak_bytes": 23040000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "warm",
+          "source_rate": 48000,
+          "elapsed_ms": 232.943583,
+          "submit_max_ms": 0.106125,
+          "poll_max_ms": 1.81375,
+          "rss_peak": 129941504,
+          "ready_peak_bytes": 0,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        }
+      ],
+      "failure": "Immediate post-removal residency assertion ran before audio-worker retirement/control collection."
+    }
+  ],
+  "retention_note": "Initial JSON measurements and exit status are retained. The temporary per-case text log was overwritten by the corrected matrix runner; it is not referenced as initial evidence."
+}

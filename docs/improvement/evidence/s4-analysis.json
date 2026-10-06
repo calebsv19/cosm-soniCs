@@ -1,0 +1,80 @@
+{
+  "slice": "S4.8",
+  "status": "analyzer_compute_complete; S4.9 integrated_acceptance_open",
+  "recorded_utc": "2026-09-22T15:35:48.126223+00:00",
+  "source_sha256": {
+    "include/engine/analysis_math.h": "7f582a9bd581597e74c2e05d5f346f5248805b2773686472a7db3e3a39119c01",
+    "include/engine/engine.h": "d123601f08f0ba3f3ad886158b5422411881e7aa3626e59801abb35f2d6ae2f7",
+    "include/engine/engine_internal.h": "cdba23a55745620a8122b3f5f51158323c36976ae722e0ece1505b25c9d8d185",
+    "src/engine/engine_analysis_queue.c": "3c9afb03fbba9b3c9bd6f7785d7cfdb61e99dc5dff20201f3e68f27d915525a2",
+    "src/engine/engine_spectrum.c": "aac163dafff24f2cca5c161c73ed94556fc49df7541c0a1cfd1f548f8fbb8610",
+    "src/engine/engine_spectrogram.c": "12908444e13265990aa55601d64aaa00da2d6e9616c86f1f749a025832324e03",
+    "src/engine/engine_core.c": "cc0ede50ab7eef55577154072006eaeb1faec9a4b92a43220d3cf10c1836dcee",
+    "src/audio/ringbuf.c": "ec3bcb292da40c841d7c28bfab59f69da1e67ab95e326d132938b35abd98b8f4",
+    "tests/analysis_calibration_test.c": "81ab92e30f0147f3459b797406a4cda5f72dd29ff8e15a367ceb1b5ce37b9502",
+    "tests/engine_analysis_lifecycle_test.c": "17537ea67fe52fd87650aea383d2d392a1b2bdce18654036a6c14b35c1e3b60d",
+    "tests/performance/analysis_compute_bench.c": "e7d70d68c9e1a395730c77947aca4fef341c0a464ad6637ac305b2daab43c619",
+    "tests/performance/runtime_workload_bench.c": "714400303b3fa4c26128ecdac2604a5ad4d97695c16233598e567cd6cb217b3a",
+    "tests/performance/run_analysis.py": "fd67021175bf1ed6cf05bc44f56b1140ef412bac144a8d6ad905345490a869dc",
+    "make/performance.mk": "0a04a284e72c1971ceaae48c4551133003fb3b6ec1479446acb4066cc0018bf9"
+  },
+  "verification": {
+    "optimized_calibration_and_lifecycle": "passed",
+    "asan_calibration_and_lifecycle": "passed",
+    "tsan_calibration_and_lifecycle": "passed",
+    "normal_stable_and_legacy": "passed",
+    "make": "passed",
+    "diff_check": "passed",
+    "documentation": "passed: 72 documents, zero findings, verify_ok=1",
+    "source_receipt_readback": "passed"
+  },
+  "logs": {
+    "/tmp/daw-s48-optimized-final.log": "aa9c7ba9eac57634f2bb841a67bd77f809a9b8e51ae1bf9fd2ae79ae4958332d",
+    "/tmp/daw-s48-asan.log": "eed23b6b79be4a9d7836d16da89cfab23b707a10871724250a6f16bb23651502",
+    "/tmp/daw-s48-tsan.log": "5afe9bd9db09e3656787be461d37b70862e15201cb75eca9007ba9c7c0c6131c",
+    "/tmp/daw-s48-regression.log": "f146eeaec675b8d90fe805000ed1aaf0503468aafc482e58eb099463f3be8c4a",
+    "/tmp/daw-s48-make.log": "101cf5ad797a81d7af1ba3358621d5c813864c10b0923acaf011e599888f6244",
+    "/tmp/daw-s48-docverify.log": "d4a874f9f265567c98b086d5c17633d1b321275ec595ec599b6354eb82c5d14e"
+  },
+  "calibration": {
+    "reference_bins": 13824,
+    "max_absolute_error_db": 1.52587891e-05,
+    "acceptance_tolerance_db": 0.002,
+    "worker_plan_bytes": 22536,
+    "transform_scratch_bytes": 16384
+  },
+  "performance": {
+    "raw_bundle": "s4-analysis-workloads.json",
+    "optimized_matched_kernel_processes": 18,
+    "optimized_cpu_configuration_median_speedup_range": [
+      4.0295546256165,
+      4.359023668639053
+    ],
+    "unoptimized_48k_matched_processes": 6,
+    "unoptimized_cpu_speedup_range": [
+      2.935078780277495,
+      2.9781248383927186
+    ],
+    "analyzer_enabled_live_processes": 12,
+    "enabled_processes_with_analyzer_drops": 0,
+    "enabled_processes_with_output_gaps": 2,
+    "gap_frames_by_rate": {
+      "48000": 896,
+      "96000": 5376
+    },
+    "strict_integrated_acceptance": "not universally passed; 4 of 6 enabled 32-track, 4 of 6 disabled 32-track, and 1 of 6 enabled 8-track processes failed strict worker-deadline or output-gap acceptance"
+  },
+  "next_boundary": "S4.9: investigate retained deadline and underrun observations with matched sustained loads; qualify memory, recovery, storage pressure, GUI and physical device behavior separately.",
+  "shared_reuse": "reuse-deferred for analyzer semantics; existing queue/time retained, core_math has no matching transform; no shared change",
+  "limits": [
+    "No release or commit",
+    "Default application optimization policy unchanged",
+    "No physical timing, listening, GUI or sustained maximum-load claim",
+    "Timing failures are retained, not relaxed or rerun away",
+    "Lifetime counters sampled independently; pending and high-water are observations, not transactional deadlines"
+  ],
+  "default_app_binary": {
+    "path": "build/targets/macOS-arm64/toolchains/clang/bin/daw_app",
+    "sha256": "23eaeb1ffa5724704e6b2f1af61f816f974f358f6e76964ae3c52caee14bb255"
+  }
+}

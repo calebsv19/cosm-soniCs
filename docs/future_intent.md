@@ -1,6 +1,14 @@
 # DAW Future Intent
 
-Last updated: 2026-08-10
+Last updated: 2026-09-22 (runtime improvement sequence)
+
+## Runtime Improvement Sequence
+
+The [runtime improvement plan](improvement/PLAN.md) uses its own S1–S6 numbering, distinct from the historical scaffold `DAW-S*` phases below. S3.4–S3.6 now have bounded implementation/acceptance reports for control transitions, import/conversion, and instruments. S3.7 now closes isolated deterministic export at its [documented software boundary](improvement/S3-EXPORT.md). The subsequent [S4.1 measurement audit](improvement/S4-RUNTIME-AUDIT.md) is the baseline for the authorized [S4 implementation sequence](improvement/S4-IMPLEMENTATION.md).
+
+1. S4.2 audio scheduling, S4.3 MIDI candidates, and S4.4a compact published meters are implemented. S4.4b selective edit preparation and S4.5 worker deadline/queue policy are now implemented. S4.6 streamed recording/export is now implemented; the capture-clock follow-up now passes strict zero-gap software checks. [Background media preparation/cache](improvement/S4.7-MEDIA.md) is now implemented across S4.7a–d. [Analyzer efficiency (S4.8)](improvement/S4.8-ANALYSIS.md) is implemented. [Integrated sustained assessment (S4.9)](improvement/S4.9-ACCEPTANCE.md) is complete, with timing/device, long-session memory and interactive acceptance findings still open; full-file source playback and the documented decode admission ceiling remain explicit limits. See [current completion and remaining contracts](improvement/S4-IMPLEMENTATION.md).
+2. S5 starts with a real editing/recording/export/reopen journey and the remaining S1 history/transaction/visible-failure boundaries, then refines cohesive transport, mixer, arrangement/inspector, effects/analysis, and recording/MIDI surfaces. Actual first-frame inspection already finds crowded FX controls. A DAW MCP server is not implemented; begin a separate adapter with read-only snapshots, then owner-thread application actions and one verified write workflow. See [overall status and next steps](improvement/DAW-STATUS-AND-NEXT-STEPS.md).
+3. S6 adds creative capability after prerequisites. Earlier S1 editing-integrity deferrals remain visible in the [S1 ledger](improvement/S1-CLOSEOUT.md).
 
 ## Scaffold Alignment Intent
 1. Preserve DAW's existing subsystem decomposition strengths.
@@ -135,3 +143,9 @@ Last updated: 2026-08-10
 - No feature expansion unrelated to scaffold alignment.
 - No shared subtree redesign inside scaffold migration commits.
 - No broad one-pass naming churn; changes stay bounded per migration slice.
+
+## Next runtime-improvement phase
+
+Use [S5 functional slices](improvement/S5-FUNCTIONAL-SLICES.md) for focused action/undo, transport/recording, arrangement, mixer/FX, analysis and file-operation behavior. MCP remains a proposed adapter after common action semantics. Strict stress timing, long-session coverage beyond measured lifetimes and physical listening/capture acceptance remain explicit follow-up qualifications.
+
+Current handoff: bounded S4 software closeout is complete with strict timing and physical-device limits retained in [S4 closeout](improvement/S4-CLOSEOUT.md). S5 is partially implemented, not wholly future work; finish the remaining action/history boundaries in [S5 implementation](improvement/S5-IMPLEMENTATION.md) before expanding automation entry points.

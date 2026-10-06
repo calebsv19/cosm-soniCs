@@ -86,6 +86,7 @@ static int run_factory_preset_session_matrix_test(void) {
     session_document_init(&doc);
     doc.engine.sample_rate = 48000;
     doc.engine.block_size = 128;
+    doc.engine.output_queue_blocks = 8;
     doc.track_count = 1;
     doc.tracks = (SessionTrack*)calloc(1, sizeof(SessionTrack));
     if (!doc.tracks) {
@@ -227,6 +228,35 @@ static int run_unknown_preset_fallback_test(void) {
     return 0;
 }
 
+// Distinguishes omitted legacy gain defaults from explicit silent values across a saved round trip.
+static int run_gain_defaults_test(void) {
+    const char* path = "build/tests/sample_session_gain.json";
+    const char* temp = "build/tests/sample_session_gain_temp.json";
+    for (int missing = 0; missing < 2; ++missing) {
+        if (!write_replaced_file(kTestOutputPath, temp, "\"gain\": 0.800000",
+                                 missing ? "\"unused_gain\": 0.800000" : "\"gain\": 0.000000") ||
+            !write_replaced_file(temp, path, "\"gain\": 1.000000",
+                                 missing ? "\"unused_gain\": 1.000000" : "\"gain\": 0.000000")) return 40;
+        SessionDocument doc;
+        session_document_init(&doc);
+        if (!session_document_read_file(path, &doc)) return 41;
+        float expected = missing ? 1.0f : 0.0f;
+        bool valid = doc.track_count == 1 && doc.tracks[0].clip_count == 2 &&
+                     doc.tracks[0].gain == expected && doc.tracks[0].clips[0].gain == expected;
+        if (!valid || !session_document_write_file(&doc, temp)) {
+            session_document_free(&doc);
+            return 42;
+        }
+        session_document_free(&doc);
+        session_document_init(&doc);
+        if (!session_document_read_file(temp, &doc)) return 43;
+        valid = doc.tracks[0].gain == expected && doc.tracks[0].clips[0].gain == expected;
+        session_document_free(&doc);
+        if (!valid) return 44;
+    }
+    return 0;
+}
+
 int main(void) {
     if (mkdir("build", 0755) != 0 && errno != EEXIST) {
         SDL_Log("session_serialization_test: failed to create build directory");
@@ -242,6 +272,7 @@ int main(void) {
 
     doc.engine.sample_rate = 48000;
     doc.engine.block_size = 128;
+    doc.engine.output_queue_blocks = 8;
     doc.engine.default_fade_in_ms = 5.0f;
     doc.engine.default_fade_out_ms = 15.0f;
     doc.engine.fade_preset_count = 3;
@@ -459,7 +490,7 @@ int main(void) {
         SDL_Log("session_serialization_test: deserialised counts mismatch");
         return 5;
     }
-    if (fabsf(loaded.engine.default_fade_in_ms - doc.engine.default_fade_in_ms) > 0.01f ||
+    if (loaded.engine.output_queue_blocks != 8 || fabsf(loaded.engine.default_fade_in_ms - doc.engine.default_fade_in_ms) > 0.01f ||
         fabsf(loaded.engine.default_fade_out_ms - doc.engine.default_fade_out_ms) > 0.01f ||
         loaded.engine.fade_preset_count != doc.engine.fade_preset_count) {
         session_document_free(&doc);
@@ -626,5 +657,7 @@ int main(void) {
     }
 
     SDL_Log("session_serialization_test: success (%ld bytes)", size);
+    int gain_result = run_gain_defaults_test();
+    if (gain_result != 0) return gain_result;
     return 0;
 }

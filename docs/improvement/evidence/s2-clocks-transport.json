@@ -1,0 +1,128 @@
+{
+  "recorded_at_utc": "2026-09-19T23:05:09.817922+00:00",
+  "base_head": "d8bff97cccab2054f18ccc874838162d0423e539",
+  "scope": "S2.3 callback-based clocks and S2.4 transport discontinuities",
+  "process_evidence": "All listed commands were observed exiting zero. Final ASan, TSan and full regression include the redundant safety-notification correction. A subsequent one-line UI recording Play/REC toggle change from stop to pause passed the listed final integration targets and final application build; manual UI acceptance remains unclaimed.",
+  "runs": [
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-engine-transport-clock test-engine-command-delivery test-audio-recording test-session-transaction",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s2-clocks-asan.log",
+      "full_log_sha256": "f0b7508cb2ee4bad19ba04c95c73e3ef0f8a18f7ae01969b04c926662df2115f",
+      "acceptance_lines": [
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "audio_recording_test: success",
+        "session_transaction_test: success (11 capture and 5 restore allocation boundaries, live capture, rollback, complete retry)"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-tsan.mk test-engine-transport-clock test-engine-command-delivery",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s2-clocks-tsan.log",
+      "full_log_sha256": "447ebd640c288e95dcfa02d8499a67ff3c0194135eb0776cf15ab14e497ab95a",
+      "acceptance_lines": [
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "engine_command_delivery_test: success (100000 concurrent packets)"
+      ]
+    },
+    {
+      "command": "make test-stable test-legacy",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s2-clocks-regression.log",
+      "full_log_sha256": "b71cb8fe37b16c5393e34a78dfbec5de49ff00b4eb8b2bc3d2cd4686b09b07ef",
+      "acceptance_lines": [
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "session_transaction_test: success (11 capture and 5 restore allocation boundaries, live capture, rollback, complete retry)",
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)",
+        "engine_parameter_transaction_test: success",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)",
+        "daw_pack_contract_parity_test: success",
+        "daw_trace_export_contract_test: success",
+        "daw_trace_export_async_contract_test: success",
+        "kit_viz_waveform_adapter_test: success",
+        "kit_viz_fx_preview_adapter_test: success",
+        "kit_viz_meter_adapter_test: ok",
+        "waveform_cache_pack_warmstart_test: success",
+        "layout_text_scaling_sweep_test: success",
+        "timeline_contract_test: success",
+        "midi_model_test: success",
+        "midi_instrument_render_test: success",
+        "timeline_midi_region_test: ok",
+        "midi_editor_shell_test: success",
+        "audio_capture_device_test: success",
+        "audio_output_device_test: success",
+        "effects_revision_test: success",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)",
+        "audio_recording_test: success",
+        "track_role_test: success",
+        "daw_data_path_contract_test: success",
+        "daw_workspace_authoring_host_test: ok",
+        "test-library-copy-vs-reference-contract: success",
+        "2026-09-19 16:03:12.550 session_serialization_test[18413:188304701] INFO: session_serialization_test: success (6898 bytes)",
+        "media_cache_stress_test: success (entries=0)",
+        "clip_overlap_priority_test: success (clips=3)",
+        "engine_smoke_test: success",
+        "shared_theme_font_adapter_test: success"
+      ]
+    },
+    {
+      "command": "make test-engine-transport-clock test-audio-recording",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s2-clocks-final-integration.log",
+      "full_log_sha256": "2d53ba0c60f3ae49a905ac7f1874e4284ad51ad9760f8a7f854b2d9de4c62159",
+      "acceptance_lines": [
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "audio_recording_test: success"
+      ]
+    },
+    {
+      "command": "make",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s2-clocks-build.log",
+      "full_log_sha256": "1250b34d535a6a1f242327eab429d3b03bc2da0a4f8cc243eb0024468bf3ee33",
+      "acceptance_lines": []
+    }
+  ],
+  "source_sha256": {
+    "include/effects/effects_manager.h": "45cc974d8849bae4fd0ddc7e6d2f028b8d160debe2a79547092b7fb000167a0c",
+    "include/engine/engine.h": "b9f21b1efcd7710fbdd3e3ca91ef61849f225bcaca061a3fa09a546604c62b34",
+    "include/engine/engine_internal.h": "af080cee132847d5f6027f6e308777ecb510b0ac719ab4ce9a381b39953ea3ab",
+    "make/rules-test-core.mk": "5140b8186ae2196339895c75abe6d0ef230a6c4098b8227fc941b60ec03093fb",
+    "make/sources-app.mk": "68533b67a4106696b036988926a159bf0ee2d68d9ee929912690d5f7ff286171",
+    "make/sources-tests.mk": "b27622f08049178c9b849a3a541e85db311efdb023491d81abe202869e9cca9e",
+    "src/effects/effects_manager.c": "da9c94407dc1e45cf143813021372c702bc12c05a808d05f5ce4a18966db19c9",
+    "src/engine/engine_audio.c": "20e96c7a4afcfeae2ba97cf36af978f2d96abc9f9c0699f25d319c11db0f9bb3",
+    "src/engine/engine_clock.c": "50ffd7a1621e504a77c246cac7b40d02bdd5376210914146c0090ba53511e162",
+    "src/engine/engine_core.c": "a222e86def4ffd7f6103ccc28a13f4c7634cc6e8f9bf0d4135f1195db609dd61",
+    "src/engine/engine_core_commands.c": "7ffdfd053b57318693de1dcc6a2ca9be1d7958e8100efb162e4afc4ab42a1fc8",
+    "src/engine/engine_midi_audition.c": "c5af8e95f240fe0591fe043734ec1392930cac6d6dba973efb91f65573453bf5",
+    "src/engine/engine_transport.c": "d1acd3ae2d544fc1ed70d545a7989abaf48662c365df46464feebc5d53d1fb4f",
+    "src/input/input_manager.c": "8db35aa6c9bf8ca8d4664555761853be59ea0c965129ac683b14dfb8136ce09d",
+    "src/input/midi_editor_input_timing.c": "10fd33d27260b780d179b992e1c02464075b63b9ddb15441ef05d9ecad423196",
+    "src/input/timeline/timeline_clipboard.c": "02f7e6fc72f217821ccb7b6dddeb15dcc94777e8fa59760a6ae5fedd57b04b5c",
+    "src/input/timeline/timeline_input_mouse_click.c": "36dbf9e054852e730a90bb33a7a005cbde581cec5ec6ac26661b989b7d3d648e",
+    "src/input/timeline/timeline_input_mouse_scroll.c": "3764643f0409a2609ba3ffcf85d73953d1ea0adb7f2b6a2e51da9ef886900c09",
+    "src/input/timeline/timeline_midi_region.c": "5df7d6d22b15c286945a0710aa4b61dbf0e1766d63be93abceb8e3f344c5d855",
+    "src/input/transport_input.c": "d120bcab978433c90d801b1cfb03b205a0031264b137b19a9a6efb2675fe8a2b",
+    "src/ui/clip_inspector_waveform.c": "df01199bdae018d79cde773c9685f656fd1c57e2a91d412af275f65420c3e1d8",
+    "src/ui/effects_panel/meter_detail_view.c": "7053faaf43d9380859f0f678362056933a037a154cae90a2ac641996c86e7843",
+    "src/ui/midi_editor_render.c": "ddf8131c4adf0e042e798608efb342df9c2f6e2428a8bbe3d649a9ab67248e84",
+    "src/ui/overlay/timeline_view_runtime_overlays.c": "ad4ac97aeafe0769b7544a97e3381171226e8cf2062aca4ad9fdf10de766926e",
+    "src/ui/transport.c": "d37c5ad637b0f4998e07de70899149989059bad85c27bce92beedb8a9553f9db",
+    "tests/engine_transport_clock_test.c": "70e501fcaa133778d91202fbc85351d1c43ccda7cd39eba815e049778bcf2598",
+    "tests/test_session_engine_stubs.c": "144690facba39e30e08cf7a1b7d6188c8f41d1043e485c220e1802bcc463399d"
+  },
+  "sanitizer_wrappers": {
+    "/tmp/daw-s1-asan.mk": "override BUILD_DIR := /tmp/daw-s1-asan-isolated\ninclude /Users/calebsv/Desktop/CodeWork/daw/Makefile\nCFLAGS += -fsanitize=address -fno-omit-frame-pointer -g\nLDFLAGS += -fsanitize=address\n",
+    "/tmp/daw-s1-tsan.mk": "override BUILD_DIR := /tmp/daw-s1-tsan-isolated\ninclude /Users/calebsv/Desktop/CodeWork/daw/Makefile\nCFLAGS += -fsanitize=thread -fno-omit-frame-pointer -g\nLDFLAGS += -fsanitize=thread\n"
+  },
+  "limits": [
+    "Callback-delivered audio is not measured DAC presentation; hardware position remains unknown.",
+    "Short SDL endpoint exclusion is used for discontinuities; no hard-real-time deadline qualification.",
+    "Recording alignment/media durability and deadline diagnostics remain S2.5/S2.6.",
+    "No installation, physical loopback, listening, or manual visual acceptance."
+  ]
+}

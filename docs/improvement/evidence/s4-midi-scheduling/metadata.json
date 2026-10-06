@@ -1,0 +1,178 @@
+{
+  "started_utc": "2026-09-21T19:32:02.886857+00:00",
+  "binary": "/Users/calebsv/Desktop/CodeWork/daw/build/performance/O2/targets/macOS-arm64/tests/runtime_workload_bench",
+  "binary_sha256": "26ccdd4bceb2bbc809f568640ae1788ed0794e9d7ad7b582a02f9f296b985b07",
+  "platform": "macOS-15.7.4-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "logical_cpus": 8,
+  "load_average": [
+    2.52392578125,
+    3.09765625,
+    3.0732421875
+  ],
+  "repeats": 3,
+  "group": "scheduling",
+  "order_seed": 437,
+  "workloads": [
+    {
+      "name": "audio_32",
+      "args": [
+        "render",
+        32,
+        1,
+        0,
+        0,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    },
+    {
+      "name": "fx_32",
+      "args": [
+        "render",
+        32,
+        1,
+        0,
+        1,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    },
+    {
+      "name": "sparse_32x32",
+      "args": [
+        "render",
+        32,
+        32,
+        0,
+        0,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    },
+    {
+      "name": "overlap_8x8",
+      "args": [
+        "render_overlap",
+        8,
+        8,
+        0,
+        0,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    },
+    {
+      "name": "midi_8x8",
+      "args": [
+        "render",
+        8,
+        1,
+        8,
+        0,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    },
+    {
+      "name": "midi_8x32",
+      "args": [
+        "render",
+        8,
+        1,
+        32,
+        0,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    },
+    {
+      "name": "midi_sparse_1x1",
+      "args": [
+        "render_sparse",
+        1,
+        1,
+        1,
+        0,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    },
+    {
+      "name": "midi_sparse_1x128",
+      "args": [
+        "render_sparse",
+        1,
+        1,
+        128,
+        0,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    },
+    {
+      "name": "midi_sparse_1x1024",
+      "args": [
+        "render_sparse",
+        1,
+        1,
+        1024,
+        0,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    },
+    {
+      "name": "live_midi8x32",
+      "args": [
+        "live",
+        8,
+        1,
+        32,
+        0,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    },
+    {
+      "name": "live_sparse32_edits",
+      "args": [
+        "live_edits",
+        32,
+        32,
+        0,
+        0,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    }
+  ],
+  "notes": [
+    "Sequential fresh processes; no CPU pinning or exclusive host access.",
+    "macOS peak RSS units are bytes; peak includes fixture construction.",
+    "Dummy callbacks do not measure physical DAC deadlines.",
+    "Recording feeds synthetic 100ms packets; offline recording cases are accelerated, live_record waits 100ms per drain."
+  ]
+}

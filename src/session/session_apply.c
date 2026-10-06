@@ -1,3 +1,4 @@
+#include "app/media_import.h"
 #include "session.h"
 #include "app_state.h"
 #include "daw/data_paths.h"
@@ -10,11 +11,13 @@
 #include "time/tempo.h"
 #include "effects/param_utils.h"
 #include "input/midi_editor_input.h"
+#include "undo/undo_manager.h"
 
 #include <string.h>
 
 #include <SDL2/SDL.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 
 static void safe_copy_string(char* dst, size_t dst_len, const char* src) {
@@ -210,6 +213,19 @@ static void clear_pending_track_fx(AppState* state) {
     state->pending_track_fx_dirty = false;
 }
 
+// Maps a document clip identity to the engine's chronological, creation-order sorting.
+static int session_restored_clip_index(const SessionDocument* doc, int track_index, int clip_index) {
+    if (track_index < 0 || track_index >= doc->track_count || clip_index < 0 ||
+        clip_index >= doc->tracks[track_index].clip_count) return -1;
+    const SessionTrack* track = &doc->tracks[track_index];
+    int result = 0;
+    for (int i = 0; i < track->clip_count; ++i) {
+        if (track->clips[i].start_frame < track->clips[clip_index].start_frame ||
+            (track->clips[i].start_frame == track->clips[clip_index].start_frame && i < clip_index)) ++result;
+    }
+    return result;
+}
+
 static bool session_resolve_clip_creation_index(const AppState* state,
                                                 int track_index,
                                                 int clip_index,
@@ -245,7 +261,7 @@ static void session_restore_timeline_selection(AppState* state, const SessionDoc
     }
     for (int i = 0; i < doc->selection_count; ++i) {
         int track_index = doc->selection[i].track_index;
-        int clip_index = doc->selection[i].clip_index;
+        int clip_index = session_restored_clip_index(doc, track_index, doc->selection[i].clip_index);
         if (track_index < 0 || track_index >= track_count) {
             continue;
         }
@@ -264,12 +280,12 @@ static void session_restore_midi_editor_viewports(AppState* state, const Session
         return;
     }
     state->midi_editor_ui.viewport_track_index = doc->midi_editor.viewport_track_index;
-    state->midi_editor_ui.viewport_clip_index = doc->midi_editor.viewport_clip_index;
+    state->midi_editor_ui.viewport_clip_index = session_restored_clip_index(doc, doc->midi_editor.viewport_track_index, doc->midi_editor.viewport_clip_index);
     state->midi_editor_ui.viewport_start_frame = doc->midi_editor.viewport_start_frame;
     state->midi_editor_ui.viewport_span_frames = doc->midi_editor.viewport_span_frames;
     if (session_resolve_clip_creation_index(state,
                                             doc->midi_editor.viewport_track_index,
-                                            doc->midi_editor.viewport_clip_index,
+                                            state->midi_editor_ui.viewport_clip_index,
                                             &creation_index)) {
         state->midi_editor_ui.viewport_clip_creation_index = creation_index;
     } else {
@@ -281,12 +297,12 @@ static void session_restore_midi_editor_viewports(AppState* state, const Session
     }
 
     state->midi_editor_ui.pitch_viewport_track_index = doc->midi_editor.pitch_viewport_track_index;
-    state->midi_editor_ui.pitch_viewport_clip_index = doc->midi_editor.pitch_viewport_clip_index;
+    state->midi_editor_ui.pitch_viewport_clip_index = session_restored_clip_index(doc, doc->midi_editor.pitch_viewport_track_index, doc->midi_editor.pitch_viewport_clip_index);
     state->midi_editor_ui.pitch_viewport_top_note = doc->midi_editor.pitch_viewport_top_note;
     state->midi_editor_ui.pitch_viewport_row_count = doc->midi_editor.pitch_viewport_row_count;
     if (session_resolve_clip_creation_index(state,
                                             doc->midi_editor.pitch_viewport_track_index,
-                                            doc->midi_editor.pitch_viewport_clip_index,
+                                            state->midi_editor_ui.pitch_viewport_clip_index,
                                             &creation_index)) {
         state->midi_editor_ui.pitch_viewport_clip_creation_index = creation_index;
     } else {
@@ -296,7 +312,14 @@ static void session_restore_midi_editor_viewports(AppState* state, const Session
     }
 }
 
-bool session_apply_document(AppState* state, const SessionDocument* doc) {
+// Names the failed preparation operation while retaining the original project for retry.
+static bool session_require_operation(bool accepted, const char* operation) {
+    if (!accepted) SDL_Log("session restore: candidate rejected at %s", operation);
+    return accepted;
+}
+
+// Populates only an isolated replacement state; any failed required edit rejects the candidate.
+static bool session_prepare_document(AppState* state, const SessionDocument* doc) {
     if (!state || !doc) {
         return false;
     }
@@ -304,12 +327,6 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     if (!session_document_validate(doc, error, sizeof(error))) {
         SDL_Log("session_apply_document: document invalid: %s", error[0] ? error : "unknown error");
         return false;
-    }
-
-    if (state->engine) {
-        engine_stop(state->engine);
-        engine_destroy(state->engine);
-        state->engine = NULL;
     }
 
     state->runtime_cfg = doc->engine;
@@ -321,7 +338,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
 
     int existing_tracks = engine_get_track_count(state->engine);
     while (existing_tracks > 0) {
-        engine_remove_track(state->engine, existing_tracks - 1);
+        if (!session_require_operation(engine_remove_track(state->engine, existing_tracks - 1), "engine_remove_track")) return false;
         existing_tracks = engine_get_track_count(state->engine);
     }
 
@@ -416,7 +433,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     if (state->engine) {
         EngineEqCurve curve;
         eq_curve_to_engine(&state->effects_panel.eq_curve_master, &curve);
-        engine_set_master_eq_curve(state->engine, &curve);
+        if (!session_require_operation(engine_set_master_eq_curve(state->engine, &curve), "engine_set_master_eq_curve")) return false;
     }
 
     state->layout_runtime.transport_ratio = clamp_ratio(doc->layout.transport_ratio);
@@ -428,7 +445,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     state->loop_end_frame = doc->loop.end_frame;
     state->loop_restart_pending = false;
     if (state->engine) {
-        engine_transport_set_loop(state->engine, state->loop_enabled, state->loop_start_frame, state->loop_end_frame);
+        if (!session_require_operation(engine_transport_set_loop(state->engine, state->loop_enabled, state->loop_start_frame, state->loop_end_frame), "engine_transport_set_loop")) return false;
     }
 
     session_apply_data_paths(state, doc);
@@ -439,7 +456,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
                                           ? doc->library.directory
                                           : daw_data_paths_library_root(&state->data_paths));
     library_browser_init(&state->library, library_root);
-    library_browser_scan(&state->library, &state->media_registry);
+    // Library scanning and registry persistence happen only after commit.
     if (doc->library.selected_index >= 0 && doc->library.selected_index < state->library.count) {
         state->library.selected_index = doc->library.selected_index;
     } else {
@@ -458,33 +475,37 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     state->tempo_map.sample_rate = state->runtime_cfg.sample_rate;
     if (doc->tempo_event_count > 0 && doc->tempo_events) {
         TempoEvent* events = (TempoEvent*)calloc((size_t)doc->tempo_event_count, sizeof(TempoEvent));
+        if (!events) return false;
         if (events) {
             for (int i = 0; i < doc->tempo_event_count; ++i) {
                 events[i].beat = doc->tempo_events[i].beat;
                 events[i].bpm = doc->tempo_events[i].bpm;
             }
-            tempo_map_set_events(&state->tempo_map, events, doc->tempo_event_count);
+            bool ok = tempo_map_set_events(&state->tempo_map, events, doc->tempo_event_count);
             free(events);
+            if (!ok) return false;
         }
     } else {
         TempoEvent default_event = {.beat = 0.0, .bpm = doc->tempo.bpm > 0.0f ? doc->tempo.bpm : 120.0f};
-        tempo_map_set_events(&state->tempo_map, &default_event, 1);
+        if (!session_require_operation(tempo_map_set_events(&state->tempo_map, &default_event, 1), "tempo_map_set_events")) return false;
     }
     if (doc->time_signature_event_count > 0 && doc->time_signature_events) {
         TimeSignatureEvent* events =
             (TimeSignatureEvent*)calloc((size_t)doc->time_signature_event_count, sizeof(TimeSignatureEvent));
+        if (!events) return false;
         if (events) {
             for (int i = 0; i < doc->time_signature_event_count; ++i) {
                 events[i].beat = doc->time_signature_events[i].beat;
                 events[i].ts_num = doc->time_signature_events[i].ts_num;
                 events[i].ts_den = doc->time_signature_events[i].ts_den;
             }
-            time_signature_map_set_events(&state->time_signature_map, events, doc->time_signature_event_count);
+            bool ok = time_signature_map_set_events(&state->time_signature_map, events, doc->time_signature_event_count);
             free(events);
+            if (!ok) return false;
         }
     } else {
         TimeSignatureEvent default_event = {.beat = 0.0, .ts_num = doc->tempo.ts_num, .ts_den = doc->tempo.ts_den};
-        time_signature_map_set_events(&state->time_signature_map, &default_event, 1);
+        if (!session_require_operation(time_signature_map_set_events(&state->time_signature_map, &default_event, 1), "time_signature_map_set_events")) return false;
     }
 
     state->tempo = tempo_state_default(state->runtime_cfg.sample_rate);
@@ -509,63 +530,65 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     state->tempo.sample_rate = state->runtime_cfg.sample_rate;
     tempo_state_clamp(&state->tempo);
     if (state->engine) {
-        engine_set_tempo_state(state->engine, &state->tempo);
+        if (!session_require_operation(engine_set_tempo_state(state->engine, &state->tempo), "engine_set_tempo_state")) return false;
     }
 
     clear_pending_track_fx(state);
     if (doc->track_count > 0) {
         state->pending_track_fx = (PendingTrackFxEntry*)calloc((size_t)doc->track_count, sizeof(PendingTrackFxEntry));
+        if (!state->pending_track_fx) return false;
         if (state->pending_track_fx) {
             state->pending_track_fx_count = doc->track_count;
         }
     }
 
     effects_panel_ensure_eq_curve_tracks(state, doc->track_count);
+    if (state->effects_panel.eq_curve_tracks_count != doc->track_count) return false;
     int migrated_media_id_count = 0;
     for (int t = 0; t < doc->track_count; ++t) {
         const SessionTrack* track_doc = &doc->tracks[t];
         int track_index = engine_add_track(state->engine);
         if (track_index < 0) {
             SDL_Log("session_apply_document: failed to add track %d", t);
-            continue;
+            return false;
         }
-        engine_track_set_name(state->engine, track_index, track_doc->name);
-        engine_track_set_gain(state->engine, track_index, track_doc->gain == 0.0f ? 1.0f : track_doc->gain);
-        engine_track_set_pan(state->engine, track_index, track_doc->pan);
-        engine_track_set_muted(state->engine, track_index, track_doc->muted);
-        engine_track_set_solo(state->engine, track_index, track_doc->solo);
+        if (!session_require_operation(engine_track_set_name(state->engine, track_index, track_doc->name), "engine_track_set_name")) return false;
+        if (!session_require_operation(engine_track_set_gain(state->engine, track_index, track_doc->gain), "engine_track_set_gain")) return false;
+        if (!session_require_operation(engine_track_set_pan(state->engine, track_index, track_doc->pan), "engine_track_set_pan")) return false;
+        if (!session_require_operation(engine_track_set_muted(state->engine, track_index, track_doc->muted), "engine_track_set_muted")) return false;
+        if (!session_require_operation(engine_track_set_solo(state->engine, track_index, track_doc->solo), "engine_track_set_solo")) return false;
         if (track_doc->midi_instrument_enabled) {
-            engine_track_midi_set_instrument_preset(state->engine,
+            if (!session_require_operation(engine_track_midi_set_instrument_preset(state->engine,
                                                     track_index,
-                                                    track_doc->midi_instrument_preset);
-            engine_track_midi_set_instrument_params(state->engine,
+                                                    track_doc->midi_instrument_preset), "engine_track_midi_set_instrument_preset")) return false;
+            if (!session_require_operation(engine_track_midi_set_instrument_params(state->engine,
                                                     track_index,
-                                                    track_doc->midi_instrument_params);
+                                                    track_doc->midi_instrument_params), "engine_track_midi_set_instrument_params")) return false;
         }
         if (track_doc->midi_instrument_automation_lanes &&
             track_doc->midi_instrument_automation_lane_count > 0) {
             for (int l = 0; l < track_doc->midi_instrument_automation_lane_count; ++l) {
                 const SessionAutomationLane* lane = &track_doc->midi_instrument_automation_lanes[l];
-                engine_track_midi_set_instrument_automation_lane_points(state->engine,
+                if (!session_require_operation(engine_track_midi_set_instrument_automation_lane_points(state->engine,
                                                                         track_index,
                                                                         lane->target,
                                                                         (const EngineAutomationPoint*)lane->points,
-                                                                        lane->point_count);
+                                                                        lane->point_count), "engine_track_midi_set_instrument_automation_lane_points")) return false;
             }
         } else {
-            engine_track_midi_set_instrument_automation_lanes(state->engine, track_index, NULL, 0);
+            if (!session_require_operation(engine_track_midi_set_instrument_automation_lanes(state->engine, track_index, NULL, 0), "engine_track_midi_set_instrument_automation_lanes")) return false;
         }
         if (state->effects_panel.eq_curve_tracks && t < state->effects_panel.eq_curve_tracks_count) {
             eq_curve_from_session(&state->effects_panel.eq_curve_tracks[t], &track_doc->eq);
             if (state->engine) {
                 EngineEqCurve curve;
                 eq_curve_to_engine(&state->effects_panel.eq_curve_tracks[t], &curve);
-                engine_set_track_eq_curve(state->engine, track_index, &curve);
+                if (!session_require_operation(engine_set_track_eq_curve(state->engine, track_index, &curve), "engine_set_track_eq_curve")) return false;
             }
         }
 
         for (int c = 0; c < track_doc->clip_count; ++c) {
-            SessionClip* clip_doc = &track_doc->clips[c];
+            const SessionClip* clip_doc = &track_doc->clips[c];
             if (clip_doc->kind == ENGINE_CLIP_KIND_MIDI) {
                 int clip_index = -1;
                 if (!engine_add_midi_clip_to_track(state->engine,
@@ -574,51 +597,33 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
                                                    clip_doc->duration_frames,
                                                    &clip_index)) {
                     SDL_Log("session_apply_document: failed to create MIDI clip %d:%d", t, c);
-                    continue;
+                    return false;
                 }
-                engine_clip_set_gain(state->engine, track_index, clip_index, clip_doc->gain == 0.0f ? 1.0f : clip_doc->gain);
-                engine_clip_set_name(state->engine, track_index, clip_index, clip_doc->name);
-                engine_clip_midi_set_instrument_preset(state->engine,
-                                                       track_index,
-                                                       clip_index,
-                                                       clip_doc->instrument_preset);
-                engine_clip_midi_set_instrument_params(state->engine,
-                                                       track_index,
-                                                       clip_index,
-                                                       clip_doc->instrument_params);
-                engine_clip_midi_set_inherits_track_instrument(state->engine,
-                                                               track_index,
-                                                               clip_index,
-                                                               clip_doc->instrument_inherits_track);
-                if (clip_doc->offset_frames != 0 || clip_doc->duration_frames != 0) {
-                    engine_clip_set_region(state->engine,
-                                           track_index,
-                                           clip_index,
-                                           clip_doc->offset_frames,
-                                           clip_doc->duration_frames);
-                }
-                for (int n = 0; n < clip_doc->midi_note_count; ++n) {
-                    if (!engine_clip_midi_add_note(state->engine,
-                                                   track_index,
-                                                   clip_index,
-                                                   clip_doc->midi_notes[n],
-                                                   NULL)) {
-                        SDL_Log("session_apply_document: failed to add MIDI note %d for clip %d:%d", n, t, c);
-                    }
-                }
+                EngineClipTransform transform = {
+                    .start_frame = clip_doc->start_frame, .offset_frames = clip_doc->offset_frames,
+                    .duration_frames = clip_doc->duration_frames, .gain = clip_doc->gain,
+                    .fade_in_frames = clip_doc->fade_in_frames, .fade_out_frames = clip_doc->fade_out_frames,
+                    .fade_in_curve = clip_doc->fade_in_curve, .fade_out_curve = clip_doc->fade_out_curve,
+                    .instrument_preset = clip_doc->instrument_preset, .instrument_params = clip_doc->instrument_params,
+                    .instrument_inherits_track = clip_doc->instrument_inherits_track,
+                    .midi_notes = clip_doc->midi_notes, .midi_note_count = clip_doc->midi_note_count,
+                };
+                if (!session_require_operation(engine_transform_clip(state->engine, track_index, clip_index,
+                        track_index, &transform, &clip_index), "MIDI clip contents")) return false;
+                if (!engine_clip_set_name(state->engine, track_index, clip_index, clip_doc->name)) return false;
                 if (clip_doc->automation_lanes && clip_doc->automation_lane_count > 0) {
                     for (int l = 0; l < clip_doc->automation_lane_count; ++l) {
-                        SessionAutomationLane* lane = &clip_doc->automation_lanes[l];
-                        engine_clip_set_automation_lane_points(state->engine,
+                        const SessionAutomationLane* lane = &clip_doc->automation_lanes[l];
+                        if (!session_require_operation(engine_clip_set_automation_lane_points(state->engine,
                                                                track_index,
                                                                clip_index,
                                                                lane->target,
                                                                (const EngineAutomationPoint*)lane->points,
-                                                               lane->point_count);
+                                                               lane->point_count), "engine_clip_set_automation_lane_points")) return false;
                     }
                 }
                 if (clip_doc->selected && state->selected_track_index == -1) {
-                    timeline_selection_restore_primary(state, track_index, clip_index, track_index);
+                    timeline_selection_restore_primary(state, track_index, session_restored_clip_index(doc, t, c), track_index);
                     selected_from_clip = true;
                 }
                 continue;
@@ -626,39 +631,18 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
             const char* resolved_path = clip_doc->media_path;
             const char* resolved_id = clip_doc->media_id;
             MediaRegistryEntry resolved_entry = {0};
-            if (clip_doc->media_id[0] != '\0') {
+            if (clip_doc->media_id[0]) {
                 const MediaRegistryEntry* entry = media_registry_find_by_id(&state->media_registry, clip_doc->media_id);
-                if (entry && entry->path[0] != '\0') {
-                    resolved_path = entry->path;
-                } else if (clip_doc->media_path[0] != '\0') {
-                    if (media_registry_ensure_for_path(&state->media_registry,
-                                                       clip_doc->media_path,
-                                                       clip_doc->name,
-                                                       &resolved_entry)) {
-                        resolved_id = resolved_entry.id;
-                        resolved_path = resolved_entry.path;
-                        migrated_media_id_count++;
-                    }
-                }
-            } else if (clip_doc->media_path[0] != '\0') {
-                if (media_registry_ensure_for_path(&state->media_registry,
-                                                   clip_doc->media_path,
-                                                   clip_doc->name,
-                                                   &resolved_entry)) {
-                    resolved_id = resolved_entry.id;
-                    migrated_media_id_count++;
-                }
+                if (entry && entry->path[0] && access(entry->path, R_OK) == 0) resolved_path = entry->path;
             }
-            if (resolved_id && resolved_id[0] != '\0') {
-                safe_copy_string(clip_doc->media_id, sizeof(clip_doc->media_id), resolved_id);
-            }
-            if (resolved_path && resolved_path[0] != '\0' &&
-                strcmp(clip_doc->media_path, resolved_path) != 0) {
-                safe_copy_string(clip_doc->media_path, sizeof(clip_doc->media_path), resolved_path);
-            }
+            if (!resolved_path[0] || !media_registry_ensure_for_path(&state->media_registry,
+                    resolved_path, clip_doc->name, &resolved_entry)) return false;
+            resolved_path = resolved_entry.path;
+            resolved_id = resolved_entry.id;
+            if (strcmp(clip_doc->media_id, resolved_id)) ++migrated_media_id_count;
             if (!resolved_path || resolved_path[0] == '\0') {
                 SDL_Log("session_apply_document: track %d clip %d missing media path", t, c);
-                continue;
+                return false;
             }
             int clip_index = -1;
             if (!engine_add_clip_to_track_with_id(state->engine,
@@ -668,33 +652,43 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
                                                   clip_doc->start_frame,
                                                   &clip_index)) {
                 SDL_Log("session_apply_document: failed to load clip %s", resolved_path);
-                continue;
+                return false;
             }
-            engine_clip_set_region(state->engine, track_index, clip_index, clip_doc->offset_frames, clip_doc->duration_frames);
-            engine_clip_set_gain(state->engine, track_index, clip_index, clip_doc->gain == 0.0f ? 1.0f : clip_doc->gain);
-            engine_clip_set_name(state->engine, track_index, clip_index, clip_doc->name);
-            engine_clip_set_fades(state->engine, track_index, clip_index, clip_doc->fade_in_frames, clip_doc->fade_out_frames);
-            engine_clip_set_fade_curves(state->engine,
+            uint64_t media_frames = engine_clip_get_total_frames(state->engine, track_index, clip_index);
+            if (clip_doc->offset_frames >= media_frames ||
+                (clip_doc->duration_frames && clip_doc->duration_frames > media_frames - clip_doc->offset_frames)) return false;
+            if (!session_require_operation(engine_clip_set_region(state->engine, track_index, clip_index, clip_doc->offset_frames, clip_doc->duration_frames), "engine_clip_set_region")) return false;
+            if (!session_require_operation(engine_clip_set_gain(state->engine, track_index, clip_index, clip_doc->gain), "engine_clip_set_gain")) return false;
+            if (!session_require_operation(engine_clip_set_name(state->engine, track_index, clip_index, clip_doc->name), "engine_clip_set_name")) return false;
+            if (!session_require_operation(engine_clip_set_fades(state->engine, track_index, clip_index, clip_doc->fade_in_frames, clip_doc->fade_out_frames), "engine_clip_set_fades")) return false;
+            if (!session_require_operation(engine_clip_set_fade_curves(state->engine,
                                         track_index,
                                         clip_index,
                                         clip_doc->fade_in_curve,
-                                        clip_doc->fade_out_curve);
+                                        clip_doc->fade_out_curve), "engine_clip_set_fade_curves")) return false;
             if (clip_doc->automation_lanes && clip_doc->automation_lane_count > 0) {
                 for (int l = 0; l < clip_doc->automation_lane_count; ++l) {
-                    SessionAutomationLane* lane = &clip_doc->automation_lanes[l];
-                    engine_clip_set_automation_lane_points(state->engine,
+                    const SessionAutomationLane* lane = &clip_doc->automation_lanes[l];
+                    if (!session_require_operation(engine_clip_set_automation_lane_points(state->engine,
                                                            track_index,
                                                            clip_index,
                                                            lane->target,
                                                            (const EngineAutomationPoint*)lane->points,
-                                                           lane->point_count);
+                                                           lane->point_count), "engine_clip_set_automation_lane_points")) return false;
                 }
             }
             if (clip_doc->selected && state->selected_track_index == -1) {
-                timeline_selection_restore_primary(state, track_index, clip_index, track_index);
+                timeline_selection_restore_primary(state, track_index, session_restored_clip_index(doc, t, c), track_index);
                 selected_from_clip = true;
             }
         }
+
+        EngineTrackSettings settings = {
+            .gain = track_doc->gain, .pan = track_doc->pan, .muted = track_doc->muted, .solo = track_doc->solo,
+            .instrument_enabled = track_doc->midi_instrument_enabled,
+            .instrument_preset = track_doc->midi_instrument_preset, .instrument_params = track_doc->midi_instrument_params,
+        };
+        if (!session_require_operation(engine_track_set_settings(state->engine, track_index, &settings), "engine_track_set_settings")) return false;
 
         if (state->pending_track_fx && t < state->pending_track_fx_count) {
             PendingTrackFxEntry* pending = &state->pending_track_fx[t];
@@ -718,7 +712,7 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
         int clip_count = doc->tracks[doc->selected_track_index].clip_count;
         int selected_clip_index = -1;
         if (doc->selected_clip_index >= 0 && doc->selected_clip_index < clip_count) {
-            selected_clip_index = doc->selected_clip_index;
+            selected_clip_index = session_restored_clip_index(doc, doc->selected_track_index, doc->selected_clip_index);
         }
         timeline_selection_restore_primary(state, doc->selected_track_index, selected_clip_index, active_track_index);
     }
@@ -748,28 +742,6 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
         midi_editor_input_clear_selected_clip(state);
     }
     session_restore_midi_editor_viewports(state, doc);
-
-    if (doc->clip_inspector.visible &&
-        doc->clip_inspector.track_index >= 0 &&
-        doc->clip_inspector.track_index < engine_get_track_count(state->engine)) {
-        const EngineTrack* tracks = engine_get_tracks(state->engine);
-        const EngineTrack* track = tracks ? &tracks[doc->clip_inspector.track_index] : NULL;
-        if (track &&
-            doc->clip_inspector.clip_index >= 0 &&
-            doc->clip_inspector.clip_index < track->clip_count) {
-            inspector_input_show(state,
-                                 doc->clip_inspector.track_index,
-                                 doc->clip_inspector.clip_index,
-                                 &track->clips[doc->clip_inspector.clip_index]);
-            state->inspector.waveform.view_source = doc->clip_inspector.view_source;
-            state->inspector.waveform.zoom = doc->clip_inspector.zoom > 0.0f ? doc->clip_inspector.zoom : 1.0f;
-            state->inspector.waveform.scroll = doc->clip_inspector.scroll;
-        } else {
-            inspector_input_init(state);
-        }
-    } else {
-        inspector_input_init(state);
-    }
 
     memset(state->pending_master_fx, 0, sizeof(state->pending_master_fx));
     state->pending_master_fx_count = 0;
@@ -920,30 +892,31 @@ static uint32_t session_pending_fx_collect_params(const PendingMasterFx* fx,
     return count;
 }
 
-void session_apply_pending_master_fx(AppState* state) {
+bool session_apply_pending_master_fx(AppState* state) {
     if (!state || !state->engine) {
-        return;
+        return true;
     }
-    if (state->pending_master_fx_count <= 0) {
+    if (!state->pending_master_fx_dirty || state->pending_master_fx_count <= 0) {
         state->pending_master_fx_dirty = false;
-        return;
+        return true;
     }
 
     FxMasterSnapshot existing = {0};
-    if (engine_fx_master_snapshot(state->engine, &existing)) {
+    if (!engine_fx_master_snapshot(state->engine, &existing)) return false;
+    {
         for (int i = 0; i < existing.count; ++i) {
-            engine_fx_master_remove(state->engine, existing.items[i].id);
+            if (!engine_fx_master_remove(state->engine, existing.items[i].id)) return false;
         }
     }
 
     for (int i = 0; i < state->pending_master_fx_count && i < FX_MASTER_MAX; ++i) {
         const PendingMasterFx* fx = &state->pending_master_fx[i];
         if (fx->type_id == 0) {
-            continue;
+            return false;
         }
         FxInstId id = engine_fx_master_add(state->engine, fx->type_id);
         if (!id) {
-            continue;
+            return false;
         }
         const EffectParamSpec* specs = NULL;
         uint32_t spec_count = 0;
@@ -962,28 +935,29 @@ void session_apply_pending_master_fx(AppState* state) {
                 native_value = fx_param_spec_beats_to_native(spec, beat_value, &state->tempo);
             }
             if (use_sync) {
-                engine_fx_master_set_param_with_mode(state->engine, id, p, native_value, mode, beat_value);
+                if (!engine_fx_master_set_param_with_mode(state->engine, id, p, native_value, mode, beat_value)) return false;
             } else {
-                engine_fx_master_set_param(state->engine, id, p, native_value);
+                if (!engine_fx_master_set_param(state->engine, id, p, native_value)) return false;
             }
         }
         if (!fx->enabled) {
-            engine_fx_master_set_enabled(state->engine, id, false);
+            if (!engine_fx_master_set_enabled(state->engine, id, false)) return false;
         }
     }
     state->pending_master_fx_dirty = false;
+    return true;
 }
 
-void session_apply_pending_track_fx(AppState* state) {
+bool session_apply_pending_track_fx(AppState* state) {
     if (!state || !state->engine) {
-        return;
+        return true;
     }
     if (!state->pending_track_fx_dirty || state->pending_track_fx_count <= 0 || !state->pending_track_fx) {
         state->pending_track_fx_dirty = false;
-        return;
+        return true;
     }
 
-    engine_fx_set_track_count(state->engine, engine_get_track_count(state->engine));
+    if (!engine_fx_set_track_count(state->engine, engine_get_track_count(state->engine))) return false;
     int track_count = engine_get_track_count(state->engine);
     for (int t = 0; t < state->pending_track_fx_count && t < track_count; ++t) {
         const PendingTrackFxEntry* pending = &state->pending_track_fx[t];
@@ -993,11 +967,11 @@ void session_apply_pending_track_fx(AppState* state) {
         for (int f = 0; f < pending->fx_count && f < FX_MASTER_MAX; ++f) {
             const SessionFxInstance* fx = &pending->fx[f];
             if (!fx || fx->type == 0) {
-                continue;
+                return false;
             }
             FxInstId id = engine_fx_track_add(state->engine, t, fx->type);
             if (id == 0) {
-                continue;
+                return false;
             }
             const EffectParamSpec* specs = NULL;
             uint32_t spec_count = 0;
@@ -1016,17 +990,127 @@ void session_apply_pending_track_fx(AppState* state) {
                     native_value = fx_param_spec_beats_to_native(spec, beat_value, &state->tempo);
                 }
                 if (use_sync) {
-                    engine_fx_track_set_param_with_mode(state->engine, t, id, p, native_value, mode, beat_value);
+                    if (!engine_fx_track_set_param_with_mode(state->engine, t, id, p, native_value, mode, beat_value)) return false;
                 } else {
-                    engine_fx_track_set_param(state->engine, t, id, p, native_value);
+                    if (!engine_fx_track_set_param(state->engine, t, id, p, native_value)) return false;
                 }
             }
             if (!fx->enabled) {
-                engine_fx_track_set_enabled(state->engine, t, id, false);
+                if (!engine_fx_track_set_enabled(state->engine, t, id, false)) return false;
             }
         }
     }
     state->pending_track_fx_dirty = false;
+    return true;
+}
+
+// Restores inspector presentation only after every fallible project preparation step succeeds.
+static void session_restore_inspector(AppState* state, const SessionDocument* doc) {
+    int clip_index = session_restored_clip_index(doc, doc->clip_inspector.track_index, doc->clip_inspector.clip_index);
+    if (doc->clip_inspector.visible &&
+        doc->clip_inspector.track_index >= 0 &&
+        doc->clip_inspector.track_index < engine_get_track_count(state->engine)) {
+        const EngineTrack* tracks = engine_get_tracks(state->engine);
+        const EngineTrack* track = tracks ? &tracks[doc->clip_inspector.track_index] : NULL;
+        if (track &&
+            clip_index >= 0 &&
+            clip_index < track->clip_count) {
+            inspector_input_show(state,
+                                 doc->clip_inspector.track_index,
+                                 clip_index,
+                                 &track->clips[clip_index]);
+            state->inspector.waveform.view_source = doc->clip_inspector.view_source;
+            state->inspector.waveform.zoom = doc->clip_inspector.zoom > 0.0f ? doc->clip_inspector.zoom : 1.0f;
+            state->inspector.waveform.scroll = doc->clip_inspector.scroll;
+        } else {
+            inspector_input_init(state);
+        }
+    } else {
+        inspector_input_init(state);
+    }
+
+}
+
+// Releases resources privately owned by a candidate without persisting its registry or touching shared UI state.
+static void session_discard_candidate(AppState* candidate) {
+    if (!candidate) return;
+    engine_destroy(candidate->engine);
+    tempo_map_free(&candidate->tempo_map);
+    time_signature_map_free(&candidate->time_signature_map);
+    free(candidate->effects_panel.eq_curve_tracks);
+    free(candidate->pending_track_fx);
+    free(candidate->media_registry.entries);
+    free(candidate);
+}
+
+// Replaces the project only after a complete offline engine, maps, automation, and effects are ready.
+bool session_apply_document(AppState* state, const SessionDocument* doc) {
+    if (!state || !doc || (state->engine && !engine_is_control_thread(state->engine)) ||
+        daw_audio_recording_is_active(&state->audio_recording) || state->audio_recording.take_frame_count > 0 ||
+        state->audio_recording.capture_device_open || state->audio_recording.capture_device_started ||
+        state->audio_recording.record_armed_engine || state->bounce_active) return false;
+    char error[256];
+    if (!session_document_validate(doc, error, sizeof(error))) return false;
+    AppState* candidate = malloc(sizeof(*candidate));
+    if (!candidate) return false;
+    *candidate = *state;
+    candidate->engine = NULL;
+    candidate->tempo_map = (TempoMap){0};
+    candidate->time_signature_map = (TimeSignatureMap){0};
+    candidate->pending_track_fx = NULL;
+    candidate->pending_track_fx_count = 0;
+    candidate->effects_panel.eq_curve_tracks = NULL;
+    candidate->effects_panel.eq_curve_tracks_count = 0;
+    candidate->media_registry.entries = NULL;
+    candidate->media_registry.capacity = candidate->media_registry.count;
+    if (candidate->media_registry.count > 0) {
+        candidate->media_registry.entries = malloc((size_t)candidate->media_registry.count * sizeof(MediaRegistryEntry));
+        if (!candidate->media_registry.entries) { session_discard_candidate(candidate); return false; }
+        memcpy(candidate->media_registry.entries, state->media_registry.entries,
+               (size_t)candidate->media_registry.count * sizeof(MediaRegistryEntry));
+    }
+    if (!session_require_operation(session_prepare_document(candidate, doc), "project preparation") ||
+        !session_require_operation(session_apply_pending_master_fx(candidate), "master FX") ||
+        !session_require_operation(session_apply_pending_track_fx(candidate), "track FX")) {
+        session_discard_candidate(candidate);
+        return false;
+    }
+    // No fallible project operation follows: retire old ownership, then publish the prepared state.
+    daw_media_import_invalidate(state);
+    engine_destroy(state->engine);
+    tempo_map_free(&state->tempo_map);
+    time_signature_map_free(&state->time_signature_map);
+    free(state->effects_panel.eq_curve_tracks);
+    free(state->effects_panel.last_open_track_fx_ids);
+    candidate->effects_panel.last_open_track_fx_ids = NULL;
+    candidate->effects_panel.last_open_track_fx_count = 0;
+    free(state->pending_track_fx);
+    free(state->media_registry.entries);
+    undo_manager_clear(&state->undo);
+    candidate->undo = state->undo;
+    free(state->timeline_drag.initial_midi_notes);
+    SDL_free(state->timeline_drag.ripple_targets);
+    candidate->timeline_drag = (TimelineDragState){0};
+    candidate->timeline_drag.track_index = candidate->timeline_drag.clip_index = -1;
+    candidate->midi_editor_ui.drag_active = false;
+    candidate->midi_editor_ui.qwerty_record_armed = false;
+    candidate->midi_editor_ui.qwerty_test_enabled = false;
+    memset(candidate->midi_editor_ui.qwerty_active_notes, 0, sizeof(candidate->midi_editor_ui.qwerty_active_notes));
+    candidate->midi_editor_ui.note_press_pending = false;
+    candidate->midi_editor_ui.shift_note_pending = false;
+    candidate->track_name_editor.editing = false;
+    candidate->dragging_library = false;
+    candidate->timeline_marquee_active = false;
+    candidate->effects_panel.target = FX_PANEL_TARGET_MASTER;
+    candidate->effects_panel.target_track_index = -1;
+    candidate->effects_panel.chain_count = 0;
+    *state = *candidate;
+    free(candidate);
+    session_restore_inspector(state, doc);
+    library_browser_scan(&state->library, &state->media_registry);
+    if (doc->library.selected_index >= 0 && doc->library.selected_index < state->library.count)
+        state->library.selected_index = doc->library.selected_index;
+    return true;
 }
 
 bool session_load_from_file(AppState* state, const char* path) {
@@ -1036,7 +1120,7 @@ bool session_load_from_file(AppState* state, const char* path) {
     }
     SessionDocument doc;
     session_document_init(&doc);
-    if (!session_document_read_file(path, &doc)) {
+    if (!session_document_read_recoverable(path, &doc, NULL)) {
         session_document_free(&doc);
         return false;
     }

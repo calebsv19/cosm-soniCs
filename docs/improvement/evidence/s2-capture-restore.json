@@ -1,0 +1,100 @@
+{
+  "recorded_at_utc": "2026-09-19T22:33:56.012539+00:00",
+  "base_head": "d8bff97cccab2054f18ccc874838162d0423e539",
+  "scope": "S2.2 control-owned authored-project capture and offline replacement preparation/commit",
+  "process_evidence": "Each command was observed to terminate with exit code zero through its original exec session. Final normal and sanitizer runs include the source-sample and unsorted-selection checks.",
+  "runs": [
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-session-transaction test-session-atomic-save test-audio-recording",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s2-transaction-asan.log",
+      "full_log_sha256": "173469cf8ad83df4f6ace61d6c9562e91602f420340df6967faabecd3b3c4ef5",
+      "acceptance_lines": [
+        "session_transaction_test: success (11 capture and 5 restore allocation boundaries, live capture, rollback, complete retry)",
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)",
+        "audio_recording_test: success"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-tsan.mk test-session-transaction",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s2-transaction-tsan.log",
+      "full_log_sha256": "3323db4659adc9a22ccbd68183ca8614c8ed684767e1fe1ae6f651f6c75e7452",
+      "acceptance_lines": [
+        "session_transaction_test: success (11 capture and 5 restore allocation boundaries, live capture, rollback, complete retry)"
+      ]
+    },
+    {
+      "command": "make test-stable test-legacy",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s2-transaction-regression.log",
+      "full_log_sha256": "ee97fda15ef0081152d2bbb6811193259323115e73c4ffa78acaf0013a9683cc",
+      "acceptance_lines": [
+        "session_transaction_test: success (11 capture and 5 restore allocation boundaries, live capture, rollback, complete retry)",
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)",
+        "engine_parameter_transaction_test: success",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)",
+        "daw_pack_contract_parity_test: success",
+        "daw_trace_export_contract_test: success",
+        "daw_trace_export_async_contract_test: success",
+        "kit_viz_waveform_adapter_test: success",
+        "kit_viz_fx_preview_adapter_test: success",
+        "kit_viz_meter_adapter_test: ok",
+        "waveform_cache_pack_warmstart_test: success",
+        "layout_text_scaling_sweep_test: success",
+        "timeline_contract_test: success",
+        "midi_model_test: success",
+        "midi_instrument_render_test: success",
+        "timeline_midi_region_test: ok",
+        "midi_editor_shell_test: success",
+        "audio_capture_device_test: success",
+        "audio_output_device_test: success",
+        "effects_revision_test: success",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)",
+        "audio_recording_test: success",
+        "track_role_test: success",
+        "daw_data_path_contract_test: success",
+        "daw_workspace_authoring_host_test: ok",
+        "test-library-copy-vs-reference-contract: success",
+        "2026-09-19 15:32:50.273 session_serialization_test[60075:188083438] INFO: session_serialization_test: success (6898 bytes)",
+        "media_cache_stress_test: success (entries=0)",
+        "clip_overlap_priority_test: success (clips=3)",
+        "engine_smoke_test: success",
+        "shared_theme_font_adapter_test: success"
+      ]
+    },
+    {
+      "command": "make",
+      "exit_code": 0,
+      "full_log": "/tmp/daw-s2-transaction-build.log",
+      "full_log_sha256": "b990b64b09abca8ae021cd16c63993cac32c232faadfa11cc563058e6f5a610d",
+      "acceptance_lines": []
+    }
+  ],
+  "source_sha256": {
+    "include/engine/engine.h": "34e91e84b9ad573db20a44df43168e08ea7055e86717c1a46a0cb710a35fdbc7",
+    "include/engine/engine_eq.h": "210d55c11a078d019c3a52e62dc058aead6b9841640244a94b966aaa223e518a",
+    "include/session.h": "9c007f6c055ebca41648af9c93dc0f2d4fc77918ca3bbd0473fc82169313f502",
+    "src/engine/engine_eq.c": "43c63478eb46cddab48b8f5ab8a82cbbcc88244d481482ca75d59dc693823719",
+    "src/engine/engine_tracks.c": "bea8509c8d0905ea9260c3dcc8ce15bb4330f71cec65afde26a9bd3b6cb294a7",
+    "src/session/session_document.c": "899ae5cd8ecd9df3d3384bc4f962b7656082357b3a567b65d76f850b4e854b3a",
+    "src/session/session_apply.c": "eaf40818cdd28afd589a08c1dea9f1d4c0cac73825297445fa977dd03fbce70b",
+    "src/session/session_validation.c": "1b1ce85fe1e41b1d8debd81cb41e42b5eacebf658d6d546b4a8a34d07c3e289b",
+    "tests/session_transaction_test.c": "606b06a2c4a02fccf63b9ea6e231ea774d8172a8e6ed79ae4a3b74b3b5bc2076",
+    "tests/test_session_engine_stubs.c": "910875ed4af7a0d09d7711fb77390876e08e88c2f59aec633dab81747fe77db6",
+    "make/rules-test-core.mk": "093e6cb3d7d826b07f2d0233059f84d362f20702dfb1a358ea5a2fb32c222d6a",
+    "make/sources-tests.mk": "81f813dfe8374ac2d12f1f6582062807ac152a25452a5e03f6c3b6b64115d05b"
+  },
+  "sanitizer_wrappers": {
+    "/tmp/daw-s1-asan.mk": "override BUILD_DIR := /tmp/daw-s1-asan-isolated\ninclude /Users/calebsv/Desktop/CodeWork/daw/Makefile\nCFLAGS += -fsanitize=address -fno-omit-frame-pointer -g\nLDFLAGS += -fsanitize=address\n",
+    "/tmp/daw-s1-tsan.mk": "override BUILD_DIR := /tmp/daw-s1-tsan-isolated\ninclude /Users/calebsv/Desktop/CodeWork/daw/Makefile\nCFLAGS += -fsanitize=thread -fno-omit-frame-pointer -g\nLDFLAGS += -fsanitize=thread\n"
+  },
+  "limits": [
+    "No device activation rollback or physical-device acceptance.",
+    "No precise runtime clock snapshot or saved transport resume contract.",
+    "No cross-file audio durability or exhaustive nested allocation fault sweep.",
+    "Library refresh is postcommit; missing media rejects restoration."
+  ]
+}

@@ -132,3 +132,9 @@ bool engine_instrument_source_set_midi_clip(EngineInstrumentSource* instrument,
 void engine_instrument_source_reset(void* userdata, int sample_rate, int channels);
 void engine_instrument_source_render(void* userdata, float* interleaved, int frames, uint64_t transport_frame);
 void engine_instrument_source_ops(EngineGraphSourceOps* ops);
+
+// Reserves note descriptors off-thread for bounded live audition updates.
+bool engine_instrument_source_reserve_notes(EngineInstrumentSource* instrument, int capacity);
+
+// Closes captured note gates and permits a bounded release tail without changing authored lane endpoints.
+void engine_instrument_source_set_export_end(EngineInstrumentSource* instrument, uint64_t end, uint64_t tail);

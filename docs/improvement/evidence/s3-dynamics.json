@@ -1,0 +1,159 @@
+{
+  "schema": 1,
+  "slice": "S3.3 existing dynamics and processing delay",
+  "status": "Complete at documented software contract",
+  "recorded_at": "2026-09-20T02:36:33.017035+00:00",
+  "head": "d8bff97cccab2054f18ccc874838162d0423e539",
+  "state": "Local uncommitted changes; earlier S1/S2/S3.1/S3.2 work retained",
+  "runs": [
+    {
+      "command": "make test-stable test-legacy",
+      "exit_code": 0,
+      "log": "/tmp/daw-s33-regression.log",
+      "sha256": "d9cefc8723813004273f38d2da4789cf0ee47020f190af395a005a741d7a1ebf",
+      "selected_output": [
+        "dynamics_processing_test: success (delay, ceiling, linking, release, knee, detectors, makeup, alignment, revisions, mixer, bounce, live edits, preparation failures, zero render heap calls)",
+        "analysis_calibration_test: success (tones, endpoints, power mean, real workers, gaps, epochs, mid, insert metadata)",
+        "fade_processing_test: success (four curves, render/clone/block/export/preview parity, capture, zero/short bounds)",
+        "media_durability_test: success (5 prepublication failures, directory uncertainty, RIFF limits, torn journal recovery)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "session_transaction_test: success (11 capture and 5 restore allocation boundaries, live capture, rollback, complete retry)",
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)",
+        "engine_parameter_transaction_test: success",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)",
+        "daw_pack_contract_parity_test: success",
+        "daw_trace_export_contract_test: success",
+        "daw_trace_export_async_contract_test: success",
+        "kit_viz_waveform_adapter_test: success",
+        "kit_viz_fx_preview_adapter_test: success",
+        "kit_viz_meter_adapter_test: ok",
+        "waveform_cache_pack_warmstart_test: success",
+        "layout_text_scaling_sweep_test: success",
+        "timeline_contract_test: success",
+        "midi_model_test: success",
+        "midi_instrument_render_test: success",
+        "timeline_midi_region_test: ok",
+        "midi_editor_shell_test: success",
+        "audio_capture_device_test: success",
+        "audio_output_device_test: success",
+        "effects_revision_test: success",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)",
+        "audio_recording_test: success",
+        "track_role_test: success",
+        "daw_data_path_contract_test: success",
+        "daw_workspace_authoring_host_test: ok",
+        "test-library-copy-vs-reference-contract: success",
+        "daw stable test lane passed",
+        "2026-09-19 19:31:16.670 session_serialization_test[94479:189378835] INFO: session_serialization_test: success (6898 bytes)",
+        "media_cache_stress_test: success (entries=0)",
+        "clip_overlap_priority_test: success (clips=3)",
+        "engine_smoke_test: success",
+        "shared_theme_font_adapter_test: success"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-dynamics-processing test-effects-revision test-engine-mix-ownership test-engine-transport-clock test-fade-processing",
+      "exit_code": 0,
+      "log": "/tmp/daw-s33-asan.log",
+      "sha256": "83fcdd4ae4e25f6cd003114d271b11218336191487c76578403ac5d17e07d883",
+      "selected_output": [
+        "dynamics_processing_test: success (delay, ceiling, linking, release, knee, detectors, makeup, alignment, revisions, mixer, bounce, live edits, preparation failures, zero render heap calls)",
+        "effects_revision_test: success",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "fade_processing_test: success (four curves, render/clone/block/export/preview parity, capture, zero/short bounds)"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-tsan.mk test-dynamics-processing test-effects-revision test-engine-mix-ownership test-engine-transport-clock test-fade-processing",
+      "exit_code": 0,
+      "log": "/tmp/daw-s33-tsan.log",
+      "sha256": "74a8d372d99d0d4a47559d542418cdc56af4a941bfedeca02bfe1285f8b688ae",
+      "selected_output": [
+        "dynamics_processing_test: success (delay, ceiling, linking, release, knee, detectors, makeup, alignment, revisions, mixer, bounce, live edits, preparation failures, zero render heap calls)",
+        "effects_revision_test: success",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "fade_processing_test: success (four curves, render/clone/block/export/preview parity, capture, zero/short bounds)"
+      ]
+    },
+    {
+      "command": "make test-dynamics-processing test-effects-revision test-engine-mix-ownership test-engine-transport-clock test-fade-processing test-analysis-calibration",
+      "exit_code": 0,
+      "log": "/tmp/daw-s33-final-integration.log",
+      "sha256": "0553d7a8563a2414819e5c7069f4769924ae3cf5e5dd614a36a341856d77b106",
+      "selected_output": [
+        "dynamics_processing_test: success (delay, ceiling, linking, release, knee, detectors, makeup, alignment, revisions, mixer, bounce, live edits, preparation failures, zero render heap calls)",
+        "effects_revision_test: success",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "fade_processing_test: success (four curves, render/clone/block/export/preview parity, capture, zero/short bounds)",
+        "analysis_calibration_test: success (tones, endpoints, power mean, real workers, gaps, epochs, mid, insert metadata)"
+      ]
+    },
+    {
+      "command": "make",
+      "exit_code": 0,
+      "log": "/tmp/daw-s33-build.log",
+      "sha256": "d69fbc6d924887c8912e83dda9d0ff05a31d3697fcf80ab1580794c8261d0ed2",
+      "selected_output": []
+    }
+  ],
+  "limiter_probe": {
+    "command": "cc -std=c11 -Wall -Wextra -Wpedantic -Iinclude docs/improvement/probes/limiter_latency_probe.c src/effects/dynamics/fx_limiter.c -lm -o /tmp/daw-s33-limiter-probe && /tmp/daw-s33-limiter-probe",
+    "exit_code": 0,
+    "log": "/tmp/daw-s33-limiter-repaired.log",
+    "sha256": "b21ad104763a95435c4974a5e4708f3b03dd80f922081df672236a521efdb249",
+    "output": [
+      "lookahead_ms=0 requested_frames=0 observed_delay=0 descriptor_latency=0 dynamic_latency=0",
+      "lookahead_ms=1 requested_frames=48 observed_delay=48 descriptor_latency=0 dynamic_latency=48",
+      "lookahead_ms=3 requested_frames=144 observed_delay=144 descriptor_latency=0 dynamic_latency=144"
+    ],
+    "meaning": "Successful measurement; asserted delay acceptance is in dynamics_processing_test"
+  },
+  "source_sha256": {
+    "include/effects/dynamics_math.h": "cf8f2d92579254788e49b38c82567f3c43e7017a9daca91b67905d6a9bb366c8",
+    "include/effects/effects_api.h": "9028f5ac65eb82e9f531f183279596db10b398709feeb1c590e71d55ba8ab795",
+    "include/effects/effects_manager.h": "8b54d63eb9003025a9d554c108e18064eab97e7014755cb21dcad26d80960301",
+    "include/effects/param_specs/dynamics_param_specs.h": "6b94474be068de9aa5431d4c5c7a1c88567e6fde46cf1c65b92dde1cc6b5ef67",
+    "src/effects/dynamics/fx_limiter.c": "78418a7860f8d763a354901a52d8087f634fb281ad09045e279670a86a42073a",
+    "src/effects/dynamics/fx_compressor.c": "7d23364ef05027222b3496e00a79c8cc9d6b62121f68f0068fa75a0806f639cb",
+    "src/effects/dynamics/fx_sidechain_compressor.c": "a095f0c801f4a6ca9d9fe6029cc423a01338c8c4964e34156eb0ab162f6f0fb6",
+    "src/effects/effects_manager.c": "f0dfea884d6cb6048e7ebcf89a2e5facc99624f3a8c8b5c4dbbbf56ab3db0d15",
+    "include/engine/engine.h": "a9c37c8c41307f27e8f32395fa39b3df49be84ae30c2d00066135a656c6e6051",
+    "include/engine/engine_internal.h": "05af0ae250f3dcf62aef05996c8535fbb273f6a432ef0b54d1d8691e46137fc8",
+    "src/engine/engine_audio.c": "5baa42c98a4839f5f777b1a135fc030d2b409d89dbc5222a9a6488ae26c52502",
+    "src/engine/engine_clock.c": "29a4c52e6798017902381fec950067b62c195612ce892fe19ce537495de197b1",
+    "src/engine/engine_core.c": "dd7520b13bddc9feaf5a04478a4cd9f8d7dbf54ecd72d5a7f475dc4f158bfd39",
+    "src/engine/engine_io.c": "8ec4b363053a436750cdc558e043655c3b80990b6da5abcfa8cb70eac7200c30",
+    "src/ui/effects_panel/slot_view.c": "c3ff84870e7fd0e9507115c0dafe14bef67a4f5e02d9f2702f12c47cbabc32f5",
+    "src/ui/effects_panel/slot_preview.c": "58ef74895e11c68926be4cbbe4c070f7156127ae33134ee7b90c6445cd0a5d61",
+    "tests/dynamics_processing_test.c": "0516edf55e6e2e376c380e56458bcf7af6ff361797a40465dea421dfe77ad98b",
+    "make/rules-test-core.mk": "529a0d51d4dc829f58788e611d5c6656cd8e55636c230d5e2bc1d464de15a79d",
+    "make/sources-tests.mk": "1670b79fb5c2b0626c9319f8fc7e630fedd209cb5644c4531e2ecd8b73664cec",
+    "docs/improvement/probes/limiter_latency_probe.c": "0a4a84dc8aee34e86b95eb6e0f2d0e680b2ee0c466fd4fb20abcf0ecf0a26a27"
+  },
+  "binary": {
+    "path": "build/targets/macOS-arm64/toolchains/clang/bin/daw_app",
+    "sha256": "afe57e254d56926889d0915752f66f7a6b871da22a444e58430f69087bfd95d8"
+  },
+  "verification_order": [
+    "Full stable/legacy suite ran the completed production implementation and allocation-failure harness.",
+    "ASan and TSan subsequently ran added processor-reset heap guards against that implementation.",
+    "Final normal integration ran the same implementation after formatting to repository indentation, plus an explicit same-delay history assertion and a manager-reset heap guard.",
+    "Final make built the application after those formatting/test changes. No production semantic edits followed the sanitizer runs."
+  ],
+  "limits": [
+    "Limiter is linked sample-peak processing, not true peak or oversampling.",
+    "Lookahead and latency-bearing topology changes explicitly clear FX/compensation history and can interrupt audio; seamless delay modulation is not claimed.",
+    "Compensation covers the existing parallel tracks into the master chain. No external sidechain/send-return routing was added.",
+    "Diagnostics report latest worker DSP delay separately from queue timing; callback/project clocks are not hardware-audible positions or per-buffer historical latency.",
+    "Exact-range bounce trims common delay; existing normalization remains and general tail/export isolation work remains separate.",
+    "Ordinary compressor retains independent channel detection; sidechain-capable compressor retains its existing linked left-input fallback and signed-average explicit key.",
+    "Applied reduction is the minimum gain in the most recent block before makeup; other effects retain explicitly labeled RMS delta.",
+    "Heap instrumentation covers production limiter, both compressors, and manager objects in guarded paths; it is not a certification of every other effect setter.",
+    "No manual listening, visual acceptance, physical device calibration, commit, install, or release."
+  ]
+}

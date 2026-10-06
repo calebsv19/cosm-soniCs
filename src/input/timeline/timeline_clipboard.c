@@ -6,135 +6,41 @@
 #include "input/timeline/timeline_clip_helpers.h"
 #include "input/timeline_drag.h"
 #include "input/timeline_selection.h"
+#include "input/inspector_input.h"
 #include "ui/effects_panel.h"
 #include "undo/undo_manager.h"
 
 #include <stdint.h>
+#include <stdlib.h>
+#include <limits.h>
 #include <string.h>
 
+// Owns one copied region independently of subsequent source edits.
 typedef struct {
     SessionClip clip;
     int track_index;
     uint64_t start_frame;
 } TimelineClipboardEntry;
 
-static struct {
+// Owns the complete clipboard selection and its placement anchor.
+typedef struct {
     TimelineClipboardEntry entries[TIMELINE_MAX_SELECTION];
     int count;
     uint64_t anchor_start_frame;
-} g_timeline_clipboard = {0};
+} TimelineClipboard;
 
-static bool timeline_clipboard_apply_automation(Engine* engine,
-                                                int track_index,
-                                                int clip_index,
-                                                const SessionClip* src) {
-    if (!engine || !src) {
-        return false;
-    }
-    for (int l = 0; l < src->automation_lane_count; ++l) {
-        const SessionAutomationLane* lane = &src->automation_lanes[l];
-        if (!engine_clip_set_automation_lane_points(engine,
-                                                    track_index,
-                                                    clip_index,
-                                                    lane->target,
-                                                    (const EngineAutomationPoint*)lane->points,
-                                                    lane->point_count)) {
-            return false;
-        }
-    }
-    return true;
-}
+static TimelineClipboard g_timeline_clipboard = {0};
 
-static bool timeline_clipboard_add_clip_from_snapshot(AppState* state,
-                                                      const SessionClip* src,
-                                                      int target_track,
-                                                      uint64_t start_frame,
-                                                      int* out_clip_index) {
-    if (!state || !state->engine || !src || target_track < 0) {
-        return false;
-    }
-
-    int new_clip_index = -1;
-    if (src->kind == ENGINE_CLIP_KIND_MIDI) {
-        if (!engine_add_midi_clip_to_track(state->engine,
-                                           target_track,
-                                           start_frame,
-                                           src->duration_frames,
-                                           &new_clip_index)) {
-            return false;
-        }
-        engine_clip_midi_set_instrument_preset(state->engine,
-                                               target_track,
-                                               new_clip_index,
-                                               src->instrument_preset);
-        engine_clip_midi_set_instrument_params(state->engine,
-                                               target_track,
-                                               new_clip_index,
-                                               src->instrument_params);
-        engine_clip_midi_set_inherits_track_instrument(state->engine,
-                                                       target_track,
-                                                       new_clip_index,
-                                                       src->instrument_inherits_track);
-        for (int n = 0; n < src->midi_note_count; ++n) {
-            if (!engine_clip_midi_add_note(state->engine,
-                                           target_track,
-                                           new_clip_index,
-                                           src->midi_notes[n],
-                                           NULL)) {
-                return false;
-            }
-        }
-    } else {
-        if (src->media_path[0] == '\0') {
-            return false;
-        }
-        const char* media_id = src->media_id[0] != '\0' ? src->media_id : NULL;
-        if (!engine_add_clip_to_track_with_id(state->engine,
-                                              target_track,
-                                              src->media_path,
-                                              media_id,
-                                              start_frame,
-                                              &new_clip_index)) {
-            return false;
-        }
-    }
-
-    if (src->name[0] != '\0') {
-        engine_clip_set_name(state->engine, target_track, new_clip_index, src->name);
-    }
-    engine_clip_set_gain(state->engine, target_track, new_clip_index, src->gain == 0.0f ? 1.0f : src->gain);
-    engine_clip_set_region(state->engine, target_track, new_clip_index, src->offset_frames, src->duration_frames);
-    engine_clip_set_fades(state->engine, target_track, new_clip_index, src->fade_in_frames, src->fade_out_frames);
-    engine_clip_set_fade_curves(state->engine,
-                                target_track,
-                                new_clip_index,
-                                src->fade_in_curve,
-                                src->fade_out_curve);
-    if (!timeline_clipboard_apply_automation(state->engine, target_track, new_clip_index, src)) {
-        return false;
-    }
-
-    int sorted_index = new_clip_index;
-    engine_clip_set_timeline_start(state->engine, target_track, new_clip_index, start_frame, &sorted_index);
-    if (out_clip_index) {
-        *out_clip_index = sorted_index;
-    }
-    return true;
-}
-
-static void timeline_clipboard_clear(void) {
-    for (int i = 0; i < g_timeline_clipboard.count; ++i) {
-        timeline_session_clip_clear(&g_timeline_clipboard.entries[i].clip);
-    }
-    g_timeline_clipboard.count = 0;
-    g_timeline_clipboard.anchor_start_frame = 0;
+// Releases a prepared or previously published clipboard without touching the current project.
+static void timeline_clipboard_clear(TimelineClipboard* clipboard) {
+    for (int i = 0; i < clipboard->count; ++i) timeline_session_clip_clear(&clipboard->entries[i].clip);
+    memset(clipboard, 0, sizeof(*clipboard));
 }
 
 void timeline_clipboard_copy(AppState* state) {
-    if (!state || !state->engine) {
+    if (!state || !state->engine || state->selection_count < 0 || state->selection_count > TIMELINE_MAX_SELECTION) {
         return;
     }
-    timeline_clipboard_clear();
 
     const EngineTrack* tracks = engine_get_tracks(state->engine);
     int track_count = engine_get_track_count(state->engine);
@@ -160,7 +66,7 @@ void timeline_clipboard_copy(AppState* state) {
 
     if (state->selection_count > 0 && (!selected_valid || selected_in_selection)) {
         int count = state->selection_count;
-        if (count > TIMELINE_MAX_SELECTION) count = TIMELINE_MAX_SELECTION;
+        if (count > TIMELINE_MAX_SELECTION) return;
         for (int i = 0; i < count; ++i) {
             temp_entries[temp_count++] = state->selection[i];
         }
@@ -175,28 +81,31 @@ void timeline_clipboard_copy(AppState* state) {
         return;
     }
 
+    TimelineClipboard* candidate = calloc(1, sizeof(*candidate));
+    if (!candidate) return;
     uint64_t anchor = UINT64_MAX;
     uint64_t selected_anchor = UINT64_MAX;
-    for (int i = 0; i < temp_count && g_timeline_clipboard.count < TIMELINE_MAX_SELECTION; ++i) {
+    for (int i = 0; i < temp_count; ++i) {
         TimelineSelectionEntry entry = temp_entries[i];
         if (entry.track_index < 0 || entry.track_index >= track_count) {
-            continue;
+            goto failed;
         }
         const EngineTrack* track = &tracks[entry.track_index];
         if (!track || entry.clip_index < 0 || entry.clip_index >= track->clip_count) {
-            continue;
+            goto failed;
         }
         const EngineClip* clip = &track->clips[entry.clip_index];
         if (!timeline_clip_is_timeline_region(clip)) {
-            continue;
+            goto failed;
         }
-        TimelineClipboardEntry* dst = &g_timeline_clipboard.entries[g_timeline_clipboard.count];
+        for (int j = 0; j < i; ++j)
+            if (temp_entries[j].track_index == entry.track_index && temp_entries[j].clip_index == entry.clip_index) goto failed;
+        TimelineClipboardEntry* dst = &candidate->entries[candidate->count++];
         if (!timeline_session_clip_from_engine(clip, &dst->clip)) {
-            continue;
+            goto failed;
         }
         dst->track_index = entry.track_index;
         dst->start_frame = clip->timeline_start_frames;
-        g_timeline_clipboard.count++;
         if (dst->start_frame < anchor) {
             anchor = dst->start_frame;
         }
@@ -206,86 +115,116 @@ void timeline_clipboard_copy(AppState* state) {
         }
     }
 
-    if (anchor == UINT64_MAX) {
-        timeline_clipboard_clear();
-        return;
-    }
+    if (anchor == UINT64_MAX) goto failed;
     if (selected_anchor != UINT64_MAX) {
-        g_timeline_clipboard.anchor_start_frame = selected_anchor;
+        candidate->anchor_start_frame = selected_anchor;
     } else {
-        g_timeline_clipboard.anchor_start_frame = anchor;
+        candidate->anchor_start_frame = anchor;
     }
+    timeline_clipboard_clear(&g_timeline_clipboard);
+    g_timeline_clipboard = *candidate;
+    free(candidate);
+    return;
+failed:
+    timeline_clipboard_clear(candidate);
+    free(candidate);
 }
 
+// Releases descriptor-owned automation adapters after insertion has cloned them.
+static void timeline_clipboard_free_insertions(EngineClipInsert* entries, int count) {
+    if (!entries) return;
+    for (int i = 0; i < count; ++i) {
+        EngineAutomationLane* lanes = (EngineAutomationLane*)entries[i].automation_lanes;
+        if (lanes) for (int l = 0; l < entries[i].automation_lane_count; ++l) free(lanes[l].points);
+        free(lanes);
+    }
+    free(entries);
+}
+
+// Publishes all pasted content and required topology with one pre-reserved history entry.
 void timeline_clipboard_paste(AppState* state) {
-    if (!state || !state->engine) {
-        return;
-    }
-    if (g_timeline_clipboard.count <= 0) {
-        return;
-    }
-    const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
-    int sample_rate = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
-    if (sample_rate <= 0) {
-        return;
-    }
-    uint64_t playhead = engine_get_transport_frame(state->engine);
+    if (!state || !state->engine || state->undo.active_drag_valid || g_timeline_clipboard.count <= 0 ||
+        state->selection_count < 0 || state->selection_count > TIMELINE_MAX_SELECTION) return;
+    int count = g_timeline_clipboard.count;
+    int previous_tracks = engine_get_track_count(state->engine);
+    int destination = state->selected_track_index;
+    if (destination < 0 || destination >= previous_tracks) destination = g_timeline_clipboard.entries[0].track_index;
+    if (destination < 0) destination = 0;
+    if (destination == INT_MAX) return;
+    uint64_t playhead = engine_get_presentation_frame(state->engine);
     uint64_t anchor = g_timeline_clipboard.anchor_start_frame;
-    int track_count = engine_get_track_count(state->engine);
-    int target_track = state->selected_track_index;
-    if (target_track < 0 || target_track >= track_count) {
-        target_track = g_timeline_clipboard.entries[0].track_index;
-    }
-    if (target_track < 0) target_track = 0;
-    while (target_track >= track_count) {
-        engine_add_track(state->engine);
-        track_count = engine_get_track_count(state->engine);
-    }
-
-    TimelineSelectionEntry new_sel[TIMELINE_MAX_SELECTION];
-    int new_count = 0;
-
-    for (int i = 0; i < g_timeline_clipboard.count && new_count < TIMELINE_MAX_SELECTION; ++i) {
-        const TimelineClipboardEntry* src = &g_timeline_clipboard.entries[i];
-        uint64_t desired_start = playhead + (src->start_frame > anchor ? (src->start_frame - anchor) : 0);
-        int dup_index = -1;
-        if (!timeline_clipboard_add_clip_from_snapshot(state,
-                                                       &src->clip,
-                                                       target_track,
-                                                       desired_start,
-                                                       &dup_index) ||
-            dup_index < 0) {
-            continue;
-        }
-
-        new_sel[new_count].track_index = target_track;
-        new_sel[new_count].clip_index = dup_index;
-        new_count++;
-
-        const EngineTrack* tracks = engine_get_tracks(state->engine);
-        if (tracks && target_track >= 0 && target_track < engine_get_track_count(state->engine)) {
-            const EngineTrack* track = &tracks[target_track];
-            if (track && dup_index >= 0 && dup_index < track->clip_count) {
-                const EngineClip* clip = &track->clips[dup_index];
-                UndoCommand cmd = {0};
-                cmd.type = UNDO_CMD_CLIP_ADD_REMOVE;
-                cmd.data.clip_add_remove.added = true;
-                cmd.data.clip_add_remove.track_index = target_track;
-                cmd.data.clip_add_remove.sampler = clip->sampler;
-                if (timeline_session_clip_from_engine(clip, &cmd.data.clip_add_remove.clip)) {
-                    undo_manager_push(&state->undo, &cmd);
-                    timeline_session_clip_clear(&cmd.data.clip_add_remove.clip);
+    EngineClipInsert* entries = calloc((size_t)count, sizeof(*entries));
+    if (!entries) return;
+    UndoCreatedTrack* guards = NULL;
+    for (int i = 0; i < count; ++i) {
+        const TimelineClipboardEntry* entry = &g_timeline_clipboard.entries[i];
+        const SessionClip* source = &entry->clip;
+        uint64_t offset = entry->start_frame > anchor ? entry->start_frame - anchor : 0;
+        if (offset > UINT64_MAX - playhead) goto done;
+        entries[i] = (EngineClipInsert){.kind = source->kind, .media_id = source->media_id, .media_path = source->media_path,
+            .name = source->name, .automation_lane_count = source->automation_lane_count,
+            .transform = {.start_frame = playhead + offset, .offset_frames = source->offset_frames,
+                .duration_frames = source->duration_frames, .gain = source->gain,
+                .fade_in_frames = source->fade_in_frames, .fade_out_frames = source->fade_out_frames,
+                .fade_in_curve = source->fade_in_curve, .fade_out_curve = source->fade_out_curve,
+                .instrument_preset = source->instrument_preset, .instrument_params = source->instrument_params,
+                .instrument_inherits_track = source->instrument_inherits_track,
+                .midi_notes = source->midi_notes, .midi_note_count = source->midi_note_count}};
+        if (source->automation_lane_count) {
+            EngineAutomationLane* lanes = calloc((size_t)source->automation_lane_count, sizeof(*lanes));
+            if (!lanes) goto done;
+            entries[i].automation_lanes = lanes;
+            for (int l = 0; l < source->automation_lane_count; ++l) {
+                const SessionAutomationLane* source_lane = &source->automation_lanes[l];
+                lanes[l].target = source_lane->target; lanes[l].point_count = source_lane->point_count;
+                if (source_lane->point_count) {
+                    lanes[l].points = calloc((size_t)source_lane->point_count, sizeof(*lanes[l].points));
+                    if (!lanes[l].points) goto done;
+                    for (int n = 0; n < source_lane->point_count; ++n)
+                        lanes[l].points[n] = (EngineAutomationPoint){source_lane->points[n].frame, source_lane->points[n].value};
                 }
             }
         }
     }
-
-    if (new_count > 0) {
-        timeline_selection_clear(state);
-        for (int i = 0; i < new_count; ++i) {
-            timeline_selection_add(state, new_sel[i].track_index, new_sel[i].clip_index);
-        }
-        timeline_selection_set_primary(state, new_sel[0].track_index, new_sel[0].clip_index);
-        effects_panel_sync_from_engine(state);
+    uint64_t before[TIMELINE_MAX_SELECTION] = {0}, after[TIMELINE_MAX_SELECTION] = {0};
+    const EngineTrack* tracks = engine_get_tracks(state->engine);
+    int before_count = state->selection_count;
+    if (!before_count && state->selected_clip_index >= 0) before_count = 1;
+    int primary = 0;
+    for (int i = 0; i < before_count; ++i) {
+        TimelineSelectionEntry entry = state->selection_count ? state->selection[i] :
+            (TimelineSelectionEntry){state->selected_track_index, state->selected_clip_index};
+        if (entry.track_index < 0 || entry.track_index >= previous_tracks || entry.clip_index < 0 ||
+            entry.clip_index >= tracks[entry.track_index].clip_count) goto done;
+        before[i] = tracks[entry.track_index].clips[entry.clip_index].creation_index;
+        if (entry.track_index == state->selected_track_index && entry.clip_index == state->selected_clip_index) primary = i;
     }
+    uint64_t first = before[0]; before[0] = before[primary]; before[primary] = first;
+    int created_count = destination >= previous_tracks ? destination + 1 - previous_tracks : 0;
+    if (created_count) { guards = calloc((size_t)created_count, sizeof(*guards)); if (!guards) goto done; }
+    UndoCommand command = {.type = UNDO_CMD_CLIP_CONTENT};
+    command.data.clip_content_selection = (UndoClipContentSelection){.count = before_count > count ? before_count : count,
+        .before = before, .after = after, .created_start = previous_tracks, .created_count = created_count, .created_tracks = guards};
+    if (!undo_manager_begin_drag(&state->undo, &command)) goto done;
+    UndoCommand* pending = &state->undo.active_drag;
+    if (!engine_clip_content_insert(state->engine, destination, entries, count,
+        pending->data.clip_content_selection.after, &pending->clip_content_before, &pending->clip_content_after)) {
+        undo_manager_cancel_drag(&state->undo); goto done;
+    }
+    for (int i = 0; i < created_count; ++i)
+        undo_created_track_capture(&engine_get_tracks(state->engine)[previous_tracks + i], &pending->data.clip_content_selection.created_tracks[i]);
+    memcpy(after, pending->data.clip_content_selection.after, (size_t)count * sizeof(*after));
+    if (!undo_manager_commit_drag(&state->undo, pending)) goto done;
+    timeline_selection_clear(state);
+    tracks = engine_get_tracks(state->engine);
+    for (int i = 0; i < count; ++i)
+        for (int c = 0; c < tracks[destination].clip_count; ++c)
+            if (tracks[destination].clips[c].creation_index == after[i]) timeline_selection_add(state, destination, c);
+    if (state->selection_count) {
+        timeline_selection_set_primary(state, state->selection[0].track_index, state->selection[0].clip_index);
+        inspector_input_set_clip(state, state->selection[0].track_index, state->selection[0].clip_index);
+    }
+    effects_panel_sync_from_engine(state);
+done:
+    free(guards); timeline_clipboard_free_insertions(entries, count);
 }

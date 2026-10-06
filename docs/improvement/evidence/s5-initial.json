@@ -1,0 +1,32 @@
+{
+  "status": "initial_progress_not_slice_completion",
+  "logs": [
+    {
+      "path": "/tmp/daw-s51-asan-retest.log",
+      "exit_code": 0,
+      "sha256": "4f6c07e73eef1455baf0bd02aa1e1ce7d8ab0981be01ac843991fcac803a005f"
+    },
+    {
+      "path": "/tmp/daw-s5-modal-asan.log",
+      "exit_code": 0,
+      "sha256": "c616ea20b6e633340ccaf8bac12bc8aa9dd43595e4c8779f1b498b7f6cbc4a45"
+    },
+    {
+      "path": "/tmp/daw-s5-initial-tests.log",
+      "exit_code": 0,
+      "sha256": "53132f5d458464d9fb4a36511f501a02781923ad10f87da5e2030e4f920c3306"
+    },
+    {
+      "path": "/tmp/daw-s5-initial-make.log",
+      "exit_code": 0,
+      "sha256": "c5257528d31cf1887f3cd5e3b4457b4b85124322e6fc1682cc2f5cd112d3b8fe"
+    }
+  ],
+  "open": [
+    "live compound gestures and duplicate/delete",
+    "other history identities",
+    "visible edit rejection",
+    "native modal visual acceptance",
+    "remaining S5 slices"
+  ]
+}

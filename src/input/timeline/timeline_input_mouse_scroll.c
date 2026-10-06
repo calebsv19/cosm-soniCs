@@ -89,7 +89,7 @@ bool timeline_input_mouse_handle_scroll(InputManager* manager, AppState* state, 
             return true;
         }
         float total_seconds = timeline_total_seconds(state);
-        float ph_sec = (float)((double)engine_get_transport_frame(state->engine) / (double)sample_rate);
+        float ph_sec = (float)((double)engine_get_presentation_frame(state->engine) / (double)sample_rate);
         float rel_sec = ph_sec - geom.window_start_seconds;
         float padding_px = 50.0f;
         float pad_sec = padding_px / geom.pixels_per_second;
@@ -123,7 +123,7 @@ bool timeline_input_mouse_handle_scroll(InputManager* manager, AppState* state, 
         if (total_seconds > 0.0f && ph_sec > total_seconds) ph_sec = total_seconds;
 
         uint64_t frame = (uint64_t)llroundf(ph_sec * (float)sample_rate);
-        bool was_playing = engine_transport_is_playing(state->engine);
+        bool was_playing = engine_transport_requested_playing(state->engine);
         input_manager_reset_meter_history_on_seek(state);
         engine_transport_seek(state->engine, frame);
         if (was_playing) {

@@ -2,6 +2,7 @@
 
 #include <SDL2/SDL.h>
 #include <stdbool.h>
+#include <sys/stat.h>
 
 #include "audio/media_registry.h"
 
@@ -26,6 +27,8 @@ typedef enum {
 typedef struct {
     char name[LIBRARY_NAME_MAX];
     float duration_seconds;
+    bool metadata_requested, metadata_loaded; // One owned background probe per unchanged source version.
+    struct stat file_identity;
     char media_id[MEDIA_ID_MAX];
 } LibraryItem;
 
@@ -37,6 +40,7 @@ typedef struct {
 } LibraryProjectItem;
 
 typedef struct {
+    uint64_t scan_generation; // Prevents obsolete probe results from changing a newer scan.
     LibraryItem items[LIBRARY_MAX_ITEMS];
     int count;
     char directory[260];

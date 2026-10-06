@@ -31,6 +31,10 @@ bool parse_session_document_engine(JsonReader* r, SessionDocument* doc) {
                 return false;
             }
             doc->engine.block_size = (int)val;
+        } else if (strcmp(eng_key, "output_queue_blocks") == 0) {
+            double value;
+            if (!json_parse_number(r, &value) || !(value >= 2 && value <= 32) || value != (int)value) return false;
+            doc->engine.output_queue_blocks = (int)value;
         } else if (strcmp(eng_key, "default_fade_in_ms") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {

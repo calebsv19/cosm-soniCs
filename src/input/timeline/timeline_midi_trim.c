@@ -120,6 +120,32 @@ static bool timeline_midi_left_trim_build_from_notes(uint64_t old_start,
     return true;
 }
 
+// Publishes prepared MIDI trim notes, bounds and position together while preserving clip settings.
+static bool timeline_midi_left_trim_publish(Engine* engine, int track_index,
+                                            int* inout_clip_index,
+                                            const TimelineMidiLeftTrimResult* trim) {
+    const EngineClip* clip = &engine_get_tracks(engine)[track_index].clips[*inout_clip_index];
+    EngineClipTransform transform = {
+        .start_frame = trim->timeline_start_frames,
+        .offset_frames = 0,
+        .duration_frames = trim->duration_frames,
+        .fade_in_frames = clip->fade_in_frames,
+        .fade_out_frames = clip->fade_out_frames,
+        .fade_in_curve = clip->fade_in_curve,
+        .fade_out_curve = clip->fade_out_curve,
+        .gain = clip->gain,
+        .instrument_preset = clip->instrument_preset,
+        .instrument_params = clip->instrument_params,
+        .instrument_inherits_track = clip->instrument_inherits_track,
+        .midi_notes = trim->notes,
+        .midi_note_count = trim->note_count
+    };
+    int new_index = *inout_clip_index;
+    if (!engine_transform_clip(engine, track_index, *inout_clip_index, track_index, &transform, &new_index)) return false;
+    *inout_clip_index = new_index;
+    return true;
+}
+
 bool timeline_midi_left_trim_apply(Engine* engine,
                                    int track_index,
                                    int* inout_clip_index,
@@ -143,22 +169,7 @@ bool timeline_midi_left_trim_apply(Engine* engine,
         return false;
     }
 
-    bool ok = true;
-    uint64_t current_duration = track->clips[clip_index].duration_frames;
-    if (trim.duration_frames < current_duration) {
-        ok = engine_clip_midi_set_notes(engine, track_index, clip_index, trim.notes, trim.note_count) &&
-             engine_clip_set_region(engine, track_index, clip_index, 0, trim.duration_frames);
-    } else {
-        ok = engine_clip_set_region(engine, track_index, clip_index, 0, trim.duration_frames) &&
-             engine_clip_midi_set_notes(engine, track_index, clip_index, trim.notes, trim.note_count);
-    }
-    if (ok) {
-        int new_index = clip_index;
-        ok = engine_clip_set_timeline_start(engine, track_index, clip_index, trim.timeline_start_frames, &new_index);
-        if (ok) {
-            *inout_clip_index = new_index;
-        }
-    }
+    bool ok = timeline_midi_left_trim_publish(engine, track_index, inout_clip_index, &trim);
     timeline_midi_left_trim_result_clear(&trim);
     return ok;
 }
@@ -196,22 +207,7 @@ bool timeline_midi_left_trim_apply_from_notes(Engine* engine,
         return false;
     }
 
-    bool ok = true;
-    uint64_t current_duration = track->clips[clip_index].duration_frames;
-    if (trim.duration_frames < current_duration) {
-        ok = engine_clip_midi_set_notes(engine, track_index, clip_index, trim.notes, trim.note_count) &&
-             engine_clip_set_region(engine, track_index, clip_index, 0, trim.duration_frames);
-    } else {
-        ok = engine_clip_set_region(engine, track_index, clip_index, 0, trim.duration_frames) &&
-             engine_clip_midi_set_notes(engine, track_index, clip_index, trim.notes, trim.note_count);
-    }
-    if (ok) {
-        int new_index = clip_index;
-        ok = engine_clip_set_timeline_start(engine, track_index, clip_index, trim.timeline_start_frames, &new_index);
-        if (ok) {
-            *inout_clip_index = new_index;
-        }
-    }
+    bool ok = timeline_midi_left_trim_publish(engine, track_index, inout_clip_index, &trim);
     timeline_midi_left_trim_result_clear(&trim);
     return ok;
 }

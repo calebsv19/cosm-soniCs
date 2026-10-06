@@ -2,13 +2,17 @@
 
 #include "audio/audio_capture_device.h"
 #include "audio/media_clip.h"
-#include "audio/audio_queue.h"
+#include "engine/ringbuf.h"
+#include "engine/engine.h"
+#include "audio/take_journal.h"
 #include "session.h"
 
 #include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+
+#define DAW_RECORDING_PREVIEW_FRAMES 65536u
 
 typedef struct AppState AppState;
 typedef struct Engine Engine;
@@ -21,6 +25,7 @@ typedef enum {
 
 typedef struct {
     bool inserted;
+    bool saved, insertion_pending; // Durable output and asynchronous insertion are distinct outcomes.
     char wav_path[SESSION_PATH_MAX];
     int track_index;
     int clip_index;
@@ -32,19 +37,32 @@ typedef struct {
 typedef struct {
     DawAudioRecordingStatus status;
     AudioCaptureDevice capture_device;
-    AudioQueue capture_queue;
+    RingBuffer capture_packets;
+    DawTakeJournal journal;
+    bool timeline_aligned; // Immutable while the capture callback runs.
+    uint64_t producer_epoch; // Capture-thread-owned continuous transport segment.
+    bool producer_has_epoch;
+    atomic_uint_fast64_t captured_frames, captured_packets, first_capture_ns, last_capture_ns;
+    atomic_bool capture_halted;
+    uint64_t next_capture_frame, gap_frames, checkpoint_frames;
+    int64_t alignment_error_frames;
+    bool drain_failed;
     bool queue_ready;
     bool capture_device_open;
     bool capture_device_started;
-    float* take_frames;
+    struct DawRecordingWorker* worker; // Owns production journal I/O until joined.
+    float* take_frames; // Bounded recent samples, never the full long take.
     uint64_t take_frame_count;
     uint64_t take_frame_capacity;
     atomic_uint_fast64_t dropped_frames;
+    atomic_uint_fast64_t clock_continuity_frames; // Samples retained through a current-epoch check while diagnostics were busy.
+    atomic_uint_fast64_t queue_dropped_frames, clock_missing_frames; // Separates storage pressure from clock-read rejection.
     bool transport_started_by_recording;
     Engine* record_armed_engine;
     int sample_rate;
     int channels;
     int target_track_index;
+    uint64_t target_track_id;
     uint64_t start_frame;
     char pending_path[SESSION_PATH_MAX];
     char status_message[256];
@@ -75,3 +93,8 @@ uint64_t daw_audio_recording_drain_if_transport_playing(AppState* state);
 bool daw_audio_recording_take_clip_view(const DawAudioRecordingState* recording, AudioMediaClip* out_clip);
 bool daw_audio_recording_finish(AppState* state, DawAudioRecordingResult* out_result);
 void daw_audio_recording_cancel(DawAudioRecordingState* recording);
+
+// Captures a timestamped block against an observed output clock without allocating or performing I/O.
+size_t daw_audio_recording_enqueue_timed(DawAudioRecordingState* recording, const float* input,
+                                         size_t frames, int channels, uint64_t timestamp_ns,
+                                         const EngineClockSnapshot* clock);

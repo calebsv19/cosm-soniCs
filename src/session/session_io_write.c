@@ -1,5 +1,6 @@
 #include "session.h"
 #include "app_state.h"
+#include "daw/save_file.h"
 
 #include <SDL2/SDL.h>
 
@@ -8,6 +9,8 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <sys/stat.h>
 
 static void json_write_indent(FILE* file, int level) {
     for (int i = 0; i < level; ++i) {
@@ -188,6 +191,7 @@ static const char* session_clip_kind_to_string(EngineClipKind kind) {
     }
 }
 
+// Serializes into an isolated candidate, validates it, and retains the previous valid save before publication.
 bool session_document_write_file(const SessionDocument* doc, const char* path) {
     char error[256] = {0};
     if (!session_document_validate(doc, error, sizeof(error))) {
@@ -199,12 +203,13 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
         return false;
     }
 
-    FILE* file = fopen(path, "wb");
-    if (!file) {
+    DawSaveFile save;
+    if (!daw_save_file_begin(&save, path)) {
         SDL_Log("session_document_write_file: failed to open %s: %s", path, strerror(errno));
         return false;
     }
 
+    FILE* file = save.file;
     fprintf(file, "{\n");
 
     json_write_indent(file, 1);
@@ -216,6 +221,8 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     fprintf(file, "\"sample_rate\": %d,\n", doc->engine.sample_rate);
     json_write_indent(file, 2);
     fprintf(file, "\"block_size\": %d,\n", doc->engine.block_size);
+    json_write_indent(file, 2);
+    fprintf(file, "\"output_queue_blocks\": %d,\n", doc->engine.output_queue_blocks ? doc->engine.output_queue_blocks : 32);
     json_write_indent(file, 2);
     fprintf(file, "\"default_fade_in_ms\": ");
     json_write_float(file, doc->engine.default_fade_in_ms);
@@ -843,15 +850,51 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
 
     fprintf(file, "}\n");
 
-    bool ok = fflush(file) == 0 && ferror(file) == 0;
-    if (fclose(file) != 0) {
-        SDL_Log("session_document_write_file: failed to close %s: %s", path, strerror(errno));
-        ok = false;
+    if (!daw_save_file_prepare(&save)) {
+        SDL_Log("session_document_write_file: candidate write/sync failed for %s", path);
+        daw_save_file_abort(&save);
+        return false;
     }
-    if (!ok) {
-        SDL_Log("session_document_write_file: error writing %s", path);
+    SessionDocument verified;
+    session_document_init(&verified);
+    bool valid = session_document_read_file(save.temporary, &verified);
+    session_document_free(&verified);
+    if (!valid) {
+        SDL_Log("session_document_write_file: candidate validation failed for %s", path);
+        daw_save_file_abort(&save);
+        return false;
     }
-    return ok;
+
+    // Only a readable, valid primary may replace the retained recovery copy.
+    struct stat existing;
+    if (stat(path, &existing) == 0) {
+        FILE* readable = fopen(path, "rb");
+        if (!readable) { daw_save_file_abort(&save); return false; }
+        bool readable_ok = fclose(readable) == 0;
+        session_document_init(&verified);
+        bool previous_valid = readable_ok && session_document_read_file(path, &verified);
+        session_document_free(&verified);
+        if (!readable_ok) { daw_save_file_abort(&save); return false; }
+        if (previous_valid) {
+            size_t length = strlen(path);
+            char* backup = malloc(length + 5);
+            if (!backup) { daw_save_file_abort(&save); return false; }
+            snprintf(backup, length + 5, "%s.bak", path);
+            DawSaveResult backed_up = daw_save_file_copy(path, backup);
+            free(backup);
+            if (backed_up != DAW_SAVE_SYNCED) {
+                SDL_Log("session_document_write_file: backup not synced; primary retained: %s", path);
+                daw_save_file_abort(&save);
+                return false;
+            }
+        }
+    } else if (errno != ENOENT) {
+        daw_save_file_abort(&save);
+        return false;
+    }
+    DawSaveResult result = daw_save_file_commit(&save);
+    if (result == DAW_SAVE_FAILED) SDL_Log("session_document_write_file: publication failed for %s", path);
+    return result != DAW_SAVE_FAILED;
 }
 
 bool session_save_to_file(const AppState* state, const char* path) {

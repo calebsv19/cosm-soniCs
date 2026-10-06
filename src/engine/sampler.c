@@ -5,6 +5,7 @@
 #include <string.h>
 #include <stdint.h>
 
+// Owns clip-local sample playback bounds, fade shapes, and automation.
 struct EngineSamplerSource {
     const AudioMediaClip* clip;
     uint64_t timeline_start_frame;
@@ -12,6 +13,7 @@ struct EngineSamplerSource {
     uint64_t clip_length_frames;
     uint64_t fade_in_frames;
     uint64_t fade_out_frames;
+    EngineFadeCurve fade_in_curve, fade_out_curve;
     int channels;
     SDL_mutex* automation_mutex;
     EngineAutomationLane* automation_lanes;
@@ -43,6 +45,38 @@ EngineSamplerSource* engine_sampler_source_create(void) {
     sampler->automation_lane_count = 0;
     sampler->automation_lane_capacity = 0;
     return sampler;
+}
+
+// Prepares an independent sampler so edits cannot mutate the worker's region or automation.
+EngineSamplerSource* engine_sampler_source_clone(const EngineSamplerSource* source) {
+    if (!source) return NULL;
+    EngineSamplerSource* copy = engine_sampler_source_create();
+    if (!copy) return NULL;
+    copy->clip = source->clip;
+    copy->timeline_start_frame = source->timeline_start_frame;
+    copy->clip_offset_frames = source->clip_offset_frames;
+    copy->clip_length_frames = source->clip_length_frames;
+    copy->fade_in_frames = source->fade_in_frames;
+    copy->fade_out_frames = source->fade_out_frames;
+    copy->fade_in_curve = source->fade_in_curve;
+    copy->fade_out_curve = source->fade_out_curve;
+    copy->channels = source->channels;
+    if (source->automation_lane_count > 0) {
+        copy->automation_lanes = calloc((size_t)source->automation_lane_count, sizeof(EngineAutomationLane));
+        if (!copy->automation_lanes) {
+            engine_sampler_source_destroy(copy);
+            return NULL;
+        }
+        copy->automation_lane_count = source->automation_lane_count;
+        copy->automation_lane_capacity = source->automation_lane_count;
+        for (int i = 0; i < source->automation_lane_count; ++i) {
+            if (!engine_automation_lane_copy(&source->automation_lanes[i], &copy->automation_lanes[i])) {
+                engine_sampler_source_destroy(copy);
+                return NULL;
+            }
+        }
+    }
+    return copy;
 }
 
 void engine_sampler_source_destroy(EngineSamplerSource* sampler) {
@@ -114,46 +148,31 @@ void engine_sampler_source_set_clip(EngineSamplerSource* sampler, const AudioMed
     sampler->fade_out_frames = fade_out_frames;
 }
 
-void engine_sampler_source_set_automation(EngineSamplerSource* sampler,
+// Replaces automation only after every lane has been copied successfully.
+bool engine_sampler_source_set_automation(EngineSamplerSource* sampler,
                                           const EngineAutomationLane* lanes,
                                           int lane_count) {
-    if (!sampler) {
-        return;
-    }
-    if (sampler->automation_mutex) {
-        SDL_LockMutex(sampler->automation_mutex);
-    }
-    if (sampler->automation_lanes) {
-        for (int i = 0; i < sampler->automation_lane_count; ++i) {
-            engine_automation_lane_free(&sampler->automation_lanes[i]);
+    if (!sampler || lane_count < 0 || (lane_count > 0 && !lanes)) return false;
+    EngineAutomationLane* replacement = NULL;
+    if (lane_count > 0) {
+        replacement = calloc((size_t)lane_count, sizeof(*replacement));
+        if (!replacement) return false;
+        for (int i = 0; i < lane_count; ++i) {
+            if (!engine_automation_lane_copy(&lanes[i], &replacement[i])) {
+                for (int j = 0; j < lane_count; ++j) engine_automation_lane_free(&replacement[j]);
+                free(replacement);
+                return false;
+            }
         }
-        free(sampler->automation_lanes);
-        sampler->automation_lanes = NULL;
     }
-    sampler->automation_lane_count = 0;
-    sampler->automation_lane_capacity = 0;
-    if (!lanes || lane_count <= 0) {
-        if (sampler->automation_mutex) {
-            SDL_UnlockMutex(sampler->automation_mutex);
-        }
-        return;
-    }
-    sampler->automation_lanes = (EngineAutomationLane*)calloc((size_t)lane_count, sizeof(EngineAutomationLane));
-    if (!sampler->automation_lanes) {
-        if (sampler->automation_mutex) {
-            SDL_UnlockMutex(sampler->automation_mutex);
-        }
-        return;
-    }
-    sampler->automation_lane_capacity = lane_count;
-    sampler->automation_lane_count = lane_count;
-    for (int i = 0; i < lane_count; ++i) {
-        engine_automation_lane_init(&sampler->automation_lanes[i], lanes[i].target);
-        engine_automation_lane_copy(&lanes[i], &sampler->automation_lanes[i]);
-    }
-    if (sampler->automation_mutex) {
-        SDL_UnlockMutex(sampler->automation_mutex);
-    }
+    if (sampler->automation_mutex) SDL_LockMutex(sampler->automation_mutex);
+    for (int i = 0; i < sampler->automation_lane_count; ++i)
+        engine_automation_lane_free(&sampler->automation_lanes[i]);
+    free(sampler->automation_lanes);
+    sampler->automation_lanes = replacement;
+    sampler->automation_lane_count = sampler->automation_lane_capacity = lane_count;
+    if (sampler->automation_mutex) SDL_UnlockMutex(sampler->automation_mutex);
+    return true;
 }
 
 static float sampler_eval_automation(const EngineSamplerSource* sampler,
@@ -218,26 +237,32 @@ void engine_sampler_source_render(void* userdata, float* interleaved, int frames
                 }
             }
         }
+        float gain_scale = 1.0f;
+        if (in_range) {
+            if (sampler->fade_in_frames > 0 && rel < sampler->fade_in_frames) {
+                gain_scale *= engine_fade_curve_eval(sampler->fade_in_curve, (float)rel / (float)sampler->fade_in_frames);
+            }
+            if (sampler->fade_out_frames > 0 && sampler->clip_length_frames > 0) {
+                uint64_t fade_start = sampler->clip_length_frames > sampler->fade_out_frames
+                                          ? sampler->clip_length_frames - sampler->fade_out_frames
+                                          : 0;
+                if (rel >= fade_start) {
+                    uint64_t remaining = sampler->clip_length_frames - rel;
+                    if (remaining > sampler->fade_out_frames) {
+                        remaining = sampler->fade_out_frames;
+                    }
+                    // Keep the historical linear sample endpoint convention exactly.
+                    gain_scale *= sampler->fade_out_curve == ENGINE_FADE_CURVE_LINEAR
+                        ? (float)remaining / (float)sampler->fade_out_frames
+                        : 1.0f - engine_fade_curve_eval(sampler->fade_out_curve,
+                            (float)(sampler->fade_out_frames - remaining) / (float)sampler->fade_out_frames);
+                }
+            }
+        }
         for (int ch = 0; ch < sampler->channels; ++ch) {
             float value = 0.0f;
             if (in_range) {
                 value = sample_from_clip(clip, local_frame, ch);
-                float gain_scale = 1.0f;
-                if (sampler->fade_in_frames > 0 && rel < sampler->fade_in_frames) {
-                    gain_scale *= (float)rel / (float)sampler->fade_in_frames;
-                }
-                if (sampler->fade_out_frames > 0 && sampler->clip_length_frames > 0) {
-                    uint64_t fade_start = sampler->clip_length_frames > sampler->fade_out_frames
-                                              ? sampler->clip_length_frames - sampler->fade_out_frames
-                                              : 0;
-                    if (rel >= fade_start) {
-                        uint64_t remaining = sampler->clip_length_frames - rel;
-                        if (remaining > sampler->fade_out_frames) {
-                            remaining = sampler->fade_out_frames;
-                        }
-                        gain_scale *= (float)remaining / (float)sampler->fade_out_frames;
-                    }
-                }
                 float automation_gain = sampler_eval_automation(sampler,
                                                                 ENGINE_AUTOMATION_TARGET_VOLUME,
                                                                 rel);
@@ -313,4 +338,11 @@ uint64_t engine_sampler_get_media_length(const EngineSamplerSource* sampler) {
         return 0;
     }
     return sampler->clip->frame_count;
+}
+
+// Copies accepted curve metadata without allocation or changes to region timing.
+void engine_sampler_source_set_fade_curves(EngineSamplerSource* sampler, EngineFadeCurve in_curve, EngineFadeCurve out_curve) {
+    if (!sampler) return;
+    sampler->fade_in_curve = in_curve;
+    sampler->fade_out_curve = out_curve;
 }

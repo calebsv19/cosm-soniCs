@@ -128,6 +128,25 @@ int main(void) {
     free(json);
     expect(core_pack_reader_close(&reader).code == CORE_OK, "close pack reader failed");
 
+    DawPackEnvelope envelope;
+    expect(daw_pack_envelope_init(&envelope, bounce.frame_count, 48000, 2), "stream envelope init");
+    daw_pack_envelope_append(&envelope, samples, 0, 1, 2);
+    daw_pack_envelope_append(&envelope, samples + 2, 1, 3, 2);
+    expect(!daw_pack_export_envelope("/dev/null/missing.pack", &state, &envelope, 0, 4, 4), "pack open failure accepted");
+    const char* streamed_path = "/tmp/daw_pack_stream_contract.pack";
+    expect(daw_pack_export_envelope(streamed_path, &state, &envelope, 0, 4, 4), "stream pack export");
+    FILE* expected = fopen(pack_path, "rb");
+    FILE* actual = fopen(streamed_path, "rb");
+    expect(expected && actual, "pack parity inputs");
+    int byte;
+    do { byte = fgetc(expected); expect(byte == fgetc(actual), "streamed pack byte parity"); } while (byte != EOF);
+    fclose(expected); fclose(actual); remove(streamed_path);
+    daw_pack_envelope_free(&envelope);
+    expect(daw_pack_envelope_init(&envelope, UINT64_C(48000) * 3600 * 12, 48000, 2), "long overview init");
+    expect(envelope.point_count <= 65536 && envelope.samples_per_pixel > 256, "long overview not bounded");
+    expect(!daw_pack_export_envelope(streamed_path, &state, &envelope, 0, 1, 1), "incomplete overview accepted");
+    daw_pack_envelope_free(&envelope);
+
     tempo_map_free(&state.tempo_map);
     time_signature_map_free(&state.time_signature_map);
     remove(pack_path);

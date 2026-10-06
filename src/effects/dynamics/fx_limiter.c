@@ -1,175 +1,171 @@
-
-// fx_limiter.c — Brickwall-style limiter with short lookahead (interleaved, in-place)
-// Params:
-//   0: ceiling_dB   (-24..0)
-//   1: lookahead_ms (0..3)        // 0 works but may clip on sudden peaks
-//   2: release_ms   (5..200)
-// Notes:
-// - Uses per-channel envelope with shared gain reduction (linking) by taking max across channels per frame.
-// - Lookahead implemented with circular buffer per channel (allocated at create).
-#include <stdlib.h>
-#include <math.h>
-#include <string.h>
+// Linked sample-peak limiter with integer-sample lookahead and prepared
+// storage.
 #include "effects/effects_api.h"
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
 
-static inline float clampf(float x, float lo, float hi){ return x<lo?lo:(x>hi?hi:x); }
-static inline float dB_to_lin(float dB){ return powf(10.0f, dB * 0.05f); }
-
+// Holds the prepared delay ring, sliding peak maximum, and shared release
+// envelope.
 typedef struct FxLimiter {
-    float sr;
-    unsigned max_channels;
-
-    float ceiling_dB;
-    float look_ms;
-    float release_ms;
-
-    unsigned look_samples;
-    float*   buf;       // size = look_samples * channels
-    unsigned write_pos;
-
-    float gain; // current shared gain (linear)
+    float sr, ceiling_db, release_ms, gain, reduction_db;
+    unsigned channels, delay, capacity, write_pos, peak_head, peak_count;
+    uint64_t frame;
+    float* audio;
+    float* peaks;
+    uint64_t* peak_frames;
 } FxLimiter;
 
-static void limiter_reset(FxHandle* h);
+// Bounds a finite control value to its supported interval.
+static float clampf(float x, float low, float high) { return fminf(high, fmaxf(low, x)); }
 
-static float* chan_ptr(struct FxLimiter* L, unsigned ch){ return L->buf + (size_t)ch * (size_t)L->look_samples; }
+// Clears captured audio and detector history without allocating.
+static void limiter_reset(FxHandle* handle) {
+    FxLimiter* l = (FxLimiter*)handle;
+    memset(l->audio, 0, (size_t)l->capacity * l->channels * sizeof(float));
+    l->write_pos = l->peak_head = l->peak_count = 0;
+    l->frame = 0;
+    l->gain = 1;
+    l->reduction_db = 0;
+}
 
-static void limiter_set_param(FxHandle* h, uint32_t idx, float value)
-{
-    FxLimiter* L = (FxLimiter*)h;
-    unsigned old_look = L->look_samples;
-    switch (idx) {
-        case 0: L->ceiling_dB = clampf(value, -24.f, 0.f); break;
-        case 1: L->look_ms    = clampf(value, 0.0f, 3.0f);
-                L->look_samples = (unsigned)(L->look_ms * 0.001f * L->sr + 0.5f);
-                if (L->look_samples < 1) L->look_samples = 1; // minimum 1-sample pipeline
-                break;
-        case 2: L->release_ms = clampf(value, 5.f, 200.f); break;
-        default: break;
-    }
-    if (L->look_samples != old_look) {
-        size_t total = (size_t)L->look_samples * (size_t)L->max_channels;
-        float* new_buf = (float*)calloc(total, sizeof(float));
-        if (new_buf) {
-            free(L->buf);
-            L->buf = new_buf;
-            limiter_reset(h);
-        } else {
-            // allocation failed; revert to old size to avoid OOB
-            L->look_samples = old_look;
+// Applies finite controls; a changed integer delay starts a new silent history
+// segment.
+static void limiter_set_param(FxHandle* handle, uint32_t index, float value) {
+    FxLimiter* l = (FxLimiter*)handle;
+    if (!isfinite(value))
+        return;
+    if (index == 0)
+        l->ceiling_db = clampf(value, -24, 0);
+    if (index == 2)
+        l->release_ms = clampf(value, 5, 200);
+    if (index == 1) {
+        unsigned delay = (unsigned)llround((double)clampf(value, 0, 3) * .001 * l->sr);
+        if (delay >= l->capacity)
+            delay = l->capacity - 1;
+        if (delay != l->delay) {
+            l->delay = delay;
+            limiter_reset(handle);
         }
     }
 }
 
-static void limiter_reset(FxHandle* h)
-{
-    FxLimiter* L = (FxLimiter*)h;
-    if (L->buf) memset(L->buf, 0, (size_t)L->look_samples * (size_t)L->max_channels * sizeof(float));
-    L->write_pos = 0;
-    L->gain = 1.0f;
+// Releases all storage prepared by the factory.
+static void limiter_destroy(FxHandle* handle) {
+    FxLimiter* l = (FxLimiter*)handle;
+    free(l->audio);
+    free(l->peaks);
+    free(l->peak_frames);
+    free(l);
 }
 
-static void limiter_destroy(FxHandle* h)
-{
-    FxLimiter* L = (FxLimiter*)h;
-    free(L->buf);
-    free(L);
-}
+// Reports the active signal delay in project-rate samples.
+static uint32_t limiter_latency(FxHandle* handle) { return ((FxLimiter*)handle)->delay; }
 
-static void limiter_process(FxHandle* h, const float* in, float* out, int frames, int channels)
-{
-    (void)in;
-    FxLimiter* L = (FxLimiter*)h;
-    if (channels > (int)L->max_channels) channels = (int)L->max_channels;
+// Reports the maximum signal delay needed for host buffer preparation.
+static uint32_t limiter_max_latency(FxHandle* handle) { return ((FxLimiter*)handle)->capacity - 1; }
 
-    const float ceil_lin = dB_to_lin(L->ceiling_dB);
-    const float rel_a = expf(-1.0f / ( (L->release_ms * 0.001f) * L->sr ));
+// Reports the most negative applied gain in the last process call, excluding
+// any makeup gain.
+static float limiter_reduction(FxHandle* handle) { return ((FxLimiter*)handle)->reduction_db; }
 
+// Delays audio by D samples and limits against the linked peak across the
+// D+1-sample window.
+static void limiter_process(FxHandle* handle, const float* in, float* out, int frames, int channels) {
+    FxLimiter* l = (FxLimiter*)handle;
+    if (!in || !out || frames <= 0 || channels <= 0 || (unsigned)channels > l->channels)
+        return;
+    float ceiling = powf(10, l->ceiling_db * .05f);
+    float release = expf(-1 / (l->release_ms * .001f * l->sr));
+    float min_gain = 1;
     for (int n = 0; n < frames; ++n) {
-        unsigned w = L->write_pos;
-        unsigned r = (w + L->look_samples - 1) % L->look_samples; // read oldest (lookahead)
-
-        // write current sample to delay buffers
-        int base = n * channels;
+        float peak = 0;
         for (int ch = 0; ch < channels; ++ch) {
-            float* cb = chan_ptr(L, (unsigned)ch);
-            cb[w] = out[base + ch];
+            float x = in[(size_t)n * channels + ch];
+            if (!isfinite(x))
+                x = 0;
+            l->audio[(size_t)l->write_pos * l->channels + ch] = x;
+            peak = fmaxf(peak, fabsf(x));
         }
-
-        // peek future (actually delayed) level and compute needed gain
-        float peak = 0.0f;
-        for (int ch = 0; ch < channels; ++ch) {
-            float* cb = chan_ptr(L, (unsigned)ch);
-            float s = fabsf(cb[r]);
-            if (s > peak) peak = s;
+        while (l->peak_count && l->frame - l->peak_frames[l->peak_head] > l->delay) {
+            l->peak_head = (l->peak_head + 1) % l->capacity;
+            --l->peak_count;
         }
-        float needed = (peak > 1e-12f) ? (ceil_lin / peak) : 1.0f;
-        if (needed > 1.0f) needed = 1.0f;
-
-        // gain follows the minimum (attack instant), releases exponentially
-        if (needed < L->gain) {
-            L->gain = needed;
-        } else {
-            L->gain = L->gain * rel_a + (1.0f - rel_a) * needed;
+        while (l->peak_count) {
+            unsigned back = (l->peak_head + l->peak_count - 1) % l->capacity;
+            if (l->peaks[back] > peak)
+                break;
+            --l->peak_count;
         }
-
-        // output the delayed sample with shared gain at read index
-        for (int ch = 0; ch < channels; ++ch) {
-            float* cb = chan_ptr(L, (unsigned)ch);
-            float y = cb[r] * L->gain;
-            out[base + ch] = y;
-        }
-
-        L->write_pos = (L->write_pos + 1) % L->look_samples;
+        unsigned tail = (l->peak_head + l->peak_count) % l->capacity;
+        l->peaks[tail] = peak;
+        l->peak_frames[tail] = l->frame;
+        ++l->peak_count;
+        float maximum = l->peaks[l->peak_head];
+        float needed = maximum > ceiling ? ceiling / maximum : 1;
+        l->gain = needed < l->gain ? needed : release * l->gain + (1 - release) * needed;
+        min_gain = fminf(min_gain, l->gain);
+        unsigned read = (l->write_pos + l->capacity - l->delay) % l->capacity;
+        for (int ch = 0; ch < channels; ++ch)
+            out[(size_t)n * channels + ch] = l->audio[(size_t)read * l->channels + ch] * l->gain;
+        l->write_pos = (l->write_pos + 1) % l->capacity;
+        ++l->frame;
     }
+    l->reduction_db = 20 * log10f(fmaxf(min_gain, 1e-20f));
 }
 
-int limiter_get_desc(FxDesc *out)
-{
-    if (!out) return 0;
-    out->name = "Limiter";
-    out->api_version = FX_API_VERSION;
-    out->flags = FX_FLAG_INPLACE_OK;
-    out->num_inputs = 1;
-    out->num_outputs = 1;
-    out->num_params = 3;
-    out->param_names[0] = "ceiling_dB";
-    out->param_names[1] = "lookahead_ms";
-    out->param_names[2] = "release_ms";
-    out->param_defaults[0] = -0.3f;
-    out->param_defaults[1] = 1.0f;
-    out->param_defaults[2] = 50.0f;
-    out->latency_samples = 0; // lookahead is internal; throughput latency equals lookahead, but engine can ignore for now
+// Describes the existing three controls and the optional dynamic-latency
+// contract.
+int limiter_get_desc(FxDesc* out) {
+    if (!out)
+        return 0;
+    *out = (FxDesc){.name = "Limiter",
+                    .api_version = FX_API_VERSION,
+                    .flags = FX_FLAG_INPLACE_OK | FX_FLAG_DYNAMIC_LATENCY,
+                    .num_inputs = 1,
+                    .num_outputs = 1,
+                    .num_params = 3,
+                    .param_names = {"ceiling_dB", "lookahead_ms", "release_ms"},
+                    .param_defaults = {-.3f, 1, 50}};
     return 1;
 }
 
-int limiter_create(const FxDesc* desc, FxHandle **out_handle, FxVTable *out_vt,
-                   uint32_t sample_rate, uint32_t max_block, uint32_t max_channels)
-{
-    (void)desc; (void)max_block;
-    FxLimiter* L = (FxLimiter*)calloc(1, sizeof(FxLimiter));
-    if (!L) return 0;
-
-    L->sr = (float)sample_rate;
-    L->max_channels = max_channels ? max_channels : 2;
-
-    // defaults
-    L->ceiling_dB = -0.3f;
-    L->look_ms = 1.0f;
-    L->release_ms = 50.0f;
-    L->look_samples = (unsigned)(L->look_ms * 0.001f * L->sr + 0.5f);
-    if (L->look_samples < 1) L->look_samples = 1;
-
-    size_t total = (size_t)L->look_samples * (size_t)L->max_channels;
-    L->buf = (float*)calloc(total, sizeof(float));
-    if (!L->buf) { limiter_destroy((FxHandle*)L); return 0; }
-
-    limiter_reset((FxHandle*)L);
-
-    out_vt->process = limiter_process;
-    out_vt->set_param = limiter_set_param;
-    out_vt->reset = limiter_reset;
-    out_vt->destroy = limiter_destroy;
-    *out_handle = (FxHandle*)L;
+// Prepares maximum supported delay and detector storage before the instance can
+// render.
+int limiter_create(const FxDesc* desc, FxHandle** out, FxVTable* vt, uint32_t rate, uint32_t block,
+                   uint32_t channels) {
+    (void)desc;
+    (void)block;
+    if (!out || !vt || !rate)
+        return 0;
+    FxLimiter* l = calloc(1, sizeof(*l));
+    if (!l)
+        return 0;
+    l->sr = rate;
+    l->channels = channels ? channels : 2;
+    l->capacity = (unsigned)llround((double)rate * .003) + 1;
+    if ((size_t)l->capacity > SIZE_MAX / sizeof(float) / l->channels) {
+        free(l);
+        return 0;
+    }
+    l->audio = calloc((size_t)l->capacity * l->channels, sizeof(float));
+    l->peaks = calloc(l->capacity, sizeof(float));
+    l->peak_frames = calloc(l->capacity, sizeof(uint64_t));
+    if (!l->audio || !l->peaks || !l->peak_frames) {
+        limiter_destroy((FxHandle*)l);
+        return 0;
+    }
+    l->ceiling_db = -.3f;
+    l->release_ms = 50;
+    l->delay = (unsigned)llround((double)rate * .001);
+    limiter_reset((FxHandle*)l);
+    *vt = (FxVTable){.process = limiter_process,
+                     .set_param = limiter_set_param,
+                     .reset = limiter_reset,
+                     .destroy = limiter_destroy,
+                     .latency = limiter_latency,
+                     .max_latency = limiter_max_latency,
+                     .gain_reduction_db = limiter_reduction};
+    *out = (FxHandle*)l;
     return 1;
 }

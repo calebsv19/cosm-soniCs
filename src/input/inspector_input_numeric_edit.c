@@ -3,6 +3,9 @@
 #include "engine/audio_source.h"
 #include "engine/sampler.h"
 #include "input/inspector_input.h"
+#include "input/timeline_selection.h"
+#include "undo/undo_manager.h"
+#include <float.h>
 
 #include <SDL2/SDL.h>
 #include <ctype.h>
@@ -95,6 +98,7 @@ static bool inspector_parse_number(const char* text, double* out_value) {
     if (end && *end != '\0') {
         return false;
     }
+    if (!isfinite(value)) return false;
     *out_value = value;
     return true;
 }
@@ -180,6 +184,7 @@ void inspector_numeric_begin_edit(AppState* state, const EngineClip* clip, bool*
     }
     inspector_numeric_clear_edit(state);
     *flag = true;
+    state->inspector.edit.target_creation_index = clip->creation_index;
     inspector_format_numeric_field(state, clip, &state->inspector.edit);
     char* buffer = inspector_numeric_active_buffer(&state->inspector.edit);
     if (buffer) {
@@ -188,94 +193,78 @@ void inspector_numeric_begin_edit(AppState* state, const EngineClip* clip, bool*
     SDL_StartTextInput();
 }
 
-bool inspector_numeric_commit_edit(AppState* state) {
-    if (!state || !state->engine) {
-        return false;
-    }
-    if (!inspector_numeric_is_editing(&state->inspector.edit)) {
-        return false;
-    }
-    EngineClip* clip = inspector_get_clip_mutable(state);
-    if (!clip) {
-        inspector_numeric_clear_edit(state);
-        SDL_StopTextInput();
-        return false;
-    }
+// Converts finite seconds without signed rounding overflow or undefined integer casts.
+static bool inspector_seconds_to_frames(double seconds, double rate, uint64_t* frames) {
+    if (!isfinite(seconds) || !isfinite(rate) || seconds < 0 || rate <= 0) return false;
+    long double rounded = roundl((long double)seconds * (long double)rate);
+    if (rounded < 0 || rounded >= ldexpl(1.0L, 64)) return false;
+    *frames = (uint64_t)rounded;
+    return true;
+}
 
+// Reserves complete history before applying a numeric edit and preserves input on rejection.
+bool inspector_numeric_commit_edit(AppState* state) {
+    if (!state || !state->engine || !inspector_numeric_is_editing(&state->inspector.edit)) return false;
+    EngineClip* clip = inspector_get_clip_mutable(state);
+    if (!clip || state->undo.active_drag_valid ||
+        clip->creation_index != state->inspector.edit.target_creation_index) return false;
     char* buffer = inspector_numeric_active_buffer(&state->inspector.edit);
-    double value = 0.0;
-    if (!buffer || !inspector_parse_number(buffer, &value)) {
-        inspector_format_numeric_field(state, clip, &state->inspector.edit);
+    double value = 0;
+    if (!buffer || !inspector_parse_number(buffer, &value)) return false;
+    if (state->inspector.edit.editing_playback_rate) {
+        if (value <= 0.01 || value > FLT_MAX) return false;
+        state->inspector.playback_rate = (float)value;
         inspector_numeric_clear_edit(state);
         SDL_StopTextInput();
-        return false;
+        return true;
     }
 
     double sr = inspector_numeric_clip_sample_rate(state, clip);
-    uint64_t clip_frames = inspector_numeric_clip_duration_frames(state, clip);
-    if (clip_frames == 0) {
-        clip_frames = 1;
-    }
-
-    bool ok = false;
-    if (state->inspector.edit.editing_timeline_start) {
-        if (value < 0.0) value = 0.0;
-        uint64_t frames = (uint64_t)llround(value * sr);
-        ok = engine_clip_set_timeline_start(state->engine,
-                                            state->inspector.track_index,
-                                            state->inspector.clip_index,
-                                            frames,
-                                            NULL);
+    uint64_t frames = 0, offset = clip->offset_frames;
+    bool position = state->inspector.edit.editing_timeline_start;
+    if (position || state->inspector.edit.editing_source_start) {
+        if (value < 0) value = 0;
     } else if (state->inspector.edit.editing_timeline_end) {
-        double start_sec = (double)clip->timeline_start_frames / sr;
-        double length_sec = value - start_sec;
-        if (length_sec > 0.0) {
-            uint64_t duration_frames = (uint64_t)llround(length_sec * sr);
-            ok = engine_clip_set_region(state->engine,
-                                        state->inspector.track_index,
-                                        state->inspector.clip_index,
-                                        clip->offset_frames,
-                                        duration_frames);
-        }
-    } else if (state->inspector.edit.editing_timeline_length) {
-        if (value > 0.0) {
-            uint64_t duration_frames = (uint64_t)llround(value * sr);
-            ok = engine_clip_set_region(state->engine,
-                                        state->inspector.track_index,
-                                        state->inspector.clip_index,
-                                        clip->offset_frames,
-                                        duration_frames);
-        }
-    } else if (state->inspector.edit.editing_source_start) {
-        if (value < 0.0) value = 0.0;
-        uint64_t offset_frames = (uint64_t)llround(value * sr);
-        ok = engine_clip_set_region(state->engine,
-                                    state->inspector.track_index,
-                                    state->inspector.clip_index,
-                                    offset_frames,
-                                    clip_frames);
+        value -= (double)clip->timeline_start_frames / sr;
     } else if (state->inspector.edit.editing_source_end) {
-        double source_start_sec = (double)clip->offset_frames / sr;
-        double length_sec = value - source_start_sec;
-        if (length_sec > 0.0) {
-            uint64_t duration_frames = (uint64_t)llround(length_sec * sr);
-            ok = engine_clip_set_region(state->engine,
-                                        state->inspector.track_index,
-                                        state->inspector.clip_index,
-                                        clip->offset_frames,
-                                        duration_frames);
-        }
-    } else if (state->inspector.edit.editing_playback_rate) {
-        if (value > 0.01) {
-            state->inspector.playback_rate = (float)value;
-            ok = true;
-        }
+        value -= (double)clip->offset_frames / sr;
     }
+    if (!inspector_seconds_to_frames(value, sr, &frames)) return false;
+    uint64_t duration = frames;
+    if (state->inspector.edit.editing_source_start) {
+        offset = frames;
+        duration = inspector_numeric_clip_duration_frames(state, clip);
+        if (!duration) duration = 1;
+    } else if (!position && (!frames || value <= 0)) return false;
 
+    UndoCommand command = {.type = UNDO_CMD_CLIP_TRANSFORM};
+    if (!undo_clip_state_capture(state->engine, clip, state->inspector.track_index,
+                                 &command.data.clip_transform.before)) return false;
+    bool prepared = undo_clip_state_clone(&command.data.clip_transform.after, &command.data.clip_transform.before) &&
+                    undo_manager_begin_drag(&state->undo, &command);
+    undo_clip_state_clear(&command.data.clip_transform.before);
+    undo_clip_state_clear(&command.data.clip_transform.after);
+    if (!prepared) return false;
+    int track = state->inspector.track_index, old_index = state->inspector.clip_index, new_index = old_index;
+    bool ok = position
+        ? engine_clip_set_timeline_start(state->engine, track, old_index, frames, &new_index)
+        : engine_clip_set_region(state->engine, track, old_index, offset, duration);
+    if (!ok) {
+        undo_manager_cancel_drag(&state->undo);
+        return false;
+    }
+    // These setters preserve notes/instruments; update only their scalar readback without allocation.
+    clip = (EngineClip*)&engine_get_tracks(state->engine)[track].clips[new_index];
+    UndoClipState* after = &state->undo.active_drag.data.clip_transform.after;
+    after->start_frame = clip->timeline_start_frames;
+    after->offset_frames = clip->offset_frames;
+    after->duration_frames = clip->duration_frames;
+    after->fade_in_frames = clip->fade_in_frames;
+    after->fade_out_frames = clip->fade_out_frames;
+    (void)undo_manager_commit_drag(&state->undo, &state->undo.active_drag);
+    timeline_selection_update_index(state, track, old_index, new_index);
     inspector_numeric_clear_edit(state);
     SDL_StopTextInput();
-    if (ok) {
-        inspector_input_set_clip(state, state->inspector.track_index, state->inspector.clip_index);
-    }
-    return ok;
+    inspector_input_set_clip(state, track, new_index);
+    return true;
 }

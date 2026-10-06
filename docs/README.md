@@ -1,9 +1,22 @@
 # soniCs Docs Index
 
 Start here for soniCs public documentation.
-Last audited: 2026-08-27.
+Runtime improvement links updated: 2026-09-21; other lanes retain their own acceptance dates.
 
 Repository and source-level identifiers still use `daw`.
+
+## Runtime Improvement Plan
+
+- [S1–S6 plan](improvement/PLAN.md) and [S1 bounded closeout](improvement/S1-CLOSEOUT.md).
+- [S3.4–S3.6 acceptance checklist](improvement/S3-REMAINING-WORK.md).
+- [Controls and transitions](improvement/S3-CONTROL-TRANSITIONS.md), [media conversion](improvement/S3-MEDIA-CONVERSION.md), and [instrument lifecycle](improvement/S3-INSTRUMENT-LIFECYCLE.md), with source-bound receipts linked in each.
+- [S3.7 isolated export](improvement/S3-EXPORT.md) and [acceptance receipt](improvement/evidence/s3-export.json). These are local implementation/software-proof checkpoints.
+
+- [S4.1 runtime workload audit](improvement/S4-RUNTIME-AUDIT.md), [evidence receipt](improvement/evidence/s4-runtime-audit.json), and [reproduction guide](../tests/performance/README.md). Historical audit baseline; see the [S4 implementation ledger](improvement/S4-IMPLEMENTATION.md) for completed scheduling, metering, scalar publication, and deadline/queue boundaries and remaining work.
+- [S4.4b/S4.5 edit preparation, worker timing, and queue policy](improvement/S4-EDITING-DEADLINES.md).
+- [S4.6 bounded recording and export disk pipelines](improvement/S4-STREAMING.md).
+- [Capture-clock continuity correction](improvement/S4-CAPTURE-CLOCK.md).
+- [S4.7 media/cache audit and implementation sequence](improvement/S4.7-MEDIA-AUDIT.md).
 
 ## Scaffold State
 - `docs/current_truth.md`: current scaffold/runtime state and verification snapshot.
@@ -59,3 +72,14 @@ Repository and source-level identifiers still use `daw`.
 ## Private Planning Docs
 - Private DAW migration docs live at:
   - `../../docs/private_program_docs/daw/`
+
+- [S4.7 media preparation and publication](improvement/S4.7-MEDIA.md): implemented S4.7a–d contracts, cancellation, memory policy, measurements and next boundary.
+
+- [S4.8 analyzer compute efficiency](improvement/S4.8-ANALYSIS.md): prepared calibrated transforms, consumer diagnostics, matched CPU proof and retained S4.9 timing findings.
+
+- [S4.9 integrated sustained assessment](improvement/S4.9-ACCEPTANCE.md): completed workload/heap/visual evidence, explicit timing and remaining acceptance findings.
+- [DAW functionality and next steps](improvement/DAW-STATUS-AND-NEXT-STEPS.md): S1–S6 state, real user-workflow acceptance and MCP prerequisites.
+
+## Runtime closeout navigation
+
+[S4 closeout](improvement/S4-CLOSEOUT.md) records the final bounded software disposition; [S5 functional slices](improvement/S5-FUNCTIONAL-SLICES.md) defines the next proposed behaviors.

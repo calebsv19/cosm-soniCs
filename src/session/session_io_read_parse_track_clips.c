@@ -12,6 +12,7 @@ static SessionClip* session_track_append_clip(SessionTrack* track) {
     track->clips = resized;
     SessionClip* clip = &track->clips[new_count - 1];
     memset(clip, 0, sizeof(*clip));
+    clip->gain = 1.0f; // Missing legacy fields default to unity; explicit zero remains silence.
     clip->instrument_preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
     clip->instrument_params = engine_instrument_default_params(clip->instrument_preset);
     clip->instrument_inherits_track = false;

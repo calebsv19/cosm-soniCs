@@ -302,8 +302,8 @@ static void test_source_contract_guards(void) {
     if (!read_file_contains(timeline_drop_path, "snprintf(path, sizeof(path), \"%s/%s\", state->library.directory,")) {
         failf("timeline reference-path guard missing", timeline_drop_path);
     }
-    if (!read_file_contains(timeline_drop_path, "engine_add_clip_to_track_with_id(state->engine,")) {
-        failf("timeline clip add guard missing", timeline_drop_path);
+    if (!read_file_contains(timeline_drop_path, "daw_media_import_submit(state, path, media_id,")) {
+        failf("timeline owned import guard missing", timeline_drop_path);
     }
 }
 

@@ -4,6 +4,7 @@
 #include "app_state.h"
 #include "config.h"
 #include "engine/engine.h"
+#include "engine/engine_internal.h"
 #include "engine/track_role.h"
 #include "session.h"
 #include "undo/undo_manager.h"
@@ -14,6 +15,33 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+static bool reject_record_arm;
+// Rejects recording isolation deterministically before the recording coordinator can start capture.
+static bool recording_test_arm(Engine* engine, int track) {
+    return !reject_record_arm && engine_set_record_armed_track(engine, track);
+}
+static atomic_bool stall_sync, entered_sync, fail_sync;
+// Holds journal synchronization on its worker so UI polling and failure publication can be tested separately.
+static bool recording_test_sync(DawTakeJournal* journal) {
+    if (atomic_load(&stall_sync)) {
+        atomic_store(&entered_sync, true);
+        while (atomic_load(&stall_sync)) SDL_Delay(1);
+    }
+    return !atomic_load(&fail_sync) && daw_take_journal_sync(journal);
+}
+static bool reject_capture_clock;
+// Forces the existing bounded clock-read rejection path without changing transport semantics.
+static bool recording_test_clock(const Engine* engine, EngineClockSnapshot* clock) {
+    return !reject_capture_clock && engine_get_clock_snapshot(engine, clock);
+}
+#define engine_get_clock_snapshot recording_test_clock
+#define daw_take_journal_sync recording_test_sync
+#define engine_set_record_armed_track recording_test_arm
+#include "../src/app/audio_recording.c"
+#undef engine_set_record_armed_track
+#undef daw_take_journal_sync
+#undef engine_get_clock_snapshot
 
 static bool file_exists(const char* path) {
     struct stat st;
@@ -129,6 +157,10 @@ static void test_synthetic_take_writes_wav_and_inserts_audio_clip(void) {
     state.active_track_index = 0;
     state.timeline_drop_track_index = 0;
     assert(daw_audio_recording_begin_take(&state, state.selected_track_index, 2400, &spec));
+    uint64_t recording_id = state.audio_recording.target_track_id;
+    assert(engine_insert_track(state.engine, 0));
+    ++record_track;
+    assert(engine_get_tracks(state.engine)[record_track].runtime_id == recording_id);
 
     float samples[480];
     for (int i = 0; i < 480; ++i) {
@@ -307,6 +339,21 @@ static void test_begin_take_applies_target_role_policy(void) {
     cleanup_state(&state);
 }
 
+// Measures the real prepared live mixer rather than using offline export as a monitoring proxy.
+static float average_live_backing(Engine* engine) {
+    engine_source_plan_apply(engine);
+    int channels = engine_graph_get_channels(engine->graph);
+    assert(channels > 0 && channels <= 2);
+    float output[256], scratch[256];
+    double total = 0.0;
+    for (int block = 0; block < 4; ++block) {
+        engine_mix_tracks(engine, (uint64_t)block * 128, 128, output, scratch, channels);
+        for (int i = 0; i < 128 * channels; ++i) total += fabsf(output[i]);
+    }
+    return (float)(total / (512 * channels));
+}
+
+// Keeps record-armed solo isolation in live monitoring while authored export ignores recording intent.
 static void test_record_armed_solo_track_gates_backing_audio(void) {
     AppState state;
     char temp_dir[] = "tmp/audio_recording_solo_XXXXXX";
@@ -325,6 +372,7 @@ static void test_record_armed_solo_track_gates_backing_audio(void) {
     EngineBounceBuffer before = {0};
     assert(engine_bounce_range_to_buffer(state.engine, 0, 512, NULL, NULL, &before));
     assert(average_abs_bounce(&before) > 0.1f);
+    assert(average_live_backing(state.engine) > 0.1f);
     engine_bounce_buffer_free(&before);
 
     AudioDeviceSpec spec = {
@@ -336,31 +384,342 @@ static void test_record_armed_solo_track_gates_backing_audio(void) {
 
     EngineBounceBuffer armed = {0};
     assert(engine_bounce_range_to_buffer(state.engine, 0, 512, NULL, NULL, &armed));
-    assert(average_abs_bounce(&armed) < 0.001f);
+    assert(average_abs_bounce(&armed) > 0.1f);
+    assert(average_live_backing(state.engine) < 0.001f);
     engine_bounce_buffer_free(&armed);
 
     assert(engine_track_set_solo(state.engine, 0, true));
     EngineBounceBuffer backing_soloed = {0};
     assert(engine_bounce_range_to_buffer(state.engine, 0, 512, NULL, NULL, &backing_soloed));
     assert(average_abs_bounce(&backing_soloed) > 0.1f);
+    assert(average_live_backing(state.engine) > 0.1f);
     engine_bounce_buffer_free(&backing_soloed);
 
     daw_audio_recording_cancel(&state.audio_recording);
     EngineBounceBuffer after = {0};
     assert(engine_bounce_range_to_buffer(state.engine, 0, 512, NULL, NULL, &after));
     assert(average_abs_bounce(&after) > 0.1f);
+    assert(average_live_backing(state.engine) > 0.1f);
     engine_bounce_buffer_free(&after);
 
     cleanup_state(&state);
 }
 
+// Exercises retry after a drain failure while a real dummy capture callback is still active.
+static void test_capture_error_retry_quiesces_old_queue(void) {
+    AppState state;
+    char temp_dir[] = "tmp/audio_recording_retry_XXXXXX";
+    prepare_state(&state, temp_dir);
+    AudioDeviceSpec spec = {.sample_rate = 48000, .block_size = 128, .channels = 1};
+    for (int retry = 0; retry < 4; ++retry) {
+        assert(daw_audio_recording_begin_capture(&state, 0, 0, NULL, &spec));
+        assert(state.audio_recording.capture_device_started);
+        uint64_t deadline = SDL_GetTicks64() + 2000;
+        uint64_t drained = 0;
+        while (!drained && SDL_GetTicks64() < deadline) {
+            drained = daw_audio_recording_drain(&state.audio_recording);
+            if (!drained) SDL_Delay(2);
+        }
+        assert(drained > 0);
+        state.audio_recording.status = DAW_AUDIO_RECORDING_ERROR;
+        char recovery[1024];
+        SDL_strlcpy(recovery, state.audio_recording.journal.path, sizeof(recovery));
+        assert(!daw_audio_recording_begin_capture(&state, 0, 0, NULL, &spec));
+        daw_audio_recording_cancel(&state.audio_recording);
+        assert(file_exists(recovery));
+    }
+    // A synthetic take retry also has to stop a previously active device first.
+    assert(daw_audio_recording_begin_take(&state, 0, 0, &spec));
+    assert(!state.audio_recording.capture_device_started && !state.audio_recording.capture_device.is_open);
+    daw_audio_recording_cancel(&state.audio_recording);
+    assert(!state.audio_recording.queue_ready);
+    cleanup_state(&state);
+}
+
+// Verifies rejected isolation never advertises an active take and closes a newly opened endpoint.
+static void test_record_arm_rejection_and_retry(void) {
+    AppState state;
+    char temp_dir[] = "tmp/audio_recording_arm_XXXXXX";
+    prepare_state(&state, temp_dir);
+    AudioDeviceSpec spec = {.sample_rate = 48000, .block_size = 128, .channels = 1};
+    reject_record_arm = true;
+    assert(!daw_audio_recording_begin_take(&state, 0, 0, &spec));
+    assert(!daw_audio_recording_is_active(&state.audio_recording));
+    assert(!state.audio_recording.queue_ready && !state.audio_recording.record_armed_engine);
+    assert_status_contains(&state.audio_recording, "Could not prepare");
+    assert(!daw_audio_recording_begin_capture(&state, 0, 0, NULL, &spec));
+    assert(!state.audio_recording.capture_device.is_open && !state.audio_recording.capture_device_started);
+    assert(!state.audio_recording.queue_ready);
+    reject_record_arm = false;
+    assert(daw_audio_recording_begin_take(&state, 0, 0, &spec));
+    assert(daw_audio_recording_is_active(&state.audio_recording));
+    cleanup_state(&state);
+}
+
+// Rejects a deleted target even when another track occupies the same array index.
+static void test_deleted_recording_target(void) {
+    AppState state;
+    char root[] = "tmp/recording-target-XXXXXX";
+    prepare_state(&state, root);
+    AudioDeviceSpec spec = {.sample_rate = 48000, .block_size = 128, .channels = 1};
+    assert(daw_audio_recording_begin_take(&state, 0, 0, &spec));
+    float frames[8] = {0.25f};
+    assert(daw_audio_recording_enqueue_frames(&state.audio_recording, frames, 8, 1) == 8);
+    assert(daw_audio_recording_drain(&state.audio_recording) == 8);
+    assert(engine_remove_track(state.engine, 0));
+    assert(engine_add_track(state.engine) == 0);
+    DawAudioRecordingResult result;
+    assert(!daw_audio_recording_finish(&state, &result));
+    assert(!result.inserted && result.track_index == -1);
+    assert(engine_get_tracks(state.engine)[0].clip_count == 0);
+    assert(state.audio_recording.take_frame_count == 8);
+    assert_status_contains(&state.audio_recording, "track was removed");
+    cleanup_state(&state);
+}
+
+// Preserves callback placement and dropped intervals, then retries failed publication.
+static void test_timed_gaps_and_publication_retry(void) {
+    AppState state;
+    char root[] = "tmp/recording-timing-XXXXXX";
+    prepare_state(&state, root);
+    AudioDeviceSpec spec = {.sample_rate = 48000, .block_size = 128, .channels = 1};
+    assert(daw_audio_recording_begin_take(&state, 0, 0, &spec));
+    DawAudioRecordingState* recording = &state.audio_recording;
+    recording->timeline_aligned = true;
+    ringbuf_free(&recording->capture_packets);
+    assert(ringbuf_init(&recording->capture_packets, sizeof(DawCapturePacket) * 2));
+    float samples[1536];
+    for (int i = 0; i < 1536; ++i) samples[i] = 0.25f;
+    EngineClockSnapshot clock = {.epoch = 42, .playing = false, .presentation_frame = 2536};
+    assert(daw_audio_recording_enqueue_timed(recording, samples, 1536, 1, 100, &clock) == 0);
+    clock.playing = true;
+    size_t accepted = daw_audio_recording_enqueue_timed(recording, samples, 1536, 1, 200, &clock);
+    assert(accepted > 0 && accepted < 1536);
+    assert(daw_audio_recording_drain(recording) == accepted);
+    clock.presentation_frame = 2792;
+    assert(daw_audio_recording_enqueue_timed(recording, samples, 256, 1, 300, &clock) == 256);
+    daw_audio_recording_drain(recording);
+    assert(recording->start_frame == 1000 && recording->take_frame_count == 1792);
+    assert(recording->gap_frames == 1536 - accepted && recording->alignment_error_frames == 0);
+    for (size_t i = 0; i < 1792; ++i)
+        assert(recording->take_frames[i] == ((i >= accepted && i < 1536) ? 0.0f : 0.25f));
+    clock.epoch++;
+    assert(daw_audio_recording_enqueue_timed(recording, samples, 256, 1, 400, &clock) == 0);
+    assert(atomic_load(&recording->capture_halted));
+    char journal[1024], destination[1100];
+    snprintf(journal, sizeof(journal), "%s", recording->journal.path);
+    snprintf(destination, sizeof(destination), "%s.wav", journal);
+    assert(mkdir(destination, 0700) == 0);
+    DawAudioRecordingResult result;
+    assert(!daw_audio_recording_finish(&state, &result));
+    assert(recording->take_frame_count == 1792 && file_exists(journal));
+    assert(engine_get_tracks(state.engine)[0].clip_count == 0);
+    assert(rmdir(destination) == 0);
+    assert(daw_audio_recording_finish(&state, &result));
+    assert(result.frame_count == 1792 && result.inserted);
+    assert(engine_get_tracks(state.engine)[0].clips[0].timeline_start_frames == 1000);
+    snprintf(destination, sizeof(destination), "%s.recovered.wav", journal);
+    DawTakeRecoveryInfo recovery;
+    assert(daw_take_journal_recover(journal, destination, &recovery));
+    assert(recovery.frames == 1792 && recovery.start_frame == 1000 && !recovery.incomplete_tail);
+    assert(daw_audio_recording_begin_take(&state, 0, 0, &spec));
+    recording = &state.audio_recording;
+    assert(daw_audio_recording_enqueue_frames(recording, samples, 256, 1) == 256);
+    assert(daw_audio_recording_drain(recording) == 256);
+    snprintf(journal, sizeof(journal), "%s", recording->journal.path);
+    samples[0] = NAN;
+    assert(daw_audio_recording_enqueue_frames(recording, samples, 256, 1) == 256);
+    assert(daw_audio_recording_drain(recording) == 0 && recording->drain_failed);
+    assert(!daw_audio_recording_finish(&state, &result));
+    daw_audio_recording_cancel(recording);
+    snprintf(destination, sizeof(destination), "%s.recovered.wav", journal);
+    assert(daw_take_journal_recover(journal, destination, &recovery));
+    assert(recovery.frames == 256);
+    spec.sample_rate = 44100;
+    assert(!daw_audio_recording_begin_take(&state, 0, 0, &spec));
+    state.loop_enabled = true;
+    assert(!daw_audio_recording_begin_timeline_capture(&state));
+    cleanup_state(&state);
+}
+
+// Exercises capture-clock reads concurrently with a real worker and SDL dummy callbacks.
+static void test_live_aligned_capture(void) {
+    AppState state;
+    char root[] = "tmp/recording-live-aligned-XXXXXX";
+    prepare_state(&state, root);
+    assert(engine_start(state.engine));
+    assert(engine_transport_play(state.engine));
+    assert(daw_audio_recording_begin_timeline_capture(&state));
+    for (int i = 0; i < 1000 && !state.audio_recording.take_frame_count; ++i) {
+        daw_audio_recording_drain_if_transport_playing(&state);
+        SDL_Delay(1);
+    }
+    assert(state.audio_recording.take_frame_count > 0);
+    assert(atomic_load(&state.audio_recording.first_capture_ns) > 0);
+    DawAudioRecordingResult result;
+    assert(daw_audio_recording_finish_timeline_capture(&state, &result));
+    assert(result.inserted && result.frame_count > 0);
+    engine_stop(state.engine);
+    cleanup_state(&state);
+}
+
+// Verifies preview rollover never truncates journal audio or shifts the finalized take.
+static void test_bounded_long_take(void) {
+    AppState state;
+    char root[] = "tmp/recording-bounded-XXXXXX";
+    prepare_state(&state, root);
+    AudioDeviceSpec spec = {.sample_rate = 48000, .channels = 1, .block_size = 128};
+    assert(daw_audio_recording_begin_take(&state, 0, 100, &spec));
+    assert(engine_transport_play(state.engine));
+    float samples[4096];
+    uint64_t total = DAW_RECORDING_PREVIEW_FRAMES * 3 + 17;
+    for (uint64_t first = 0; first < total;) {
+        uint32_t count = total - first < 4096 ? (uint32_t)(total - first) : 4096;
+        for (uint32_t i = 0; i < count; ++i) samples[i] = (float)((first + i) % 1000) / 2000;
+        assert(daw_audio_recording_enqueue_frames(&state.audio_recording, samples, count, 1) == count);
+        assert(daw_audio_recording_drain(&state.audio_recording) == count);
+        assert(state.audio_recording.take_frame_capacity == DAW_RECORDING_PREVIEW_FRAMES);
+        first += count;
+    }
+    AudioMediaClip view = {0};
+    assert(daw_audio_recording_take_clip_view(&state.audio_recording, &view));
+    assert(view.frame_count == DAW_RECORDING_PREVIEW_FRAMES);
+    for (uint64_t i = 0; i < view.frame_count; ++i)
+        assert(view.samples[i] == (float)((total - view.frame_count + i) % 1000) / 2000);
+    DawAudioRecordingResult result;
+    assert(daw_audio_recording_finish(&state, &result) && result.frame_count == total);
+    AudioMediaClip decoded = {0};
+    assert(audio_media_clip_load_wav(result.wav_path, 48000, &decoded));
+    assert(decoded.frame_count == total);
+    for (uint64_t i = 0; i < total; ++i)
+        assert(fabsf(decoded.samples[i] - (float)(i % 1000) / 2000) < .0001f);
+    audio_media_clip_free(&decoded);
+    cleanup_state(&state);
+}
+
+// Checks that capture checkpoints advance without UI draining and cancellation joins before freeing storage.
+static void test_worker_without_ui_drain(void) {
+    AppState state;
+    char root[] = "tmp/recording-worker-XXXXXX";
+    prepare_state(&state, root);
+    AudioDeviceSpec spec = {.sample_rate = 48000, .channels = 1, .block_size = 128};
+    assert(daw_audio_recording_begin_take(&state, 0, 0, &spec));
+    state.audio_recording.timeline_aligned = true;
+    assert(daw_recording_worker_start(&state.audio_recording));
+    float samples[4096];
+    for (int i = 0; i < 4096; ++i) samples[i] = .25f;
+    assert(daw_audio_recording_enqueue_frames(&state.audio_recording, samples, 4096, 1) == 4096);
+    DawRecordingWorker* worker = state.audio_recording.worker;
+    bool checkpointed = false;
+    for (int i = 0; i < 1000 && !checkpointed; ++i) {
+        SDL_Delay(1);
+        SDL_LockMutex(worker->mutex);
+        checkpointed = worker->snapshot.checkpoint_frames == 4096;
+        SDL_UnlockMutex(worker->mutex);
+    }
+    assert(checkpointed && state.audio_recording.take_frame_count == 0);
+    assert(daw_audio_recording_drain(&state.audio_recording) == 4096);
+    assert(daw_audio_recording_enqueue_frames(&state.audio_recording, samples, 4096, 1) == 4096);
+    char journal[1024], recovered[1100];
+    snprintf(journal, sizeof(journal), "%s", state.audio_recording.journal.path);
+    snprintf(recovered, sizeof(recovered), "%s.recovered.wav", journal);
+    daw_audio_recording_cancel(&state.audio_recording);
+    assert(!state.audio_recording.worker && !state.audio_recording.take_frames);
+    DawTakeRecoveryInfo info;
+    assert(daw_take_journal_recover(journal, recovered, &info) && info.frames == 8192);
+    unlink(recovered);
+    cleanup_state(&state);
+}
+
+// Proves slow storage never holds the UI publication mutex and failures stop capture with a retained journal.
+static void test_worker_storage_failure(void) {
+    AppState state;
+    char root[] = "tmp/recording-worker-fault-XXXXXX";
+    prepare_state(&state, root);
+    AudioDeviceSpec spec = {.sample_rate = 48000, .channels = 1, .block_size = 128};
+    assert(daw_audio_recording_begin_take(&state, 0, 0, &spec));
+    atomic_store(&entered_sync, false);
+    atomic_store(&stall_sync, true);
+    state.audio_recording.timeline_aligned = true;
+    assert(daw_recording_worker_start(&state.audio_recording));
+    float samples[256] = {0};
+    assert(daw_audio_recording_enqueue_frames(&state.audio_recording, samples, 256, 1) == 256);
+    for (int i = 0; i < 2000 && !atomic_load(&entered_sync); ++i) SDL_Delay(1);
+    assert(atomic_load(&entered_sync));
+    Uint64 began = SDL_GetPerformanceCounter();
+    daw_audio_recording_drain(&state.audio_recording);
+    assert((SDL_GetPerformanceCounter() - began) * 1000 / SDL_GetPerformanceFrequency() < 100);
+    atomic_store(&fail_sync, true);
+    atomic_store(&stall_sync, false);
+    for (int i = 0; i < 2000 && !state.audio_recording.drain_failed; ++i) {
+        daw_audio_recording_drain(&state.audio_recording);
+        SDL_Delay(1);
+    }
+    assert(state.audio_recording.drain_failed && atomic_load(&state.audio_recording.capture_halted));
+    assert(!daw_audio_recording_enqueue_frames(&state.audio_recording, samples, 256, 1));
+    assert(state.audio_recording.checkpoint_frames == 0);
+    atomic_store(&fail_sync, false);
+    daw_audio_recording_cancel(&state.audio_recording);
+    cleanup_state(&state);
+}
+
+// Proves busy diagnostics retain exact samples through an independently current epoch, then halt on invalidation.
+static void test_clock_continuity(void) {
+    AppState state;
+    char root[] = "tmp/recording-clock-gap-XXXXXX";
+    prepare_state(&state, root);
+    AudioDeviceSpec spec = {.sample_rate = 48000, .channels = 1, .block_size = 128};
+    assert(daw_audio_recording_begin_take(&state, 0, 0, &spec));
+    DawAudioRecordingState* recording = &state.audio_recording;
+    recording->timeline_aligned = true;
+    assert(daw_recording_worker_start(recording));
+    assert(engine_transport_play(state.engine));
+    EngineClockSnapshot clock;
+    assert(engine_get_clock_snapshot(state.engine, &clock));
+    clock.presentation_frame = 128;
+    float samples[128];
+    for (int i = 0; i < 128; ++i) samples[i] = .5f;
+    assert(daw_audio_recording_enqueue_timed(recording, samples, 128, 1, 1, &clock) == 128);
+    reject_capture_clock = true;
+    daw_audio_recording_capture_callback(samples, 128, 1, recording);
+    reject_capture_clock = false;
+    clock.presentation_frame = 384;
+    assert(daw_audio_recording_enqueue_timed(recording, samples, 128, 1, 3, &clock) == 128);
+    assert(atomic_load(&recording->dropped_frames) == 0 && atomic_load(&recording->clock_missing_frames) == 0 &&
+           atomic_load(&recording->clock_continuity_frames) == 128 &&
+           atomic_load(&recording->queue_dropped_frames) == 0);
+    atomic_store(&state.engine->clock_capture_epoch, 0);
+    reject_capture_clock = true;
+    daw_audio_recording_capture_callback(samples, 128, 1, recording);
+    reject_capture_clock = false;
+    assert(atomic_load(&recording->capture_halted) && atomic_load(&recording->captured_frames) == 384);
+    DawAudioRecordingResult result;
+    assert(daw_audio_recording_finish(&state, &result) && result.frame_count == 384);
+    AudioMediaClip decoded = {0};
+    assert(audio_media_clip_load_wav(result.wav_path, 48000, &decoded) && decoded.frame_count == 384);
+    for (int i = 0; i < 384; ++i) assert(fabsf(decoded.samples[i] - .5f) < .0001f);
+    audio_media_clip_free(&decoded);
+    cleanup_state(&state);
+}
+
 int main(void) {
+    assert(SDL_setenv("SDL_AUDIODRIVER", "dummy", 1) == 0);
+    test_clock_continuity();
+    test_worker_storage_failure();
+    test_bounded_long_take();
+    test_worker_without_ui_drain();
+    test_live_aligned_capture();
+    test_timed_gaps_and_publication_retry();
+    test_record_arm_rejection_and_retry();
+    test_deleted_recording_target();
     test_next_path_creates_recordings_directory();
     test_next_path_rejects_unsafe_library_copy_root();
     test_synthetic_take_writes_wav_and_inserts_audio_clip();
     test_empty_take_finish_reports_error_and_cancel_resets();
     test_begin_take_applies_target_role_policy();
     test_record_armed_solo_track_gates_backing_audio();
+    test_capture_error_retry_quiesces_old_queue();
+    SDL_Quit();
     puts("audio_recording_test: success");
     return 0;
 }

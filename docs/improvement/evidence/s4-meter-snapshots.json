@@ -1,0 +1,119 @@
+{
+  "slice": "S4.4a",
+  "status": "complete_at_software_boundary",
+  "recorded_utc": "2026-09-21T19:37:52.766569+00:00",
+  "checks": [
+    {
+      "command": "make test-engine-mix-ownership test-engine-parameter-transaction",
+      "exit_code": 0,
+      "log": "/tmp/daw-s44-focused.log",
+      "sha256": "65d8bbe8978c5bacc5c48a5bd138dc56088b40cba30da3cca54912c8279b667b",
+      "highlights": [
+        "meter storage: history_bank=226832 published_bank=9104 double_buffer_saving=435456 bytes per track/master",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_parameter_transaction_test: success"
+      ]
+    },
+    {
+      "command": "make test-stable test-legacy",
+      "exit_code": 0,
+      "log": "/tmp/daw-s44-regression.log",
+      "sha256": "6faca05e524f2ca3c467f83ab9b777ed62075a3621591e07c9fcb07b6eae156e",
+      "highlights": [
+        "midi_scheduling_test: success (all presets, exact prior-scan parity, automation/release growth, seeks, export, formats, wrap, reserve failure, zero render heap calls)",
+        "region_scheduling_test: success (bounds, overlap/order, track lookup, ramps, seeks, resets, wrap, rollback, zero render heap calls)",
+        "export_render_test: 54 instrumented allocation failure boundaries passed",
+        "export_render_test: success (repeatability, ranges, preroll, release/FX tails, PDC, snapshot/live isolation, failures, normalization, deterministic WAV)",
+        "control_transitions_test: success (Gain ramps, partitions, retarget, reset, zero endpoint, revision handoff, bypass, mixer gain/pan/mute/solo)",
+        "media_conversion_test: success (PCM8/16/24/32, float, extensible, malformed input, rate pairs, filtering, allocation failures)",
+        "instrument_lifecycle_test: success (gate/release, early-off, partitions, alias reduction, automation, bounded voices, retirement, panic, zero guarded heap calls)",
+        "dynamics_processing_test: success (delay, ceiling, linking, release, knee, detectors, makeup, alignment, revisions, mixer, bounce, live edits, preparation failures, zero render heap calls)",
+        "analysis_calibration_test: success (tones, endpoints, power mean, real workers, gaps, epochs, mid, insert metadata)",
+        "fade_processing_test: success (four curves, render/clone/block/export/preview parity, capture, zero/short bounds)",
+        "media_durability_test: success (5 prepublication failures, directory uncertainty, RIFF limits, torn journal recovery)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "session_transaction_test: success (11 capture and 5 restore allocation boundaries, live capture, rollback, complete retry)",
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)",
+        "engine_parameter_transaction_test: success",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)",
+        "daw_pack_contract_parity_test: success",
+        "daw_trace_export_contract_test: success",
+        "daw_trace_export_async_contract_test: success",
+        "kit_viz_waveform_adapter_test: success",
+        "kit_viz_fx_preview_adapter_test: success",
+        "waveform_cache_pack_warmstart_test: success",
+        "layout_text_scaling_sweep_test: success",
+        "timeline_contract_test: success",
+        "midi_model_test: success",
+        "midi_instrument_render_test: success",
+        "midi_editor_shell_test: success",
+        "audio_capture_device_test: success",
+        "audio_output_device_test: success",
+        "effects_revision_test: success",
+        "meter storage: history_bank=226832 published_bank=9104 double_buffer_saving=435456 bytes per track/master",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)",
+        "audio_recording_test: success",
+        "track_role_test: success",
+        "daw_data_path_contract_test: success",
+        "test-library-copy-vs-reference-contract: success",
+        "daw stable test lane passed",
+        "2026-09-21 12:34:33.929 session_serialization_test[79228:204432153] INFO: session_serialization_test: success (6898 bytes)",
+        "media_cache_stress_test: success (entries=0)",
+        "clip_overlap_priority_test: success (clips=3)",
+        "engine_smoke_test: success",
+        "shared_theme_font_adapter_test: success"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-engine-mix-ownership test-engine-parameter-transaction",
+      "exit_code": 0,
+      "log": "/tmp/daw-s44-asan.log",
+      "sha256": "d040d7d704ca04589c7f87e311199da550ec39c21cee2f3678f5852cdf42c30c",
+      "highlights": [
+        "meter storage: history_bank=226832 published_bank=9104 double_buffer_saving=435456 bytes per track/master",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_parameter_transaction_test: success"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-tsan.mk test-engine-mix-ownership test-engine-parameter-transaction",
+      "exit_code": 0,
+      "log": "/tmp/daw-s44-tsan.log",
+      "sha256": "ddfa71883e73480a763e62858056768744190a55623bf62cb70368fd63c860fe",
+      "highlights": [
+        "meter storage: history_bank=226832 published_bank=9104 double_buffer_saving=435456 bytes per track/master",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_parameter_transaction_test: success"
+      ]
+    },
+    {
+      "command": "make",
+      "exit_code": 0,
+      "log": "/tmp/daw-s44-build.log",
+      "sha256": "b7abb8da9e64c406302cda20104a33766735b54470e0e586a48dbf39a52f14db",
+      "highlights": []
+    }
+  ],
+  "source_sha256": {
+    "include/engine/engine_internal.h": "eb05c1de43764e779b265cb93f8b036791805ab8219118847e2b3066ec3d1ab0",
+    "src/engine/engine_core.c": "cb1793fa09def232191dcfca6f919e76647369059f61d0e746d210d499124a7c",
+    "src/engine/engine_meter.c": "1afea07103fe0112f7c8928c633e77113af226e97141b9ee228ffad4e5139ba0",
+    "src/engine/engine_tracks.c": "21dafa911a52a10e65cdabfcdb255fc400a2fe126ce829b817270df0adb0886b",
+    "tests/engine_mix_ownership_test.c": "25a45395da118d0e0e437ccc0dc349693227902047e380ef35c2a6f2b4a250e4",
+    "tests/engine_parameter_transaction_test.c": "330acf82acb3068c79080930313670768b88421f49c467930be53a4605bc268d"
+  },
+  "artifacts": {},
+  "limits": [
+    "Only published snapshot banks are compacted; worker/control DSP history banks remain unchanged.",
+    "S4.4b selective edit preparation and history-adoption cost remain open.",
+    "Exact layout/allocation saving, not process RSS or whole-engine memory reduction percentage.",
+    "No public meter API or output queue policy change."
+  ],
+  "arm64_layout_bytes": {
+    "history_bank": 226832,
+    "published_bank": 9104,
+    "saving_per_double_buffered_capacity_slot_or_master": 435456
+  }
+}

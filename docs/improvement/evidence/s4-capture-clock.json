@@ -1,0 +1,105 @@
+{
+  "status": "complete_at_documented_software_boundary",
+  "created_utc": "2026-09-22T05:42:36.295432+00:00",
+  "scope": "S4.6 capture-clock rejection correction; S4.7 source audit and ordered plan only",
+  "source_sha256": {
+    "include/engine/engine_internal.h": "429912de8943d37ce0baea86940564c6e3576f4900d23be5f7724b3e29db8290",
+    "src/engine/engine_core.c": "cc0ede50ab7eef55577154072006eaeb1faec9a4b92a43220d3cf10c1836dcee",
+    "src/engine/engine_clock.c": "0c354d5fb02020bc7588ee226268a32506cdfc37f197ead167733e922d6fe89f",
+    "include/engine/engine.h": "88ab4f5ae94f8fa7ebb8bfa418f8deac28615b0d1b85241730fbe0d32d174136",
+    "include/app/audio_recording.h": "2e0597d6995ba7d2946f09e11c596418e1c7393aae7d2cf5c24f2a6255bf3335",
+    "src/app/audio_recording.c": "8e0f951fc293018572bd84dc12b002944d430e9310188fdb2a739cb207b90e51",
+    "tests/audio_recording_test.c": "dff7dd03c538ad38b886625f8a1312546ef067d1fa8bdd6ad42621db58fb1fda",
+    "tests/engine_transport_clock_test.c": "290d43824d910a2567d26f3cfc4bad1ffc2c1fcb2e9a865a8a890670f7b9b22d",
+    "tests/performance/runtime_workload_bench.c": "fc0ba0a21b367b7f4083ba846ba91610eeb22334a72c720df4bdd19b37f0f1e3",
+    "tests/performance/run_capture_clock.py": "85409b90ece38773f27155a49aa7b55a96f64a5cf187de5863dac58c9582c86c"
+  },
+  "checks": [
+    {
+      "command": "make test-audio-recording test-engine-transport-clock",
+      "exit_code": 0,
+      "log": "/tmp/daw-clock-fix-tests.log",
+      "log_sha256": "f39d090cc7e187fbf0d546e783e9eaa13b3d0546653e5a94f43d121970b91643"
+    },
+    {
+      "command": "make test-engine-transport-clock",
+      "exit_code": 0,
+      "log": "/tmp/daw-clock-epoch-contract-fixed.log",
+      "log_sha256": "0976fe3004307ff07f6f99543c8eeb039637fefa9cae2c177eb5df960a6a462d"
+    },
+    {
+      "command": "make -f make/performance.mk performance-build test-audio-recording test-engine-transport-clock",
+      "exit_code": 0,
+      "log": "/tmp/daw-clock-optimized.log",
+      "log_sha256": "da21e1ca7ef9ba4d36481a0170f08d3040612603e86b5d4e8bd0717f2068b936"
+    },
+    {
+      "command": "python3 /tmp/daw-clock-capture-matrix.py",
+      "exit_code": 0,
+      "log": "/tmp/daw-clock-capture-matrix.log",
+      "log_sha256": "8cbad179d0cc541d642c1bbf77d4c71b76239deaa2ca16b79be3b6d2522a07d2"
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-audio-recording test-engine-transport-clock",
+      "exit_code": 0,
+      "log": "/tmp/daw-clock-asan.log",
+      "log_sha256": "2886fdf1d3241a5bc9a02c11019f3736b924c997c242fbedbf262d749fd1ea8f"
+    },
+    {
+      "command": "make -f /tmp/daw-s1-tsan.mk test-audio-recording test-engine-transport-clock",
+      "exit_code": 0,
+      "log": "/tmp/daw-clock-tsan.log",
+      "log_sha256": "2c4d57cc6f8c1c9d7d18c2a41c1e1b83867a483f8ee5cbf8dd8319e5433cf36f"
+    },
+    {
+      "command": "make test-stable test-legacy",
+      "exit_code": 0,
+      "log": "/tmp/daw-clock-regression.log",
+      "log_sha256": "bcc843ba455d03cb388f580d90e11909d2c83f7ea8a4bf306aa8c5fd0ef689c2"
+    },
+    {
+      "command": "make",
+      "exit_code": 0,
+      "log": "/tmp/daw-clock-make.log",
+      "log_sha256": "117e7595596ca04e176bb91b32980ff7d8a925783898d46e9805d4e232807ccd"
+    },
+    {
+      "command": "python3 tests/performance/run_capture_clock.py --help",
+      "exit_code": 0,
+      "log": "/tmp/daw-clock-runner-help.log",
+      "log_sha256": "3b551d96cc5c5463caac8a1482c9047ca74dd993dd7c1b2260de1c314692b34d"
+    }
+  ],
+  "corrected_test_compile_failure": {
+    "log": "/tmp/daw-clock-epoch-contract.log",
+    "reason": "Test CHECK macro required an integer comparison; changed CHECK(engine) to CHECK(engine != NULL). Corrected run passed."
+  },
+  "workloads": {
+    "artifact": "s4-capture-clock-workloads.json",
+    "sha256": "189fda1a6a4113d97f6d0950798164ee68ba93fd8c56130f9bb1b9ee3c3a2409",
+    "passed": 9,
+    "input_and_output_missing_frames": 0,
+    "finalized_equals_captured": true,
+    "continuity_frames": [
+      1408,
+      1792,
+      768,
+      1024,
+      1792,
+      896,
+      6400,
+      7552,
+      8064
+    ]
+  },
+  "runner_provenance": "Measurements ran the temporary matrix runner named above. The durable runner implements the same successful matrix with enhanced failure retention; its help path was checked, not a second nine-case run.",
+  "limitations": [
+    "Initial anchor still requires a complete clock snapshot.",
+    "Dummy pacing is not calibrated ADC/DAC time.",
+    "Physical listening, physical timing and sustained maximum-load qualification remain separate.",
+    "S4.7 runtime loader/cache work is not implemented."
+  ],
+  "shared_changes": false,
+  "commit_created": false,
+  "memory_mutation": false
+}

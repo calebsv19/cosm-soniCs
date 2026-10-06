@@ -1,8 +1,7 @@
+#include "app/media_import.h"
 #include "app/main_bounce.h"
 
 #include "app/bounce_region.h"
-#include "audio/wav_writer.h"
-#include "core_time.h"
 #include "export/daw_pack_export.h"
 #include "ui/library_browser.h"
 
@@ -11,6 +10,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+// Finds the final authored region boundary used by the default exact-range bounce.
 static uint64_t find_project_end_frame(const Engine* engine) {
     if (!engine) {
         return 0;
@@ -29,7 +29,8 @@ static uint64_t find_project_end_frame(const Engine* engine) {
                 continue;
             }
             uint64_t len = engine_clip_get_total_frames(engine, t, c);
-            uint64_t end = clip->timeline_start_frames + len;
+            uint64_t end = len > UINT64_MAX - clip->timeline_start_frames ? UINT64_MAX :
+                           clip->timeline_start_frames + len;
             if (end > max_end) {
                 max_end = end;
             }
@@ -38,18 +39,22 @@ static uint64_t find_project_end_frame(const Engine* engine) {
     return max_end;
 }
 
+// Holds progress presentation state while the independent export snapshot renders.
 typedef struct {
     AppState* state;
     AppContext* ctx;
     void (*handle_render)(AppContext* ctx);
     Uint32 last_render_ms;
     Uint32 render_interval_ms;
+    DawPackEnvelope envelope;
+    bool cancelled;
 } BounceProgressCtx;
 
-static void bounce_progress_cb(uint64_t done_frames, uint64_t total_frames, void* user) {
+// Updates progress and redraws without processing project input events.
+static bool bounce_progress_cb(uint64_t done_frames, uint64_t total_frames, void* user) {
     BounceProgressCtx* prog = (BounceProgressCtx*)user;
     if (!prog || !prog->state) {
-        return;
+        return false;
     }
     prog->state->bounce_progress_frames = done_frames;
     prog->state->bounce_total_frames = total_frames;
@@ -60,8 +65,19 @@ static void bounce_progress_cb(uint64_t done_frames, uint64_t total_frames, void
             App_RenderOnce(prog->ctx, prog->handle_render);
         }
     }
+    SDL_PumpEvents();
+    const Uint8* keys = SDL_GetKeyboardState(NULL);
+    prog->cancelled = keys[SDL_SCANCODE_ESCAPE] || SDL_HasEvent(SDL_QUIT);
+    return !prog->cancelled;
 }
 
+// Builds the optional pack overview from normalized chunks without retaining full bounce audio.
+static void bounce_samples_cb(const float* samples, uint64_t first, uint32_t frames, int channels, void* user) {
+    BounceProgressCtx* prog = user;
+    daw_pack_envelope_append(&prog->envelope, samples, first, frames, channels);
+}
+
+// Exports the current selected/project range and reports optional pack/insertion outcomes separately.
 void perform_bounce(AppContext* ctx, AppState* state, void (*handle_render)(AppContext* ctx)) {
     if (!ctx || !state || !state->engine) {
         return;
@@ -104,57 +120,35 @@ void perform_bounce(AppContext* ctx, AppState* state, void (*handle_render)(AppC
         .last_render_ms = SDL_GetTicks(),
         .render_interval_ms = 50
     };
-    EngineBounceBuffer bounce = {0};
-    bool ok = engine_bounce_range_to_buffer(state->engine,
+    bool have_envelope = daw_pack_envelope_init(&prog.envelope, end_frame - start_frame,
+                                                engine_get_config(state->engine)->sample_rate, 2);
+    EngineBounceStreamCallbacks callbacks = {.progress = bounce_progress_cb, .samples = bounce_samples_cb, .user = &prog};
+    DawSaveResult saved = engine_bounce_range_to_wav(state->engine, start_frame, end_frame, NULL, path,
+                                                    ENGINE_BOUNCE_WAV_PCM16, &callbacks);
+    bool ok = saved == DAW_SAVE_SYNCED;
+    if (saved == DAW_SAVE_PUBLISHED) SDL_Log("Bounce WAV published, but directory durability is uncertain: %s", path);
+    if (ok) {
+        uint64_t project_duration_frames = find_project_end_frame(state->engine);
+        char pack_path[512];
+        if (daw_pack_path_from_wav(path, pack_path, sizeof(pack_path))) {
+            if (have_envelope && daw_pack_export_envelope(pack_path,
+                                            state,
+                                            &prog.envelope,
                                             start_frame,
                                             end_frame,
-                                            bounce_progress_cb,
-                                            &prog,
-                                            &bounce);
-    if (ok) {
-        char float_path[512];
-        snprintf(float_path, sizeof(float_path), "%s.f32.wav", path);
-        bool ok_float = wav_write_f32(float_path,
-                                      bounce.data,
-                                      bounce.frame_count,
-                                      bounce.channels,
-                                      bounce.sample_rate);
-        uint32_t dither_seed = (uint32_t)(core_time_now_ns() & 0xffffffffu);
-        ok = wav_write_pcm16_dithered(path,
-                                      bounce.data,
-                                      bounce.frame_count,
-                                      bounce.channels,
-                                      bounce.sample_rate,
-                                      dither_seed);
-        (void)ok_float;
-
-        if (ok) {
-            uint64_t project_duration_frames = find_project_end_frame(state->engine);
-            char pack_path[512];
-            if (daw_pack_path_from_wav(path, pack_path, sizeof(pack_path))) {
-                if (daw_pack_export_from_bounce(pack_path,
-                                                state,
-                                                &bounce,
-                                                start_frame,
-                                                end_frame,
-                                                project_duration_frames)) {
-                    SDL_Log("Bounce pack exported: %s", pack_path);
-                } else {
-                    SDL_Log("Bounce pack export warning: failed to write %s", pack_path);
-                }
+                                            project_duration_frames)) {
+                SDL_Log("Bounce pack exported: %s", pack_path);
             } else {
-                SDL_Log("Bounce pack export warning: failed to build pack path for %s", path);
+                SDL_Log("Bounce pack export warning: failed to write %s", pack_path);
             }
-            int bounce_track = -1;
-            int bounce_clip = -1;
-            if (daw_bounce_insert_audio_track(state, path, start_frame, &bounce_track, &bounce_clip)) {
-                SDL_Log("Bounce region inserted: track=%d clip=%d", bounce_track, bounce_clip);
-            } else {
-                SDL_Log("Bounce region insert skipped for %s", path);
-            }
+        } else {
+            SDL_Log("Bounce pack export warning: failed to build pack path for %s", path);
         }
+        library_browser_scan(&state->library, &state->media_registry);
+        (void)daw_media_import_submit(state, path, NULL, engine_get_track_count(state->engine),
+                                      start_frame, AUDIO_MEDIA_JOB_BOUNCE);
     }
-    engine_bounce_buffer_free(&bounce);
+    daw_pack_envelope_free(&prog.envelope);
 
     state->bounce_active = false;
     state->bounce_requested = false;
@@ -164,9 +158,8 @@ void perform_bounce(AppContext* ctx, AppState* state, void (*handle_render)(AppC
     state->bounce_end_frame = 0;
 
     if (ok) {
-        library_browser_scan(&state->library, &state->media_registry);
-        SDL_Log("Bounce completed: %s", path);
+        SDL_Log("Bounce completed: %s (insertion asynchronous)", path);
     } else {
-        SDL_Log("Bounce failed");
+        SDL_Log("%s", prog.cancelled ? "Bounce cancelled before publication" : "Bounce failed");
     }
 }

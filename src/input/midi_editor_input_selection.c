@@ -358,7 +358,7 @@ bool midi_editor_apply_instrument_preset(AppState* state,
     }
     UndoCommand cmd = {0};
     cmd.type = UNDO_CMD_CLIP_TRANSFORM;
-    if (!undo_clip_state_from_engine_clip(selection->clip,
+    if (!undo_clip_state_capture(state->engine, selection->clip,
                                           selection->track_index,
                                           &cmd.data.clip_transform.before)) {
         return false;
@@ -371,7 +371,7 @@ bool midi_editor_apply_instrument_preset(AppState* state,
                                                            selection->track_index,
                                                            selection->clip_index);
     if (ok && clip) {
-        ok = undo_clip_state_from_engine_clip(clip,
+        ok = undo_clip_state_capture(state->engine, clip,
                                               selection->track_index,
                                               &cmd.data.clip_transform.after);
     } else {
@@ -393,7 +393,7 @@ bool midi_editor_begin_instrument_undo(AppState* state,
     }
     UndoCommand cmd = {0};
     cmd.type = UNDO_CMD_CLIP_TRANSFORM;
-    if (!undo_clip_state_from_engine_clip(selection->clip,
+    if (!undo_clip_state_capture(state->engine, selection->clip,
                                           selection->track_index,
                                           &cmd.data.clip_transform.before)) {
         return false;
@@ -422,7 +422,7 @@ bool midi_editor_commit_instrument_undo(AppState* state) {
     }
     UndoCommand* cmd = &state->undo.active_drag;
     UndoClipState after = {0};
-    if (!undo_clip_state_from_engine_clip(selection.clip, selection.track_index, &after)) {
+    if (!undo_clip_state_capture(state->engine, selection.clip, selection.track_index, &after)) {
         undo_manager_cancel_drag(&state->undo);
         return false;
     }

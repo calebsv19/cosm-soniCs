@@ -1,0 +1,109 @@
+{
+  "started_utc": "2026-09-21T20:36:01.303819+00:00",
+  "binary": "/Users/calebsv/Desktop/CodeWork/daw/build/performance/O2/targets/macOS-arm64/tests/runtime_workload_bench",
+  "binary_sha256": "c727b475b7bd05d04803fbaac9bcfefb5cd18829aa9566034014a093cb51e86f",
+  "platform": "macOS-15.7.4-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "logical_cpus": 8,
+  "load_average": [
+    3.07763671875,
+    3.25537109375,
+    3.1396484375
+  ],
+  "repeats": 3,
+  "group": "queue",
+  "queue_blocks": 4,
+  "order_seed": 437,
+  "workloads": [
+    {
+      "name": "live_fx32_analysis",
+      "args": [
+        "live_analysis",
+        32,
+        1,
+        0,
+        1,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    },
+    {
+      "name": "live_midi8x32",
+      "args": [
+        "live",
+        8,
+        1,
+        32,
+        0,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    },
+    {
+      "name": "live_fx32_export",
+      "args": [
+        "live_export",
+        32,
+        1,
+        0,
+        1,
+        128,
+        48000,
+        30,
+        1200
+      ]
+    },
+    {
+      "name": "live_sparse32_edits",
+      "args": [
+        "live_edits",
+        32,
+        32,
+        0,
+        0,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    },
+    {
+      "name": "live_sparse32_mixed_edits",
+      "args": [
+        "live_mixed_edits",
+        32,
+        32,
+        0,
+        0,
+        128,
+        48000,
+        8,
+        1200
+      ]
+    },
+    {
+      "name": "live_fx8_record",
+      "args": [
+        "live_record",
+        8,
+        1,
+        0,
+        1,
+        128,
+        48000,
+        10,
+        1200
+      ]
+    }
+  ],
+  "notes": [
+    "Sequential fresh processes; no CPU pinning or exclusive host access.",
+    "macOS peak RSS units are bytes; peak includes fixture construction.",
+    "Dummy callbacks do not measure physical DAC deadlines.",
+    "Recording feeds synthetic 100ms packets; offline recording cases are accelerated, live_record waits 100ms per drain."
+  ]
+}

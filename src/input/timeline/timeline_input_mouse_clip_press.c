@@ -17,32 +17,33 @@
 #include <SDL2/SDL.h>
 #include <string.h>
 
-static void timeline_drag_begin_undo(AppState* state,
+// Requires a complete before/after history snapshot before a drag can mutate clips.
+static bool timeline_drag_begin_undo(AppState* state,
                                      const EngineTrack* track,
                                      int track_index,
                                      int clip_index,
                                      bool multi_move) {
     if (!state || !track || clip_index < 0 || clip_index >= track->clip_count) {
-        return;
+        return false;
     }
     if (!multi_move) {
         UndoCommand cmd = {0};
         cmd.type = UNDO_CMD_CLIP_TRANSFORM;
-        if (!undo_clip_state_from_engine_clip(&track->clips[clip_index], track_index, &cmd.data.clip_transform.before)) {
-            return;
+        if (!undo_clip_state_capture(state->engine, &track->clips[clip_index], track_index, &cmd.data.clip_transform.before)) {
+            return false;
         }
         if (!undo_clip_state_clone(&cmd.data.clip_transform.after, &cmd.data.clip_transform.before)) {
             undo_clip_state_clear(&cmd.data.clip_transform.before);
-            return;
+            return false;
         }
-        undo_manager_begin_drag(&state->undo, &cmd);
+        bool captured = undo_manager_begin_drag(&state->undo, &cmd);
         undo_clip_state_clear(&cmd.data.clip_transform.before);
         undo_clip_state_clear(&cmd.data.clip_transform.after);
-        return;
+        return captured;
     }
     int count = state->selection_count;
-    if (count <= 0) {
-        return;
+    if (count <= 0 || count > TIMELINE_MAX_SELECTION) {
+        return false;
     }
     UndoClipState before[TIMELINE_MAX_SELECTION];
     UndoClipState after[TIMELINE_MAX_SELECTION];
@@ -52,13 +53,13 @@ static void timeline_drag_begin_undo(AppState* state,
     for (int i = 0; i < count && filled < TIMELINE_MAX_SELECTION; ++i) {
         TimelineSelectionEntry entry = state->selection[i];
         if (!tracks || entry.track_index < 0 || entry.track_index >= track_count) {
-            continue;
+            break;
         }
         const EngineTrack* sel_track = &tracks[entry.track_index];
         if (!sel_track || entry.clip_index < 0 || entry.clip_index >= sel_track->clip_count) {
-            continue;
+            break;
         }
-        if (undo_clip_state_from_engine_clip(&sel_track->clips[entry.clip_index], entry.track_index, &before[filled])) {
+        if (undo_clip_state_capture(state->engine, &sel_track->clips[entry.clip_index], entry.track_index, &before[filled])) {
             if (undo_clip_state_clone(&after[filled], &before[filled])) {
                 filled++;
             } else {
@@ -67,49 +68,51 @@ static void timeline_drag_begin_undo(AppState* state,
         }
     }
     if (filled <= 0) {
-        return;
+        return false;
     }
     UndoCommand cmd = {0};
     cmd.type = UNDO_CMD_MULTI_CLIP_TRANSFORM;
     cmd.data.multi_clip_transform.count = filled;
     cmd.data.multi_clip_transform.before = before;
     cmd.data.multi_clip_transform.after = after;
-    undo_manager_begin_drag(&state->undo, &cmd);
+    bool captured = filled == count && undo_manager_begin_drag(&state->undo, &cmd);
     for (int i = 0; i < filled; ++i) {
         undo_clip_state_clear(&before[i]);
         undo_clip_state_clear(&after[i]);
     }
+    return captured;
 }
 
-static void timeline_drag_begin_ripple_undo(AppState* state,
+// Captures the anchor and every ripple target before allowing any edit.
+static bool timeline_drag_begin_ripple_undo(AppState* state,
                                             int track_index,
                                             int anchor_clip_index,
                                             const TimelineDragState* drag) {
     if (!state || !state->engine || !drag || track_index < 0 || anchor_clip_index < 0) {
-        return;
+        return false;
     }
     const EngineTrack* tracks = engine_get_tracks(state->engine);
     int track_count = engine_get_track_count(state->engine);
     if (!tracks || track_index >= track_count) {
-        return;
+        return false;
     }
     const EngineTrack* track = &tracks[track_index];
     if (!track || anchor_clip_index >= track->clip_count) {
-        return;
+        return false;
     }
     int total = 1 + drag->ripple_target_count;
     if (total <= 0) {
-        return;
+        return false;
     }
     UndoClipState* before = (UndoClipState*)SDL_calloc((size_t)total, sizeof(UndoClipState));
     UndoClipState* after = (UndoClipState*)SDL_calloc((size_t)total, sizeof(UndoClipState));
     if (!before || !after) {
         SDL_free(before);
         SDL_free(after);
-        return;
+        return false;
     }
     int filled = 0;
-    if (undo_clip_state_from_engine_clip(&track->clips[anchor_clip_index], track_index, &before[filled])) {
+    if (undo_clip_state_capture(state->engine, &track->clips[anchor_clip_index], track_index, &before[filled])) {
         if (undo_clip_state_clone(&after[filled], &before[filled])) {
             filled++;
         } else {
@@ -117,22 +120,12 @@ static void timeline_drag_begin_ripple_undo(AppState* state,
         }
     }
     for (int i = 0; i < drag->ripple_target_count && filled < total; ++i) {
-        EngineSamplerSource* sampler = drag->ripple_targets[i];
-        if (!sampler) {
-            continue;
-        }
-        int clip_track = -1;
+        uint64_t identity = drag->ripple_targets[i];
         int clip_index = -1;
-        if (!timeline_find_clip_by_sampler(state, sampler, &clip_track, &clip_index)) {
-            continue;
-        }
-        if (clip_track != track_index) {
-            continue;
-        }
-        if (clip_index < 0 || clip_index >= track->clip_count) {
-            continue;
-        }
-        if (undo_clip_state_from_engine_clip(&track->clips[clip_index], track_index, &before[filled])) {
+        for (int c = 0; c < track->clip_count; ++c)
+            if (track->clips[c].creation_index == identity) { clip_index = c; break; }
+        if (clip_index < 0) break;
+        if (undo_clip_state_capture(state->engine, &track->clips[clip_index], track_index, &before[filled])) {
             if (undo_clip_state_clone(&after[filled], &before[filled])) {
                 filled++;
             } else {
@@ -143,20 +136,21 @@ static void timeline_drag_begin_ripple_undo(AppState* state,
     if (filled <= 0) {
         SDL_free(before);
         SDL_free(after);
-        return;
+        return false;
     }
     UndoCommand cmd = {0};
     cmd.type = UNDO_CMD_MULTI_CLIP_TRANSFORM;
     cmd.data.multi_clip_transform.count = filled;
     cmd.data.multi_clip_transform.before = before;
     cmd.data.multi_clip_transform.after = after;
-    undo_manager_begin_drag(&state->undo, &cmd);
+    bool captured = filled == total && undo_manager_begin_drag(&state->undo, &cmd);
     for (int i = 0; i < filled; ++i) {
         undo_clip_state_clear(&before[i]);
         undo_clip_state_clear(&after[i]);
     }
     SDL_free(before);
     SDL_free(after);
+    return captured;
 }
 
 bool timeline_input_mouse_handle_clip_press(InputManager* manager,
@@ -304,6 +298,10 @@ bool timeline_input_mouse_handle_clip_press(InputManager* manager,
             const EngineMidiNote* notes = engine_clip_midi_notes(clip);
             if (note_count > 0 && notes) {
                 drag->initial_midi_notes = (EngineMidiNote*)SDL_malloc(sizeof(EngineMidiNote) * (size_t)note_count);
+                if (!drag->initial_midi_notes) {
+                    timeline_input_mouse_drag_end(state);
+                    return true;
+                }
                 if (drag->initial_midi_notes) {
                     memcpy(drag->initial_midi_notes, notes, sizeof(EngineMidiNote) * (size_t)note_count);
                     drag->initial_midi_note_count = note_count;
@@ -356,25 +354,30 @@ bool timeline_input_mouse_handle_clip_press(InputManager* manager,
             drag->ripple_last_delta_frames = 0;
             int ripple_capacity = track ? track->clip_count : 0;
             if (ripple_capacity > 0) {
-                drag->ripple_targets = (EngineSamplerSource**)SDL_calloc((size_t)ripple_capacity,
-                                                                         sizeof(EngineSamplerSource*));
+                drag->ripple_targets = (uint64_t*)SDL_calloc((size_t)ripple_capacity, sizeof(uint64_t));
+                if (!drag->ripple_targets) {
+                    timeline_input_mouse_drag_end(state);
+                    return true;
+                }
             }
             if (drag->ripple_targets) {
                 for (int i = 0; i < track->clip_count; ++i) {
                     const EngineClip* ripple_clip = &track->clips[i];
-                    if (!ripple_clip || !ripple_clip->sampler || ripple_clip->sampler == clip->sampler) {
+                    if (ripple_clip->creation_index == clip->creation_index) {
                         continue;
                     }
                     if (ripple_clip->timeline_start_frames >= drag->initial_start_frames) {
-                        drag->ripple_targets[drag->ripple_target_count++] = ripple_clip->sampler;
+                        drag->ripple_targets[drag->ripple_target_count++] = ripple_clip->creation_index;
                     }
                 }
             }
         }
         if (drag->mode == TIMELINE_DRAG_MODE_RIPPLE) {
-            timeline_drag_begin_ripple_undo(state, hit_track, hit_clip, drag);
+            if (!timeline_drag_begin_ripple_undo(state, hit_track, hit_clip, drag))
+                timeline_input_mouse_drag_end(state);
         } else {
-            timeline_drag_begin_undo(state, track, hit_track, hit_clip, drag->multi_move);
+            if (!timeline_drag_begin_undo(state, track, hit_track, hit_clip, drag->multi_move))
+                timeline_input_mouse_drag_end(state);
         }
         return true;
     }

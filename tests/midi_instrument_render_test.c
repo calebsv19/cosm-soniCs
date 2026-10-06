@@ -105,17 +105,20 @@ static void test_clip_midi_instrument_render(void) {
 
     float pre_peak = peak_window(&bounce, 0, clip_start + note_start - 50);
     float during_peak = peak_window(&bounce, clip_start + note_start + 120, clip_start + note_start + note_duration - 120);
-    float post_peak = peak_window(&bounce, clip_start + note_start + note_duration + 50, bounce.frame_count);
+    float release_peak = peak_window(&bounce, clip_start + note_start + note_duration + 50,
+                                     clip_start + note_start + note_duration + 250);
+    float post_peak = peak_window(&bounce, clip_start + note_start + note_duration + 864, bounce.frame_count);
 
     expect(pre_peak < 0.000001f, "pre-note range should be silent");
     expect(during_peak > 0.001f, "note range should contain rendered audio");
-    expect(post_peak < 0.000001f, "post-note range should be silent");
+    expect(release_peak > 0.001f, "release should continue after the note gate");
+    expect(post_peak < 0.000001f, "post-release range should be silent");
 
     engine_bounce_buffer_free(&bounce);
     engine_destroy(engine);
 }
 
-static void test_live_midi_audition_renders_without_clip_notes(void) {
+static void test_live_midi_audition_is_excluded_from_project_export(void) {
     EngineRuntimeConfig cfg;
     config_set_defaults(&cfg);
     cfg.sample_rate = 48000;
@@ -138,13 +141,24 @@ static void test_live_midi_audition_renders_without_clip_notes(void) {
     EngineBounceBuffer bounce = {0};
     expect(engine_bounce_range_to_buffer(engine, 0, 2048, NULL, NULL, &bounce),
            "failed to bounce MIDI audition range");
-    expect(peak_window(&bounce, 128, 1800) > 0.001f, "audition range should contain rendered audio");
+    expect(peak_window(&bounce, 0, 2048) == 0, "project export must exclude unsaved audition");
+    float live[4096] = {0}, scratch[256] = {0};
+    for (int offset = 0; offset < 2048; offset += 128)
+        engine_mix_midi_audition_only(engine, (uint64_t)offset, 128, live + offset * 2, scratch, 2);
+    EngineBounceBuffer audition_view = {.data = live, .frame_count = 2048, .channels = 2};
+    expect(peak_window(&audition_view, 128, 1800) > .001f, "export must preserve live audition");
     engine_bounce_buffer_free(&bounce);
 
+    engine->midi_audition_idle_frame = 1024;
     expect(engine_midi_audition_note_off(engine, 60), "audition note-off failed");
-    expect(engine_bounce_range_to_buffer(engine, 0, 2048, NULL, NULL, &bounce),
+    expect(engine_bounce_range_to_buffer(engine, 1024, 3072, NULL, NULL, &bounce),
            "failed to bounce post-audition range");
-    expect(peak_window(&bounce, 0, 2048) < 0.000001f, "post-audition range should be silent");
+    expect(peak_window(&bounce, 0, 2048) == 0, "project export must exclude audition release");
+    memset(live, 0, sizeof(live));
+    for (int offset = 0; offset < 2048; offset += 128)
+        engine_mix_midi_audition_only(engine, 1024 + (uint64_t)offset, 128, live + offset * 2, scratch, 2);
+    expect(peak_window(&audition_view, 0, 400) > .001f, "audition release should be audible");
+    expect(peak_window(&audition_view, 864, 2048) == 0, "audition release must reach silence");
     engine_bounce_buffer_free(&bounce);
 
     const EngineTrack* tracks = engine_get_tracks(engine);
@@ -587,8 +601,8 @@ static void test_stopped_midi_audition_uses_idle_clock_without_moving_transport(
     engine->midi_audition_idle_frame = 1024;
     expect(engine_midi_audition_note_on(engine,
                                         0,
-                                        ENGINE_INSTRUMENT_PRESET_SOFT_SQUARE,
-                                        engine_instrument_default_params(ENGINE_INSTRUMENT_PRESET_SOFT_SQUARE),
+                                        ENGINE_INSTRUMENT_PRESET_PURE_SINE,
+                                        engine_instrument_default_params(ENGINE_INSTRUMENT_PRESET_PURE_SINE),
                                         64,
                                         1.0f),
            "stopped audition second note-on failed");
@@ -611,6 +625,19 @@ static void test_stopped_midi_audition_uses_idle_clock_without_moving_transport(
            "stopped audition mix should contain rendered audio");
     expect(engine->transport_frame == 0, "stopped audition should not move transport frame");
 
+    expect(engine_track_set_gain(engine, 0, 0.0f), "set zero audition gain");
+    engine_mix_midi_audition_only(engine, 1024, frames, out, track, channels);
+    expect(peak_window(&view, 0, (uint64_t)frames) == 0.0f, "zero audition gain was not silent");
+    EngineBounceBuffer silent = {0};
+    expect(engine_bounce_range_to_buffer(engine, 0, 4096, NULL, NULL, &silent), "zero track bounce");
+    expect(peak_window(&silent, 0, 4096) == 0.0f, "zero track gain bounce was not silent");
+    engine_bounce_buffer_free(&silent);
+    expect(engine_track_set_gain(engine, 0, 1.0f), "restore track gain");
+    engine_midi_audition_all_notes_off(engine);
+    expect(engine_clip_set_gain(engine, 0, clip_index, 0.0f), "set zero clip gain");
+    expect(engine_bounce_range_to_buffer(engine, 0, 4096, NULL, NULL, &silent), "zero clip bounce");
+    expect(peak_window(&silent, 0, 4096) == 0.0f, "zero clip gain bounce was not silent");
+    engine_bounce_buffer_free(&silent);
     free(track);
     free(out);
     engine_destroy(engine);
@@ -696,7 +723,7 @@ static void test_bounce_region_inserts_library_audio_track(void) {
 
 int main(void) {
     test_clip_midi_instrument_render();
-    test_live_midi_audition_renders_without_clip_notes();
+    test_live_midi_audition_is_excluded_from_project_export();
     test_midi_instrument_presets_change_render_shape();
     test_midi_instrument_params_clamp_and_affect_render();
     test_midi_instrument_level_automation_affects_render();

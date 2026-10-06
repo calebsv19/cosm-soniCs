@@ -1,0 +1,13 @@
+{
+  "status": "numeric_clip_edit_history_software_verified",
+  "validation": "focused normal and ASan, stable/legacy, default make and diff check passed",
+  "native_acceptance": false,
+  "sha256": {
+    "src/input/inspector_input_numeric_edit.c": "cdef30c522b1ff4a4eedceed550ff2587a054824d70df3301b734c5d11daf375",
+    "tests/engine_parameter_transaction_test.c": "ebfe30f032842fc1e5d269e05557ebe77a18313a6b2463821c6c3d5c03264287",
+    "/tmp/daw-s5-inspector-numeric-expanded.log": "6081edce0fad4e2ff712280b94f409b19432fd912cf6cb018bee7ed39eaea5ce",
+    "/tmp/daw-s5-inspector-numeric-asan.log": "8b04d6129ae76f2db7cee85669f77274e920ca7f5820d8128fd811afd561db37",
+    "/tmp/daw-s5-inspector-numeric-regression.log": "db3b44803be5cfebd8402e40b5006ce5e7b2272126d029a89bb68351cc588054",
+    "/tmp/daw-s5-inspector-numeric-final-make.log": "d8285a16223c9e738f98c2eaa31289db566e0ec1f483ba0891fa69b958546f5a"
+  }
+}

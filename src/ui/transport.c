@@ -395,7 +395,7 @@ void transport_ui_sync(TransportUI* ui, const AppState* state) {
     if (total_frames < 1) {
         total_frames = 1;
     }
-    uint64_t transport_frame = engine_get_transport_frame(engine);
+    uint64_t transport_frame = engine_get_presentation_frame(engine);
     if (transport_frame > total_frames) {
         transport_frame = total_frames;
     }
@@ -536,8 +536,12 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
     render_button(renderer, &ui->load_rect, ui->load_hovered, false, "LOAD", &theme);
     render_button(renderer, &ui->save_rect, ui->save_hovered, false, "SAVE", &theme);
     bool recording = state && daw_audio_recording_is_active(&state->audio_recording);
-    render_button(renderer, &ui->play_rect, ui->play_hovered, is_playing || recording, recording ? "REC" : "PLAY", &theme);
-    render_button(renderer, &ui->stop_rect, ui->stop_hovered, !is_playing && !recording, "STOP", &theme);
+    EnginePlaybackSnapshot playback = engine_transport_get_playback_snapshot(state ? state->engine : NULL);
+    if (state && state->engine) is_playing = playback.applied_playing;
+    const char* play_label = recording ? "REC" : playback.pending && playback.requested_playing ? "PLAY…" : "PLAY";
+    const char* stop_label = playback.pending && !playback.requested_playing ? "STOP…" : "STOP";
+    render_button(renderer, &ui->play_rect, ui->play_hovered, is_playing || recording, play_label, &theme);
+    render_button(renderer, &ui->stop_rect, ui->stop_hovered, !is_playing && !recording, stop_label, &theme);
 
     SDL_Color track_bg = theme.slider_track;
     SDL_Color track_border = theme.timeline_border;
@@ -553,7 +557,7 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         SDL_RenderDrawRect(renderer, &ui->time_label_rect);
         const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
         int sample_rate = cfg ? cfg->sample_rate : 0;
-        uint64_t frame = engine_get_transport_frame(state->engine);
+        uint64_t frame = engine_get_presentation_frame(state->engine);
         double seconds = (sample_rate > 0) ? (double)frame / (double)sample_rate : 0.0;
 
         char time_text[48];

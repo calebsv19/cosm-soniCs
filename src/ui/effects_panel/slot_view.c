@@ -1,6 +1,7 @@
 #include "app_state.h"
 #include "effects/param_utils.h"
 #include "ui/effects_panel.h"
+#include "ui/effects_panel_meter_detail.h"
 #include "ui/effects_panel_slot.h"
 #include "ui/effects_panel_widgets.h"
 #include "ui/effects_panel_preview.h"
@@ -163,6 +164,7 @@ void effects_slot_render(SDL_Renderer* renderer,
         bool is_master = panel->target == FX_PANEL_TARGET_MASTER;
         float gr_db = 0.0f;
         char gr_label[32];
+        const char* gr_kind = (slot->type_id == 20u || slot->type_id == 21u || slot->type_id == 24u) ? "GR peak" : "RMS delta";
         bool have_gr = effects_slot_get_gain_reduction(state,
                                                        slot,
                                                        is_master,
@@ -180,9 +182,9 @@ void effects_slot_render(SDL_Renderer* renderer,
             effects_slot_draw_gr_meter(renderer, &gr_meter, 0.0f);
         }
         if (have_gr) {
-            snprintf(gr_label, sizeof(gr_label), "GR %.1f dB", gr_db);
+            snprintf(gr_label, sizeof(gr_label), "%s %.1f dB", gr_kind, gr_db);
         } else {
-            snprintf(gr_label, sizeof(gr_label), "GR --");
+            snprintf(gr_label, sizeof(gr_label), "%s --", gr_kind);
         }
         int right_bound = gr_meter.x - 8;
         int min_x = title_x + 8;
@@ -218,7 +220,9 @@ void effects_slot_render(SDL_Renderer* renderer,
         ui_get_clip_rect(renderer, &prev_clip);
         ui_set_clip_rect(renderer, &body_clip);
 
-        if (effects_panel_spec_enabled(panel, slot->type_id)) {
+        if (slot->type_id == 105u) {
+            effects_panel_spectrogram_card_render(renderer, state, slot_index, &body_clip, label_color, text_dim);
+        } else if (effects_panel_spec_enabled(panel, slot->type_id)) {
             EffectsSpecPanelLayout spec_layout;
             const EffectsSlotRuntime* runtime = &panel->slot_runtime[slot_index];
             effects_panel_spec_compute_layout(state,

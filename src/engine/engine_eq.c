@@ -167,6 +167,13 @@ void engine_eq_init(EngineEqState* eq, float sample_rate, int max_channels) {
     }
     eq->initialized = true;
     eq->active = false;
+    eq->curve.low_cut.freq_hz = 80.0f;
+    eq->curve.high_cut.freq_hz = 12000.0f;
+    const float frequencies[ENGINE_EQ_BANDS] = {120.0f, 500.0f, 2000.0f, 8000.0f};
+    for (int i = 0; i < ENGINE_EQ_BANDS; ++i) {
+        eq->curve.bands[i].freq_hz = frequencies[i];
+        eq->curve.bands[i].q_width = 1.0f;
+    }
 }
 
 void engine_eq_free(EngineEqState* eq) {
@@ -193,10 +200,54 @@ void engine_eq_reset(EngineEqState* eq) {
     }
 }
 
+// Copies filter coefficients while retaining separately allocated destination histories.
+static bool filter_clone_configuration(EngineEqFilter* destination, const EngineEqFilter* source) {
+    if (!destination->z1 || !destination->z2) return false;
+    destination->enabled = source->enabled;
+    destination->b0 = source->b0; destination->b1 = source->b1; destination->b2 = source->b2;
+    destination->a1 = source->a1; destination->a2 = source->a2;
+    return true;
+}
+
+// Prepares a complete independent filter configuration and rejects partial allocation.
+bool engine_eq_clone_configuration(EngineEqState* destination, const EngineEqState* source) {
+    if (!destination || !source || !source->initialized) return false;
+    engine_eq_init(destination, source->sample_rate, source->max_channels);
+    bool ok = filter_clone_configuration(&destination->low_cut, &source->low_cut) &&
+              filter_clone_configuration(&destination->high_cut, &source->high_cut);
+    for (int i = 0; i < ENGINE_EQ_BANDS; ++i)
+        ok = filter_clone_configuration(&destination->bands[i], &source->bands[i]) && ok;
+    if (!ok) { engine_eq_free(destination); return false; }
+    destination->active = source->active;
+    destination->curve = source->curve;
+    return true;
+}
+
+// Preserves a filter's delay samples only when its coefficients and enable state still match.
+static void filter_transfer_history(EngineEqFilter* destination, const EngineEqFilter* source, int channels) {
+    if (destination->enabled != source->enabled || destination->b0 != source->b0 ||
+        destination->b1 != source->b1 || destination->b2 != source->b2 ||
+        destination->a1 != source->a1 || destination->a2 != source->a2 ||
+        !destination->z1 || !destination->z2 || !source->z1 || !source->z2) return;
+    memcpy(destination->z1, source->z1, (size_t)channels * sizeof(float));
+    memcpy(destination->z2, source->z2, (size_t)channels * sizeof(float));
+}
+
+// Transfers compatible histories without allocating, resetting, or destroying DSP state.
+void engine_eq_transfer_history(EngineEqState* destination, const EngineEqState* source) {
+    if (!destination || !source || destination->sample_rate != source->sample_rate ||
+        destination->max_channels != source->max_channels) return;
+    filter_transfer_history(&destination->low_cut, &source->low_cut, destination->max_channels);
+    filter_transfer_history(&destination->high_cut, &source->high_cut, destination->max_channels);
+    for (int i = 0; i < ENGINE_EQ_BANDS; ++i)
+        filter_transfer_history(&destination->bands[i], &source->bands[i], destination->max_channels);
+}
+
 void engine_eq_set_curve(EngineEqState* eq, const EngineEqCurve* curve) {
     if (!eq || !eq->initialized || !curve) {
         return;
     }
+    eq->curve = *curve;
     eq->active = false;
     eq->low_cut.enabled = curve->low_cut.enabled;
     if (curve->low_cut.enabled) {

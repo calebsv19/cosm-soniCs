@@ -34,6 +34,7 @@ typedef struct {
     int max_channels;
     bool initialized;
     bool active;
+    EngineEqCurve curve; // Retains accepted control parameters for coherent persistence.
     EngineEqFilter low_cut;
     EngineEqFilter high_cut;
     EngineEqFilter bands[ENGINE_EQ_BANDS];
@@ -44,3 +45,7 @@ void engine_eq_free(EngineEqState* eq);
 void engine_eq_reset(EngineEqState* eq);
 void engine_eq_set_curve(EngineEqState* eq, const EngineEqCurve* curve);
 void engine_eq_process(EngineEqState* eq, float* buffer, int frames, int channels);
+// Copies control-owned coefficients into independently allocated, initially silent DSP state.
+bool engine_eq_clone_configuration(EngineEqState* destination, const EngineEqState* source);
+// Copies compatible unchanged filter histories between exclusively owned render revisions.
+void engine_eq_transfer_history(EngineEqState* destination, const EngineEqState* source);

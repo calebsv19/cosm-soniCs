@@ -1,0 +1,4355 @@
+{
+  "aggregation": "Median/minimum/maximum across per-process statistics; percentiles are not pooled.",
+  "optimized": {
+    "analysis_kernel": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 8,
+          "minimum": 8,
+          "maximum": 8
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "samples": {
+          "median": 20,
+          "minimum": 20,
+          "maximum": 20
+        },
+        "mean_ms": {
+          "median": 5.081748,
+          "minimum": 5.049646,
+          "maximum": 5.105413
+        },
+        "p50_ms": {
+          "median": 5.044168,
+          "minimum": 5.032792,
+          "maximum": 5.048125
+        },
+        "p95_ms": {
+          "median": 5.2035,
+          "minimum": 5.160708,
+          "maximum": 5.289375
+        },
+        "p99_ms": {
+          "median": 5.255834,
+          "minimum": 5.218542,
+          "maximum": 5.429916
+        },
+        "max_ms": {
+          "median": 5.255834,
+          "minimum": 5.218542,
+          "maximum": 5.429916
+        },
+        "budget_ms": {
+          "median": 42.666667,
+          "minimum": 42.666667,
+          "maximum": 42.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "checksum": {
+          "median": -638541.547493,
+          "minimum": -638541.547493,
+          "maximum": -638541.547493
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 111.862583,
+          "minimum": 111.083666,
+          "maximum": 112.271125
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 111.762,
+          "minimum": 110.967,
+          "maximum": 112.035
+        },
+        "peak_rss_platform_units": {
+          "median": 7438336,
+          "minimum": 7372800,
+          "maximum": 7438336
+        }
+      }
+    },
+    "audio_32": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 53.172791,
+          "minimum": 51.726293,
+          "maximum": 53.62654
+        },
+        "rss_after_setup": {
+          "median": 107577344,
+          "minimum": 97714176,
+          "maximum": 126681088
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.057511,
+          "minimum": 0.057027,
+          "maximum": 0.058761
+        },
+        "p50_ms": {
+          "median": 0.055917,
+          "minimum": 0.055875,
+          "maximum": 0.057292
+        },
+        "p95_ms": {
+          "median": 0.063667,
+          "minimum": 0.063292,
+          "maximum": 0.066834
+        },
+        "p99_ms": {
+          "median": 0.074876,
+          "minimum": 0.073916,
+          "maximum": 0.081667
+        },
+        "max_ms": {
+          "median": 0.139834,
+          "minimum": 0.104833,
+          "maximum": 0.147208
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "edit_p50_ms": {
+          "median": 0.415209,
+          "minimum": 0.38525,
+          "maximum": 0.457293
+        },
+        "edit_max_ms": {
+          "median": 0.777666,
+          "minimum": 0.634251,
+          "maximum": 0.929459
+        },
+        "checksum": {
+          "median": 1853.926132,
+          "minimum": 1853.926132,
+          "maximum": 1853.926132
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 135.337459,
+          "minimum": 134.537209,
+          "maximum": 137.751791
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 134.932,
+          "minimum": 134.243,
+          "maximum": 137.174
+        },
+        "peak_rss_platform_units": {
+          "median": 122798080,
+          "minimum": 97746944,
+          "maximum": 126713856
+        }
+      }
+    },
+    "audio_64": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 64,
+          "minimum": 64,
+          "maximum": 64
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 121.061417,
+          "minimum": 120.501417,
+          "maximum": 128.083292
+        },
+        "rss_after_setup": {
+          "median": 267943936,
+          "minimum": 245645312,
+          "maximum": 296042496
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.115929,
+          "minimum": 0.115297,
+          "maximum": 0.122135
+        },
+        "p50_ms": {
+          "median": 0.11375,
+          "minimum": 0.113125,
+          "maximum": 0.120376
+        },
+        "p95_ms": {
+          "median": 0.126,
+          "minimum": 0.124415,
+          "maximum": 0.127707
+        },
+        "p99_ms": {
+          "median": 0.157959,
+          "minimum": 0.14025,
+          "maximum": 0.167209
+        },
+        "max_ms": {
+          "median": 0.269375,
+          "minimum": 0.209541,
+          "maximum": 0.292792
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "edit_p50_ms": {
+          "median": 0.833459,
+          "minimum": 0.684999,
+          "maximum": 0.923207
+        },
+        "edit_max_ms": {
+          "median": 1.221292,
+          "minimum": 0.991583,
+          "maximum": 1.376292
+        },
+        "checksum": {
+          "median": 1853.926178,
+          "minimum": 1853.926178,
+          "maximum": 1853.926178
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 289.014376,
+          "minimum": 282.725792,
+          "maximum": 301.59825
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 288.072,
+          "minimum": 281.825,
+          "maximum": 300.264
+        },
+        "peak_rss_platform_units": {
+          "median": 267993088,
+          "minimum": 246251520,
+          "maximum": 296058880
+        }
+      }
+    },
+    "audio_8": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 8,
+          "minimum": 8,
+          "maximum": 8
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 24.387291,
+          "minimum": 21.43679,
+          "maximum": 24.388833
+        },
+        "rss_after_setup": {
+          "median": 23609344,
+          "minimum": 23609344,
+          "maximum": 26591232
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.014495,
+          "minimum": 0.014326,
+          "maximum": 0.014586
+        },
+        "p50_ms": {
+          "median": 0.014416,
+          "minimum": 0.014126,
+          "maximum": 0.014459
+        },
+        "p95_ms": {
+          "median": 0.014959,
+          "minimum": 0.014957,
+          "maximum": 0.015042
+        },
+        "p99_ms": {
+          "median": 0.015458,
+          "minimum": 0.015375,
+          "maximum": 0.018917
+        },
+        "max_ms": {
+          "median": 0.040915,
+          "minimum": 0.034083,
+          "maximum": 0.049
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "edit_p50_ms": {
+          "median": 0.102541,
+          "minimum": 0.0915,
+          "maximum": 0.11125
+        },
+        "edit_max_ms": {
+          "median": 0.1455,
+          "minimum": 0.116584,
+          "maximum": 0.184
+        },
+        "checksum": {
+          "median": 1853.926133,
+          "minimum": 1853.926133,
+          "maximum": 1853.926133
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 45.543666,
+          "minimum": 41.952332,
+          "maximum": 45.736959
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 45.338,
+          "minimum": 41.912,
+          "maximum": 45.654
+        },
+        "peak_rss_platform_units": {
+          "median": 26591232,
+          "minimum": 23642112,
+          "maximum": 27852800
+        }
+      }
+    },
+    "export_10s": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 10.0,
+          "minimum": 10.0,
+          "maximum": 10.0
+        },
+        "setup_ms": {
+          "median": 55.941916,
+          "minimum": 53.419749,
+          "maximum": 64.947083
+        },
+        "rss_after_setup": {
+          "median": 88653824,
+          "minimum": 76201984,
+          "maximum": 140525568
+        },
+        "export_ms": {
+          "median": 153.050958,
+          "minimum": 139.817917,
+          "maximum": 159.629957
+        },
+        "write_ms": {
+          "median": 3.852959,
+          "minimum": 3.666249,
+          "maximum": 7.327457
+        },
+        "realtime_factor": {
+          "median": 65.337716,
+          "minimum": 62.644883,
+          "maximum": 71.521592
+        },
+        "output_bytes": {
+          "median": 3840000,
+          "minimum": 3840000,
+          "maximum": 3840000
+        },
+        "rss_before_export": {
+          "median": 88653824,
+          "minimum": 76201984,
+          "maximum": 140525568
+        },
+        "rss_holding_export": {
+          "median": 88653824,
+          "minimum": 76201984,
+          "maximum": 144392192
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 210.829749,
+          "minimum": 200.295625,
+          "maximum": 233.020625
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 208.106,
+          "minimum": 199.029,
+          "maximum": 227.331
+        },
+        "peak_rss_platform_units": {
+          "median": 88719360,
+          "minimum": 76201984,
+          "maximum": 144392192
+        }
+      }
+    },
+    "export_120s": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 120.0,
+          "minimum": 120.0,
+          "maximum": 120.0
+        },
+        "setup_ms": {
+          "median": 53.685625,
+          "minimum": 49.802959,
+          "maximum": 53.693084
+        },
+        "rss_after_setup": {
+          "median": 104906752,
+          "minimum": 87523328,
+          "maximum": 132759552
+        },
+        "export_ms": {
+          "median": 1186.186209,
+          "minimum": 1182.062459,
+          "maximum": 1201.914417
+        },
+        "write_ms": {
+          "median": 38.90425,
+          "minimum": 37.775458,
+          "maximum": 40.573458
+        },
+        "realtime_factor": {
+          "median": 101.164555,
+          "minimum": 99.840719,
+          "maximum": 101.517478
+        },
+        "output_bytes": {
+          "median": 46080000,
+          "minimum": 46080000,
+          "maximum": 46080000
+        },
+        "rss_before_export": {
+          "median": 104906752,
+          "minimum": 87523328,
+          "maximum": 132759552
+        },
+        "rss_holding_export": {
+          "median": 150994944,
+          "minimum": 133611520,
+          "maximum": 178847744
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 1277.38325,
+          "minimum": 1274.975835,
+          "maximum": 1297.860374
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 1271.502,
+          "minimum": 1270.703,
+          "maximum": 1287.767
+        },
+        "peak_rss_platform_units": {
+          "median": 150994944,
+          "minimum": 133660672,
+          "maximum": 178847744
+        }
+      }
+    },
+    "fx_32": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 353.257166,
+          "minimum": 331.002166,
+          "maximum": 355.466917
+        },
+        "rss_after_setup": {
+          "median": 404979712,
+          "minimum": 404815872,
+          "maximum": 410845184
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.176423,
+          "minimum": 0.175744,
+          "maximum": 0.181466
+        },
+        "p50_ms": {
+          "median": 0.172125,
+          "minimum": 0.171667,
+          "maximum": 0.172375
+        },
+        "p95_ms": {
+          "median": 0.196083,
+          "minimum": 0.193583,
+          "maximum": 0.226917
+        },
+        "p99_ms": {
+          "median": 0.241792,
+          "minimum": 0.220834,
+          "maximum": 0.296292
+        },
+        "max_ms": {
+          "median": 0.497458,
+          "minimum": 0.342959,
+          "maximum": 0.54225
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "edit_p50_ms": {
+          "median": 1.689375,
+          "minimum": 1.606875,
+          "maximum": 1.825293
+        },
+        "edit_max_ms": {
+          "median": 2.423583,
+          "minimum": 2.073709,
+          "maximum": 2.469167
+        },
+        "checksum": {
+          "median": 2020.440072,
+          "minimum": 2020.440072,
+          "maximum": 2020.440072
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 619.656876,
+          "minimum": 601.16779,
+          "maximum": 621.46925
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 618.199,
+          "minimum": 596.814,
+          "maximum": 619.988
+        },
+        "peak_rss_platform_units": {
+          "median": 405143552,
+          "minimum": 404897792,
+          "maximum": 410910720
+        }
+      }
+    },
+    "fx_32_block512": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "block": {
+          "median": 512,
+          "minimum": 512,
+          "maximum": 512
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 372.25825,
+          "minimum": 368.119625,
+          "maximum": 419.339334
+        },
+        "rss_after_setup": {
+          "median": 412598272,
+          "minimum": 412237824,
+          "maximum": 462323712
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.694214,
+          "minimum": 0.684776,
+          "maximum": 0.899608
+        },
+        "p50_ms": {
+          "median": 0.681084,
+          "minimum": 0.669167,
+          "maximum": 0.719375
+        },
+        "p95_ms": {
+          "median": 0.776667,
+          "minimum": 0.751125,
+          "maximum": 1.980541
+        },
+        "p99_ms": {
+          "median": 0.881875,
+          "minimum": 0.799624,
+          "maximum": 2.221416
+        },
+        "max_ms": {
+          "median": 1.558749,
+          "minimum": 1.052208,
+          "maximum": 3.508166
+        },
+        "budget_ms": {
+          "median": 10.666667,
+          "minimum": 10.666667,
+          "maximum": 10.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "edit_p50_ms": {
+          "median": 1.911708,
+          "minimum": 1.482167,
+          "maximum": 1.930374
+        },
+        "edit_max_ms": {
+          "median": 2.760834,
+          "minimum": 2.574542,
+          "maximum": 5.025084
+        },
+        "checksum": {
+          "median": 8630.756658,
+          "minimum": 8630.756658,
+          "maximum": 8630.756658
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 1286.37675,
+          "minimum": 1284.874708,
+          "maximum": 1616.884916
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 1281.508,
+          "minimum": 1280.34,
+          "maximum": 1555.375
+        },
+        "peak_rss_platform_units": {
+          "median": 412729344,
+          "minimum": 412434432,
+          "maximum": 471580672
+        }
+      }
+    },
+    "fx_32_block64": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "block": {
+          "median": 64,
+          "minimum": 64,
+          "maximum": 64
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 367.772916,
+          "minimum": 364.368625,
+          "maximum": 372.680125
+        },
+        "rss_after_setup": {
+          "median": 396607488,
+          "minimum": 393658368,
+          "maximum": 420315136
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.091465,
+          "minimum": 0.090709,
+          "maximum": 0.092126
+        },
+        "p50_ms": {
+          "median": 0.089541,
+          "minimum": 0.089499,
+          "maximum": 0.089625
+        },
+        "p95_ms": {
+          "median": 0.101542,
+          "minimum": 0.096375,
+          "maximum": 0.103541
+        },
+        "p99_ms": {
+          "median": 0.117959,
+          "minimum": 0.114417,
+          "maximum": 0.121082
+        },
+        "max_ms": {
+          "median": 0.16175,
+          "minimum": 0.159082,
+          "maximum": 0.238083
+        },
+        "budget_ms": {
+          "median": 1.333333,
+          "minimum": 1.333333,
+          "maximum": 1.333333
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "edit_p50_ms": {
+          "median": 1.620375,
+          "minimum": 1.332917,
+          "maximum": 1.708249
+        },
+        "edit_max_ms": {
+          "median": 2.37375,
+          "minimum": 2.131125,
+          "maximum": 2.498958
+        },
+        "checksum": {
+          "median": 921.062477,
+          "minimum": 921.062477,
+          "maximum": 921.062477
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 524.179416,
+          "minimum": 518.502916,
+          "maximum": 526.302958
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 522.604,
+          "minimum": 517.222,
+          "maximum": 524.991
+        },
+        "peak_rss_platform_units": {
+          "median": 396673024,
+          "minimum": 393740288,
+          "maximum": 420495360
+        }
+      }
+    },
+    "fx_32_rate96k": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 96000,
+          "minimum": 96000,
+          "maximum": 96000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 711.171082,
+          "minimum": 690.642875,
+          "maximum": 751.055541
+        },
+        "rss_after_setup": {
+          "median": 651788288,
+          "minimum": 643416064,
+          "maximum": 691617792
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.173988,
+          "minimum": 0.173678,
+          "maximum": 0.185347
+        },
+        "p50_ms": {
+          "median": 0.170959,
+          "minimum": 0.170916,
+          "maximum": 0.182292
+        },
+        "p95_ms": {
+          "median": 0.190249,
+          "minimum": 0.19,
+          "maximum": 0.20275
+        },
+        "p99_ms": {
+          "median": 0.220083,
+          "minimum": 0.21725,
+          "maximum": 0.275374
+        },
+        "max_ms": {
+          "median": 0.320583,
+          "minimum": 0.31925,
+          "maximum": 0.495792
+        },
+        "budget_ms": {
+          "median": 1.333333,
+          "minimum": 1.333333,
+          "maximum": 1.333333
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "edit_p50_ms": {
+          "median": 3.872293,
+          "minimum": 3.704334,
+          "maximum": 4.10425
+        },
+        "edit_max_ms": {
+          "median": 5.038417,
+          "minimum": 5.022667,
+          "maximum": 5.567542
+        },
+        "checksum": {
+          "median": 1842.1345,
+          "minimum": 1842.1345,
+          "maximum": 1842.1345
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 1021.057583,
+          "minimum": 998.515333,
+          "maximum": 1081.14
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 1008.358,
+          "minimum": 996.889,
+          "maximum": 1055.731
+        },
+        "peak_rss_platform_units": {
+          "median": 653524992,
+          "minimum": 645103616,
+          "maximum": 691732480
+        }
+      }
+    },
+    "fx_64": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 64,
+          "minimum": 64,
+          "maximum": 64
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 1585.765208,
+          "minimum": 1508.924792,
+          "maximum": 1620.0405
+        },
+        "rss_after_setup": {
+          "median": 914702336,
+          "minimum": 802193408,
+          "maximum": 1000456192
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.358308,
+          "minimum": 0.350964,
+          "maximum": 0.366827
+        },
+        "p50_ms": {
+          "median": 0.354042,
+          "minimum": 0.346001,
+          "maximum": 0.360917
+        },
+        "p95_ms": {
+          "median": 0.386874,
+          "minimum": 0.382208,
+          "maximum": 0.407458
+        },
+        "p99_ms": {
+          "median": 0.42575,
+          "minimum": 0.41825,
+          "maximum": 0.475417
+        },
+        "max_ms": {
+          "median": 0.59575,
+          "minimum": 0.490166,
+          "maximum": 0.75
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "edit_p50_ms": {
+          "median": 4.216624,
+          "minimum": 3.523,
+          "maximum": 4.581292
+        },
+        "edit_max_ms": {
+          "median": 6.163917,
+          "minimum": 5.579083,
+          "maximum": 8.235416
+        },
+        "checksum": {
+          "median": 2020.440093,
+          "minimum": 2020.440093,
+          "maximum": 2020.440093
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 2131.128166,
+          "minimum": 2064.136625,
+          "maximum": 2182.466875
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 2098.161,
+          "minimum": 2041.62,
+          "maximum": 2135.06
+        },
+        "peak_rss_platform_units": {
+          "median": 914882560,
+          "minimum": 834453504,
+          "maximum": 1000521728
+        }
+      }
+    },
+    "fx_8": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 8,
+          "minimum": 8,
+          "maximum": 8
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 36.121458,
+          "minimum": 35.531625,
+          "maximum": 39.923209
+        },
+        "rss_after_setup": {
+          "median": 58753024,
+          "minimum": 53755904,
+          "maximum": 65175552
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.043544,
+          "minimum": 0.043436,
+          "maximum": 0.043572
+        },
+        "p50_ms": {
+          "median": 0.042958,
+          "minimum": 0.042875,
+          "maximum": 0.042959
+        },
+        "p95_ms": {
+          "median": 0.046708,
+          "minimum": 0.046667,
+          "maximum": 0.046709
+        },
+        "p99_ms": {
+          "median": 0.055166,
+          "minimum": 0.055042,
+          "maximum": 0.056499
+        },
+        "max_ms": {
+          "median": 0.083375,
+          "minimum": 0.069625,
+          "maximum": 0.087376
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "edit_p50_ms": {
+          "median": 0.448167,
+          "minimum": 0.184209,
+          "maximum": 0.513458
+        },
+        "edit_max_ms": {
+          "median": 0.711582,
+          "minimum": 0.237417,
+          "maximum": 0.870874
+        },
+        "checksum": {
+          "median": 2020.44008,
+          "minimum": 2020.44008,
+          "maximum": 2020.44008
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 102.521335,
+          "minimum": 96.178833,
+          "maximum": 105.776292
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 102.439,
+          "minimum": 96.058,
+          "maximum": 105.666
+        },
+        "peak_rss_platform_units": {
+          "median": 67338240,
+          "minimum": 53821440,
+          "maximum": 72482816
+        }
+      }
+    },
+    "import_30s_convert": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 64,
+          "minimum": 64,
+          "maximum": 64
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 30.0,
+          "minimum": 30.0,
+          "maximum": 30.0
+        },
+        "import_ms": {
+          "median": 294.383209,
+          "minimum": 286.72796,
+          "maximum": 297.717751
+        },
+        "decoded_bytes": {
+          "median": 11520000,
+          "minimum": 11520000,
+          "maximum": 11520000
+        },
+        "rss_before_import": {
+          "median": 14909440,
+          "minimum": 14876672,
+          "maximum": 14925824
+        },
+        "rss_holding_import": {
+          "median": 26804224,
+          "minimum": 26755072,
+          "maximum": 26820608
+        },
+        "source_rate": {
+          "median": 44100,
+          "minimum": 44100,
+          "maximum": 44100
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 294.531209,
+          "minimum": 286.881375,
+          "maximum": 297.893709
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 294.117,
+          "minimum": 286.415,
+          "maximum": 297.367
+        },
+        "peak_rss_platform_units": {
+          "median": 26804224,
+          "minimum": 26755072,
+          "maximum": 26820608
+        }
+      }
+    },
+    "import_30s_native": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 30.0,
+          "minimum": 30.0,
+          "maximum": 30.0
+        },
+        "import_ms": {
+          "median": 72.972292,
+          "minimum": 70.859668,
+          "maximum": 73.819333
+        },
+        "decoded_bytes": {
+          "median": 11520000,
+          "minimum": 11520000,
+          "maximum": 11520000
+        },
+        "rss_before_import": {
+          "median": 15810560,
+          "minimum": 15810560,
+          "maximum": 15892480
+        },
+        "rss_holding_import": {
+          "median": 15826944,
+          "minimum": 15826944,
+          "maximum": 15925248
+        },
+        "source_rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 72.983791,
+          "minimum": 70.876667,
+          "maximum": 73.829
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 72.814,
+          "minimum": 70.655,
+          "maximum": 73.779
+        },
+        "peak_rss_platform_units": {
+          "median": 15826944,
+          "minimum": 15826944,
+          "maximum": 15925248
+        }
+      }
+    },
+    "live_fx32": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 340.596334,
+          "minimum": 311.179334,
+          "maximum": 559.107125
+        },
+        "rss_after_setup": {
+          "median": 383795200,
+          "minimum": 338673664,
+          "maximum": 557940736
+        },
+        "live_wall_ms": {
+          "median": 4007.905749,
+          "minimum": 4000.101749,
+          "maximum": 4021.951
+        },
+        "live_cpu_ms": {
+          "median": 932.883,
+          "minimum": 846.711,
+          "maximum": 1072.022
+        },
+        "callback_delta": {
+          "median": 1650,
+          "minimum": 1612,
+          "maximum": 1656
+        },
+        "underrun_callback_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "underrun_frame_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "render_block_delta": {
+          "median": 1650,
+          "minimum": 1611,
+          "maximum": 1656
+        },
+        "render_over_budget_delta": {
+          "median": 1,
+          "minimum": 0,
+          "maximum": 2
+        },
+        "lifetime_render_max_ms": {
+          "median": 2.715042,
+          "minimum": 1.969208,
+          "maximum": 3.321875
+        },
+        "lifetime_command_max_ms": {
+          "median": 3.001125,
+          "minimum": 2.986542,
+          "maximum": 3.003542
+        },
+        "queue_high_water_frames": {
+          "median": 4096,
+          "minimum": 4096,
+          "maximum": 4096
+        },
+        "callback_frames": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "spectrum_queued_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "spectrum_published_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "spectrum_dropped_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "spectrogram_published_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "spectrogram_dropped_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "live_edit_max_ms": {
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 4983.690291,
+          "minimum": 4966.982333,
+          "maximum": 5197.567625
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 1531.822,
+          "minimum": 1377.419,
+          "maximum": 1548.922
+        },
+        "peak_rss_platform_units": {
+          "median": 384155648,
+          "minimum": 339116032,
+          "maximum": 558432256
+        }
+      }
+    },
+    "live_fx32_analysis": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 359.23,
+          "minimum": 337.836708,
+          "maximum": 366.398624
+        },
+        "rss_after_setup": {
+          "median": 404488192,
+          "minimum": 385695744,
+          "maximum": 407093248
+        },
+        "live_wall_ms": {
+          "median": 4012.183666,
+          "minimum": 4007.823,
+          "maximum": 4015.650042
+        },
+        "live_cpu_ms": {
+          "median": 1707.392,
+          "minimum": 1673.306,
+          "maximum": 1715.403
+        },
+        "callback_delta": {
+          "median": 1637,
+          "minimum": 1636,
+          "maximum": 1639
+        },
+        "underrun_callback_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "underrun_frame_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "render_block_delta": {
+          "median": 1637,
+          "minimum": 1636,
+          "maximum": 1640
+        },
+        "render_over_budget_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "lifetime_render_max_ms": {
+          "median": 0.637208,
+          "minimum": 0.531417,
+          "maximum": 1.030583
+        },
+        "lifetime_command_max_ms": {
+          "median": 3.003584,
+          "minimum": 2.958625,
+          "maximum": 3.011334
+        },
+        "queue_high_water_frames": {
+          "median": 4096,
+          "minimum": 4096,
+          "maximum": 4096
+        },
+        "callback_frames": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "spectrum_queued_delta": {
+          "median": 102,
+          "minimum": 102,
+          "maximum": 102
+        },
+        "spectrum_published_delta": {
+          "median": 102,
+          "minimum": 102,
+          "maximum": 102
+        },
+        "spectrum_dropped_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "spectrogram_published_delta": {
+          "median": 205,
+          "minimum": 204,
+          "maximum": 205
+        },
+        "spectrogram_dropped_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "live_edit_max_ms": {
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 4984.298708,
+          "minimum": 4976.43225,
+          "maximum": 4998.445458
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 2305.222,
+          "minimum": 2288.987,
+          "maximum": 2318.357
+        },
+        "peak_rss_platform_units": {
+          "median": 406863872,
+          "minimum": 388071424,
+          "maximum": 409485312
+        }
+      }
+    },
+    "live_fx32_export": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 30.0,
+          "minimum": 30.0,
+          "maximum": 30.0
+        },
+        "setup_ms": {
+          "median": 365.882751,
+          "minimum": 337.509167,
+          "maximum": 507.702666
+        },
+        "rss_after_setup": {
+          "median": 383991808,
+          "minimum": 376635392,
+          "maximum": 503300096
+        },
+        "export_ms": {
+          "median": 1742.491834,
+          "minimum": 1720.020666,
+          "maximum": 2098.220459
+        },
+        "write_ms": {
+          "median": 11.533292,
+          "minimum": 11.376459,
+          "maximum": 11.826708
+        },
+        "realtime_factor": {
+          "median": 17.216723,
+          "minimum": 14.29783,
+          "maximum": 17.441651
+        },
+        "output_bytes": {
+          "median": 11520000,
+          "minimum": 11520000,
+          "maximum": 11520000
+        },
+        "rss_before_export": {
+          "median": 384335872,
+          "minimum": 376963072,
+          "maximum": 503840768
+        },
+        "rss_holding_export": {
+          "median": 395870208,
+          "minimum": 388497408,
+          "maximum": 527302656
+        },
+        "live_wall_ms": {
+          "median": 4017.589333,
+          "minimum": 4011.084208,
+          "maximum": 4017.971125
+        },
+        "live_cpu_ms": {
+          "median": 2395.889,
+          "minimum": 2094.373,
+          "maximum": 2796.71
+        },
+        "callback_delta": {
+          "median": 1661,
+          "minimum": 1634,
+          "maximum": 1688
+        },
+        "underrun_callback_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "underrun_frame_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "render_block_delta": {
+          "median": 1661,
+          "minimum": 1633,
+          "maximum": 1689
+        },
+        "render_over_budget_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 2
+        },
+        "lifetime_render_max_ms": {
+          "median": 2.13675,
+          "minimum": 0.743958,
+          "maximum": 4.055041
+        },
+        "lifetime_command_max_ms": {
+          "median": 3.013125,
+          "minimum": 3.001833,
+          "maximum": 3.0155
+        },
+        "queue_high_water_frames": {
+          "median": 4096,
+          "minimum": 4096,
+          "maximum": 4096
+        },
+        "callback_frames": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "spectrum_queued_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "spectrum_published_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "spectrum_dropped_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "spectrogram_published_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "spectrogram_dropped_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "live_edit_max_ms": {
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 5001.98025,
+          "minimum": 4991.298042,
+          "maximum": 5145.610959
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 2890.903,
+          "minimum": 2556.871,
+          "maximum": 3444.328
+        },
+        "peak_rss_platform_units": {
+          "median": 395870208,
+          "minimum": 388513792,
+          "maximum": 527319040
+        }
+      }
+    },
+    "live_fx8_record": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 8,
+          "minimum": 8,
+          "maximum": 8
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 10.0,
+          "minimum": 10.0,
+          "maximum": 10.0
+        },
+        "setup_ms": {
+          "median": 38.916292,
+          "minimum": 37.042624,
+          "maximum": 52.724459
+        },
+        "rss_after_setup": {
+          "median": 78708736,
+          "minimum": 67665920,
+          "maximum": 87457792
+        },
+        "samples": {
+          "median": 100,
+          "minimum": 100,
+          "maximum": 100
+        },
+        "mean_ms": {
+          "median": 0.654263,
+          "minimum": 0.570954,
+          "maximum": 0.749633
+        },
+        "p50_ms": {
+          "median": 0.662375,
+          "minimum": 0.423375,
+          "maximum": 0.710999
+        },
+        "p95_ms": {
+          "median": 1.044167,
+          "minimum": 0.92625,
+          "maximum": 1.174708
+        },
+        "p99_ms": {
+          "median": 1.458708,
+          "minimum": 1.041082,
+          "maximum": 2.014458
+        },
+        "max_ms": {
+          "median": 3.120749,
+          "minimum": 1.874457,
+          "maximum": 7.899626
+        },
+        "budget_ms": {
+          "median": 100.0,
+          "minimum": 100.0,
+          "maximum": 100.0
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "recording_wall_ms": {
+          "median": 10618.430793,
+          "minimum": 10553.078958,
+          "maximum": 10694.309708
+        },
+        "recorded_frames": {
+          "median": 480000,
+          "minimum": 480000,
+          "maximum": 480000
+        },
+        "take_capacity_bytes": {
+          "median": 4194304,
+          "minimum": 4194304,
+          "maximum": 4194304
+        },
+        "take_used_bytes": {
+          "median": 3840000,
+          "minimum": 3840000,
+          "maximum": 3840000
+        },
+        "rss_before_recording": {
+          "median": 84705280,
+          "minimum": 72073216,
+          "maximum": 93667328
+        },
+        "rss_holding_recording": {
+          "median": 100483072,
+          "minimum": 91734016,
+          "maximum": 113328128
+        },
+        "checkpoint_frames": {
+          "median": 480000,
+          "minimum": 480000,
+          "maximum": 480000
+        },
+        "callback_delta": {
+          "median": 4364,
+          "minimum": 4346,
+          "maximum": 4384
+        },
+        "underrun_frame_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "render_over_budget_delta": {
+          "median": 1,
+          "minimum": 0,
+          "maximum": 5
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 11281.990542,
+          "minimum": 11208.907457,
+          "maximum": 11365.104834
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 970.531,
+          "minimum": 941.367,
+          "maximum": 1049.072
+        },
+        "peak_rss_platform_units": {
+          "median": 108937216,
+          "minimum": 100237312,
+          "maximum": 120225792
+        }
+      }
+    },
+    "live_midi8x32": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 8,
+          "minimum": 8,
+          "maximum": 8
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 13.151584,
+          "minimum": 12.610416,
+          "maximum": 13.774793
+        },
+        "rss_after_setup": {
+          "median": 21561344,
+          "minimum": 20348928,
+          "maximum": 24133632
+        },
+        "live_wall_ms": {
+          "median": 4010.973291,
+          "minimum": 4005.952917,
+          "maximum": 4019.785542
+        },
+        "live_cpu_ms": {
+          "median": 2031.59,
+          "minimum": 1889.175,
+          "maximum": 2064.032
+        },
+        "callback_delta": {
+          "median": 1652,
+          "minimum": 1647,
+          "maximum": 1652
+        },
+        "underrun_callback_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "underrun_frame_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "render_block_delta": {
+          "median": 1651,
+          "minimum": 1647,
+          "maximum": 1652
+        },
+        "render_over_budget_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "lifetime_render_max_ms": {
+          "median": 2.657334,
+          "minimum": 2.199291,
+          "maximum": 3.011584
+        },
+        "lifetime_command_max_ms": {
+          "median": 3.017084,
+          "minimum": 3.003166,
+          "maximum": 3.019292
+        },
+        "queue_high_water_frames": {
+          "median": 4096,
+          "minimum": 4096,
+          "maximum": 4096
+        },
+        "callback_frames": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "spectrum_queued_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "spectrum_published_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "spectrum_dropped_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "spectrogram_published_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "spectrogram_dropped_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "live_edit_max_ms": {
+          "median": 0.0,
+          "minimum": 0.0,
+          "maximum": 0.0
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 4640.494958,
+          "minimum": 4636.704584,
+          "maximum": 4642.19525
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 2324.771,
+          "minimum": 2206.401,
+          "maximum": 2351.723
+        },
+        "peak_rss_platform_units": {
+          "median": 21905408,
+          "minimum": 20660224,
+          "maximum": 24461312
+        }
+      }
+    },
+    "live_sparse32_edits": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "clips_per_track": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 382.435333,
+          "minimum": 346.262835,
+          "maximum": 421.222375
+        },
+        "rss_after_setup": {
+          "median": 149569536,
+          "minimum": 141049856,
+          "maximum": 150962176
+        },
+        "live_wall_ms": {
+          "median": 4020.364583,
+          "minimum": 4006.746125,
+          "maximum": 4028.868417
+        },
+        "live_cpu_ms": {
+          "median": 1973.994,
+          "minimum": 1539.763,
+          "maximum": 2124.558
+        },
+        "callback_delta": {
+          "median": 1663,
+          "minimum": 1650,
+          "maximum": 1664
+        },
+        "underrun_callback_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "underrun_frame_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "render_block_delta": {
+          "median": 1663,
+          "minimum": 1649,
+          "maximum": 1664
+        },
+        "render_over_budget_delta": {
+          "median": 1,
+          "minimum": 0,
+          "maximum": 2
+        },
+        "lifetime_render_max_ms": {
+          "median": 3.165625,
+          "minimum": 2.1695,
+          "maximum": 3.907833
+        },
+        "lifetime_command_max_ms": {
+          "median": 3.00075,
+          "minimum": 2.6145,
+          "maximum": 3.00225
+        },
+        "queue_high_water_frames": {
+          "median": 4096,
+          "minimum": 4096,
+          "maximum": 4096
+        },
+        "callback_frames": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "spectrum_queued_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "spectrum_published_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "spectrum_dropped_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "spectrogram_published_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "spectrogram_dropped_delta": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "live_edit_max_ms": {
+          "median": 3.222041,
+          "minimum": 2.213333,
+          "maximum": 3.80946
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 5020.918625,
+          "minimum": 4978.477625,
+          "maximum": 5046.766459
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 2610.34,
+          "minimum": 2136.404,
+          "maximum": 2745.112
+        },
+        "peak_rss_platform_units": {
+          "median": 158842880,
+          "minimum": 156631040,
+          "maximum": 173490176
+        }
+      }
+    },
+    "midi_8x32": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 8,
+          "minimum": 8,
+          "maximum": 8
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 13.84525,
+          "minimum": 12.698915,
+          "maximum": 13.935207
+        },
+        "rss_after_setup": {
+          "median": 23461888,
+          "minimum": 17858560,
+          "maximum": 30965760
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.743361,
+          "minimum": 0.736698,
+          "maximum": 0.75055
+        },
+        "p50_ms": {
+          "median": 0.73525,
+          "minimum": 0.731375,
+          "maximum": 0.743459
+        },
+        "p95_ms": {
+          "median": 0.811958,
+          "minimum": 0.798417,
+          "maximum": 0.81425
+        },
+        "p99_ms": {
+          "median": 0.865458,
+          "minimum": 0.858917,
+          "maximum": 0.871333
+        },
+        "max_ms": {
+          "median": 1.033291,
+          "minimum": 0.976083,
+          "maximum": 1.043583
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "edit_p50_ms": {
+          "median": 0.113792,
+          "minimum": 0.092501,
+          "maximum": 0.121708
+        },
+        "edit_max_ms": {
+          "median": 0.179333,
+          "minimum": 0.158875,
+          "maximum": 0.272292
+        },
+        "checksum": {
+          "median": 12594.68148,
+          "minimum": 12594.68148,
+          "maximum": 12594.68148
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 957.27,
+          "minimum": 950.217083,
+          "maximum": 963.935583
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 955.389,
+          "minimum": 948.864,
+          "maximum": 961.741
+        },
+        "peak_rss_platform_units": {
+          "median": 23478272,
+          "minimum": 22151168,
+          "maximum": 30982144
+        }
+      }
+    },
+    "midi_8x8": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 8,
+          "minimum": 8,
+          "maximum": 8
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 8,
+          "minimum": 8,
+          "maximum": 8
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 5.463667,
+          "minimum": 5.325624,
+          "maximum": 5.911417
+        },
+        "rss_after_setup": {
+          "median": 17842176,
+          "minimum": 17809408,
+          "maximum": 20365312
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.186654,
+          "minimum": 0.185628,
+          "maximum": 0.196564
+        },
+        "p50_ms": {
+          "median": 0.183583,
+          "minimum": 0.1835,
+          "maximum": 0.195084
+        },
+        "p95_ms": {
+          "median": 0.207707,
+          "minimum": 0.202126,
+          "maximum": 0.207958
+        },
+        "p99_ms": {
+          "median": 0.230417,
+          "minimum": 0.228209,
+          "maximum": 0.232083
+        },
+        "max_ms": {
+          "median": 0.301459,
+          "minimum": 0.284458,
+          "maximum": 0.353832
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "edit_p50_ms": {
+          "median": 0.104,
+          "minimum": 0.099333,
+          "maximum": 0.111542
+        },
+        "edit_max_ms": {
+          "median": 0.203084,
+          "minimum": 0.153459,
+          "maximum": 0.239709
+        },
+        "checksum": {
+          "median": 5202.762016,
+          "minimum": 5202.762016,
+          "maximum": 5202.762016
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 246.842042,
+          "minimum": 242.93075,
+          "maximum": 256.993292
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 246.463,
+          "minimum": 242.551,
+          "maximum": 256.346
+        },
+        "peak_rss_platform_units": {
+          "median": 22036480,
+          "minimum": 17842176,
+          "maximum": 24608768
+        }
+      }
+    },
+    "midi_sparse_1x1": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 0.425208,
+          "minimum": 0.39825,
+          "maximum": 0.776626
+        },
+        "rss_after_setup": {
+          "median": 12320768,
+          "minimum": 12255232,
+          "maximum": 12730368
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.008687,
+          "minimum": 0.006854,
+          "maximum": 0.009514
+        },
+        "p50_ms": {
+          "median": 0.006959,
+          "minimum": 0.006709,
+          "maximum": 0.007
+        },
+        "p95_ms": {
+          "median": 0.017082,
+          "minimum": 0.007042,
+          "maximum": 0.017416
+        },
+        "p99_ms": {
+          "median": 0.030833,
+          "minimum": 0.009083,
+          "maximum": 0.031542
+        },
+        "max_ms": {
+          "median": 0.172999,
+          "minimum": 0.027583,
+          "maximum": 0.496918
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "edit_p50_ms": {
+          "median": 0.011,
+          "minimum": 0.006166,
+          "maximum": 0.012208
+        },
+        "edit_max_ms": {
+          "median": 0.081625,
+          "minimum": 0.008375,
+          "maximum": 0.113041
+        },
+        "checksum": {
+          "median": 2058.996588,
+          "minimum": 2058.996588,
+          "maximum": 2058.996588
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 12.434,
+          "minimum": 9.562292,
+          "maximum": 13.870292
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 11.453,
+          "minimum": 9.562,
+          "maximum": 12.834
+        },
+        "peak_rss_platform_units": {
+          "median": 14024704,
+          "minimum": 12304384,
+          "maximum": 14630912
+        }
+      }
+    },
+    "midi_sparse_1x1024": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 1024,
+          "minimum": 1024,
+          "maximum": 1024
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 14.272417,
+          "minimum": 13.878165,
+          "maximum": 17.154666
+        },
+        "rss_after_setup": {
+          "median": 15138816,
+          "minimum": 14139392,
+          "maximum": 17907712
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.054617,
+          "minimum": 0.053484,
+          "maximum": 0.054866
+        },
+        "p50_ms": {
+          "median": 0.05325,
+          "minimum": 0.051417,
+          "maximum": 0.053332
+        },
+        "p95_ms": {
+          "median": 0.054708,
+          "minimum": 0.054584,
+          "maximum": 0.057876
+        },
+        "p99_ms": {
+          "median": 0.101833,
+          "minimum": 0.101541,
+          "maximum": 0.107792
+        },
+        "max_ms": {
+          "median": 0.191,
+          "minimum": 0.153291,
+          "maximum": 0.263249
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "edit_p50_ms": {
+          "median": 0.006708,
+          "minimum": 0.006667,
+          "maximum": 0.013584
+        },
+        "edit_max_ms": {
+          "median": 0.037875,
+          "minimum": 0.015583,
+          "maximum": 0.050041
+        },
+        "checksum": {
+          "median": 2058.996588,
+          "minimum": 2058.996588,
+          "maximum": 2058.996588
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 83.9265,
+          "minimum": 83.741625,
+          "maximum": 85.320958
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 83.134,
+          "minimum": 82.614,
+          "maximum": 84.324
+        },
+        "peak_rss_platform_units": {
+          "median": 15171584,
+          "minimum": 14139392,
+          "maximum": 17907712
+        }
+      }
+    },
+    "midi_sparse_1x128": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 1.434375,
+          "minimum": 1.392875,
+          "maximum": 1.45825
+        },
+        "rss_after_setup": {
+          "median": 12353536,
+          "minimum": 12304384,
+          "maximum": 12386304
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.016096,
+          "minimum": 0.015882,
+          "maximum": 0.017296
+        },
+        "p50_ms": {
+          "median": 0.01575,
+          "minimum": 0.015209,
+          "maximum": 0.01575
+        },
+        "p95_ms": {
+          "median": 0.018291,
+          "minimum": 0.015834,
+          "maximum": 0.028834
+        },
+        "p99_ms": {
+          "median": 0.030042,
+          "minimum": 0.023333,
+          "maximum": 0.044458
+        },
+        "max_ms": {
+          "median": 0.093084,
+          "minimum": 0.05425,
+          "maximum": 0.507416
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "edit_p50_ms": {
+          "median": 0.006207,
+          "minimum": 0.006124,
+          "maximum": 0.006582
+        },
+        "edit_max_ms": {
+          "median": 0.071333,
+          "minimum": 0.013792,
+          "maximum": 0.080041
+        },
+        "checksum": {
+          "median": 2058.996588,
+          "minimum": 2058.996588,
+          "maximum": 2058.996588
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 22.245208,
+          "minimum": 22.152208,
+          "maximum": 23.891792
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 22.173,
+          "minimum": 22.004,
+          "maximum": 23.013
+        },
+        "peak_rss_platform_units": {
+          "median": 13320192,
+          "minimum": 12402688,
+          "maximum": 13352960
+        }
+      }
+    },
+    "overlap_8x8": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 8,
+          "minimum": 8,
+          "maximum": 8
+        },
+        "clips_per_track": {
+          "median": 8,
+          "minimum": 8,
+          "maximum": 8
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 26.747625,
+          "minimum": 26.681667,
+          "maximum": 27.519625
+        },
+        "rss_after_setup": {
+          "median": 25100288,
+          "minimum": 23642112,
+          "maximum": 25722880
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.079375,
+          "minimum": 0.076441,
+          "maximum": 0.083146
+        },
+        "p50_ms": {
+          "median": 0.074708,
+          "minimum": 0.0745,
+          "maximum": 0.077458
+        },
+        "p95_ms": {
+          "median": 0.094666,
+          "minimum": 0.080541,
+          "maximum": 0.121667
+        },
+        "p99_ms": {
+          "median": 0.157624,
+          "minimum": 0.140458,
+          "maximum": 0.205957
+        },
+        "max_ms": {
+          "median": 0.226333,
+          "minimum": 0.213458,
+          "maximum": 0.549084
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "edit_p50_ms": {
+          "median": 0.107875,
+          "minimum": 0.101917,
+          "maximum": 0.139335
+        },
+        "edit_max_ms": {
+          "median": 0.236583,
+          "minimum": 0.214792,
+          "maximum": 0.551457
+        },
+        "checksum": {
+          "median": 14831.409063,
+          "minimum": 14831.409063,
+          "maximum": 14831.409063
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 130.4545,
+          "minimum": 126.135375,
+          "maximum": 136.248542
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 128.766,
+          "minimum": 125.13,
+          "maximum": 132.971
+        },
+        "peak_rss_platform_units": {
+          "median": 27033600,
+          "minimum": 25526272,
+          "maximum": 31899648
+        }
+      }
+    },
+    "record_10s": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 10.0,
+          "minimum": 10.0,
+          "maximum": 10.0
+        },
+        "setup_ms": {
+          "median": 19.829458,
+          "minimum": 19.302793,
+          "maximum": 22.411958
+        },
+        "rss_after_setup": {
+          "median": 15351808,
+          "minimum": 12615680,
+          "maximum": 15777792
+        },
+        "samples": {
+          "median": 100,
+          "minimum": 100,
+          "maximum": 100
+        },
+        "mean_ms": {
+          "median": 0.175005,
+          "minimum": 0.173742,
+          "maximum": 0.186557
+        },
+        "p50_ms": {
+          "median": 0.170793,
+          "minimum": 0.165168,
+          "maximum": 0.176792
+        },
+        "p95_ms": {
+          "median": 0.194292,
+          "minimum": 0.193583,
+          "maximum": 0.224833
+        },
+        "p99_ms": {
+          "median": 0.317042,
+          "minimum": 0.228292,
+          "maximum": 0.504792
+        },
+        "max_ms": {
+          "median": 0.453792,
+          "minimum": 0.246042,
+          "maximum": 0.513499
+        },
+        "budget_ms": {
+          "median": 100.0,
+          "minimum": 100.0,
+          "maximum": 100.0
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "recording_wall_ms": {
+          "median": 19.328458,
+          "minimum": 19.209333,
+          "maximum": 20.567167
+        },
+        "recorded_frames": {
+          "median": 480000,
+          "minimum": 480000,
+          "maximum": 480000
+        },
+        "take_capacity_bytes": {
+          "median": 4194304,
+          "minimum": 4194304,
+          "maximum": 4194304
+        },
+        "take_used_bytes": {
+          "median": 3840000,
+          "minimum": 3840000,
+          "maximum": 3840000
+        },
+        "rss_before_recording": {
+          "median": 16433152,
+          "minimum": 14155776,
+          "maximum": 17399808
+        },
+        "rss_holding_recording": {
+          "median": 36061184,
+          "minimum": 33816576,
+          "maximum": 37011456
+        },
+        "checkpoint_frames": {
+          "median": 480000,
+          "minimum": 480000,
+          "maximum": 480000
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 41.372416,
+          "minimum": 39.560417,
+          "maximum": 42.621208
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 38.56,
+          "minimum": 36.438,
+          "maximum": 40.063
+        },
+        "peak_rss_platform_units": {
+          "median": 36519936,
+          "minimum": 34324480,
+          "maximum": 37027840
+        }
+      }
+    },
+    "record_60s": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 60.0,
+          "minimum": 60.0,
+          "maximum": 60.0
+        },
+        "setup_ms": {
+          "median": 19.744375,
+          "minimum": 19.663292,
+          "maximum": 20.16
+        },
+        "rss_after_setup": {
+          "median": 15712256,
+          "minimum": 12238848,
+          "maximum": 15826944
+        },
+        "samples": {
+          "median": 600,
+          "minimum": 600,
+          "maximum": 600
+        },
+        "mean_ms": {
+          "median": 0.178144,
+          "minimum": 0.176646,
+          "maximum": 0.179207
+        },
+        "p50_ms": {
+          "median": 0.170125,
+          "minimum": 0.165708,
+          "maximum": 0.173167
+        },
+        "p95_ms": {
+          "median": 0.196333,
+          "minimum": 0.188917,
+          "maximum": 0.199791
+        },
+        "p99_ms": {
+          "median": 0.469334,
+          "minimum": 0.266417,
+          "maximum": 0.500458
+        },
+        "max_ms": {
+          "median": 1.251792,
+          "minimum": 0.977,
+          "maximum": 1.617083
+        },
+        "budget_ms": {
+          "median": 100.0,
+          "minimum": 100.0,
+          "maximum": 100.0
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "recording_wall_ms": {
+          "median": 114.68296,
+          "minimum": 113.695167,
+          "maximum": 115.559916
+        },
+        "recorded_frames": {
+          "median": 2880000,
+          "minimum": 2880000,
+          "maximum": 2880000
+        },
+        "take_capacity_bytes": {
+          "median": 33554432,
+          "minimum": 33554432,
+          "maximum": 33554432
+        },
+        "take_used_bytes": {
+          "median": 23040000,
+          "minimum": 23040000,
+          "maximum": 23040000
+        },
+        "rss_before_recording": {
+          "median": 17285120,
+          "minimum": 13303808,
+          "maximum": 17350656
+        },
+        "rss_holding_recording": {
+          "median": 57311232,
+          "minimum": 53329920,
+          "maximum": 57360384
+        },
+        "checkpoint_frames": {
+          "median": 2880000,
+          "minimum": 2880000,
+          "maximum": 2880000
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 136.012417,
+          "minimum": 134.783083,
+          "maximum": 136.566792
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 119.91,
+          "minimum": 117.523,
+          "maximum": 120.224
+        },
+        "peak_rss_platform_units": {
+          "median": 57360384,
+          "minimum": 53968896,
+          "maximum": 57393152
+        }
+      }
+    },
+    "sparse_32x32": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "clips_per_track": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 360.81025,
+          "minimum": 354.394292,
+          "maximum": 363.380583
+        },
+        "rss_after_setup": {
+          "median": 140427264,
+          "minimum": 137986048,
+          "maximum": 154697728
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.598825,
+          "minimum": 0.592776,
+          "maximum": 0.607622
+        },
+        "p50_ms": {
+          "median": 0.588416,
+          "minimum": 0.584624,
+          "maximum": 0.593792
+        },
+        "p95_ms": {
+          "median": 0.655293,
+          "minimum": 0.634542,
+          "maximum": 0.662333
+        },
+        "p99_ms": {
+          "median": 0.711207,
+          "minimum": 0.6945,
+          "maximum": 0.764251
+        },
+        "max_ms": {
+          "median": 0.819875,
+          "minimum": 0.801833,
+          "maximum": 2.995501
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "edit_p50_ms": {
+          "median": 0.593625,
+          "minimum": 0.557833,
+          "maximum": 0.640125
+        },
+        "edit_max_ms": {
+          "median": 1.026541,
+          "minimum": 0.948874,
+          "maximum": 1.05225
+        },
+        "checksum": {
+          "median": 1853.926132,
+          "minimum": 1853.926132,
+          "maximum": 1853.926132
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 1131.561417,
+          "minimum": 1117.621417,
+          "maximum": 1144.972458
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 1127.506,
+          "minimum": 1115.586,
+          "maximum": 1139.002
+        },
+        "peak_rss_platform_units": {
+          "median": 140476416,
+          "minimum": 138002432,
+          "maximum": 154730496
+        }
+      }
+    },
+    "sparse_8x32": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 8,
+          "minimum": 8,
+          "maximum": 8
+        },
+        "clips_per_track": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 38.774667,
+          "minimum": 38.164708,
+          "maximum": 44.352792
+        },
+        "rss_after_setup": {
+          "median": 34095104,
+          "minimum": 30605312,
+          "maximum": 38043648
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.146927,
+          "minimum": 0.145825,
+          "maximum": 0.180956
+        },
+        "p50_ms": {
+          "median": 0.143792,
+          "minimum": 0.143542,
+          "maximum": 0.1535
+        },
+        "p95_ms": {
+          "median": 0.159166,
+          "minimum": 0.158334,
+          "maximum": 0.274042
+        },
+        "p99_ms": {
+          "median": 0.181667,
+          "minimum": 0.180207,
+          "maximum": 0.35375
+        },
+        "max_ms": {
+          "median": 0.257335,
+          "minimum": 0.210791,
+          "maximum": 1.109333
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "edit_p50_ms": {
+          "median": 0.146709,
+          "minimum": 0.1445,
+          "maximum": 0.173375
+        },
+        "edit_max_ms": {
+          "median": 0.227875,
+          "minimum": 0.221832,
+          "maximum": 0.266166
+        },
+        "checksum": {
+          "median": 1853.926133,
+          "minimum": 1853.926133,
+          "maximum": 1853.926133
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 228.695709,
+          "minimum": 226.174375,
+          "maximum": 276.165917
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 228.222,
+          "minimum": 225.85,
+          "maximum": 268.22
+        },
+        "peak_rss_platform_units": {
+          "median": 36126720,
+          "minimum": 30605312,
+          "maximum": 38060032
+        }
+      }
+    }
+  },
+  "exclusions": [
+    {
+      "name": "midi_sparse_1x1024",
+      "repeat": 2,
+      "exit_code": -6,
+      "reason": "Superseded by explicit followup fixture group."
+    },
+    {
+      "name": "midi_sparse_1x128",
+      "repeat": 3,
+      "exit_code": 0,
+      "reason": "Superseded by explicit followup fixture group."
+    },
+    {
+      "name": "midi_sparse_1x1",
+      "repeat": 3,
+      "exit_code": 0,
+      "reason": "Superseded by explicit followup fixture group."
+    },
+    {
+      "name": "midi_sparse_1x128",
+      "repeat": 1,
+      "exit_code": 0,
+      "reason": "Superseded by explicit followup fixture group."
+    },
+    {
+      "name": "midi_sparse_1x1",
+      "repeat": 1,
+      "exit_code": 0,
+      "reason": "Superseded by explicit followup fixture group."
+    },
+    {
+      "name": "midi_sparse_1x1024",
+      "repeat": 3,
+      "exit_code": -6,
+      "reason": "Superseded by explicit followup fixture group."
+    },
+    {
+      "name": "midi_sparse_1x1",
+      "repeat": 2,
+      "exit_code": 0,
+      "reason": "Superseded by explicit followup fixture group."
+    },
+    {
+      "name": "midi_sparse_1x128",
+      "repeat": 2,
+      "exit_code": 0,
+      "reason": "Superseded by explicit followup fixture group."
+    },
+    {
+      "name": "midi_sparse_1x1024",
+      "repeat": 1,
+      "exit_code": -6,
+      "reason": "Superseded by explicit followup fixture group."
+    }
+  ],
+  "unoptimized": {
+    "analysis_kernel": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 8,
+          "minimum": 8,
+          "maximum": 8
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "samples": {
+          "median": 20,
+          "minimum": 20,
+          "maximum": 20
+        },
+        "mean_ms": {
+          "median": 9.472752,
+          "minimum": 9.317356,
+          "maximum": 9.677144
+        },
+        "p50_ms": {
+          "median": 9.439458,
+          "minimum": 9.297292,
+          "maximum": 9.692792
+        },
+        "p95_ms": {
+          "median": 9.592417,
+          "minimum": 9.505333,
+          "maximum": 9.841333
+        },
+        "p99_ms": {
+          "median": 9.983917,
+          "minimum": 9.517916,
+          "maximum": 11.179167
+        },
+        "max_ms": {
+          "median": 9.983917,
+          "minimum": 9.517916,
+          "maximum": 11.179167
+        },
+        "budget_ms": {
+          "median": 42.666667,
+          "minimum": 42.666667,
+          "maximum": 42.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "checksum": {
+          "median": -638541.547493,
+          "minimum": -638541.547493,
+          "maximum": -638541.547493
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 207.887666,
+          "minimum": 205.319459,
+          "maximum": 212.656083
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 206.936,
+          "minimum": 204.754,
+          "maximum": 211.788
+        },
+        "peak_rss_platform_units": {
+          "median": 7421952,
+          "minimum": 7356416,
+          "maximum": 7454720
+        }
+      }
+    },
+    "audio_32": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 57.327084,
+          "minimum": 57.286792,
+          "maximum": 68.433917
+        },
+        "rss_after_setup": {
+          "median": 110706688,
+          "minimum": 96665600,
+          "maximum": 132710400
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.225105,
+          "minimum": 0.221574,
+          "maximum": 0.232514
+        },
+        "p50_ms": {
+          "median": 0.221875,
+          "minimum": 0.216375,
+          "maximum": 0.23025
+        },
+        "p95_ms": {
+          "median": 0.245625,
+          "minimum": 0.242458,
+          "maximum": 0.253
+        },
+        "p99_ms": {
+          "median": 0.284458,
+          "minimum": 0.27325,
+          "maximum": 0.286958
+        },
+        "max_ms": {
+          "median": 0.482918,
+          "minimum": 0.378625,
+          "maximum": 0.627042
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "edit_p50_ms": {
+          "median": 0.484709,
+          "minimum": 0.425833,
+          "maximum": 1.029292
+        },
+        "edit_max_ms": {
+          "median": 0.958667,
+          "minimum": 0.927125,
+          "maximum": 1.735375
+        },
+        "checksum": {
+          "median": 1853.926132,
+          "minimum": 1853.926132,
+          "maximum": 1853.926132
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 353.912292,
+          "minimum": 348.6595,
+          "maximum": 385.683001
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 352.88,
+          "minimum": 347.537,
+          "maximum": 383.899
+        },
+        "peak_rss_platform_units": {
+          "median": 125943808,
+          "minimum": 111280128,
+          "maximum": 140001280
+        }
+      }
+    },
+    "fx_32": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 424.471499,
+          "minimum": 366.807542,
+          "maximum": 486.793084
+        },
+        "rss_after_setup": {
+          "median": 400850944,
+          "minimum": 384663552,
+          "maximum": 402587648
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 0.678038,
+          "minimum": 0.669027,
+          "maximum": 0.859538
+        },
+        "p50_ms": {
+          "median": 0.662374,
+          "minimum": 0.659834,
+          "maximum": 0.70225
+        },
+        "p95_ms": {
+          "median": 0.761375,
+          "minimum": 0.732042,
+          "maximum": 1.00575
+        },
+        "p99_ms": {
+          "median": 0.854833,
+          "minimum": 0.795083,
+          "maximum": 4.861793
+        },
+        "max_ms": {
+          "median": 2.052835,
+          "minimum": 0.87825,
+          "maximum": 17.43625
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 21
+        },
+        "edit_p50_ms": {
+          "median": 2.457458,
+          "minimum": 1.414333,
+          "maximum": 4.918666
+        },
+        "edit_max_ms": {
+          "median": 3.518417,
+          "minimum": 2.449542,
+          "maximum": 6.69671
+        },
+        "checksum": {
+          "median": 2020.440072,
+          "minimum": 2020.440072,
+          "maximum": 2020.440072
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 1379.767042,
+          "minimum": 1255.830417,
+          "maximum": 1624.939209
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 1374.166,
+          "minimum": 1251.84,
+          "maximum": 1473.03
+        },
+        "peak_rss_platform_units": {
+          "median": 401735680,
+          "minimum": 384729088,
+          "maximum": 402653184
+        }
+      }
+    },
+    "midi_8x32": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 8,
+          "minimum": 8,
+          "maximum": 8
+        },
+        "clips_per_track": {
+          "median": 1,
+          "minimum": 1,
+          "maximum": 1
+        },
+        "notes_per_clip": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 14.730583,
+          "minimum": 14.146791,
+          "maximum": 16.146041
+        },
+        "rss_after_setup": {
+          "median": 22134784,
+          "minimum": 17907712,
+          "maximum": 36896768
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 1.884758,
+          "minimum": 1.884534,
+          "maximum": 1.969414
+        },
+        "p50_ms": {
+          "median": 1.871959,
+          "minimum": 1.869459,
+          "maximum": 1.968042
+        },
+        "p95_ms": {
+          "median": 2.035335,
+          "minimum": 2.016916,
+          "maximum": 2.0785
+        },
+        "p99_ms": {
+          "median": 2.104584,
+          "minimum": 2.101875,
+          "maximum": 2.194584
+        },
+        "max_ms": {
+          "median": 2.417167,
+          "minimum": 2.331958,
+          "maximum": 3.082875
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "edit_p50_ms": {
+          "median": 0.105499,
+          "minimum": 0.09504,
+          "maximum": 0.106957
+        },
+        "edit_max_ms": {
+          "median": 0.217375,
+          "minimum": 0.193417,
+          "maximum": 0.232124
+        },
+        "checksum": {
+          "median": 12594.68148,
+          "minimum": 12594.68148,
+          "maximum": 12594.68148
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 2405.192708,
+          "minimum": 2401.671792,
+          "maximum": 2512.280166
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 2400.283,
+          "minimum": 2395.781,
+          "maximum": 2504.026
+        },
+        "peak_rss_platform_units": {
+          "median": 26378240,
+          "minimum": 17907712,
+          "maximum": 36896768
+        }
+      }
+    },
+    "sparse_32x32": {
+      "runs": 3,
+      "metrics": {
+        "tracks": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "clips_per_track": {
+          "median": 32,
+          "minimum": 32,
+          "maximum": 32
+        },
+        "notes_per_clip": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "fx_chain": {
+          "median": 0,
+          "minimum": 0,
+          "maximum": 0
+        },
+        "block": {
+          "median": 128,
+          "minimum": 128,
+          "maximum": 128
+        },
+        "rate": {
+          "median": 48000,
+          "minimum": 48000,
+          "maximum": 48000
+        },
+        "seconds": {
+          "median": 8.0,
+          "minimum": 8.0,
+          "maximum": 8.0
+        },
+        "setup_ms": {
+          "median": 402.40175,
+          "minimum": 401.023458,
+          "maximum": 450.07825
+        },
+        "rss_after_setup": {
+          "median": 145833984,
+          "minimum": 138510336,
+          "maximum": 147456000
+        },
+        "samples": {
+          "median": 1200,
+          "minimum": 1200,
+          "maximum": 1200
+        },
+        "mean_ms": {
+          "median": 1.837874,
+          "minimum": 1.837748,
+          "maximum": 1.857788
+        },
+        "p50_ms": {
+          "median": 1.814458,
+          "minimum": 1.79875,
+          "maximum": 1.839
+        },
+        "p95_ms": {
+          "median": 2.001249,
+          "minimum": 1.982333,
+          "maximum": 2.021291
+        },
+        "p99_ms": {
+          "median": 2.118125,
+          "minimum": 2.056334,
+          "maximum": 2.147167
+        },
+        "max_ms": {
+          "median": 3.410625,
+          "minimum": 2.575541,
+          "maximum": 3.691958
+        },
+        "budget_ms": {
+          "median": 2.666667,
+          "minimum": 2.666667,
+          "maximum": 2.666667
+        },
+        "over_budget": {
+          "median": 1,
+          "minimum": 0,
+          "maximum": 2
+        },
+        "edit_p50_ms": {
+          "median": 0.63946,
+          "minimum": 0.630375,
+          "maximum": 0.709709
+        },
+        "edit_max_ms": {
+          "median": 1.113583,
+          "minimum": 1.066,
+          "maximum": 1.51775
+        },
+        "checksum": {
+          "median": 1853.926132,
+          "minimum": 1853.926132,
+          "maximum": 1853.926132
+        },
+        "process_wall_ms_excluding_fixture": {
+          "median": 2738.332417,
+          "minimum": 2737.253042,
+          "maximum": 2816.609333
+        },
+        "process_cpu_ms_excluding_fixture": {
+          "median": 2731.343,
+          "minimum": 2730.488,
+          "maximum": 2808.343
+        },
+        "peak_rss_platform_units": {
+          "median": 145850368,
+          "minimum": 138526720,
+          "maximum": 147472384
+        }
+      }
+    }
+  },
+  "unoptimized_to_optimized_p50_ratio": {
+    "analysis_kernel": 1.871360747699125,
+    "audio_32": 3.96793461737933,
+    "fx_32": 3.8482149600580975,
+    "midi_8x32": 2.5460170010200613,
+    "sparse_32x32": 3.08363130846204
+  }
+}

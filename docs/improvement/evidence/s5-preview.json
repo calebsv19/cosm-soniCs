@@ -1,0 +1,28 @@
+{
+  "status": "live_preview_checkpoint_S5_still_active",
+  "logs": [
+    {
+      "path": "/tmp/daw-s5-preview-normal.log",
+      "exit_code": 0,
+      "sha256": "316163a1608842380f4aadf3fda58e420639a303d178237f65b6a8df398b59b5"
+    },
+    {
+      "path": "/tmp/daw-s5-preview-asan-final.log",
+      "exit_code": 0,
+      "sha256": "735852c720395e40ab516e79353aff38556c296c91bd0b074ec4c8796ac2c64f"
+    },
+    {
+      "path": "/tmp/daw-s5-preview-make.log",
+      "exit_code": 0,
+      "sha256": "234cd7cadec9ae6982b6a0a516ec3a751a7fff0cb2740fe3b8e47529944d2f82"
+    }
+  ],
+  "open": [
+    "cross-track compound release and overlap",
+    "ripple trim",
+    "compound duplicate/delete",
+    "remaining history identities",
+    "native interaction acceptance",
+    "remaining S5 slices"
+  ]
+}

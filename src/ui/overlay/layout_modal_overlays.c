@@ -74,7 +74,7 @@ void ui_render_project_prompt_overlay(SDL_Renderer* renderer, AppState* state) {
     int title_w = ui_measure_text_width(title, 2);
     ui_draw_text(renderer, modal.x + (modal.w - title_w) / 2, modal.y + 12, title, text_col, 2);
 
-    const char* hint = "Type a name and press Enter. Esc to cancel.";
+    const char* hint = state->project_prompt.error[0] ? state->project_prompt.error : "Type a name and press Enter. Esc to cancel.";
     ui_draw_text(renderer, modal.x + 16, modal.y + modal.h - 32, hint, text_col, 1);
 
     SDL_Rect input_box = {
@@ -141,6 +141,8 @@ void ui_render_project_load_overlay(SDL_Renderer* renderer, AppState* state) {
     SDL_SetRenderDrawColor(renderer, modal_border.r, modal_border.g, modal_border.b, modal_border.a);
     SDL_RenderDrawRect(renderer, &modal);
 
+    if (state->project_load.error[0])
+        ui_draw_text(renderer, modal.x + 16, modal.y + 36, state->project_load.error, text_col, 1);
     const char* title = "Load Project";
     ui_draw_text(renderer, modal.x + 16, modal.y + 12, title, text_col, 2);
 

@@ -223,6 +223,15 @@ bool undo_clip_state_clone(UndoClipState* dst, const UndoClipState* src) {
                             src->midi_note_count);
 }
 
+// Binds a captured transform to the existing track instead of its current array position.
+bool undo_clip_state_capture(const Engine* engine, const EngineClip* clip, int track_index, UndoClipState* out_state) {
+    const EngineTrack* tracks = engine_get_tracks(engine);
+    if (!tracks || track_index < 0 || track_index >= engine_get_track_count(engine)) return false;
+    if (!undo_clip_state_from_engine_clip(clip, track_index, out_state)) return false;
+    out_state->track_runtime_id = tracks[track_index].runtime_id;
+    return true;
+}
+
 bool undo_clip_state_from_engine_clip(const EngineClip* clip,
                                       int track_index,
                                       UndoClipState* out_state) {
@@ -292,7 +301,29 @@ static bool session_track_clone(SessionTrack* dst, const SessionTrack* src) {
     return true;
 }
 
-bool undo_command_clone(UndoCommand* dst, const UndoCommand* src) {
+// Builds a normalized metadata guard so later track edits cannot be silently discarded by undo.
+void undo_created_track_capture(const EngineTrack* track, UndoCreatedTrack* out) {
+    memset(out, 0, sizeof(*out));
+    out->runtime_id = track->runtime_id;
+    out->settings.gain = track->gain; out->settings.pan = track->pan;
+    out->settings.muted = track->muted; out->settings.solo = track->solo;
+    out->settings.instrument_enabled = track->midi_instrument_enabled;
+    out->settings.instrument_preset = track->midi_instrument_preset;
+    out->settings.instrument_params = track->midi_instrument_params;
+    out->eq.low_cut.enabled = track->track_eq.curve.low_cut.enabled;
+    out->eq.low_cut.freq_hz = track->track_eq.curve.low_cut.freq_hz;
+    out->eq.high_cut.enabled = track->track_eq.curve.high_cut.enabled;
+    out->eq.high_cut.freq_hz = track->track_eq.curve.high_cut.freq_hz;
+    for (int i = 0; i < ENGINE_EQ_BANDS; ++i) {
+        out->eq.bands[i].enabled = track->track_eq.curve.bands[i].enabled;
+        out->eq.bands[i].freq_hz = track->track_eq.curve.bands[i].freq_hz;
+        out->eq.bands[i].gain_db = track->track_eq.curve.bands[i].gain_db;
+        out->eq.bands[i].q_width = track->track_eq.curve.bands[i].q_width;
+    }
+    SDL_strlcpy(out->name, track->name, sizeof(out->name));
+}
+
+static bool undo_command_clone_fields(UndoCommand* dst, const UndoCommand* src) {
     if (!dst || !src) {
         return false;
     }
@@ -330,8 +361,8 @@ bool undo_command_clone(UndoCommand* dst, const UndoCommand* src) {
                 mdst->after = NULL;
                 return true;
             }
-            mdst->before = (UndoClipState*)malloc(sizeof(UndoClipState) * (size_t)msrc->count);
-            mdst->after = (UndoClipState*)malloc(sizeof(UndoClipState) * (size_t)msrc->count);
+            mdst->before = (UndoClipState*)calloc((size_t)msrc->count, sizeof(UndoClipState));
+            mdst->after = (UndoClipState*)calloc((size_t)msrc->count, sizeof(UndoClipState));
             if (!mdst->before || !mdst->after) {
                 free(mdst->before);
                 free(mdst->after);
@@ -354,6 +385,12 @@ bool undo_command_clone(UndoCommand* dst, const UndoCommand* src) {
                     mdst->count = 0;
                     return false;
                 }
+            }
+            if (msrc->created_count > 0) {
+                mdst->created_tracks = malloc((size_t)msrc->created_count * sizeof(*mdst->created_tracks));
+                if (!mdst->created_tracks) { undo_command_destroy(dst); return false; }
+                memcpy(mdst->created_tracks, msrc->created_tracks, (size_t)msrc->created_count * sizeof(*mdst->created_tracks));
+                mdst->created_start = msrc->created_start; mdst->created_count = msrc->created_count;
             }
             return true;
         }
@@ -448,17 +485,62 @@ bool undo_command_clone(UndoCommand* dst, const UndoCommand* src) {
             }
             return true;
         }
+        case UNDO_CMD_CLIP_CONTENT: {
+            const UndoClipContentSelection* source = &src->data.clip_content_selection;
+            UndoClipContentSelection* target = &dst->data.clip_content_selection;
+            target->count = source->count; target->before = NULL; target->after = NULL;
+            target->created_start = source->created_start; target->created_count = source->created_count;
+            if (source->created_count < 0 || (source->created_count && !source->created_tracks)) return false;
+            if (source->count <= 0 || !source->before || !source->after) return false;
+            target->before = calloc((size_t)source->count, sizeof(uint64_t));
+            target->after = calloc((size_t)source->count, sizeof(uint64_t));
+            if (!target->before || !target->after) {
+                free(target->before); free(target->after); target->before = target->after = NULL; return false;
+            }
+            if (source->created_count) {
+                target->created_tracks = calloc((size_t)source->created_count, sizeof(*target->created_tracks));
+                if (!target->created_tracks) {
+                    free(target->before); free(target->after); target->before = target->after = NULL; return false;
+                }
+                memcpy(target->created_tracks, source->created_tracks, (size_t)source->created_count * sizeof(*target->created_tracks));
+            }
+            memcpy(target->before, source->before, (size_t)source->count * sizeof(uint64_t));
+            memcpy(target->after, source->after, (size_t)source->count * sizeof(uint64_t));
+            return true;
+        }
         case UNDO_CMD_NONE:
         default:
             return true;
     }
 }
 
+// Clones command fields and shares immutable retained content without duplicating media pins.
+bool undo_command_clone(UndoCommand* dst, const UndoCommand* src) {
+    if (!undo_command_clone_fields(dst, src)) return false;
+    if (src->clip_content_before) {
+        if (!engine_clip_content_retain(src->clip_content_before)) { undo_command_destroy(dst); return false; }
+        dst->clip_content_before = src->clip_content_before;
+    }
+    if (src->clip_content_after) {
+        if (!engine_clip_content_retain(src->clip_content_after)) { undo_command_destroy(dst); return false; }
+        dst->clip_content_after = src->clip_content_after;
+    }
+    return true;
+}
+
 void undo_command_destroy(UndoCommand* cmd) {
     if (!cmd) {
         return;
     }
+    engine_clip_content_release(cmd->clip_content_before);
+    engine_clip_content_release(cmd->clip_content_after);
+    cmd->clip_content_before = cmd->clip_content_after = NULL;
     switch (cmd->type) {
+        case UNDO_CMD_CLIP_CONTENT:
+            free(cmd->data.clip_content_selection.created_tracks);
+            free(cmd->data.clip_content_selection.before);
+            free(cmd->data.clip_content_selection.after);
+            break;
         case UNDO_CMD_CLIP_TRANSFORM:
             undo_clip_state_clear(&cmd->data.clip_transform.before);
             undo_clip_state_clear(&cmd->data.clip_transform.after);
@@ -468,6 +550,9 @@ void undo_command_destroy(UndoCommand* cmd) {
                 undo_clip_state_clear(&cmd->data.multi_clip_transform.before[i]);
                 undo_clip_state_clear(&cmd->data.multi_clip_transform.after[i]);
             }
+            free(cmd->data.multi_clip_transform.created_tracks);
+            cmd->data.multi_clip_transform.created_tracks = NULL;
+            cmd->data.multi_clip_transform.created_count = 0;
             free(cmd->data.multi_clip_transform.before);
             free(cmd->data.multi_clip_transform.after);
             cmd->data.multi_clip_transform.before = NULL;

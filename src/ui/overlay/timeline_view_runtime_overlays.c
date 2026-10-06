@@ -56,11 +56,17 @@ static void timeline_view_draw_audio_recording_status(SDL_Renderer* renderer,
         return;
     }
     const DawAudioRecordingState* recording = &state->audio_recording;
-    if (recording->status != DAW_AUDIO_RECORDING_ACTIVE &&
-        recording->status != DAW_AUDIO_RECORDING_ERROR) {
-        return;
+    char health[256];
+    bool recording_status = recording->status == DAW_AUDIO_RECORDING_ACTIVE ||
+                            recording->status == DAW_AUDIO_RECORDING_ERROR;
+    bool audio_warning = false;
+    health[0] = '\0';
+    if (state->runtime_cfg.enable_timing_logs) {
+        audio_warning = engine_format_diagnostics(state->engine, health, sizeof(health));
     }
-    const char* status = daw_audio_recording_status_message(recording);
+    const char* edit_rejection = undo_manager_rejection_message(&state->undo);
+    if (!recording_status && !audio_warning && !edit_rejection && !state->runtime_cfg.enable_timing_logs) return;
+    const char* status = recording_status ? daw_audio_recording_status_message(recording) : edit_rejection ? edit_rejection : health;
     if (!status || status[0] == '\0') {
         return;
     }
@@ -85,7 +91,7 @@ static void timeline_view_draw_audio_recording_status(SDL_Renderer* renderer,
     SDL_Color fill = theme->header_fill;
     SDL_Color border = theme->playhead;
     SDL_Color text = theme->text;
-    if (recording->status == DAW_AUDIO_RECORDING_ERROR) {
+    if (recording->status == DAW_AUDIO_RECORDING_ERROR || (!recording_status && (audio_warning || edit_rejection))) {
         border = theme->loop_handle_end;
         text = theme->loop_handle_end;
     }
@@ -130,7 +136,7 @@ static void timeline_view_draw_audio_recording_preview(SDL_Renderer* renderer,
     AudioMediaClip take_view = {0};
     bool have_waveform = daw_audio_recording_take_clip_view(recording, &take_view);
     if (have_waveform) {
-        frame_count = take_view.frame_count;
+        frame_count = recording->take_frame_count;
     } else if (playhead_frame > recording->start_frame) {
         frame_count = playhead_frame - recording->start_frame;
     }
@@ -217,14 +223,22 @@ static void timeline_view_draw_audio_recording_preview(SDL_Renderer* renderer,
         }
         if (wave_rect.w > 0 && wave_rect.h > 0) {
             uint64_t view_start_frame = 0;
-            double local_offset_sec = visible_start_sec - start_sec;
+            uint64_t preview_origin = recording->take_frame_count - take_view.frame_count;
+            double preview_start_sec = start_sec + (double)preview_origin / sample_rate;
+            double wave_start_sec = visible_start_sec > preview_start_sec ? visible_start_sec : preview_start_sec;
+            if (wave_start_sec >= visible_end_sec) { ui_set_blend_mode(renderer, SDL_BLENDMODE_NONE); return; }
+            int trim = (int)round((wave_start_sec - visible_start_sec) * pixels_per_second);
+            wave_rect.x += trim;
+            wave_rect.w -= trim;
+            if (wave_rect.w <= 0) { ui_set_blend_mode(renderer, SDL_BLENDMODE_NONE); return; }
+            double local_offset_sec = wave_start_sec - preview_start_sec;
             if (local_offset_sec > 0.0) {
                 view_start_frame = (uint64_t)llround(local_offset_sec * (double)sample_rate);
             }
             if (view_start_frame > take_view.frame_count) {
                 view_start_frame = take_view.frame_count;
             }
-            uint64_t view_frame_count = (uint64_t)llround((visible_end_sec - visible_start_sec) *
+            uint64_t view_frame_count = (uint64_t)llround((visible_end_sec - wave_start_sec) *
                                                           (double)sample_rate);
             if (view_frame_count == 0) {
                 view_frame_count = 1;
@@ -270,11 +284,14 @@ void timeline_view_render_runtime_overlays(SDL_Renderer* renderer,
     }
 
     const Engine* engine = state->engine;
-    uint64_t playhead_frame = engine_get_transport_frame(engine);
+    uint64_t playhead_frame = engine_get_presentation_frame(engine);
     if (state->bounce_active) {
         uint64_t start = state->bounce_start_frame;
         uint64_t end = state->bounce_end_frame > start ? state->bounce_end_frame : start;
-        playhead_frame = start + state->bounce_progress_frames;
+        // Maps both render and write work onto the selected range without finishing the cursor halfway through.
+        uint64_t total = state->bounce_total_frames;
+        uint64_t done = state->bounce_progress_frames < total ? state->bounce_progress_frames : total;
+        playhead_frame = start + (total ? (uint64_t)((long double)(end - start) * done / total) : 0);
         if (playhead_frame > end) {
             playhead_frame = end;
         }

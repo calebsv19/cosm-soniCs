@@ -49,3 +49,22 @@ bool daw_pack_export_from_bounce(const char* pack_path,
                                  uint64_t start_frame,
                                  uint64_t end_frame,
                                  uint64_t project_duration_frames);
+
+// Holds a duration-bounded waveform overview with an explicit source-frame resolution.
+typedef struct DawPackEnvelope {
+    float* mins;
+    float* maxs;
+    uint64_t point_count, received;
+    uint32_t samples_per_pixel;
+    EngineBounceBuffer metadata;
+} DawPackEnvelope;
+// Allocates a waveform overview capped at 65536 points.
+bool daw_pack_envelope_init(DawPackEnvelope* envelope, uint64_t frames, int rate, int channels);
+// Consumes contiguous normalized export chunks without allocating.
+void daw_pack_envelope_append(DawPackEnvelope* envelope, const float* samples, uint64_t first,
+                               uint32_t frames, int channels);
+// Writes a fully accumulated envelope and authored project metadata.
+bool daw_pack_export_envelope(const char* path, const struct AppState* state, const DawPackEnvelope* envelope,
+                               uint64_t start, uint64_t end, uint64_t duration);
+// Frees the overview after export or cancellation.
+void daw_pack_envelope_free(DawPackEnvelope* envelope);

@@ -132,3 +132,25 @@ size_t ringbuf_read(RingBuffer* rb, void* dst, size_t bytes) {
     atomic_store_explicit(&rb->tail, tail + bytes, memory_order_release);
     return bytes;
 }
+
+// Publishes a whole packet only after enough space is available to its single producer.
+bool ringbuf_write_exact(RingBuffer* rb, const void* src, size_t bytes) {
+    if (!rb || !rb->data || !src || bytes == 0 || bytes > ringbuf_available_write(rb)) {
+        return false;
+    }
+    size_t head = atomic_load_explicit(&rb->head, memory_order_relaxed);
+    ringbuf_copy_in(rb, (const uint8_t*)src, bytes, head);
+    atomic_store_explicit(&rb->head, head + bytes, memory_order_release);
+    return true;
+}
+
+// Consumes a whole packet only after the producer has published every byte.
+bool ringbuf_read_exact(RingBuffer* rb, void* dst, size_t bytes) {
+    if (!rb || !rb->data || !dst || bytes == 0 || bytes > ringbuf_available_read(rb)) {
+        return false;
+    }
+    size_t tail = atomic_load_explicit(&rb->tail, memory_order_relaxed);
+    ringbuf_copy_out(rb, (uint8_t*)dst, bytes, tail);
+    atomic_store_explicit(&rb->tail, tail + bytes, memory_order_release);
+    return true;
+}

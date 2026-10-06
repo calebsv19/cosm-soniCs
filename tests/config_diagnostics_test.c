@@ -38,6 +38,7 @@ static void write_config_file(const char* path) {
     assert(file);
     fputs("sample_rate=0\n", file);
     fputs("block_size=256\n", file);
+    fputs("output_queue_blocks=8\noutput_queue_blocks=1\noutput_queue_blocks=33\noutput_queue_blocks=4oops\n", file);
     fputs("fade_default_in_ms=-5\n", file);
     fputs("fade_default_out_ms=abc\n", file);
     fputs("fade_presets_ms=1, -2, nope\n", file);
@@ -66,6 +67,8 @@ static void test_config_diagnostics(void) {
 
     assert(cfg.sample_rate == 48000);
     assert(cfg.block_size == 256);
+    assert(cfg.output_queue_blocks == 8);
+    assert(logs_contain(&logs, "expected integer 2..32"));
     assert(cfg.default_fade_in_ms == 0.0f);
     assert(cfg.default_fade_out_ms == 0.0f);
     assert(cfg.fade_preset_count == 2);

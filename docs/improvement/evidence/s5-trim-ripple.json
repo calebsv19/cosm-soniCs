@@ -1,0 +1,57 @@
+{
+  "status": "reachable_trim_and_mixed_ripple_software_verified_S5_active",
+  "coverage": [
+    "real press handler preserves trim fade and ripple gesture map",
+    "downstream MIDI included in stable ripple targets and history",
+    "mixed ripple movement rejection undo and redo",
+    "atomic audio left trim publication rejection and sorted selection identity",
+    "focused normal and ASan checks",
+    "stable legacy regression and default build"
+  ],
+  "scope_correction": "No reachable ripple-trim gesture existed; dead incremental paths removed without adding a gesture",
+  "limits": [
+    "native interaction acceptance pending",
+    "compound duplicate delete other trim entry points and history identities remain"
+  ],
+  "logs": [
+    {
+      "path": "/tmp/daw-s5-trim-tests.log",
+      "exit_code": 2,
+      "sha256": "92eb5fbf4613dc666a47c004a3a648042fce0a956c6ab6fb598a9e7db96d95a9"
+    },
+    {
+      "path": "/tmp/daw-s5-trim-tests-retest.log",
+      "exit_code": 0,
+      "sha256": "977b29b2b763283ea9f90a2688a06f04f582a24ee7222b90c1f2092f50839cb9"
+    },
+    {
+      "path": "/tmp/daw-s5-trim-asan.log",
+      "exit_code": 0,
+      "sha256": "5cf9eaf5b6bbebab71c3d048ff4d88eb4bce4c07d13d749a29864da7ec6ca2b3"
+    },
+    {
+      "path": "/tmp/daw-s5-trim-regression.log",
+      "exit_code": 0,
+      "sha256": "06708b5eb63866ed0426aeb11f8aa39904049f6bd4366c556d36e20eb45303eb"
+    },
+    {
+      "path": "/tmp/daw-s5-trim-final-make.log",
+      "exit_code": 0,
+      "sha256": "0afbabb0d21aebd21072bcafae2407c74a469ea5acbd00f313a08cf2e3c8acc7"
+    },
+    {
+      "path": "/tmp/daw-s5-trim-docs.log",
+      "exit_code": 0,
+      "sha256": "2b018412b392583ce0e38e44cbca6f4a0d0e53db063174feaf5903a176934c05"
+    }
+  ],
+  "source_sha256": {
+    "include/app_state.h": "bc73b4d4cbaa0c0c86d840656dcb3b53d1a0825bfb2698b5119483bfe5dea3f4",
+    "include/input/timeline_drag.h": "f95e852cba2b6f9d6e54921870e594312cd4cefc84e04cbe1539188521c6b5f9",
+    "src/input/timeline/timeline_drag.c": "53173746f2ca4383d1830c0f7f2ee1533f84b0d9b4c20aaa83aad314cae65bf8",
+    "src/input/timeline/timeline_input_mouse_clip_press.c": "6420a9bfe78c4bf40ec47ffcd2a3ca35c3d3815aa81e3f3a712d36349412d93d",
+    "src/input/timeline/timeline_input_mouse_drag.c": "f618d9c8c6b5f8f671eb9aebf34af25c62df1d4f173c50737c44eef95e909d3a",
+    "tests/engine_parameter_transaction_test.c": "3edae98749ba1f6df0963b763b9e30c4605a2e8733ffd8a1986e4742e421639d",
+    "tests/timeline_midi_region_test.c": "577647951e8d35ba542625d62b5764795de67eadab07133ff1ff56e635216f39"
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "created_utc": "2026-09-23T04:06:49.611823+00:00",
+  "status": "recovery_checkpoint_passed_S5_incomplete",
+  "checkout": "/Users/calebsv/Desktop/CodeWork/daw",
+  "source_and_artifact_sha256": {
+    "include/engine/engine.h": "44da47f57c03499cb6131e0d17b6f5c47a78ee246f91176eeff23f7e1499a331",
+    "include/engine/engine_internal.h": "388e06b6ff7b689cbe5fbe92cc6f6b65a112fef519ce99d343d650ae598939ce",
+    "include/effects/effects_manager.h": "a0f69e112f8a6d60478621b1ba02501c64544c042bd97579cb853c394bb01edd",
+    "include/undo/undo_manager.h": "c309d0e0285831be019984987c50ea07eca56fe5df685d041812933e1c4f2e84",
+    "src/engine/engine_clip_history.c": "c19394924993ea4d63161e47aa1fb31afb3a7a586daab62fd73aca6e164b69c4",
+    "src/engine/engine_tracks.c": "1159301085bca9a7d686601896578cb9f36abaf7c20944609b5a4e33c2148dcb",
+    "src/engine/engine_fx.c": "fe0d02194d28f6cfbc48a21a1ce0e2bbf0a687cc4b95b6fd336c7b041c70bde2",
+    "src/effects/effects_manager.c": "c9197fcfde6909a2cda63df3d61d993c257bc5089ffec747dbfae9423a2bb5cb",
+    "src/undo/undo_manager.c": "7fdcb9c63c9cde9af3ac18203b9c030734f6ceaaa3addc416aa5b8ede2e39c4e",
+    "src/input/effects_panel_input.c": "75a8474f81a7d13013ae813496d53bf3711cc71450d4eac0ac8c1172b89d9195",
+    "src/input/effects_panel_input_helpers.c": "95d33f5124a09a8fb6c3fd14c90599b4f7f3281eb8044e16e614df7439be6ea1",
+    "src/input/effects_panel_eq_detail_input.c": "c9e584a2adf144a53bec2828337eddd11e0c4726918aef9e8010527da66c5c0b",
+    "src/input/effects_panel_track_snapshot.c": "b214ec8877045fd0c424dd8b6b44fc60a182747b31a58409eac3910ad4de9b55",
+    "src/input/timeline/timeline_input_mouse_click.c": "4d31c336bd0cabb600b748985c8539b7eab3a7019a5ec51e20c68ec973c54ec2",
+    "src/ui/effects_panel/sync.c": "730ed0f3675f244c152d0579f886d924d52c30e3477cc7ae2eac40eb02569216",
+    "src/ui/overlay/timeline_view_runtime_overlays.c": "ba9130f1481c249699c0e49c1f5dfbcd51979e4d30d632ada8e99473c1074563",
+    "tests/engine_parameter_transaction_test.c": "7123fb7e1667f0cdab0f8a0328fd730c8799538e9537392f73162e9281633817",
+    "docs/improvement/S5-IMPLEMENTATION.md": "21f9133a4bd7af622c54aef3493117bbf08db681746dcbb49272ceaa280ad79e",
+    "src/undo/README.md": "97f80e91a3e400e1315bb10fa8f46b6f6a7d1c05da8c37dd34dd5c5e29823dc2",
+    "src/engine/README.md": "45e829d66e554b531af5b6d500790378db55ad5fdad824e3ae011bac7a877b03",
+    "src/input/README.md": "1bb7eb247f9276ebc0dae77cef8591a280e7ba2c6e396e4620cba7debf7b8b32",
+    "build/targets/macOS-arm64/toolchains/clang/bin/daw_app": "d3fdb32b58cffcbc097f190812eb2db1e79a91d071be809a42ad7888424db24f"
+  },
+  "validation": [
+    {
+      "log": "/tmp/daw-recovery2-focused-final.log",
+      "exit_code": 0,
+      "sha256": "962b7c1f94b4c2f08fc44a63fdc35584f3758a0b3f7b90945d83e1ede1471882"
+    },
+    {
+      "log": "/tmp/daw-recovery2-asan.log",
+      "exit_code": 0,
+      "sha256": "6e899155a53258b85ef6b3fd9bd1f6ed7a19cec4471269f62678820ab263f0cb"
+    },
+    {
+      "log": "/tmp/daw-recovery2-regression.log",
+      "exit_code": 0,
+      "sha256": "f9d74e7b76c5304fcbc460c65da06e5f7913186876a1716082e2fd9924e29069"
+    },
+    {
+      "log": "/tmp/daw-recovery2-make.log",
+      "exit_code": 0,
+      "sha256": "0afbabb0d21aebd21072bcafae2407c74a469ea5acbd00f313a08cf2e3c8acc7"
+    }
+  ],
+  "preserved_failed_logs": [
+    "/tmp/daw-recovery-actions-final.log",
+    "/tmp/daw-selection-recovery-tests.log"
+  ],
+  "native": {
+    "launch_and_render": "observed",
+    "audio_driver": "dummy",
+    "interaction": "unverified: windowNotFoundAtPosition, then native pipe closed",
+    "owned_process": "stopped with SIGINT, exit 0"
+  },
+  "commit_or_release": false
+}

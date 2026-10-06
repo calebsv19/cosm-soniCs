@@ -33,7 +33,7 @@ Purpose: Translate SDL events and pointer state into engine/UI actions.
 - `midi_instrument_panel_input.c`
   - Captures the selected MIDI region's instrument subview input, including return-to-notes routing, preset menu selection, parameter group tab selection, and per-region grouped knob drags by stable instrument parameter ID without mutating MIDI notes.
 - `timeline/`
-  - Timeline drag helpers keep MIDI right-edge resizing bounded by existing note content and leave left-edge MIDI trim deferred until offset semantics are explicit.
+  - Timeline drag helpers keep MIDI right-edge resizing bounded by existing note content. MIDI left-edge trim shifts/clips notes relative to the new region start; both current-state and gesture-baseline helpers publish notes, duration and position atomically.
 - `transport_input.c`
   - `transport_input_init`: Clear slider drag flags.
   - `transport_input_handle_event`: Handle clicks that toggle grid mode or begin slider drags.
@@ -41,3 +41,28 @@ Purpose: Translate SDL events and pointer state into engine/UI actions.
 
 ## Subdirectories
 - `timeline/`: Timeline-specific input helpers (selection, drag operations, MIDI region creation/resizing, and the main event/update loop).
+
+Play/Stop and Space transport changes dispatch on SDL events so quick presses survive between frames. Save/load modals consume their complete event stream to prevent global recording or transport shortcuts from leaking through text entry. Other gesture polling remains subject to the S5 interaction audit.
+
+S5 compound movement/slip previews share `timeline_apply_compound_preview`: derive absolute target states from complete initial history, publish once, then resolve selection/inspector indices by clip identity. Cross-track placement now shares the batch path; integrated overlap and generated-track history now use retained content; other compound edit entry points remain migration work; see the S5 ledger.
+
+Single/multi slide drops, including compound drops that append tracks, use retained content history and one placement/overlap publication. Only actual slide gestures trigger the destructive overlap pass; click-only selection and slip/ripple release do not. Native gesture acceptance remains open.
+
+Ripple movement captures downstream audio and MIDI by stable clip identity. Audio left trim publishes region bounds and timeline position together and restores selection by identity after sorting. The current gesture map has ordinary edge trim, Alt audio-edge fade and Alt body ripple movement; it has no ripple-trim gesture. Unreachable incremental ripple trim/move code has been removed.
+
+Single-clip slide and MIDI left-trim sorting remap the entire selection and primary index, including crossed neighbors. Compound reorders use their separate stable-identity reconciliation path.
+
+Inspector numeric clip bounds/position edits reserve history before applying, retain typed input on rejection, and refresh the correct clip after sorting. Finite frame conversion is checked before integer casts; source-bound clamping retains existing engine semantics. Playback rate remains inspector-local rather than an implemented engine rate control.
+
+Inspector rename reserves history before changing audio/MIDI names and resolves undo/redo by clip creation identity across sorting and track moves. Inspector mouse-up only finalizes history when its own gain/fade drag was active; unrelated timeline history is left for its owner.
+
+Inspector gain/fade drags and fade-curve commands require a complete reserved history entry before editing. Fade history includes MIDI notes/instrument state and stable track identity. Release records scalar readback in the existing after-state without another allocation; no-op or rejected commands discard only their reservation.
+
+Timeline Ctrl/Cmd-D and selection delete now use complete retained-content actions across audio/MIDI with one pre-reserved undo entry. Failure preserves selection and redo. The shortcut reads event-local modifiers. Undo/redo restores explicit original/copy/deleted selection identities and aligns primary selection with the inspector. Clipboard paste now uses the complete insertion transaction; other history families remain follow-ups.
+
+Clipboard copy replaces the prior clipboard only after the complete selection is prepared; rejected copy preserves the last usable contents. Paste stops on rejected/no-progress destination-track creation. Paste now reserves one history entry and publishes complete inserted clips/properties and required tracks together. Generated-track undo guards preserve later authored edits; timing and destination policy are unchanged.
+
+Effects slider, track gain/pan and EQ gesture startup now require a successful undo reservation. Effects gestures retain a reservation serial, so stale motion/release cannot take ownership of a newer command. EQ toggles/reset also reserve before editing; pending curve publication precedes release history capture, and rejection restores the last accepted preview. Numeric inspector and rename buffers record their starting clip identity and retain text without mutation when the current target differs. Effects target binding, discrete mixer actions and history rejection feedback are extended by the recovery continuation below; native acceptance remains open.
+
+
+Recovery continuation binds active effects gestures and mixer/EQ/FX history to the original track runtime identity. Discrete effect add/remove, bypass, reorder, parameter/mode edits, mute/solo and instrument preset selection reserve history before mutation. Native pointer/keyboard acceptance remains unverified; see S5 implementation section 24.

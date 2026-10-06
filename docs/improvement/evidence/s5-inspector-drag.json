@@ -1,0 +1,15 @@
+{
+  "status": "reserved_scalar_history_software_verified",
+  "checks": "corrected focused normal and ASan engine/input/MIDI; default make and diff check passed",
+  "initial_failure": "/tmp/daw-s5-inspector-drag-tests.log (fixture lacked selection)",
+  "native_acceptance": false,
+  "sha256": {
+    "src/input/inspector_input.c": "6542626a7a719e0be7ed0ee666b7bcb579c8af1a27782b66ef9f75acb2b7c279",
+    "src/input/inspector_fade_input.c": "5d403e615f6cf9837404de140d0f954565673a4681db69a0f9f1c4d3e31100d4",
+    "include/input/inspector_input.h": "a3137584974dd47378b418790c66eb1000275285b9fbffccec3c55251e3165dc",
+    "tests/engine_parameter_transaction_test.c": "75b0359c06d6e303e9908ce42ff713e1c77bfc59f55f84ad3a6cb4d66d000b62",
+    "/tmp/daw-s5-inspector-drag-retest.log": "be81ecc823e190df33d6b1aef1a48b5c1a1bd1475bcce865c9a3d99440212c8f",
+    "/tmp/daw-s5-inspector-drag-asan.log": "02755c2dc40c02cae54075e680f87a166f3eb6929ba21a43eaf819eb4b22b315",
+    "/tmp/daw-s5-inspector-drag-final-make.log": "0afbabb0d21aebd21072bcafae2407c74a469ea5acbd00f313a08cf2e3c8acc7"
+  }
+}

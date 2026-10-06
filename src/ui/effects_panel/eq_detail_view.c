@@ -408,27 +408,9 @@ static int update_spectrum_smooth(EffectsPanelEqDetailState* eq_state,
     if (!eq_state || !bins) {
         return 0;
     }
-    if (count <= 0) {
-        if (!eq_state->spectrum_ready) {
-            return 0;
-        }
-        return ENGINE_SPECTRUM_BINS;
-    }
-    if (!eq_state->spectrum_ready) {
-        for (int i = 0; i < count; ++i) {
-            eq_state->spectrum_smooth[i] = bins[i];
-        }
-        eq_state->spectrum_ready = true;
-        return count;
-    }
-    const float alpha_up = 0.45f;
-    const float alpha_down = 0.08f;
-    for (int i = 0; i < count; ++i) {
-        float current = bins[i];
-        float prev = eq_state->spectrum_smooth[i];
-        float alpha = current > prev ? alpha_up : alpha_down;
-        eq_state->spectrum_smooth[i] = prev + alpha * (current - prev);
-    }
+    if (count <= 0) { eq_state->spectrum_ready = false; return 0; }
+    for (int i = 0; i < count; ++i) eq_state->spectrum_smooth[i] = bins[i];
+    eq_state->spectrum_ready = true;
     return count;
 }
 
@@ -440,13 +422,7 @@ static void compute_spectrum_display(const EffectsPanelEqDetailState* eq_state,
     for (int i = 0; i < count; ++i) {
         float db = eq_state->spectrum_smooth[i];
         db = clampf(db, floor_db, ceil_db);
-        float t;
-        if (db <= 0.0f) {
-            t = (db - floor_db) / (0.0f - floor_db);
-        } else {
-            t = 1.0f + (db / ceil_db) * 0.25f;
-        }
-        spectrum_out[i] = clampf(t, 0.0f, 1.0f);
+        spectrum_out[i] = (db - floor_db) / (ceil_db - floor_db);
     }
 }
 
@@ -649,13 +625,18 @@ void effects_panel_eq_detail_render(SDL_Renderer* renderer,
     float bins[ENGINE_SPECTRUM_BINS];
     int count = fetch_spectrum_bins(state, use_track, track_index, bins, ENGINE_SPECTRUM_BINS);
     count = update_spectrum_smooth(eq_state, bins, count);
-    if (count <= 0) {
-        return;
-    }
-
     float spectrum_norm[ENGINE_SPECTRUM_BINS];
     compute_spectrum_display(eq_state, count, spectrum_norm);
-    draw_spectrum_line(renderer, &graph, spectrum_norm, count, theme.spectrum);
+    SDL_Rect spectrum_graph = graph;
+    const EngineRuntimeConfig* config = engine_get_config(state->engine);
+    float high_hz = fminf(ENGINE_SPECTRUM_MAX_HZ, (config ? config->sample_rate : 48000) * .5f);
+    spectrum_graph.w = (int)lroundf(graph.w * logf(high_hz / ENGINE_SPECTRUM_MIN_HZ) /
+                                  logf(ENGINE_SPECTRUM_MAX_HZ / ENGINE_SPECTRUM_MIN_HZ));
+    draw_spectrum_line(renderer, &spectrum_graph, spectrum_norm, count, theme.spectrum);
+    char meaning[192];
+    snprintf(meaning, sizeof(meaning), "Mid | %s | flat %.0f..%+.0f dBFS | 2048 samples",
+             use_track ? "post EQ / pre pan" : "post master FX", ENGINE_SPECTRUM_DB_FLOOR, ENGINE_SPECTRUM_DB_CEIL);
+    ui_draw_text_clipped(renderer, graph.x + 4, graph.y + 3, meaning, theme.text_dim, 1.0f, graph.w - 8);
 
     float curve_db[EQ_DETAIL_CURVE_SAMPLES];
     compute_eq_curve(curve, &graph, curve_db);

@@ -1,0 +1,136 @@
+{
+  "schema": 1,
+  "slice": "S3.2 existing spectrum and spectrogram calibration",
+  "recorded_at": "2026-09-20T01:24:12.808329+00:00",
+  "head": "d8bff97cccab2054f18ccc874838162d0423e539",
+  "state": "Local uncommitted changes; earlier S1/S2/S3.1 work preserved",
+  "runs": [
+    {
+      "command": "make test-stable test-legacy",
+      "exit_code": 0,
+      "log": "/tmp/daw-s32-regression.log",
+      "sha256": "04675cd639d4315cb61628db24b284adff9e50b3c9d3bb50a6591451307f4196",
+      "selected_output": [
+        "analysis_calibration_test: success (tones, endpoints, power mean, real workers, gaps, epochs, mid, insert metadata)",
+        "fade_processing_test: success (four curves, render/clone/block/export/preview parity, capture, zero/short bounds)",
+        "media_durability_test: success (5 prepublication failures, directory uncertainty, RIFF limits, torn journal recovery)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "session_transaction_test: success (11 capture and 5 restore allocation boundaries, live capture, rollback, complete retry)",
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)",
+        "engine_parameter_transaction_test: success",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)",
+        "daw_pack_contract_parity_test: success",
+        "daw_trace_export_contract_test: success",
+        "daw_trace_export_async_contract_test: success",
+        "kit_viz_waveform_adapter_test: success",
+        "kit_viz_fx_preview_adapter_test: success",
+        "kit_viz_meter_adapter_test: ok",
+        "waveform_cache_pack_warmstart_test: success",
+        "layout_text_scaling_sweep_test: success",
+        "timeline_contract_test: success",
+        "midi_model_test: success",
+        "midi_instrument_render_test: success",
+        "timeline_midi_region_test: ok",
+        "midi_editor_shell_test: success",
+        "audio_capture_device_test: success",
+        "audio_output_device_test: success",
+        "effects_revision_test: success",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)",
+        "audio_recording_test: success",
+        "track_role_test: success",
+        "daw_data_path_contract_test: success",
+        "daw_workspace_authoring_host_test: ok",
+        "test-library-copy-vs-reference-contract: success",
+        "daw stable test lane passed",
+        "2026-09-19 18:11:31.747 session_serialization_test[44009:188992580] INFO: session_serialization_test: success (6898 bytes)",
+        "media_cache_stress_test: success (entries=0)",
+        "clip_overlap_priority_test: success (clips=3)",
+        "engine_smoke_test: success",
+        "shared_theme_font_adapter_test: success"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-analysis-calibration test-engine-analysis-lifecycle",
+      "exit_code": 0,
+      "log": "/tmp/daw-s32-asan-final.log",
+      "sha256": "8a9217f9d54d5a0d3c0b53ab843b8959af566356d42705b3ec5682e5b735df25",
+      "selected_output": [
+        "analysis_calibration_test: success (tones, endpoints, power mean, real workers, gaps, epochs, mid, insert metadata)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-tsan.mk test-analysis-calibration test-engine-analysis-lifecycle",
+      "exit_code": 0,
+      "log": "/tmp/daw-s32-tsan-final.log",
+      "sha256": "8b978b4f82e19d5be4b370f8f04a606a4c07a78acffd3ee3d03844034352f4a3",
+      "selected_output": [
+        "analysis_calibration_test: success (tones, endpoints, power mean, real workers, gaps, epochs, mid, insert metadata)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)"
+      ]
+    },
+    {
+      "command": "make test-analysis-calibration test-engine-analysis-lifecycle test-engine-transport-clock test-kitviz-meter-adapter",
+      "exit_code": 0,
+      "log": "/tmp/daw-s32-final-integration.log",
+      "sha256": "b660680548162ca998cb538fd9488c94d1ce9a0f0b405d2643b50172e60cf11a",
+      "selected_output": [
+        "analysis_calibration_test: success (tones, endpoints, power mean, real workers, gaps, epochs, mid, insert metadata)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "kit_viz_meter_adapter_test: ok"
+      ]
+    },
+    {
+      "command": "make",
+      "exit_code": 0,
+      "log": "/tmp/daw-s32-build.log",
+      "sha256": "b51cdb4c9aacfbdcc9676554c1ed39fd0fa16e825dd92a990dbd0ce5825c73e0",
+      "selected_output": []
+    }
+  ],
+  "source_sha256": {
+    "include/engine/analysis_math.h": "22478b37c3e2882edcb35637fade7873e7084aac94842d88ed17d32b24a4972e",
+    "include/engine/engine.h": "addb52db84e46ff531224e34c704a7d50bc1948b80a473b666b56d732eefc3aa",
+    "include/engine/engine_internal.h": "f893962d2ce3f7d18011b7a45a44500e8130fee0e172064eeedbfccc117fe3b0",
+    "src/engine/engine_analysis_queue.c": "4f7a6c117837ba8b0a073b1ea44ff16ac775b73f64576fe34225f4fa5eb5a0dc",
+    "src/engine/engine_spectrum.c": "dc416f74879f128789f6c17d64e369319fa9f3f67063d2660558621cf4f84010",
+    "src/engine/engine_spectrogram.c": "f599534a965b41622bfbeb0d99c729f2c51ef8be1389e2012f92ce76561b93b5",
+    "src/ui/effects_panel/eq_detail_view.c": "d70d52022e422d3fb8f1cc7379ef8b320f89a7413fb2eb6974dd641e07523d55",
+    "src/ui/effects_panel/meter_detail_spectrogram.c": "b298631e5cb69bdb2119e6e4dc1da9f90f58785e3a09066e108028f23c0b54d5",
+    "src/ui/kit_viz_meter_adapter.c": "68b50008343e34c7f05f78c5488453e6162594fff66ba3999cbe264c25efd3c6",
+    "tests/analysis_calibration_test.c": "fc9988cd0afcf9ee5c446cbe01b4a469fe2f7daafa95430f5a9d20f310803267",
+    "tests/engine_analysis_lifecycle_test.c": "6989bc20d44f88e1a10f7d73f1f785d603ff850fa16502da46453f4b456b5eae",
+    "tests/kit_viz_meter_adapter_test.c": "ba1706f97d687c92a4f06a37e847b21ce29e61a0686c276056840b7c25972c4a",
+    "make/rules-test-core.mk": "3952cb8951ad8eddfaf8b2a1b6b7d09ef12a4c2b86cc10eff06f5b6b90ba725b",
+    "make/sources-tests.mk": "ebeec6c93a471e953c3df495d0b3dcf6e28e574f097b26a13ea6245dcde5e413"
+  },
+  "s33_entry_audit": {
+    "status": "Measurement and entry audit only; no production limiter changes",
+    "command": "cc -std=c11 -Wall -Wextra -Wpedantic -Iinclude docs/improvement/probes/limiter_latency_probe.c src/effects/dynamics/fx_limiter.c -lm -o /tmp/daw-s33-limiter-probe && /tmp/daw-s33-limiter-probe",
+    "exit_code": 0,
+    "log": "/tmp/daw-s33-limiter-probe.log",
+    "sha256": "87d8c0b16c4fe603800dad3e7b4f2e31de12577bc9eb0959cb60fe332fa24267",
+    "output": [
+      "lookahead_ms=0 requested_frames=0 observed_delay=0 descriptor_latency=0",
+      "lookahead_ms=1 requested_frames=48 observed_delay=1 descriptor_latency=0",
+      "lookahead_ms=3 requested_frames=144 observed_delay=1 descriptor_latency=0"
+    ],
+    "source_sha256": {
+      "docs/improvement/probes/limiter_latency_probe.c": "e78bdadd0f78ac0ac5e58090cf366ad70fd2a13bf05d75c814bd0714be822709",
+      "src/effects/dynamics/fx_limiter.c": "39b2e6dce294dc1a75a35a9d4a276d750c1e025c49861ba94854b47352288ca1",
+      "include/effects/effects_api.h": "f5821e08a6cbc057e7f63f4f13db1151e4efaf48b108dea2823c755c1b66c9f4"
+    }
+  },
+  "limits": [
+    "Flat Hann-windowed tonal peak amplitude dBFS; not noise density, integrated band power, LUFS, or true peak.",
+    "Existing mono or stereo-mid channel reduction and signal taps retained; no audio processing or new channel controls.",
+    "Full stable/legacy regression preceded the final bypass/resume continuity fix and additional packet stamp assertions; final focused normal, ASan, and TSan runs cover those changes.",
+    "Software sample, worker, transport, and adapter proof only; no manual visual/listening acceptance or physical audio-device calibration.",
+    "Spectrogram age is relative to the latest captured window, not wall-clock freshness. Finite-window leakage and off-grid resolution limits remain.",
+    "S3.3 limiter timing, render-time allocation, dynamic latency reporting, and engine alignment remain implementation work.",
+    "No commit, install, or release."
+  ]
+}

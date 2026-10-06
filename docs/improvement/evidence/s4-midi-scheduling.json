@@ -1,0 +1,142 @@
+{
+  "slice": "S4.3",
+  "status": "complete_at_software_boundary",
+  "recorded_utc": "2026-09-21T19:37:52.759528+00:00",
+  "checks": [
+    {
+      "command": "make test-midi-scheduling test-instrument-lifecycle test-midi-instrument-render test-export-render",
+      "exit_code": 0,
+      "log": "/tmp/daw-s43-focused.log",
+      "sha256": "6127a882a6b02cebdaeaa6b33438281260b3cf3265f28e934717b1c9e0e0e455",
+      "highlights": [
+        "midi_scheduling_test: success (all presets, exact prior-scan parity, automation/release growth, seeks, export, formats, wrap, reserve failure, zero render heap calls)",
+        "instrument_lifecycle_test: success (gate/release, early-off, partitions, alias reduction, automation, bounded voices, retirement, panic, zero guarded heap calls)",
+        "midi_instrument_render_test: success",
+        "export_render_test: 54 instrumented allocation failure boundaries passed",
+        "export_render_test: success (repeatability, ranges, preroll, release/FX tails, PDC, snapshot/live isolation, failures, normalization, deterministic WAV)"
+      ]
+    },
+    {
+      "command": "make test-stable test-legacy",
+      "exit_code": 0,
+      "log": "/tmp/daw-s43-regression.log",
+      "sha256": "e27d938f2c16b3f76b268a6306c1654a3cf1684aa099bff04497c625ad520f24",
+      "highlights": [
+        "midi_scheduling_test: success (all presets, exact prior-scan parity, automation/release growth, seeks, export, formats, wrap, reserve failure, zero render heap calls)",
+        "region_scheduling_test: success (bounds, overlap/order, track lookup, ramps, seeks, resets, wrap, rollback, zero render heap calls)",
+        "export_render_test: 54 instrumented allocation failure boundaries passed",
+        "export_render_test: success (repeatability, ranges, preroll, release/FX tails, PDC, snapshot/live isolation, failures, normalization, deterministic WAV)",
+        "control_transitions_test: success (Gain ramps, partitions, retarget, reset, zero endpoint, revision handoff, bypass, mixer gain/pan/mute/solo)",
+        "media_conversion_test: success (PCM8/16/24/32, float, extensible, malformed input, rate pairs, filtering, allocation failures)",
+        "instrument_lifecycle_test: success (gate/release, early-off, partitions, alias reduction, automation, bounded voices, retirement, panic, zero guarded heap calls)",
+        "dynamics_processing_test: success (delay, ceiling, linking, release, knee, detectors, makeup, alignment, revisions, mixer, bounce, live edits, preparation failures, zero render heap calls)",
+        "analysis_calibration_test: success (tones, endpoints, power mean, real workers, gaps, epochs, mid, insert metadata)",
+        "fade_processing_test: success (four curves, render/clone/block/export/preview parity, capture, zero/short bounds)",
+        "media_durability_test: success (5 prepublication failures, directory uncertainty, RIFF limits, torn journal recovery)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 100 live sequences)",
+        "session_transaction_test: success (11 capture and 5 restore allocation boundaries, live capture, rollback, complete retry)",
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)",
+        "engine_parameter_transaction_test: success",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)",
+        "daw_pack_contract_parity_test: success",
+        "daw_trace_export_contract_test: success",
+        "daw_trace_export_async_contract_test: success",
+        "kit_viz_waveform_adapter_test: success",
+        "kit_viz_fx_preview_adapter_test: success",
+        "waveform_cache_pack_warmstart_test: success",
+        "layout_text_scaling_sweep_test: success",
+        "timeline_contract_test: success",
+        "midi_model_test: success",
+        "midi_instrument_render_test: success",
+        "midi_editor_shell_test: success",
+        "audio_capture_device_test: success",
+        "audio_output_device_test: success",
+        "effects_revision_test: success",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)",
+        "audio_recording_test: success",
+        "track_role_test: success",
+        "daw_data_path_contract_test: success",
+        "test-library-copy-vs-reference-contract: success",
+        "daw stable test lane passed",
+        "2026-09-21 12:26:27.168 session_serialization_test[60617:204366315] INFO: session_serialization_test: success (6898 bytes)",
+        "media_cache_stress_test: success (entries=0)",
+        "clip_overlap_priority_test: success (clips=3)",
+        "engine_smoke_test: success",
+        "shared_theme_font_adapter_test: success"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-midi-scheduling test-instrument-lifecycle test-export-render",
+      "exit_code": 0,
+      "log": "/tmp/daw-s43-asan.log",
+      "sha256": "1adb8212940aff34de3d3a09e69426e0b4a71b28ad622fb2506db40e04c10d31",
+      "highlights": [
+        "midi_scheduling_test: success (all presets, exact prior-scan parity, automation/release growth, seeks, export, formats, wrap, reserve failure, zero render heap calls)",
+        "instrument_lifecycle_test: success (gate/release, early-off, partitions, alias reduction, automation, bounded voices, retirement, panic, zero guarded heap calls)",
+        "export_render_test: 54 instrumented allocation failure boundaries passed",
+        "export_render_test: success (repeatability, ranges, preroll, release/FX tails, PDC, snapshot/live isolation, failures, normalization, deterministic WAV)"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-tsan.mk test-midi-scheduling test-instrument-lifecycle test-engine-source-lifetime",
+      "exit_code": 0,
+      "log": "/tmp/daw-s43-tsan.log",
+      "sha256": "684bbaa63108842ff1c249cc514f76677c02ffe47ae982cd7773adcc49eb606b",
+      "highlights": [
+        "midi_scheduling_test: success (all presets, exact prior-scan parity, automation/release growth, seeks, export, formats, wrap, reserve failure, zero render heap calls)",
+        "instrument_lifecycle_test: success (gate/release, early-off, partitions, alias reduction, automation, bounded voices, retirement, panic, zero guarded heap calls)",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)"
+      ]
+    },
+    {
+      "command": "make -f make/performance.mk performance-build",
+      "exit_code": 0,
+      "log": "/tmp/daw-s43-perf-build.log",
+      "sha256": "684c3b991f91b637999acdc41d4363bc846e34e2498e9609a9b5a5d52f4dc3c7",
+      "highlights": []
+    },
+    {
+      "command": "python3 tests/performance/run_workloads.py --binary build/performance/O2/targets/macOS-arm64/tests/runtime_workload_bench --output /tmp/daw-s43-perf --group scheduling --repeats 3",
+      "exit_code": 0,
+      "log": "/tmp/daw-s43-perf.log",
+      "sha256": "bd21f9acbf86f987e2906f84a6c017591d80d5aa90ee55623a01ee1b47206048",
+      "highlights": [
+        "completed=33 failures=0 output=/private/tmp/daw-s43-perf"
+      ]
+    },
+    {
+      "command": "make (combined S4.3/S4.4a checkpoint)",
+      "exit_code": 0,
+      "log": "/tmp/daw-s44-build.log",
+      "sha256": "b7abb8da9e64c406302cda20104a33766735b54470e0e586a48dbf39a52f14db",
+      "highlights": []
+    }
+  ],
+  "source_sha256": {
+    "src/engine/instrument_osc.c": "eafe73f549d2a462686521c1ab0b4162388d160079cc1d0e972f4353de92771e",
+    "src/engine/graph.c": "c9cabfeba58a875220501230a1b7cbb93bdb5c49cda34361bc8fd8e3e072d470",
+    "src/engine/engine_source_plan.c": "e7dabd574d096ef7ec2b1eab52f9cb114cafec3f5a33ff11fd83e17540871954",
+    "tests/midi_scheduling_test.c": "c8a4484efae21f6594dc6d2674085e3172171bc294437d20b21967c24ec934d6",
+    "tests/fixtures/instrument_unscheduled_reference.inc": "6e40d2c257c5fbc1b4172e93375c78e621c5826e7fd3bf7dbe5581acdad34c75",
+    "make/rules-test-core.mk": "a909a436557faf206325dae900deb3cbb83e0eb94374dd5d8154db97d687e2e2",
+    "make/sources-tests.mk": "f50c506c84aa3228e255b30155b466f052f6e98ef4ebe7315646e4295dfd381a",
+    "tests/performance/run_workloads.py": "c0fedd0174a9e716bf5e9c52159b48e5ab7235e28e910667b9b5de9ca63f5cfd",
+    "tests/performance/runtime_workload_bench.c": "a2cace8348be469f4773ecb7e0e940f00de83f4428241afb9bf6939a6341e76a"
+  },
+  "artifacts": {
+    "docs/improvement/evidence/s4-midi-scheduling/summary.json": "9b3948000b9e78dae3e23dceb4a78701e73c22f7a15e67f2429317741084f581",
+    "docs/improvement/evidence/s4-midi-scheduling/metadata.json": "1e01ecccda28f868a4a10cbc808bffc80ac2825575fefb3b6b17ccaf49d624a4",
+    "docs/improvement/evidence/s4-midi-scheduling/samples.jsonl": "c9ab7234a0786086616e734d6bd1e9a1f965e55a0bd928d09d99bf257aac6d1d"
+  },
+  "limits": [
+    "Stored notes are scanned once per block; candidates retain maximum supported release and original order.",
+    "Prepared note descriptors are larger and base pitch is calculated at preparation time.",
+    "Exact parity uses the retained old render loop with unchanged DSP helpers; it does not independently revalidate those shared DSP formulas.",
+    "Optimized local 33-sample comparison; default app flags remain unchanged.",
+    "Short dummy-device live samples are not physical latency or sustained-load certification.",
+    "Focused first build had an unused test-helper warning; helper removed before the full regression and sanitizers.",
+    "Final build includes subsequent compact meter storage; performance samples predate that change."
+  ]
+}

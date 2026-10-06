@@ -91,7 +91,7 @@ bool timeline_input_keyboard_handle_event(InputManager* manager, AppState* state
     }
 
     SDL_Keycode key = event->key.keysym.sym;
-    SDL_Keymod mods = SDL_GetModState();
+    SDL_Keymod mods = (SDL_Keymod)event->key.keysym.mod;
 
     if (state->timeline_tempo_overlay_enabled &&
         state->tempo_overlay_ui.event_index >= 0 &&
@@ -217,6 +217,9 @@ bool timeline_input_keyboard_handle_event(InputManager* manager, AppState* state
 
     bool copy_trigger = (key == SDLK_c) && (mods & (KMOD_CTRL | KMOD_GUI));
     bool paste_trigger = (key == SDLK_v) && (mods & (KMOD_CTRL | KMOD_GUI));
+    bool duplicate_trigger = (key == SDLK_d) && (mods & (KMOD_CTRL | KMOD_GUI));
+    // A held command key must not create repeated edits or replace the clipboard again.
+    if (event->key.repeat && (copy_trigger || paste_trigger || duplicate_trigger)) return true;
     if (copy_trigger) {
         timeline_clipboard_copy(state);
         return true;
@@ -224,170 +227,10 @@ bool timeline_input_keyboard_handle_event(InputManager* manager, AppState* state
         timeline_clipboard_paste(state);
         return true;
     }
-    bool duplicate_trigger = (key == SDLK_d) && (mods & (KMOD_CTRL | KMOD_GUI));
     if (!duplicate_trigger) {
         return false;
     }
 
-    TimelineSelectionEntry originals[TIMELINE_MAX_SELECTION];
-    EngineSamplerSource* original_samplers[TIMELINE_MAX_SELECTION];
-    int original_count = 0;
-    int anchor_original_index = -1;
-
-    const EngineTrack* tracks_snapshot = engine_get_tracks(state->engine);
-    int track_count_snapshot = engine_get_track_count(state->engine);
-
-    if (state->selection_count > 0) {
-        int count = state->selection_count;
-        if (count > TIMELINE_MAX_SELECTION) {
-            count = TIMELINE_MAX_SELECTION;
-        }
-        for (int i = 0; i < count; ++i) {
-            TimelineSelectionEntry entry = state->selection[i];
-            originals[original_count] = entry;
-            EngineSamplerSource* sampler = NULL;
-            if (tracks_snapshot && entry.track_index >= 0 && entry.track_index < track_count_snapshot) {
-                const EngineTrack* track = &tracks_snapshot[entry.track_index];
-                if (track && entry.clip_index >= 0 && entry.clip_index < track->clip_count) {
-                    sampler = track->clips[entry.clip_index].sampler;
-                }
-            }
-            original_samplers[original_count] = sampler;
-            if (anchor_original_index < 0 &&
-                entry.track_index == state->selected_track_index &&
-                entry.clip_index == state->selected_clip_index) {
-                anchor_original_index = original_count;
-            }
-            original_count++;
-        }
-    } else if (state->selected_track_index >= 0 && state->selected_clip_index >= 0) {
-        TimelineSelectionEntry entry = {
-            .track_index = state->selected_track_index,
-            .clip_index = state->selected_clip_index
-        };
-        originals[0] = entry;
-        EngineSamplerSource* sampler = NULL;
-        if (tracks_snapshot && entry.track_index >= 0 && entry.track_index < track_count_snapshot) {
-            const EngineTrack* track = &tracks_snapshot[entry.track_index];
-            if (track && entry.clip_index >= 0 && entry.clip_index < track->clip_count) {
-                sampler = track->clips[entry.clip_index].sampler;
-            }
-        }
-        original_samplers[0] = sampler;
-        anchor_original_index = 0;
-        original_count = 1;
-    }
-
-    if (anchor_original_index < 0 && original_count > 0) {
-        anchor_original_index = 0;
-    }
-
-    if (original_count > 0) {
-        const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
-        uint64_t offset = cfg ? (uint64_t)cfg->block_size : 0;
-        if (!cfg || offset == 0) {
-            offset = 0;
-        }
-
-        TimelineSelectionEntry new_selection[TIMELINE_MAX_SELECTION];
-        int new_count = 0;
-        int anchor_new_index = -1;
-
-        for (int i = 0; i < original_count; ++i) {
-            EngineSamplerSource* sampler = original_samplers[i];
-            if (!sampler) {
-                continue;
-            }
-            int track_index = -1;
-            int clip_index = -1;
-            if (!timeline_find_clip_by_sampler(state, sampler, &track_index, &clip_index)) {
-                continue;
-            }
-
-            int duplicate_index = -1;
-            if (engine_duplicate_clip(state->engine, track_index, clip_index, offset, &duplicate_index)) {
-                if (duplicate_index >= 0 && new_count < TIMELINE_MAX_SELECTION) {
-                    const EngineTrack* tracks = engine_get_tracks(state->engine);
-                    if (tracks && track_index >= 0 && track_index < engine_get_track_count(state->engine)) {
-                        const EngineTrack* track = &tracks[track_index];
-                        if (track && duplicate_index < track->clip_count) {
-                            const EngineClip* clip = &track->clips[duplicate_index];
-                            UndoCommand cmd = {0};
-                            cmd.type = UNDO_CMD_CLIP_ADD_REMOVE;
-                            cmd.data.clip_add_remove.added = true;
-                            cmd.data.clip_add_remove.track_index = track_index;
-                            cmd.data.clip_add_remove.sampler = clip->sampler;
-                            memset(&cmd.data.clip_add_remove.clip, 0, sizeof(cmd.data.clip_add_remove.clip));
-                            const char* media_id = engine_clip_get_media_id(clip);
-                            const char* media_path = engine_clip_get_media_path(clip);
-                            strncpy(cmd.data.clip_add_remove.clip.media_id, media_id ? media_id : "",
-                                    sizeof(cmd.data.clip_add_remove.clip.media_id) - 1);
-                            cmd.data.clip_add_remove.clip.media_id[sizeof(cmd.data.clip_add_remove.clip.media_id) - 1] = '\0';
-                            strncpy(cmd.data.clip_add_remove.clip.media_path, media_path ? media_path : "",
-                                    sizeof(cmd.data.clip_add_remove.clip.media_path) - 1);
-                            cmd.data.clip_add_remove.clip.media_path[sizeof(cmd.data.clip_add_remove.clip.media_path) - 1] = '\0';
-                            strncpy(cmd.data.clip_add_remove.clip.name, clip->name,
-                                    sizeof(cmd.data.clip_add_remove.clip.name) - 1);
-                            cmd.data.clip_add_remove.clip.name[sizeof(cmd.data.clip_add_remove.clip.name) - 1] = '\0';
-                            cmd.data.clip_add_remove.clip.start_frame = clip->timeline_start_frames;
-                            cmd.data.clip_add_remove.clip.duration_frames = clip->duration_frames;
-                            cmd.data.clip_add_remove.clip.offset_frames = clip->offset_frames;
-                            cmd.data.clip_add_remove.clip.fade_in_frames = clip->fade_in_frames;
-                            cmd.data.clip_add_remove.clip.fade_out_frames = clip->fade_out_frames;
-                            cmd.data.clip_add_remove.clip.fade_in_curve = clip->fade_in_curve;
-                            cmd.data.clip_add_remove.clip.fade_out_curve = clip->fade_out_curve;
-                            cmd.data.clip_add_remove.clip.gain = clip->gain;
-                            cmd.data.clip_add_remove.clip.selected = false;
-                            if (cmd.data.clip_add_remove.clip.duration_frames == 0 && clip->sampler) {
-                                cmd.data.clip_add_remove.clip.duration_frames = engine_sampler_get_frame_count(clip->sampler);
-                            }
-                            undo_manager_push(&state->undo, &cmd);
-                        }
-                    }
-                    new_selection[new_count].track_index = track_index;
-                    new_selection[new_count].clip_index = duplicate_index;
-                    if (i == anchor_original_index) {
-                        anchor_new_index = new_count;
-                    }
-                    new_count++;
-                }
-            }
-        }
-
-        if (new_count > 0) {
-            if (anchor_new_index > 0 && anchor_new_index < new_count) {
-                TimelineSelectionEntry tmp = new_selection[0];
-                new_selection[0] = new_selection[anchor_new_index];
-                new_selection[anchor_new_index] = tmp;
-            }
-
-            timeline_selection_clear(state);
-            for (int i = 0; i < new_count; ++i) {
-                timeline_selection_add(state, new_selection[i].track_index, new_selection[i].clip_index);
-            }
-
-            timeline_selection_set_primary(state, new_selection[0].track_index, new_selection[0].clip_index);
-
-            const EngineTrack* updated_tracks = engine_get_tracks(state->engine);
-            int updated_count = engine_get_track_count(state->engine);
-            if (updated_tracks &&
-                new_selection[0].track_index >= 0 &&
-                new_selection[0].track_index < updated_count) {
-                const EngineTrack* anchor_track = &updated_tracks[new_selection[0].track_index];
-                if (anchor_track &&
-                    new_selection[0].clip_index >= 0 &&
-                    new_selection[0].clip_index < anchor_track->clip_count) {
-                    const EngineClip* anchor_clip = &anchor_track->clips[new_selection[0].clip_index];
-                    inspector_input_show(state, new_selection[0].track_index, new_selection[0].clip_index, anchor_clip);
-                } else {
-                    inspector_input_init(state);
-                }
-            } else {
-                inspector_input_init(state);
-            }
-            effects_panel_sync_from_engine(state);
-        }
-    }
-
+    if (timeline_selection_duplicate(state)) effects_panel_sync_from_engine(state);
     return true;
 }

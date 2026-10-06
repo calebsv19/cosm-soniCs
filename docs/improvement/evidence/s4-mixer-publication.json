@@ -1,0 +1,195 @@
+{
+  "slice": "S4.4b",
+  "status": "complete_at_documented_software_boundary",
+  "recorded_utc": "2026-09-21T20:39:17.007660+00:00",
+  "checks": [
+    {
+      "command": "make test-mixer-publication test-region-scheduling test-export-render test-control-transitions",
+      "exit_code": 0,
+      "log": "/tmp/daw-s44b-acceptance.log",
+      "sha256": "c0468a53faa434d0b1b89dcf49639d58861a841f49a608465ae17000b9c87013",
+      "highlights": [
+        "scalar payload: 120 bytes for 2 tracks",
+        "mixer_publication_test: success (coalescing, structural ordering, exact full-revision parity, histories, two failures, deferred retirement)",
+        "region_scheduling_test: success (bounds, overlap/order, track lookup, ramps, seeks, resets, wrap, rollback, zero render heap calls)",
+        "export_render_test: 56 instrumented allocation failure boundaries passed",
+        "export_render_test: success (repeatability, ranges, preroll, release/FX tails, PDC, snapshot/live isolation, failures, normalization, deterministic WAV)",
+        "control_transitions_test: success (Gain ramps, partitions, retarget, reset, zero endpoint, revision handoff, bypass, mixer gain/pan/mute/solo)"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-mixer-publication test-region-scheduling test-export-render",
+      "exit_code": 0,
+      "log": "/tmp/daw-s44b-acceptance-asan.log",
+      "sha256": "2ff36ab5416ed3e2a2f7d668889d59d4ac91f300680379d51d85e32762dc0b11",
+      "highlights": [
+        "scalar payload: 120 bytes for 2 tracks",
+        "mixer_publication_test: success (coalescing, structural ordering, exact full-revision parity, histories, two failures, deferred retirement)",
+        "region_scheduling_test: success (bounds, overlap/order, track lookup, ramps, seeks, resets, wrap, rollback, zero render heap calls)",
+        "export_render_test: 56 instrumented allocation failure boundaries passed",
+        "export_render_test: success (repeatability, ranges, preroll, release/FX tails, PDC, snapshot/live isolation, failures, normalization, deterministic WAV)"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-tsan.mk test-mixer-publication test-engine-mix-ownership test-region-scheduling",
+      "exit_code": 0,
+      "log": "/tmp/daw-s44b-tsan.log",
+      "sha256": "8c61210ce0368803a320f56fe8f157e2fac7d20dac8c805ba744e595e733240e",
+      "highlights": [
+        "scalar payload: 120 bytes for 2 tracks",
+        "mixer_publication_test: success (coalescing, structural ordering, exact full-revision parity, histories, two failures, deferred retirement)",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "region_scheduling_test: success (bounds, overlap/order, track lookup, ramps, seeks, resets, wrap, rollback, zero render heap calls)"
+      ]
+    },
+    {
+      "command": "make -f make/performance.mk performance-build",
+      "exit_code": 0,
+      "log": "/tmp/daw-s44b-perf-build.log",
+      "sha256": "a66197a1a241ff5ebb1a4aef3c57e78bace6f6262cc81edcab8c5d5f16f3dcc2",
+      "highlights": []
+    },
+    {
+      "command": "python3 tests/performance/run_workloads.py --binary build/performance/O2/targets/macOS-arm64/tests/runtime_workload_bench --output /tmp/daw-s44b-perf --group scheduling --repeats 3",
+      "exit_code": 0,
+      "log": "/tmp/daw-s44b-perf.log",
+      "sha256": "5af6b268a17256abe9c4ac23db21d5ed194733565382bd8636fc21324e12641d",
+      "highlights": [
+        "completed=33 failures=0 output=/private/tmp/daw-s44b-perf"
+      ]
+    },
+    {
+      "command": "make (S4.4b boundary)",
+      "exit_code": 0,
+      "log": "/tmp/daw-s44b-build.log",
+      "sha256": "117e7595596ca04e176bb91b32980ff7d8a925783898d46e9805d4e232807ccd",
+      "highlights": []
+    },
+    {
+      "command": "make test-stable test-legacy",
+      "exit_code": 0,
+      "log": "/tmp/daw-s45-regression-final.log",
+      "sha256": "20a915a1499ab35a32793eb415de8236a5f388b837538720c21d47e89a789bc1",
+      "highlights": [
+        "scalar payload: 120 bytes for 2 tracks",
+        "mixer_publication_test: success (coalescing, structural ordering, exact full-revision parity, histories, two failures, deferred retirement)",
+        "midi_scheduling_test: success (all presets, exact prior-scan parity, automation/release growth, seeks, export, formats, wrap, reserve failure, zero render heap calls)",
+        "region_scheduling_test: success (bounds, overlap/order, track lookup, ramps, seeks, resets, wrap, rollback, zero render heap calls)",
+        "export_render_test: 56 instrumented allocation failure boundaries passed",
+        "export_render_test: success (repeatability, ranges, preroll, release/FX tails, PDC, snapshot/live isolation, failures, normalization, deterministic WAV)",
+        "control_transitions_test: success (Gain ramps, partitions, retarget, reset, zero endpoint, revision handoff, bypass, mixer gain/pan/mute/solo)",
+        "media_conversion_test: success (PCM8/16/24/32, float, extensible, malformed input, rate pairs, filtering, allocation failures)",
+        "instrument_lifecycle_test: success (gate/release, early-off, partitions, alias reduction, automation, bounded voices, retirement, panic, zero guarded heap calls)",
+        "dynamics_processing_test: success (delay, ceiling, linking, release, knee, detectors, makeup, alignment, revisions, mixer, bounce, live edits, preparation failures, zero render heap calls)",
+        "analysis_calibration_test: success (tones, endpoints, power mean, real workers, gaps, epochs, mid, insert metadata)",
+        "fade_processing_test: success (four curves, render/clone/block/export/preview parity, capture, zero/short bounds)",
+        "media_durability_test: success (5 prepublication failures, directory uncertainty, RIFF limits, torn journal recovery)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 300 live sequences, 4/8/32-block queue targets, complete worker budgets)",
+        "session_transaction_test: success (11 capture and 5 restore allocation boundaries, live capture, rollback, complete retry)",
+        "session_atomic_save_test: success (7 failure stages, 2 interrupted publications, backup recovery, metadata retry)",
+        "engine_parameter_transaction_test: success",
+        "engine_command_delivery_test: success (100000 concurrent packets)",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)",
+        "daw_pack_contract_parity_test: success",
+        "daw_trace_export_contract_test: success",
+        "daw_trace_export_async_contract_test: success",
+        "kit_viz_waveform_adapter_test: success",
+        "kit_viz_fx_preview_adapter_test: success",
+        "waveform_cache_pack_warmstart_test: success",
+        "layout_text_scaling_sweep_test: success",
+        "timeline_contract_test: success",
+        "midi_model_test: success",
+        "midi_instrument_render_test: success",
+        "midi_editor_shell_test: success",
+        "audio_capture_device_test: success",
+        "audio_output_device_test: success",
+        "effects_revision_test: success",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_analysis_lifecycle_test: success (5 failure stages, 8 restarts, live analyzer edits)",
+        "audio_recording_test: success",
+        "track_role_test: success",
+        "daw_data_path_contract_test: success",
+        "test-library-copy-vs-reference-contract: success",
+        "daw stable test lane passed",
+        "2026-09-21 13:27:03.507 session_serialization_test[42502:204753711] INFO: session_serialization_test: success (6928 bytes)",
+        "media_cache_stress_test: success (entries=0)",
+        "clip_overlap_priority_test: success (clips=3)",
+        "engine_smoke_test: success",
+        "shared_theme_font_adapter_test: success"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-asan.mk test-mixer-publication test-engine-transport-clock test-export-render test-session test-config-diagnostics",
+      "exit_code": 0,
+      "log": "/tmp/daw-s445-asan.log",
+      "sha256": "13ebee671ada672ba14847af6c688e9033adeb833fcbcaafcab3b0690ee6f1b4",
+      "highlights": [
+        "scalar payload: 120 bytes for 2 tracks",
+        "mixer_publication_test: success (coalescing, structural ordering, exact full-revision parity, histories, two failures, deferred retirement)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 300 live sequences, 4/8/32-block queue targets, complete worker budgets)",
+        "export_render_test: 56 instrumented allocation failure boundaries passed",
+        "export_render_test: success (repeatability, ranges, preroll, release/FX tails, PDC, snapshot/live isolation, failures, normalization, deterministic WAV)",
+        "2026-09-21 13:29:10.848 session_serialization_test[50335:204778786] INFO: session_serialization_test: success (6928 bytes)"
+      ]
+    },
+    {
+      "command": "make -f /tmp/daw-s1-tsan.mk test-mixer-publication test-engine-transport-clock test-engine-mix-ownership test-engine-source-lifetime",
+      "exit_code": 0,
+      "log": "/tmp/daw-s445-tsan.log",
+      "sha256": "01e3e88a21f9aed52df941b9c95b236a0dbdbe1ba788b7590bead6324100fd25",
+      "highlights": [
+        "scalar payload: 120 bytes for 2 tracks",
+        "mixer_publication_test: success (coalescing, structural ordering, exact full-revision parity, histories, two failures, deferred retirement)",
+        "engine_transport_clock_test: success (partial callbacks, underruns, loop samples, pause/resume, stop/seek barriers, 300 live sequences, 4/8/32-block queue targets, complete worker budgets)",
+        "engine_mix_ownership_test: success (300 live track/FX/EQ/meter edit cycles)",
+        "engine_source_lifetime_test: success (2000 live audio/automation/overlap/MIDI/transfer edit cycles)"
+      ]
+    },
+    {
+      "command": "make",
+      "exit_code": 0,
+      "log": "/tmp/daw-s445-build.log",
+      "sha256": "117e7595596ca04e176bb91b32980ff7d8a925783898d46e9805d4e232807ccd",
+      "highlights": []
+    }
+  ],
+  "source_sha256": {
+    "src/engine/engine_source_plan.c": "eb9f69a53d067278decffa5a59d88400c934f6510970baf4e754e5e38d06b1ed",
+    "src/engine/engine_tracks.c": "fae375f5c48f0dc793ac0ddfaf700a211ed111bee171a4e9b60c2bdb47a58f2d",
+    "src/engine/graph.c": "3d92213a1be8288efd9b909b528df0d05a5c7290ba9ee0c014dc364458fe0d4e",
+    "include/engine/graph.h": "071e7a54fa0e1febf59bf5501c97e0f69fb0bb952d81703d6ef5c88507669619",
+    "include/engine/engine_internal.h": "40b5849bce5edc1152cdaba1d9e35422090d7cbba6e65364673856cf0e0d10c3",
+    "tests/mixer_publication_test.c": "3347f360f9237312c0ed9d23c849ebbaa6e7170bb08c88bddc3f2870c40d4bec",
+    "tests/engine_parameter_transaction_test.c": "8e24b763441df0776cc33afd444e0ae09e9bc0bcf35a9d7f51956f04a910f9a6",
+    "tests/region_scheduling_test.c": "c942a2b901de6b3dd9b767e2fd1cfcb25ece072dbedca70f9c8fca67babc8e3a",
+    "make/rules-test-core.mk": "5dcf9eeb8e1cdf900b62e0acff449f75f942e78d91e258a8db3034532c16ae0a",
+    "make/sources-tests.mk": "e082f3ab1f93a6fb34e5903443f7dc548032dae55af1d4e581a6ea8c1611daa5"
+  },
+  "artifacts": {
+    "docs/improvement/evidence/s4-mixer-publication/summary.json": "acc31a02858b968a37f891d678d000ff41b7dc37fd7c6c025196047fc71e9cf0",
+    "docs/improvement/evidence/s4-mixer-publication/metadata.json": "f5e93f8c9a608e86cec2086460ac196aef66c7d3356f38de9e4337b82ddfa37a",
+    "docs/improvement/evidence/s4-mixer-publication/samples.jsonl": "c05a22c594181e8e80c18041b72156b07df3bbd673b5a808eaceeb02eeb45065"
+  },
+  "limits": [
+    "Scalar path covers gain, pan, mute, and solo; structural/instrument/combined settings still capture full revisions.",
+    "Sorted source identity lookup removes global source-history nested scan; track identity/effect-history transfer retain existing costs.",
+    "Borrowed external graph commands retain the existing full-preparation path rather than assuming authored clip metadata.",
+    "Matched edit metric is median of three per-process maxima, not a distribution percentile of individual edits.",
+    "Optimized measurements precede S4.5 telemetry/config changes; final source hashes describe combined verified code.",
+    "Default optimization policy unchanged; no physical device or sustained qualification."
+  ],
+  "performance_source_sha256": {
+    "src/engine/engine_source_plan.c": "eb9f69a53d067278decffa5a59d88400c934f6510970baf4e754e5e38d06b1ed",
+    "src/engine/engine_tracks.c": "fae375f5c48f0dc793ac0ddfaf700a211ed111bee171a4e9b60c2bdb47a58f2d",
+    "src/engine/graph.c": "3d92213a1be8288efd9b909b528df0d05a5c7290ba9ee0c014dc364458fe0d4e",
+    "include/engine/graph.h": "071e7a54fa0e1febf59bf5501c97e0f69fb0bb952d81703d6ef5c88507669619",
+    "include/engine/engine_internal.h": "95717f4847294baae8893e106fb59f4773cb4f6066e526cafa0ea4b5149b2190",
+    "tests/mixer_publication_test.c": "3347f360f9237312c0ed9d23c849ebbaa6e7170bb08c88bddc3f2870c40d4bec",
+    "tests/region_scheduling_test.c": "c942a2b901de6b3dd9b767e2fd1cfcb25ece072dbedca70f9c8fca67babc8e3a",
+    "tests/engine_parameter_transaction_test.c": "8e24b763441df0776cc33afd444e0ae09e9bc0bcf35a9d7f51956f04a910f9a6"
+  },
+  "arm64_scalar_payload_bytes": {
+    "envelope": 56,
+    "per_track": 32
+  }
+}

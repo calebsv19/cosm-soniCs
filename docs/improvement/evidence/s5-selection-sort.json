@@ -1,0 +1,12 @@
+{
+  "status": "single_clip_selection_permutation_verified",
+  "checks": "focused normal and ASan tests; default make; diff check passed",
+  "native_acceptance": false,
+  "sha256": {
+    "src/input/timeline/timeline_selection.c": "8af423dc245185399b826c7f8a81099872ddc5f9f809d105d094edce777ba456",
+    "tests/timeline_midi_region_test.c": "c70d3bda8ac88e67ad366254a7882877196a0e60006c102dd8a53ee426b052ce",
+    "/tmp/daw-s5-selection-sort-final-tests.log": "6e76bb114951c4898f30c0c49b8b4b974ed26f9c9b6f5d619c271813a4a750fd",
+    "/tmp/daw-s5-selection-sort-asan.log": "f691ea74eefc5268d91a7edeeb311250eba544a4fa230bbb6b8bc0113452cfcb",
+    "/tmp/daw-s5-selection-sort-final-make.log": "d8285a16223c9e738f98c2eaa31289db566e0ec1f483ba0891fa69b958546f5a"
+  }
+}

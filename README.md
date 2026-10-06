@@ -4,10 +4,12 @@
 
 The repository and source-level program key remain `daw`.
 
+The [initial audit](docs/audits/2026-09-19/AUDIT.md) and [S1–S6 improvement plan](docs/improvement/PLAN.md) describe the runtime-first improvement chain. The [S1 closeout ledger](docs/improvement/S1-CLOSEOUT.md) reconciles implemented command delivery, render ownership, individual edit transactions, and lifecycle behavior with their software acceptance evidence. Application-wide compound edits, remaining identity/feedback integration, and physical-device acceptance are explicitly deferred; the original broad S1 contract is not fully complete. [S2.1 atomic saves and previous-save recovery](docs/improvement/S2-SAVING.md) are now implemented and software-verified; [S2.2 coherent capture and restore](docs/improvement/S2-CAPTURE-RESTORE.md) now prepares a complete replacement before retiring the current project. [S2.3/S2.4 clocks and transport](docs/improvement/S2-CLOCKS-TRANSPORT.md) now separate render-ahead, callback-delivered, and estimated presentation positions, with defined pause/stop/seek/loop behavior. [S2.5 recording/durability](docs/improvement/S2-RECORDING-DURABILITY.md) and [S2.6 diagnostics](docs/improvement/S2-DIAGNOSTICS.md) now add timestamped take checkpoints, checked media publication, and software runtime telemetry. Device activation, physical timing acceptance, and recovery-browser UI remain separate work; [S4.6](docs/improvement/S4-STREAMING.md) now bounds recording/export pipeline memory.
+
 ## Current State
 
 - Stage: alpha, actively developed.
-- Build output: `build/daw_app`.
+- Build output: `build/targets/macOS-arm64/toolchains/clang/bin/daw_app`.
 - Platform focus: macOS-first local desktop workflows.
 - Public version: `0.2.0`.
 - License: Apache-2.0.
@@ -237,9 +239,9 @@ first-frame image artifact, and exits.
 - Packaged launcher diagnostics expose runtime root, launcher log path, shader
   root, Timer HUD settings path, Vulkan ICD files, and MoltenVK dylib path
   through `package-desktop-self-test` and launcher `--print-config`.
-- Audio capture and recording diagnostics are lifecycle/failure summaries only;
-  capture callbacks, drain loops, per-frame paths, and audio-thread work remain
-  log-free.
+- Capture callbacks remain log-free. Main-thread recording status reports checkpointed
+  duration, capture gaps, and observed software alignment; output health appears in
+  the timeline status and existing bounded optional worker timing logs.
 
 ## Repository Layout
 
@@ -249,3 +251,21 @@ first-frame image artifact, and exits.
 - `tests/`: unit/smoke/stress test targets.
 - `docs/`: focused technical and release documentation (start at `docs/README.md`).
 - `third_party/codework_shared/`: vendored shared core/kit/runtime modules.
+
+Recording now preserves capture gaps and timestamped recovery checkpoints, publishes synced WAV media before clip insertion, and retains failed takes for retry. Recover journals with `build/targets/macOS-arm64/toolchains/clang/bin/daw_app --recover-take JOURNAL OUTPUT.wav`. Runtime diagnostics expose software output gaps, render-budget overruns, queue depth, and command age through the timeline status and optional timing logs. See [S2.5 recording/recovery](docs/improvement/S2-RECORDING-DURABILITY.md) and [S2.6 diagnostics](docs/improvement/S2-DIAGNOSTICS.md) for exact guarantees; [S4.6 streaming](docs/improvement/S4-STREAMING.md) adds bounded pipelines while hardware acceptance and full-file media import/cache remain separate.
+
+S3.1 now makes the existing audio fade shapes agree across editor preview, playback, and bounce, with transactional curve publication. Linear timing/endpoints and serialized curve IDs are preserved; existing nonlinear selections now produce their displayed shape. See [fade parity](docs/improvement/S3-FADE-PARITY.md).
+
+S3.2 calibrates the existing spectrum/spectrogram as flat tonal-amplitude dBFS of the mid signal, labels their actual tap locations, and resets history across missing windows/transport changes. See [analysis calibration](docs/improvement/S3-ANALYSIS-CALIBRATION.md). The pre-repair S3.3 findings are retained in the [entry audit and limiter impulse probe](docs/improvement/S3-DYNAMICS-AUDIT.md).
+
+S3.3 repairs limiter lookahead, aligns the existing parallel track paths, corrects both compressor knee curves, and exposes applied reduction separately from RMS delta. Exact-range bounce removes reported common DSP delay. See [the dynamics contract and evidence](docs/improvement/S3-DYNAMICS.md) for transition/reset policies and proof limits.
+
+S3.4 adds sample-counted Gain and mixer transitions plus zero-latency bypass blending; explicit transport and latency-change resets retain their documented boundaries. S3.5 validates supported WAV structures and replaces linear import conversion with an anti-aliased offline converter shared by native/fallback decode paths. S3.6 gives existing notes a gate/release lifecycle, bounds audition voice retirement, applies existing volume/pan lanes to instruments, and reduces aliasing in supported oscillator components. See [controls](docs/improvement/S3-CONTROL-TRANSITIONS.md), [media conversion](docs/improvement/S3-MEDIA-CONVERSION.md), and [instruments](docs/improvement/S3-INSTRUMENT-LIFECYCLE.md) for acceptance and limits. S3.7 now captures an independent export plan, preserves live playback state, supports bounded preroll/tails and explicit normalization, and writes deterministic requested WAVs without an implicit sidecar. See [export policy and acceptance](docs/improvement/S3-EXPORT.md). S4.1 now provides an [initial runtime workload audit](docs/improvement/S4-RUNTIME-AUDIT.md) and [opt-in optimized measurements](tests/performance/README.md). S4.2/S4.3 now reduce inactive audio/MIDI work, and S4.4a separates published meter values from large DSP histories. See [the implementation ledger and acceptance evidence](docs/improvement/S4-IMPLEMENTATION.md). S4.4b now avoids complete source/DSP preparation for gain, pan, mute, and solo edits. S4.5 adds complete busy-worker timing and explicit queue targets; compatibility buffering remains the default. See [edit/deadline contracts](docs/improvement/S4-EDITING-DEADLINES.md). S4.6 adds a recording journal worker, bounded recent waveform previews, streamed finalization/recovery, and two-pass streamed exports with Escape cancellation and bounded pack overviews. See [streaming contracts and measurements](docs/improvement/S4-STREAMING.md). [S4.7a–d media preparation/cache](docs/improvement/S4.7-MEDIA.md) now move metadata/content probing and interactive import decoding to bounded owned background work; default app build policy remains unchanged.
+
+The [capture-clock follow-up](docs/improvement/S4-CAPTURE-CLOCK.md) corrects the input gaps found during S4.6 qualification: anchored capture now checks a separately published transport epoch when detailed clock observations are busy. Nine strict software captures passed with zero missing input/output; physical qualification remains separate. The [S4.7 implementation](docs/improvement/S4.7-MEDIA.md) covers metadata probing, prepared-cache adoption, bounded background jobs, project-generation rejection, and library/recording/bounce insertion. Ctrl/Cmd+Escape cancels pending imports while saved files remain intact.
+
+[S4.8 analyzer efficiency](docs/improvement/S4.8-ANALYSIS.md) now prepares worker-owned Hann/oscillator coefficients, preserving the logarithmic tonal calibration with approximately 4× lower optimized kernel CPU and about 3× lower unoptimized kernel CPU in matched local measurements. Consumer backlog and transform timing are observable. [S4.9 sustained assessment](docs/improvement/S4.9-ACCEPTANCE.md) now records 8/8 workflow passes, 7/8 continuity passes and retained strict timing failures. Real empty/populated GUI frames render, but physical-device, long-session memory and interactive qualification remain open. See [current functionality and next steps](docs/improvement/DAW-STATUS-AND-NEXT-STEPS.md) for S5 and the unimplemented MCP adapter.
+
+## Runtime improvement checkpoint
+
+The local runtime work now has a [bounded S4 closeout](docs/improvement/S4-CLOSEOUT.md) and [proposed S5 functional slices](docs/improvement/S5-FUNCTIONAL-SLICES.md). Read the closeout for actual continuity, timing and hardware acceptance limits; this is not a release or universal real-time certification.

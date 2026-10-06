@@ -1,3 +1,5 @@
+#include "app/media_import.h"
+#include "audio/take_journal.h"
 #include "app_state.h"
 #include "config.h"
 #include "daw/daw_app_main.h"
@@ -274,6 +276,7 @@ static uint32_t daw_loop_compute_wait_timeout_ms(AppContext* ctx) {
             timeout_ms = until_timer_ms;
         }
     }
+    if (state && timeout_ms > 16 && daw_media_import_stats(state).jobs.admitted) timeout_ms = 16;
     return timeout_ms;
 }
 
@@ -348,6 +351,14 @@ static void daw_loop_background_tick(AppContext* ctx, uint64_t now_ns) {
     for (int i = 0; i < messages_drained; ++i) {
         if (daw_loop_handle_mainthread_message(state, &drained[i])) {
             producer_ui_changed = true;
+        }
+    }
+
+    if (state && !state->bounce_active) {
+        (void)daw_media_import_init(state);
+        if (daw_media_import_poll(state)) {
+            producer_ui_changed = true;
+            daw_invalidate_all(state->panes, state->pane_count, DAW_RENDER_INVALIDATION_CONTENT);
         }
     }
 
@@ -822,6 +833,7 @@ int daw_app_main_legacy(void) {
 
     if (TTF_Init() != 0) {
         SDL_Log("TTF_Init failed: %s", TTF_GetError());
+        if (state.engine) engine_stop(state.engine);
         if (loop_wake_initialized) {
             daw_mainthread_wake_shutdown();
         }
@@ -926,6 +938,7 @@ int daw_app_main_legacy(void) {
     if (daw_workspace_authoring_host_active(&state.workspace_authoring)) {
         (void)daw_workspace_authoring_host_cancel(&state.workspace_authoring);
     }
+    daw_media_import_shutdown(&state);
     daw_audio_recording_cancel(&state.audio_recording);
     daw_shared_theme_save_persisted();
     daw_shared_font_save_persisted();
@@ -941,6 +954,7 @@ int daw_app_main_legacy(void) {
                 DAW_DATA_PATH_RUNTIME_CONFIG_PATH);
     }
 
+    if (state.engine) engine_stop(state.engine);
     effects_meter_history_cache_shutdown(ctx.renderer);
     ui_font_shutdown();
     timer_hud_shutdown_session();
@@ -976,6 +990,17 @@ int daw_app_main_legacy(void) {
 }
 
 int main(int argc, char **argv) {
+    if (argc == 4 && strcmp(argv[1], "--recover-take") == 0) {
+        DawTakeRecoveryInfo info;
+        if (!daw_take_journal_recover(argv[2], argv[3], &info)) {
+            fprintf(stderr, "Take recovery failed; journal retained: %s\n", argv[2]);
+            return 1;
+        }
+        printf("Recovered %llu frames at %d Hz, %d channels; project start %llu; incomplete tail %s\n",
+               (unsigned long long)info.frames, info.rate, info.channels,
+               (unsigned long long)info.start_frame, info.incomplete_tail ? "yes" : "no");
+        return 0;
+    }
     if (argc == 2 && strcmp(argv[1], "--vulkan-rollout-self-test") == 0) {
         return daw_vulkan_rollout_self_test();
     }

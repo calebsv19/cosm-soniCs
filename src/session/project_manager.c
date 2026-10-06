@@ -2,6 +2,7 @@
 
 #include "app_state.h"
 #include "daw/data_paths.h"
+#include "daw/save_file.h"
 #include "session.h"
 #include "ui/timeline_view.h"
 #include "ui/effects_panel.h"
@@ -147,40 +148,13 @@ bool project_manager_remember_last(AppState* state, const char* path) {
     if (!ensure_dir_exists("projects_dir", projects_dir)) {
         return false;
     }
-    FILE* f = fopen(last_path_file, "wb");
-    if (!f) {
-        SDL_Log("project_manager: role=last_project_marker path=%s open=write failed reason=%s",
-                last_path_file,
-                strerror(errno));
-        return false;
-    }
-    if (fputs(path, f) < 0) {
-        SDL_Log("project_manager: role=last_project_marker path=%s write failed reason=%s",
-                last_path_file,
-                strerror(errno));
-        fclose(f);
-        return false;
-    }
-    if (fclose(f) != 0) {
-        SDL_Log("project_manager: role=last_project_marker path=%s close=write failed reason=%s",
-                last_path_file,
-                strerror(errno));
+    if (daw_save_file_write(last_path_file, path, strlen(path)) == DAW_SAVE_FAILED) {
+        SDL_Log("project_manager: last-project marker publication failed: %s", last_path_file);
         return false;
     }
     if (strcmp(projects_dir, legacy_projects_dir) != 0 && ensure_dir_exists("legacy_projects_dir", legacy_projects_dir)) {
-        FILE* legacy = fopen(kLegacyLastPathFile, "wb");
-        if (legacy) {
-            fputs(path, legacy);
-            if (fclose(legacy) != 0) {
-                SDL_Log("project_manager: role=legacy_last_project_marker path=%s close=write failed reason=%s",
-                        kLegacyLastPathFile,
-                        strerror(errno));
-            }
-        } else {
-            SDL_Log("project_manager: role=legacy_last_project_marker path=%s open=write failed reason=%s",
-                    kLegacyLastPathFile,
-                    strerror(errno));
-        }
+        if (daw_save_file_write(kLegacyLastPathFile, path, strlen(path)) == DAW_SAVE_FAILED)
+            SDL_Log("project_manager: legacy marker publication failed: %s", kLegacyLastPathFile);
     }
     return true;
 }
@@ -303,7 +277,8 @@ bool project_manager_save(AppState* state, const char* name_override, bool overw
     state->project.path[sizeof(state->project.path) - 1] = '\0';
     state->project.has_name = true;
 
-    project_manager_remember_last(state, path);
+    if (!project_manager_remember_last(state, path))
+        SDL_Log("Project saved, but startup marker was not updated: %s", path);
     SDL_Log("Project saved: %s", path);
     return true;
 }
@@ -447,9 +422,15 @@ bool project_manager_get_info(const char* path, ProjectInfo* out_info) {
     return true;
 }
 
+// Treats relative, absolute and symlink aliases of the same file as one project entry.
 static bool path_already_listed(const ProjectInfo* out_items, int count, const char* path) {
+    struct stat candidate;
+    bool candidate_exists = stat(path, &candidate) == 0;
     for (int i = 0; i < count; ++i) {
-        if (strcmp(out_items[i].path, path) == 0) {
+        struct stat existing;
+        if (strcmp(out_items[i].path, path) == 0 ||
+            (candidate_exists && stat(out_items[i].path, &existing) == 0 &&
+             existing.st_dev == candidate.st_dev && existing.st_ino == candidate.st_ino)) {
             return true;
         }
     }

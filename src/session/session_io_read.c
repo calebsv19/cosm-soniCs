@@ -57,6 +57,8 @@ bool session_document_read_file(const char* path, SessionDocument* out_doc) {
     JsonReader reader;
     json_reader_init(&reader, buffer, (size_t)size);
     bool ok = parse_session_document(&reader, out_doc);
+    json_skip_whitespace(&reader);
+    ok = ok && reader.pos == reader.length;
     free(buffer);
     if (!ok) {
         SDL_Log("session_document_read_file: failed to parse %s", path);
@@ -71,4 +73,23 @@ bool session_document_read_file(const char* path, SessionDocument* out_doc) {
         return false;
     }
     return true;
+}
+
+
+// Recovers a validated previous save only when the primary cannot be read and validated.
+bool session_document_read_recoverable(const char* path, SessionDocument* out_doc, bool* recovered) {
+    if (recovered) *recovered = false;
+    if (!out_doc || !path || !path[0]) return false;
+    if (session_document_read_file(path, out_doc)) return true;
+    size_t length = strlen(path);
+    char* backup = malloc(length + 5);
+    if (!backup) return false;
+    snprintf(backup, length + 5, "%s.bak", path);
+    bool ok = session_document_read_file(backup, out_doc);
+    if (ok) {
+        if (recovered) *recovered = true;
+        SDL_Log("session recovery: loaded previous valid save %s (primary unavailable or invalid)", backup);
+    }
+    free(backup);
+    return ok;
 }

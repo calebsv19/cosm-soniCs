@@ -25,12 +25,12 @@ static void fallback_id_from_path(const char* path, char* out_id, size_t out_len
 }
 
 static EngineAudioSource* engine_audio_source_find(Engine* engine, const char* media_id) {
-    if (!engine || !media_id || media_id[0] == '\0') {
+    if (!engine || SDL_ThreadID() != engine->control_thread_id || !media_id || media_id[0] == '\0') {
         return NULL;
     }
     for (int i = 0; i < engine->audio_source_count; ++i) {
-        if (strncmp(engine->audio_sources[i].media_id, media_id, MEDIA_ID_MAX) == 0) {
-            return &engine->audio_sources[i];
+        if (strncmp(engine->audio_sources[i]->media_id, media_id, MEDIA_ID_MAX) == 0) {
+            return engine->audio_sources[i];
         }
     }
     return NULL;
@@ -41,7 +41,7 @@ EngineAudioSource* engine_audio_source_get(Engine* engine, const char* media_id)
 }
 
 EngineAudioSource* engine_audio_source_get_or_create(Engine* engine, const char* media_id, const char* path) {
-    if (!engine) {
+    if (!engine || SDL_ThreadID() != engine->control_thread_id) {
         return NULL;
     }
 
@@ -65,8 +65,7 @@ EngineAudioSource* engine_audio_source_get_or_create(Engine* engine, const char*
 
     if (engine->audio_source_count >= engine->audio_source_capacity) {
         int new_capacity = engine->audio_source_capacity > 0 ? engine->audio_source_capacity * 2 : 16;
-        EngineAudioSource* resized = (EngineAudioSource*)realloc(engine->audio_sources,
-                                                                 sizeof(EngineAudioSource) * (size_t)new_capacity);
+        EngineAudioSource** resized = realloc(engine->audio_sources, sizeof(*resized) * (size_t)new_capacity);
         if (!resized) {
             return NULL;
         }
@@ -74,8 +73,9 @@ EngineAudioSource* engine_audio_source_get_or_create(Engine* engine, const char*
         engine->audio_source_capacity = new_capacity;
     }
 
-    EngineAudioSource* source = &engine->audio_sources[engine->audio_source_count++];
-    memset(source, 0, sizeof(*source));
+    EngineAudioSource* source = calloc(1, sizeof(*source));
+    if (!source) return NULL;
+    engine->audio_sources[engine->audio_source_count++] = source;
     SDL_strlcpy(source->media_id, resolved_id, MEDIA_ID_MAX);
     if (path && path[0] != '\0') {
         SDL_strlcpy(source->path, path, ENGINE_AUDIO_SOURCE_PATH_MAX);
@@ -83,9 +83,12 @@ EngineAudioSource* engine_audio_source_get_or_create(Engine* engine, const char*
     return source;
 }
 
+// Detaches editable metadata references before freeing registry objects on the control thread.
 void engine_audio_source_clear_all(Engine* engine) {
-    if (!engine || !engine->audio_sources) {
-        return;
+    if (!engine || SDL_ThreadID() != engine->control_thread_id) return;
+    for (int t = 0; t < engine->track_count; ++t) {
+        for (int c = 0; c < engine->tracks[t].clip_count; ++c) engine->tracks[t].clips[c].source = NULL;
     }
+    for (int i = 0; i < engine->audio_source_count; ++i) free(engine->audio_sources[i]);
     engine->audio_source_count = 0;
 }

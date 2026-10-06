@@ -15,6 +15,8 @@ struct EngineBufferPool; // from engine/buffer_pool.h
 struct EffectsManager;
 
 typedef struct EffectsManager EffectsManager;
+// Clears exclusively owned render histories and snaps smoothing to accepted targets.
+void fxm_reset_render_state(EffectsManager* fm);
 typedef uint32_t FxTypeId;   // registry id (static table for now)
 typedef uint32_t FxInstId;   // per-track or master instance id
 
@@ -68,11 +70,35 @@ typedef struct {
 // Creation/destruction (non-RT)
 EffectsManager* fxm_create(const FxConfig* cfg);
 void            fxm_destroy(EffectsManager* fm);
+// Prepares independent DSP handles from control-owned state, preserving instance identities.
+EffectsManager* fxm_clone_for_render(const EffectsManager* control);
+// Retains one track chain with its effect identities for undo history.
+EffectsManager* fxm_clone_track_for_history(const EffectsManager* control, int track_index);
+// Replaces a prepared chain only after an independent copy succeeds.
+bool fxm_copy_track(EffectsManager* destination, int track_index, const EffectsManager* source, int source_index);
+// Moves compatible DSP histories into a prepared revision, retaining its newly prepared targets.
+// old_track_indices maps each prepared track to its previous index, or -1 for a new track.
+// Both managers must be exclusively worker-owned at the adoption boundary.
+bool fxm_transfer_render_state(EffectsManager* prepared, EffectsManager* previous,
+                              const int* old_track_indices, int track_count);
 bool            fxm_set_track_count(EffectsManager* fm, int track_count);
+// Inserts an empty control-owned chain while preserving identities of shifted tracks' effects.
+bool            fxm_insert_track(EffectsManager* fm, int track_index);
+// Removes one control-owned chain while preserving the following chains and their instance IDs.
+bool            fxm_remove_track(EffectsManager* fm, int track_index);
 // Registers a callback for per-FX metering taps during render.
 void            fxm_set_meter_tap_callback(EffectsManager* fm, FxMeterTapCallback cb, void* user);
 // Registers a callback for per-FX scope taps during render.
 void            fxm_set_scope_tap_callback(EffectsManager* fm, FxScopeTapCallback cb, void* user);
+
+// Prepares maximum track-delay storage off the render thread; clone_for_render calls this automatically.
+bool fxm_prepare_delay_compensation(EffectsManager* fm);
+// Applies one block of controls and establishes parallel-track alignment before any track renders.
+void fxm_begin_render_block(EffectsManager* fm, int frames);
+// Applies the prepared compensation delay after track processing and before summing.
+void fxm_align_track(EffectsManager* fm, int track, float* io, int frames, int channels);
+// Returns latest render-block track-plus-master latency; read only from the owning render thread.
+uint64_t fxm_processing_latency(const EffectsManager* fm);
 
 // ---------- Master chain (v1 minimal integration) ----------
 
@@ -159,6 +185,9 @@ const EffectParamSpec* fxm_registry_get_param_specs(const EffectsManager* fm, Fx
 // Returns a single parameter spec for a given effect type + param index.
 const EffectParamSpec* fxm_registry_get_param_spec(const EffectsManager* fm, FxTypeId type, uint32_t param_index);
 bool fxm_master_snapshot(const EffectsManager* fm, FxMasterSnapshot* out);
+
+// Restores a complete instance into an unpublished candidate; discard the candidate on failure.
+bool fxm_restore_instance(EffectsManager* candidate, int track_index, int position, const FxMasterInstanceInfo* instance);
 
 #ifdef __cplusplus
 } // extern "C"

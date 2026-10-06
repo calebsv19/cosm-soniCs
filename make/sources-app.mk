@@ -23,6 +23,7 @@ APP_SRCS := \
 	$(SRC_DIR)/core/loop/daw_render_invalidation.c \
 	$(SRC_DIR)/app/daw_app_main.c \
 	$(SRC_DIR)/app/daw_vulkan_rollout.c \
+	$(SRC_DIR)/app/media_import.c \
 	$(SRC_DIR)/app/audio_recording.c \
 	$(SRC_DIR)/app/bounce_region.c \
 	$(SRC_DIR)/app/main_bounce.c \
@@ -35,7 +36,10 @@ APP_SRCS := \
 	$(SRC_DIR)/audio/audio_capture_device_sdl.c \
 	$(SRC_DIR)/audio/audio_queue.c \
 	$(SRC_DIR)/audio/ringbuf.c \
+	$(SRC_DIR)/audio/media_jobs.c \
 	$(SRC_DIR)/audio/media_clip.c \
+	$(SRC_DIR)/audio/resample.c \
+	$(SRC_DIR)/audio/take_journal.c \
 	$(SRC_DIR)/audio/wav_writer.c \
 	$(SRC_DIR)/audio/media_cache.c \
 	$(SRC_DIR)/audio/media_registry.c \
@@ -43,13 +47,17 @@ APP_SRCS := \
 	$(SRC_DIR)/export/daw_trace_export.c \
 	$(SRC_DIR)/export/daw_trace_export_async.c \
 	$(SRC_DIR)/engine/engine_core_commands.c \
+	$(SRC_DIR)/engine/engine_source_plan.c \
+	$(SRC_DIR)/engine/engine_analysis_queue.c \
 	$(SRC_DIR)/engine/audio_source.c \
 	$(SRC_DIR)/engine/engine_core.c \
 	$(SRC_DIR)/engine/engine_io.c \
 	$(SRC_DIR)/engine/engine_fx.c \
+	$(SRC_DIR)/engine/engine_clock.c \
 	$(SRC_DIR)/engine/engine_transport.c \
 	$(SRC_DIR)/engine/engine_tracks.c \
 	$(SRC_DIR)/engine/engine_clips.c \
+	$(SRC_DIR)/engine/engine_clip_history.c \
 	$(SRC_DIR)/engine/engine_clips_midi.c \
 	$(SRC_DIR)/engine/engine_clips_automation.c \
 	$(SRC_DIR)/engine/engine_clips_no_overlap.c \
@@ -71,6 +79,7 @@ APP_SRCS := \
 	$(SRC_DIR)/engine/source_tone.c \
 	$(SRC_DIR)/engine/sampler.c \
 	$(SRC_DIR)/effects/effects_manager.c \
+	$(SRC_DIR)/session/save_file.c \
 	$(SRC_DIR)/session/session_document.c \
 	$(SRC_DIR)/session/session_validation.c \
 	$(SRC_DIR)/session/session_io_write.c \

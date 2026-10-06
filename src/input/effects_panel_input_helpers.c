@@ -92,13 +92,14 @@ int find_slot_index_by_id(const EffectsPanelState* panel, FxInstId id) {
     return -1;
 }
 
-void begin_fx_param_drag(AppState* state, int slot_index, int param_index) {
+// Reserves effect parameter history before permitting the slider to mutate audio.
+bool begin_fx_param_drag(AppState* state, int slot_index, int param_index) {
     if (!state) {
-        return;
+        return false;
     }
     EffectsPanelState* panel = &state->effects_panel;
     if (slot_index < 0 || slot_index >= panel->chain_count) {
-        return;
+        return false;
     }
     FxSlotUIState* slot = &panel->chain[slot_index];
     UndoCommand cmd = {0};
@@ -110,7 +111,9 @@ void begin_fx_param_drag(AppState* state, int slot_index, int param_index) {
     cmd.data.fx_edit.param_index = (uint32_t)param_index;
     fx_instance_from_slot(slot, &cmd.data.fx_edit.before_state);
     cmd.data.fx_edit.after_state = cmd.data.fx_edit.before_state;
-    undo_manager_begin_drag(&state->undo, &cmd);
+    if (!(undo_command_bind_track(state, &cmd) && undo_manager_begin_drag(&state->undo, &cmd))) return false;
+    panel->slider_history_serial = state->undo.drag_serial;
+    return true;
 }
 
 static bool effects_panel_slot_supports_preview(FxTypeId type_id) {
@@ -233,39 +236,20 @@ bool compute_detail_slot_layout(const AppState* state,
     return true;
 }
 
+// Toggles bypass only after reserving complete effect history.
 bool toggle_slot_enabled(AppState* state, EffectsPanelState* panel, int slot_index) {
-    if (!state || !panel || !state->engine) {
-        return false;
-    }
-    if (slot_index < 0 || slot_index >= panel->chain_count) {
-        return false;
-    }
-    FxInstId id = panel->chain[slot_index].id;
-    SessionFxInstance before_state;
-    fx_instance_from_slot(&panel->chain[slot_index], &before_state);
-    bool enabled = !panel->chain[slot_index].enabled;
-    bool updated = false;
-    if (panel_targets_track(panel)) {
-        updated = engine_fx_track_set_enabled(state->engine, panel->target_track_index, id, enabled);
-    } else {
-        updated = engine_fx_master_set_enabled(state->engine, id, enabled);
-    }
-    if (id != 0 && updated) {
-        effects_panel_sync_from_engine(state);
-        int new_index = find_slot_index_by_id(panel, id);
-        if (new_index >= 0) {
-            UndoCommand cmd = {0};
-            cmd.type = UNDO_CMD_FX_EDIT;
-            cmd.data.fx_edit.kind = UNDO_FX_EDIT_ENABLE;
-            cmd.data.fx_edit.target = panel_targets_track(panel) ? UNDO_FX_TARGET_TRACK : UNDO_FX_TARGET_MASTER;
-            cmd.data.fx_edit.track_index = panel_targets_track(panel) ? panel->target_track_index : -1;
-            cmd.data.fx_edit.id = id;
-            cmd.data.fx_edit.before_state = before_state;
-            fx_instance_from_slot(&panel->chain[new_index], &cmd.data.fx_edit.after_state);
-            undo_manager_push(&state->undo, &cmd);
-        }
-    }
-    return updated;
+    if (!state || !panel || !state->engine || slot_index < 0 || slot_index >= panel->chain_count) return false;
+    UndoCommand command = {.type = UNDO_CMD_FX_EDIT};
+    command.data.fx_edit.kind = UNDO_FX_EDIT_ENABLE;
+    command.data.fx_edit.target = panel_targets_track(panel) ? UNDO_FX_TARGET_TRACK : UNDO_FX_TARGET_MASTER;
+    command.data.fx_edit.track_index = panel_targets_track(panel) ? panel->target_track_index : -1;
+    command.data.fx_edit.id = panel->chain[slot_index].id;
+    fx_instance_from_slot(&panel->chain[slot_index], &command.data.fx_edit.before_state);
+    command.data.fx_edit.after_state = command.data.fx_edit.before_state;
+    command.data.fx_edit.after_state.enabled = !command.data.fx_edit.before_state.enabled;
+    bool accepted = undo_manager_apply_edit(state, &command);
+    if (accepted) effects_panel_sync_from_engine(state);
+    return accepted;
 }
 
 int hit_column_index(const EffectsPanelLayout* layout, const EffectsPanelState* panel, const SDL_Point* pt) {
@@ -345,6 +329,26 @@ void apply_slider_value(AppState* state, int slot_index, int param_index, float 
     } else if (fx_param_spec_is_syncable(spec)) {
         beat_value = fx_param_spec_native_to_beats(spec, value, &state->tempo);
     }
+    if (!state->undo.active_drag_valid) {
+        UndoCommand command = {.type = UNDO_CMD_FX_EDIT};
+        command.data.fx_edit.kind = UNDO_FX_EDIT_PARAM;
+        command.data.fx_edit.target = panel_targets_track(panel) ? UNDO_FX_TARGET_TRACK : UNDO_FX_TARGET_MASTER;
+        command.data.fx_edit.track_index = panel_targets_track(panel) ? panel->target_track_index : -1;
+        command.data.fx_edit.id = slot->id; command.data.fx_edit.param_index = (uint32_t)param_index;
+        fx_instance_from_slot(slot, &command.data.fx_edit.before_state);
+        command.data.fx_edit.after_state = command.data.fx_edit.before_state;
+        command.data.fx_edit.after_state.params[param_index] = native_value;
+        command.data.fx_edit.after_state.param_beats[param_index] = beat_value;
+        if (undo_manager_apply_edit(state, &command)) {
+            slot->param_values[param_index] = native_value;
+            slot->param_beats[param_index] = beat_value;
+        }
+        return;
+    }
+    const UndoCommand* owner = &state->undo.active_drag;
+    if (panel->slider_history_serial != state->undo.drag_serial || owner->type != UNDO_CMD_FX_EDIT ||
+        owner->data.fx_edit.kind != UNDO_FX_EDIT_PARAM || owner->data.fx_edit.id != slot->id ||
+        owner->data.fx_edit.param_index != (uint32_t)param_index) return;
     bool updated = false;
     bool use_sync = (mode != FX_PARAM_MODE_NATIVE) && fx_param_spec_is_syncable(spec);
     if (panel_targets_track(panel)) {
@@ -534,11 +538,15 @@ void toggle_param_mode(AppState* state, int slot_index, int param_index) {
         native_value = fx_param_map_ui_to_value(spec, t);
         beat_value = fx_param_spec_native_to_beats(spec, native_value, &state->tempo);
     }
-    slot->param_mode[param_index] = next;
-    slot->param_beats[param_index] = beat_value;
-    apply_slider_value(state, slot_index, param_index, next == FX_PARAM_MODE_NATIVE ? native_value : beat_value);
-    fx_instance_from_slot(slot, &cmd.data.fx_edit.after_state);
-    undo_manager_push(&state->undo, &cmd);
+    cmd.data.fx_edit.after_state = cmd.data.fx_edit.before_state;
+    cmd.data.fx_edit.after_state.param_mode[param_index] = next;
+    cmd.data.fx_edit.after_state.param_beats[param_index] = beat_value;
+    cmd.data.fx_edit.after_state.params[param_index] = native_value;
+    if (undo_manager_apply_edit(state, &cmd)) {
+        slot->param_mode[param_index] = next;
+        slot->param_beats[param_index] = beat_value;
+        slot->param_values[param_index] = native_value;
+    }
 }
 
 void close_overlay(EffectsPanelState* panel) {

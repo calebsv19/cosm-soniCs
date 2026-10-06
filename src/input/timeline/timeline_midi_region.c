@@ -88,7 +88,7 @@ bool timeline_midi_region_create_on_active_track(AppState* state,
     }
 
     int sample_rate = timeline_midi_region_sample_rate(state);
-    uint64_t start_frame = engine_get_transport_frame(state->engine);
+    uint64_t start_frame = engine_get_presentation_frame(state->engine);
     if (state->timeline_snap_enabled && sample_rate > 0) {
         float visible = state->timeline_visible_seconds > 0.0f
             ? state->timeline_visible_seconds

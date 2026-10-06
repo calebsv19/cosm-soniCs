@@ -513,7 +513,7 @@ static void meter_history_update(EffectsMeterHistory* history,
         return;
     }
 
-    uint64_t frame = engine_get_transport_frame(state->engine);
+    uint64_t frame = engine_get_presentation_frame(state->engine);
     if (!history->last_transport_frame_valid) {
         history->last_transport_frame = frame;
         history->last_transport_frame_valid = true;
@@ -576,7 +576,7 @@ static EffectsMeterHistoryGridContext meter_history_grid_context_for_type(const 
 
     double end_seconds = 0.0;
     if (state->engine && sample_rate > 0.0) {
-        uint64_t frame = engine_get_transport_frame(state->engine);
+        uint64_t frame = engine_get_presentation_frame(state->engine);
         end_seconds = (double)frame / sample_rate;
     }
     double bucket_seconds = meter_history_bucket_seconds_for_mode(state, &profile, end_seconds);
@@ -920,4 +920,84 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
         draw_centered_toggle_text(renderer, &toggle_bw, "B/W", label_color);
         draw_centered_toggle_text(renderer, &toggle_heat, "Heat", label_color);
     }
+}
+
+// Chooses a deterministic visible card without switching the analyzer once per rendered card.
+int effects_panel_spectrogram_card_index(const AppState* state) {
+    if (!state) return -1;
+    const EffectsPanelState* panel = &state->effects_panel;
+    int count = panel->chain_count < FX_MASTER_MAX ? panel->chain_count : FX_MASTER_MAX;
+    int selected = panel->selected_slot_index;
+    if (selected >= 0 && selected < count && panel->chain[selected].type_id == 105u) return selected;
+    for (int i = 0; i < count; ++i) {
+        if (panel->chain[i].type_id == 105u && panel->chain[i].enabled) return i;
+    }
+    return -1;
+}
+
+// Uses the same stable engine selection API as the expanded meter view.
+void effects_panel_update_spectrogram_card_target(const AppState* state) {
+    if (!state || !state->engine) return;
+    int index = effects_panel_spectrogram_card_index(state);
+    const EffectsPanelState* panel = &state->effects_panel;
+    const FxSlotUIState* slot = index >= 0 ? &panel->chain[index] : NULL;
+    int track = panel->target == FX_PANEL_TARGET_TRACK ? panel->target_track_index : -1;
+    engine_set_fx_spectrogram_target(state->engine, track, slot ? slot->id : 0, slot && slot->enabled);
+}
+
+// Reserves a compact three-button row without overlapping the spectrogram plot.
+void effects_panel_spectrogram_card_palette_rects(const SDL_Rect* rect, SDL_Rect buttons[3]) {
+    if (!buttons) return;
+    for (int i = 0; i < 3; ++i) buttons[i] = (SDL_Rect){0};
+    if (!rect || rect->w < 24 || rect->h < 32) return;
+    int gap = 4;
+    int width = (rect->w - 12 - gap * 2) / 3;
+    int height = ui_font_line_height(1.0f) + 8;
+    for (int i = 0; i < 3; ++i)
+        buttons[i] = (SDL_Rect){rect->x + 6 + i * (width + gap), rect->y + 4, width, height};
+}
+
+// Reuses the calibrated heatmap renderer rather than treating a zero-parameter meter as an empty effect.
+void effects_panel_spectrogram_card_render(SDL_Renderer* renderer, const AppState* state,
+                                          int slot_index, const SDL_Rect* rect,
+                                          SDL_Color label_color, SDL_Color dim_color) {
+    if (!renderer || !state || !rect || slot_index < 0 || slot_index >= state->effects_panel.chain_count) return;
+    const FxSlotUIState* slot = &state->effects_panel.chain[slot_index];
+    int palette = slot->param_count > 2 ? (int)lroundf(slot->param_values[2]) : state->effects_panel.meter_spectrogram_mode;
+    if (palette < 0 || palette > 2) palette = 0;
+    SDL_Rect buttons[3];
+    effects_panel_spectrogram_card_palette_rects(rect, buttons);
+    SDL_Color border, fill, left_fill, right_fill, label, dim, on, off;
+    resolve_meter_detail_theme(&border, &fill, &left_fill, &right_fill, &label, &dim, &on, &off);
+    const char* names[3] = {"W/B", "B/W", "Heat"};
+    for (int i = 0; i < 3; ++i) {
+        SDL_Color color = i == palette ? on : off;
+        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
+        SDL_RenderFillRect(renderer, &buttons[i]);
+        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
+        SDL_RenderDrawRect(renderer, &buttons[i]);
+        draw_centered_toggle_text(renderer, &buttons[i], names[i], label_color);
+    }
+    SDL_Rect plot = *rect;
+    int controls_height = buttons[0].h > 0 ? buttons[0].h + 8 : 0;
+    plot.y += controls_height;
+    plot.h -= controls_height;
+    rect = &plot;
+    if (!slot->enabled || effects_panel_spectrogram_card_index(state) != slot_index) {
+        ui_draw_text_clipped(renderer, rect->x + 6, rect->y + 6,
+                             !slot->enabled ? "Spectrogram bypassed" : "Select this meter to analyze",
+                             dim_color, 1.0f, rect->w - 12);
+        return;
+    }
+    EngineSpectrogramSnapshot snapshot = {0};
+    float frames[ENGINE_SPECTROGRAM_HISTORY * ENGINE_SPECTROGRAM_BINS];
+    bool have = engine_get_fx_spectrogram_snapshot(state->engine, &snapshot, frames,
+                                                  ENGINE_SPECTROGRAM_HISTORY, ENGINE_SPECTROGRAM_BINS);
+    int track = state->effects_panel.target == FX_PANEL_TARGET_TRACK ? state->effects_panel.target_track_index : -1;
+    const EngineTrack* target_track = track >= 0 && track < engine_get_track_count(state->engine)
+        ? &engine_get_tracks(state->engine)[track] : NULL;
+    uint64_t track_id = target_track ? target_track->runtime_id : 0;
+    have = have && snapshot.effect_id == slot->id && snapshot.track_id == track_id;
+    effects_meter_render_spectrogram(renderer, rect, have ? &snapshot : NULL, have ? frames : NULL,
+                                     palette, NULL, label_color, dim_color);
 }

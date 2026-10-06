@@ -12,6 +12,10 @@ static bool effects_panel_update_target(AppState* state) {
         return false;
     }
     EffectsPanelState* panel = &state->effects_panel;
+    if (state->undo.active_drag_valid &&
+        ((panel->dragging_slider && panel->slider_history_serial == state->undo.drag_serial) ||
+         (panel->track_snapshot.dragging && panel->track_snapshot.history_serial == state->undo.drag_serial) ||
+         (panel->eq_detail.dragging && panel->eq_detail.history_serial == state->undo.drag_serial))) return false;
     EffectsPanelTarget prev_target = panel->target;
     int prev_track = panel->target_track_index;
     char prev_label[sizeof(panel->target_label)];
@@ -98,6 +102,23 @@ void effects_panel_sync_from_engine(AppState* state) {
     effects_panel_ensure_eq_curve_tracks(state, track_count);
     effects_panel_ensure_last_open_tracks(panel, track_count);
     bool target_changed = effects_panel_update_target(state);
+    if (!panel->eq_detail.dragging) {
+        int track = panel->eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK && panel->target == FX_PANEL_TARGET_TRACK ?
+                    panel->target_track_index : -1;
+        EngineEqCurve curve;
+        if (engine_get_eq_curve(state->engine, track, &curve)) {
+            panel->eq_curve.low_cut.enabled = curve.low_cut.enabled;
+            panel->eq_curve.low_cut.freq_hz = curve.low_cut.freq_hz;
+            panel->eq_curve.high_cut.enabled = curve.high_cut.enabled;
+            panel->eq_curve.high_cut.freq_hz = curve.high_cut.freq_hz;
+            for (int b = 0; b < ENGINE_EQ_BANDS; ++b) {
+                panel->eq_curve.bands[b].enabled = curve.bands[b].enabled;
+                panel->eq_curve.bands[b].freq_hz = curve.bands[b].freq_hz;
+                panel->eq_curve.bands[b].gain_db = curve.bands[b].gain_db;
+                panel->eq_curve.bands[b].q_width = curve.bands[b].q_width;
+            }
+        }
+    }
     FxInstId selected_id = 0;
     if (!target_changed &&
         panel->selected_slot_index >= 0 &&

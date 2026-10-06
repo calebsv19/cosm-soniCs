@@ -1,0 +1,528 @@
+{
+  "binary": "/Users/calebsv/Desktop/CodeWork/daw/build/performance/O2/targets/macOS-arm64/tests/media_import_bench",
+  "binary_sha256": "c16d7918bfd4c2d937aacd9b1b1e805cf211826cbdd2e4c691a1924f30f2f7df",
+  "samples": [
+    {
+      "rate": 48000,
+      "repeat": 1,
+      "command": [
+        "/Users/calebsv/Desktop/CodeWork/daw/build/performance/O2/targets/macOS-arm64/tests/media_import_bench",
+        "48000"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 2.5822761673480272,
+      "log": "/tmp/daw-s47-bench-48000-1.log",
+      "measurements": [
+        {
+          "phase": "scan",
+          "source_rate": 48000,
+          "files": 5,
+          "cold_main_ms": 0.09325,
+          "warm_main_ms": 0.070334
+        },
+        {
+          "phase": "cold",
+          "source_rate": 48000,
+          "elapsed_ms": 300.420041,
+          "submit_max_ms": 0.173875,
+          "poll_max_ms": 1.037666,
+          "rss_peak": 124076032,
+          "ready_peak_bytes": 23040000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "warm",
+          "source_rate": 48000,
+          "elapsed_ms": 231.674583,
+          "submit_max_ms": 0.097166,
+          "poll_max_ms": 1.553959,
+          "rss_peak": 127483904,
+          "ready_peak_bytes": 0,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 48000,
+          "elapsed_ms": 320.826958,
+          "submit_max_ms": 0.215333,
+          "poll_max_ms": 0.783375,
+          "rss_peak": 142508032,
+          "ready_peak_bytes": 23040000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 48000,
+          "elapsed_ms": 296.127208,
+          "submit_max_ms": 0.162667,
+          "poll_max_ms": 0.812333,
+          "rss_peak": 150306816,
+          "ready_peak_bytes": 23040000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 48000,
+          "elapsed_ms": 304.76725,
+          "submit_max_ms": 0.101542,
+          "poll_max_ms": 1.001708,
+          "rss_peak": 151420928,
+          "ready_peak_bytes": 23040000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "retired",
+          "source_rate": 48000,
+          "rss_before": 67878912,
+          "rss_after": 151486464,
+          "pinned_baseline_bytes": 11520000,
+          "pinned_after_bytes": 11520000,
+          "capture_missing_frames": 0,
+          "output_missing_frames": 0,
+          "worker_over_budget": 0
+        }
+      ],
+      "log_sha256": "658fd360c7f010824bcd592cd7c3582642ec0b6931196f100e764973ae0a361f"
+    },
+    {
+      "rate": 48000,
+      "repeat": 2,
+      "command": [
+        "/Users/calebsv/Desktop/CodeWork/daw/build/performance/O2/targets/macOS-arm64/tests/media_import_bench",
+        "48000"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 2.446197166107595,
+      "log": "/tmp/daw-s47-bench-48000-2.log",
+      "measurements": [
+        {
+          "phase": "scan",
+          "source_rate": 48000,
+          "files": 5,
+          "cold_main_ms": 0.154542,
+          "warm_main_ms": 0.044625
+        },
+        {
+          "phase": "cold",
+          "source_rate": 48000,
+          "elapsed_ms": 304.292126,
+          "submit_max_ms": 0.136042,
+          "poll_max_ms": 1.121249,
+          "rss_peak": 136691712,
+          "ready_peak_bytes": 23040000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "warm",
+          "source_rate": 48000,
+          "elapsed_ms": 229.13625,
+          "submit_max_ms": 0.111916,
+          "poll_max_ms": 2.254833,
+          "rss_peak": 138838016,
+          "ready_peak_bytes": 0,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 48000,
+          "elapsed_ms": 314.207541,
+          "submit_max_ms": 0.359333,
+          "poll_max_ms": 0.812375,
+          "rss_peak": 158826496,
+          "ready_peak_bytes": 23040000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 48000,
+          "elapsed_ms": 295.994,
+          "submit_max_ms": 0.276958,
+          "poll_max_ms": 0.836958,
+          "rss_peak": 159875072,
+          "ready_peak_bytes": 23040000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 48000,
+          "elapsed_ms": 296.451625,
+          "submit_max_ms": 0.112667,
+          "poll_max_ms": 0.751416,
+          "rss_peak": 160956416,
+          "ready_peak_bytes": 23040000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "retired",
+          "source_rate": 48000,
+          "rss_before": 70516736,
+          "rss_after": 169230336,
+          "pinned_baseline_bytes": 11520000,
+          "pinned_after_bytes": 11520000,
+          "capture_missing_frames": 0,
+          "output_missing_frames": 0,
+          "worker_over_budget": 0
+        }
+      ],
+      "log_sha256": "c18ead915a6b1a488d2d35cf2939a1717bf29ea004567666d7497b6e2b88e996"
+    },
+    {
+      "rate": 48000,
+      "repeat": 3,
+      "command": [
+        "/Users/calebsv/Desktop/CodeWork/daw/build/performance/O2/targets/macOS-arm64/tests/media_import_bench",
+        "48000"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 2.4191432502120733,
+      "log": "/tmp/daw-s47-bench-48000-3.log",
+      "measurements": [
+        {
+          "phase": "scan",
+          "source_rate": 48000,
+          "files": 5,
+          "cold_main_ms": 0.18375,
+          "warm_main_ms": 0.090834
+        },
+        {
+          "phase": "cold",
+          "source_rate": 48000,
+          "elapsed_ms": 296.999499,
+          "submit_max_ms": 0.129625,
+          "poll_max_ms": 0.876083,
+          "rss_peak": 127533056,
+          "ready_peak_bytes": 23040000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "warm",
+          "source_rate": 48000,
+          "elapsed_ms": 229.246,
+          "submit_max_ms": 0.08975,
+          "poll_max_ms": 1.042292,
+          "rss_peak": 136937472,
+          "ready_peak_bytes": 0,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 48000,
+          "elapsed_ms": 308.85625,
+          "submit_max_ms": 0.140584,
+          "poll_max_ms": 0.808833,
+          "rss_peak": 149241856,
+          "ready_peak_bytes": 23040000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 48000,
+          "elapsed_ms": 300.015917,
+          "submit_max_ms": 0.10975,
+          "poll_max_ms": 0.714708,
+          "rss_peak": 150323200,
+          "ready_peak_bytes": 23040000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 48000,
+          "elapsed_ms": 297.919541,
+          "submit_max_ms": 0.135459,
+          "poll_max_ms": 0.61146,
+          "rss_peak": 152207360,
+          "ready_peak_bytes": 23040000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "retired",
+          "source_rate": 48000,
+          "rss_before": 68517888,
+          "rss_after": 153075712,
+          "pinned_baseline_bytes": 11520000,
+          "pinned_after_bytes": 11520000,
+          "capture_missing_frames": 0,
+          "output_missing_frames": 0,
+          "worker_over_budget": 0
+        }
+      ],
+      "log_sha256": "5ed0904b6176958fc88e88ff4a5e085110257a2d4cb1de509495d4d420d3c61d"
+    },
+    {
+      "rate": 44100,
+      "repeat": 1,
+      "command": [
+        "/Users/calebsv/Desktop/CodeWork/daw/build/performance/O2/targets/macOS-arm64/tests/media_import_bench",
+        "44100"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 5.970298041589558,
+      "log": "/tmp/daw-s47-bench-44100-1.log",
+      "measurements": [
+        {
+          "phase": "scan",
+          "source_rate": 44100,
+          "files": 5,
+          "cold_main_ms": 0.165,
+          "warm_main_ms": 0.050543
+        },
+        {
+          "phase": "cold",
+          "source_rate": 44100,
+          "elapsed_ms": 1182.794374,
+          "submit_max_ms": 0.141417,
+          "poll_max_ms": 0.874043,
+          "rss_peak": 134742016,
+          "ready_peak_bytes": 11520000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "warm",
+          "source_rate": 44100,
+          "elapsed_ms": 232.648917,
+          "submit_max_ms": 0.089917,
+          "poll_max_ms": 2.388833,
+          "rss_peak": 146685952,
+          "ready_peak_bytes": 0,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 44100,
+          "elapsed_ms": 1199.712083,
+          "submit_max_ms": 0.221958,
+          "poll_max_ms": 0.899042,
+          "rss_peak": 159137792,
+          "ready_peak_bytes": 11520000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 44100,
+          "elapsed_ms": 1183.844543,
+          "submit_max_ms": 0.122291,
+          "poll_max_ms": 0.892333,
+          "rss_peak": 180387840,
+          "ready_peak_bytes": 11520000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 44100,
+          "elapsed_ms": 1181.770792,
+          "submit_max_ms": 0.098,
+          "poll_max_ms": 0.826292,
+          "rss_peak": 185548800,
+          "ready_peak_bytes": 11520000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "retired",
+          "source_rate": 44100,
+          "rss_before": 69959680,
+          "rss_after": 186351616,
+          "pinned_baseline_bytes": 11520000,
+          "pinned_after_bytes": 11520000,
+          "capture_missing_frames": 0,
+          "output_missing_frames": 0,
+          "worker_over_budget": 0
+        }
+      ],
+      "log_sha256": "5b0df1f8b3b447f5e130cd79e679550c625d8dea5a80bbfe2a543083768d9817"
+    },
+    {
+      "rate": 44100,
+      "repeat": 2,
+      "command": [
+        "/Users/calebsv/Desktop/CodeWork/daw/build/performance/O2/targets/macOS-arm64/tests/media_import_bench",
+        "44100"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 5.9357572086155415,
+      "log": "/tmp/daw-s47-bench-44100-2.log",
+      "measurements": [
+        {
+          "phase": "scan",
+          "source_rate": 44100,
+          "files": 5,
+          "cold_main_ms": 0.187416,
+          "warm_main_ms": 0.060124
+        },
+        {
+          "phase": "cold",
+          "source_rate": 44100,
+          "elapsed_ms": 1178.063167,
+          "submit_max_ms": 0.134417,
+          "poll_max_ms": 0.896417,
+          "rss_peak": 147734528,
+          "ready_peak_bytes": 11520000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "warm",
+          "source_rate": 44100,
+          "elapsed_ms": 232.927708,
+          "submit_max_ms": 0.110125,
+          "poll_max_ms": 1.012333,
+          "rss_peak": 148963328,
+          "ready_peak_bytes": 0,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 44100,
+          "elapsed_ms": 1181.93225,
+          "submit_max_ms": 0.145125,
+          "poll_max_ms": 0.959624,
+          "rss_peak": 167198720,
+          "ready_peak_bytes": 11520000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 44100,
+          "elapsed_ms": 1183.300834,
+          "submit_max_ms": 0.215375,
+          "poll_max_ms": 0.840042,
+          "rss_peak": 171507712,
+          "ready_peak_bytes": 11520000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 44100,
+          "elapsed_ms": 1183.227292,
+          "submit_max_ms": 0.099959,
+          "poll_max_ms": 0.819417,
+          "rss_peak": 174899200,
+          "ready_peak_bytes": 11520000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "retired",
+          "source_rate": 44100,
+          "rss_before": 79937536,
+          "rss_after": 185548800,
+          "pinned_baseline_bytes": 11520000,
+          "pinned_after_bytes": 11520000,
+          "capture_missing_frames": 0,
+          "output_missing_frames": 0,
+          "worker_over_budget": 0
+        }
+      ],
+      "log_sha256": "570038e45f50c06e34f298220362663e932a77fbf1384ed2ade66a62e8a7fe13"
+    },
+    {
+      "rate": 44100,
+      "repeat": 3,
+      "command": [
+        "/Users/calebsv/Desktop/CodeWork/daw/build/performance/O2/targets/macOS-arm64/tests/media_import_bench",
+        "44100"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 5.976371667347848,
+      "log": "/tmp/daw-s47-bench-44100-3.log",
+      "measurements": [
+        {
+          "phase": "scan",
+          "source_rate": 44100,
+          "files": 5,
+          "cold_main_ms": 0.165833,
+          "warm_main_ms": 0.067542
+        },
+        {
+          "phase": "cold",
+          "source_rate": 44100,
+          "elapsed_ms": 1184.328041,
+          "submit_max_ms": 0.136333,
+          "poll_max_ms": 0.8615,
+          "rss_peak": 142770176,
+          "ready_peak_bytes": 11520000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "warm",
+          "source_rate": 44100,
+          "elapsed_ms": 226.25525,
+          "submit_max_ms": 0.118,
+          "poll_max_ms": 2.066958,
+          "rss_peak": 154583040,
+          "ready_peak_bytes": 0,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 44100,
+          "elapsed_ms": 1208.246959,
+          "submit_max_ms": 0.279708,
+          "poll_max_ms": 0.99625,
+          "rss_peak": 168869888,
+          "ready_peak_bytes": 11520000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 44100,
+          "elapsed_ms": 1184.23525,
+          "submit_max_ms": 0.101916,
+          "poll_max_ms": 0.819459,
+          "rss_peak": 183615488,
+          "ready_peak_bytes": 11520000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "reload",
+          "source_rate": 44100,
+          "elapsed_ms": 1185.737166,
+          "submit_max_ms": 0.12171,
+          "poll_max_ms": 0.777667,
+          "rss_peak": 186859520,
+          "ready_peak_bytes": 11520000,
+          "reserved_peak_bytes": 603979776,
+          "pinned_bytes": 57600000
+        },
+        {
+          "phase": "retired",
+          "source_rate": 44100,
+          "rss_before": 72564736,
+          "rss_after": 186875904,
+          "pinned_baseline_bytes": 11520000,
+          "pinned_after_bytes": 11520000,
+          "capture_missing_frames": 0,
+          "output_missing_frames": 0,
+          "worker_over_budget": 0
+        }
+      ],
+      "log_sha256": "46eb96c14ecf53ee2fe30b4ac676eb184b7f81251160179d2db40f92d6354aa2"
+    }
+  ]
+}

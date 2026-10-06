@@ -262,24 +262,16 @@ bool library_browser_hit_test_mode_button(const LibraryBrowser* browser,
     return false;
 }
 
-static float library_resolve_duration_seconds(const char* directory, const char* filename) {
-    if (!directory || !filename) {
-        return 0.0f;
-    }
-    char full_path[LIBRARY_PATH_MAX];
-    snprintf(full_path, sizeof(full_path), "%s/%s", directory, filename);
-
-    AudioMediaClip clip;
-    memset(&clip, 0, sizeof(clip));
-    if (!audio_media_clip_load(full_path, 0, &clip)) {
-        return 0.0f;
-    }
-    float seconds = 0.0f;
-    if (clip.sample_rate > 0 && clip.frame_count > 0) {
-        seconds = (float)clip.frame_count / (float)clip.sample_rate;
-    }
-    audio_media_clip_free(&clip);
-    return seconds;
+// Reuses metadata only for an unchanged physical file version, including failed metadata probes.
+static bool library_same_version(const struct stat* a, const struct stat* b) {
+#if defined(__APPLE__)
+    bool times = a->st_mtimespec.tv_sec==b->st_mtimespec.tv_sec && a->st_mtimespec.tv_nsec==b->st_mtimespec.tv_nsec &&
+        a->st_ctimespec.tv_sec==b->st_ctimespec.tv_sec && a->st_ctimespec.tv_nsec==b->st_ctimespec.tv_nsec;
+#else
+    bool times = a->st_mtim.tv_sec==b->st_mtim.tv_sec && a->st_mtim.tv_nsec==b->st_mtim.tv_nsec &&
+        a->st_ctim.tv_sec==b->st_ctim.tv_sec && a->st_ctim.tv_nsec==b->st_ctim.tv_nsec;
+#endif
+    return times && a->st_dev==b->st_dev && a->st_ino==b->st_ino && a->st_size==b->st_size;
 }
 
 void library_browser_scan(LibraryBrowser* browser, MediaRegistry* registry) {
@@ -296,7 +288,11 @@ void library_browser_scan(LibraryBrowser* browser, MediaRegistry* registry) {
         return;
     }
 
+    LibraryItem previous[LIBRARY_MAX_ITEMS];
+    int previous_count = browser->count;
+    memcpy(previous, browser->items, sizeof(previous));
     browser->count = 0;
+    ++browser->scan_generation;
     struct dirent* entry;
     while ((entry = readdir(dir)) != NULL) {
         if (entry->d_name[0] == '.') {
@@ -315,20 +311,24 @@ void library_browser_scan(LibraryBrowser* browser, MediaRegistry* registry) {
         LibraryItem* item = &browser->items[browser->count];
         strncpy(item->name, entry->d_name, LIBRARY_NAME_MAX - 1);
         item->name[LIBRARY_NAME_MAX - 1] = '\0';
-        item->duration_seconds = library_resolve_duration_seconds(browser->directory, entry->d_name);
+        item->duration_seconds = 0;
+        item->metadata_requested = item->metadata_loaded = false;
+        char source_path[LIBRARY_PATH_MAX];
+        snprintf(source_path, sizeof(source_path), "%s/%s", browser->directory, item->name);
+        memset(&item->file_identity, 0, sizeof(item->file_identity));
+        if (!stat(source_path, &item->file_identity)) for (int old=0; old<previous_count; ++old) {
+            if (previous[old].metadata_loaded && !strcmp(previous[old].name,item->name) &&
+                library_same_version(&previous[old].file_identity,&item->file_identity)) {
+                item->duration_seconds=previous[old].duration_seconds;
+                item->metadata_requested=item->metadata_loaded=true; break;
+            }
+        }
         item->media_id[0] = '\0';
         if (registry) {
             char full_path[LIBRARY_PATH_MAX];
             snprintf(full_path, sizeof(full_path), "%s/%s", browser->directory, entry->d_name);
-            MediaRegistryEntry reg_entry = {0};
-            if (media_registry_ensure_for_path(registry, full_path, entry->d_name, &reg_entry)) {
-                strncpy(item->media_id, reg_entry.id, sizeof(item->media_id) - 1);
-                item->media_id[sizeof(item->media_id) - 1] = '\0';
-                if (reg_entry.duration_seconds <= 0.0f) {
-                    reg_entry.duration_seconds = item->duration_seconds;
-                    media_registry_update_path(registry, reg_entry.id, reg_entry.path, reg_entry.name);
-                }
-            }
+            MediaRegistryEntry* known = media_registry_find_by_path(registry, full_path);
+            if (known) SDL_strlcpy(item->media_id, known->id, sizeof(item->media_id));
         }
         browser->count++;
     }

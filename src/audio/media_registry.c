@@ -1,4 +1,5 @@
 #include "audio/media_registry.h"
+#include "daw/save_file.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -305,12 +306,17 @@ bool media_registry_load(MediaRegistry* registry) {
     return ok;
 }
 
+// Clears dirty state only after a complete manifest has been published.
 bool media_registry_save(MediaRegistry* registry) {
     if (!registry || registry->manifest_path[0] == '\0') return false;
-    FILE* file = fopen(registry->manifest_path, "wb");
-    if (!file) return false;
-    registry_write_json(file, registry);
-    fclose(file);
+    DawSaveFile save;
+    if (!daw_save_file_begin(&save, registry->manifest_path)) return false;
+    registry_write_json(save.file, registry);
+    if (!daw_save_file_prepare(&save)) {
+        daw_save_file_abort(&save);
+        return false;
+    }
+    if (daw_save_file_commit(&save) == DAW_SAVE_FAILED) return false;
     registry->dirty = false;
     return true;
 }
@@ -414,4 +420,33 @@ bool media_registry_update_path(MediaRegistry* registry,
         }
     }
     return false;
+}
+
+// Hashes bounded chunks with cancellation and explicit read-error rejection for background preparation.
+bool media_registry_prepare_entry(const char* path, MediaRegistryEntry* out, bool (*cancelled)(void*), void* user) {
+    if (!path || !out || strlen(path)>=SESSION_PATH_MAX || (cancelled && cancelled(user))) return false;
+    FILE* file=fopen(path,"rb"); if (!file) return false;
+    unsigned char buffer[16384]; size_t count; uint64_t hash=UINT64_C(1469598103934665603), size=0;
+    while ((count=fread(buffer,1,sizeof(buffer),file))>0) {
+        if (cancelled && cancelled(user)) { fclose(file); return false; }
+        size+=count;
+        for (size_t i=0;i<count;++i) { hash^=buffer[i]; hash*=UINT64_C(1099511628211); }
+    }
+    bool ok=!ferror(file) && !(cancelled && cancelled(user)); fclose(file); if (!ok) return false;
+    *out=(MediaRegistryEntry){.file_size=size};
+    snprintf(out->id,sizeof(out->id),"%016llx",(unsigned long long)hash);
+    snprintf(out->path,sizeof(out->path),"%s",path);
+    const char* name=strrchr(path,'/');snprintf(out->name,sizeof(out->name),"%s",name ? name+1 : path);
+    return true;
+}
+
+// Commits a privately prepared registry record while keeping earlier content IDs available to old clips.
+bool media_registry_adopt_entry(MediaRegistry* registry, const MediaRegistryEntry* entry) {
+    if (!registry || !entry || !entry->id[0] || !entry->path[0] ||
+        !memchr(entry->id,0,sizeof(entry->id)) || !memchr(entry->path,0,sizeof(entry->path))) return false;
+    for (int i=0;i<registry->count;++i) if (!strcmp(registry->entries[i].id,entry->id)) {
+        registry->entries[i]=*entry;registry->dirty=true;return true;
+    }
+    if (!registry_ensure_capacity(registry,registry->count+1)) return false;
+    registry->entries[registry->count++]=*entry;registry->dirty=true;return true;
 }

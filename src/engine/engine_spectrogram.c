@@ -1,9 +1,12 @@
 #include "engine/engine_internal.h"
 
 #include <math.h>
+#include "engine/analysis_math.h"
 #include <string.h>
 
-#define ENGINE_SPECTROGRAM_UPDATE_INTERVAL 4
+_Static_assert(ENGINE_SPECTROGRAM_FFT_SIZE <= ENGINE_ANALYSIS_MAX_FRAMES &&
+               ENGINE_SPECTROGRAM_BINS <= ENGINE_ANALYSIS_MAX_BINS, "analyzer plan capacity");
+
 
 // Clamps a value between bounds for stable spectrogram output.
 static float clampf(float v, float lo, float hi) {
@@ -27,286 +30,80 @@ static void engine_spectrogram_reset_history(Engine* engine) {
     }
 }
 
-// Clears the spectrogram queue and history for a fresh capture window.
+
+
+// Invalidates outstanding captures and clears visible history without modifying live queue indices.
 void engine_spectrogram_clear_history(Engine* engine) {
-    if (!engine) {
-        return;
-    }
-    ringbuf_reset(&engine->spectrogram_queue);
-    if (engine->spectrogram_mutex) {
-        SDL_LockMutex(engine->spectrogram_mutex);
-        engine_spectrogram_reset_history(engine);
-        SDL_UnlockMutex(engine->spectrogram_mutex);
-    }
+    if (!engine || SDL_ThreadID() != engine->control_thread_id) return;
+    engine_analysis_invalidate(&engine->spectrogram_stream);
+    SDL_LockMutex(engine->spectrogram_mutex);
+    engine_spectrogram_reset_history(engine);
+    SDL_UnlockMutex(engine->spectrogram_mutex);
 }
 
-// Adds mono samples to the spectrogram ring buffer, discarding old data if needed.
-static void spectrogram_queue_write(Engine* engine, const float* mono, int frames) {
-    if (!engine || !mono || frames <= 0) {
-        return;
-    }
-    size_t bytes = (size_t)frames * sizeof(float);
-    size_t avail = ringbuf_available_write(&engine->spectrogram_queue);
-    if (avail < bytes) {
-        uint8_t scratch[256];
-        size_t need = bytes - avail;
-        while (need > 0) {
-            size_t chunk = need < sizeof(scratch) ? need : sizeof(scratch);
-            size_t read = ringbuf_read(&engine->spectrogram_queue, scratch, chunk);
-            if (read == 0) {
-                break;
-            }
-            need -= read;
-        }
-    }
-    ringbuf_write(&engine->spectrogram_queue, mono, bytes);
-}
-
-// Mixes interleaved audio into a mono buffer for spectrogram analysis.
-static void fill_mono(const float* interleaved, float* mono, int frames, int channels) {
-    if (!interleaved || !mono || frames <= 0 || channels <= 0) {
-        return;
-    }
-    if (channels == 1) {
-        memcpy(mono, interleaved, (size_t)frames * sizeof(float));
-        return;
-    }
-    for (int i = 0; i < frames; ++i) {
-        int base = i * channels;
-        float l = interleaved[base];
-        float r = interleaved[base + 1];
-        mono[i] = 0.5f * (l + r);
-    }
-}
-
-// Computes log-spaced spectrogram bins from the current window.
-static void compute_spectrogram_bins(const float* window,
-                                     int sample_rate,
-                                     float* out_bins,
-                                     int bin_count) {
-    if (!window || sample_rate <= 0 || !out_bins || bin_count <= 0) {
-        return;
-    }
-    int n = ENGINE_SPECTROGRAM_FFT_SIZE;
-    float min_hz = ENGINE_SPECTROGRAM_MIN_HZ;
-    float max_hz = ENGINE_SPECTROGRAM_MAX_HZ;
-    float nyquist = (float)sample_rate * 0.5f;
-    if (max_hz > nyquist) {
-        max_hz = nyquist;
-    }
-    if (min_hz < 1.0f) {
-        min_hz = 1.0f;
-    }
-    float ratio = powf(max_hz / min_hz, 1.0f / (float)(bin_count - 1));
-    for (int b = 0; b < bin_count; ++b) {
-        float freq = min_hz * powf(ratio, (float)b);
-        float omega = 2.0f * (float)M_PI * freq / (float)sample_rate;
-        float re = 0.0f;
-        float im = 0.0f;
-        for (int i = 0; i < n; ++i) {
-            float w = 0.5f * (1.0f - cosf(2.0f * (float)M_PI * (float)i / (float)(n - 1)));
-            float sample = window[i] * w;
-            float phase = omega * (float)i;
-            re += sample * cosf(phase);
-            im -= sample * sinf(phase);
-        }
-        float mag = sqrtf(re * re + im * im) / (float)n;
-        float db = 20.0f * log10f(mag + 1e-6f);
-        out_bins[b] = clampf(db, ENGINE_SPECTROGRAM_DB_FLOOR, ENGINE_SPECTROGRAM_DB_CEIL);
-    }
-}
-
-// Prepares spectrogram capture for the current audio block.
+// Selects a coherent capture target using producer-owned window state only.
 bool engine_spectrogram_begin_block(Engine* engine) {
-    if (!engine) {
-        return false;
-    }
-    if (!atomic_load_explicit(&engine->spectrogram_enabled, memory_order_acquire)) {
-        engine->spectrogram_update_active = false;
-        return false;
-    }
-    int track = atomic_load_explicit(&engine->spectrogram_target_track, memory_order_acquire);
-    FxInstId id = (FxInstId)atomic_load_explicit(&engine->spectrogram_target_id, memory_order_acquire);
-    if (engine->spectrogram_state.last_track != track || engine->spectrogram_state.last_id != id) {
-        ringbuf_reset(&engine->spectrogram_queue);
-        if (engine->spectrogram_mutex) {
-            SDL_LockMutex(engine->spectrogram_mutex);
-            engine_spectrogram_reset_history(engine);
-            SDL_UnlockMutex(engine->spectrogram_mutex);
-        }
-        engine->spectrogram_state.last_track = track;
-        engine->spectrogram_state.last_id = id;
-    }
-    if (id == 0) {
-        engine->spectrogram_update_active = false;
-        return false;
-    }
-    if (track >= engine->track_count) {
-        engine->spectrogram_update_active = false;
-        return false;
-    }
-    engine->spectrogram_block_skip = ENGINE_SPECTROGRAM_UPDATE_INTERVAL;
-    if (engine->spectrogram_block_skip > 0) {
-        engine->spectrogram_block_counter += 1;
-        if (engine->spectrogram_block_counter < engine->spectrogram_block_skip) {
-            engine->spectrogram_update_active = false;
-            return false;
-        }
-        engine->spectrogram_block_counter = 0;
-    }
-    engine->spectrogram_update_active = true;
-    return true;
+    if (!engine) return false;
+    engine->spectrogram_update_active = engine_analysis_begin_at(&engine->spectrogram_stream, atomic_load(&engine->clock_epoch));
+    if (!engine->spectrogram_stream.capture.selection.effect_id) engine->spectrogram_update_active = false;
+    return engine->spectrogram_update_active;
 }
 
-// Captures per-FX audio for the active spectrogram meter.
-void engine_spectrogram_update_fx(Engine* engine,
-                                  bool is_master,
-                                  int track_index,
-                                  FxInstId id,
-                                  const float* interleaved,
-                                  int frames,
-                                  int channels) {
-    if (!engine || !interleaved || frames <= 0 || channels <= 0) {
-        return;
+// Captures the selected effect by stable track and instance identity from the render revision.
+void engine_spectrogram_update_fx(Engine* engine, bool is_master, int track, FxInstId id,
+                                  const float* input, int frames, int channels) {
+    if (!engine || !engine->spectrogram_update_active) return;
+    EngineAnalysisSelection* selected = &engine->spectrogram_stream.capture.selection;
+    if (selected->effect_id != id) return;
+    if (is_master) { if (selected->track_id != 0) return; }
+    else {
+        EngineMixState* mix = engine_render_mix_state(engine);
+        if (!mix || track < 0 || track >= mix->track_count || mix->tracks[track].runtime_id != selected->track_id) return;
     }
-    if (!engine->spectrogram_update_active ||
-        !atomic_load_explicit(&engine->spectrogram_enabled, memory_order_acquire)) {
-        return;
-    }
-    int target_track = atomic_load_explicit(&engine->spectrogram_target_track, memory_order_acquire);
-    FxInstId target_id = (FxInstId)atomic_load_explicit(&engine->spectrogram_target_id, memory_order_acquire);
-    bool match = false;
-    if (is_master) {
-        match = (target_track < 0);
-    } else {
-        match = (track_index == target_track);
-    }
-    if (!match || id != target_id) {
-        return;
-    }
-    float mono[ENGINE_SPECTROGRAM_FFT_SIZE];
-    int n = frames;
-    if (n > ENGINE_SPECTROGRAM_FFT_SIZE) {
-        n = ENGINE_SPECTROGRAM_FFT_SIZE;
-    }
-    fill_mono(interleaved, mono, n, channels);
-    spectrogram_queue_write(engine, mono, n);
-    engine->spectrogram_update_active = false;
+    engine_analysis_append(&engine->spectrogram_stream, &engine->spectrogram_queue, input, frames, channels, ENGINE_SPECTROGRAM_FFT_SIZE);
 }
 
-// Consumes queued samples and updates the spectrogram history in a background thread.
+// Analyzes complete windows and publishes only results belonging to the current selection generation.
 int engine_spectrogram_thread_main(void* userdata) {
-    Engine* engine = (Engine*)userdata;
-    if (!engine) {
-        return -1;
-    }
-    int hop = engine->config.block_size;
-    if (hop < 64) hop = 64;
-    if (hop > ENGINE_SPECTROGRAM_FFT_SIZE) hop = ENGINE_SPECTROGRAM_FFT_SIZE;
-
-    float window[ENGINE_SPECTROGRAM_FFT_SIZE];
-    int filled = 0;
-    float hop_buf[ENGINE_SPECTROGRAM_FFT_SIZE];
-
-    while (atomic_load_explicit(&engine->spectrogram_running, memory_order_acquire)) {
-        if (!atomic_load_explicit(&engine->spectrogram_enabled, memory_order_acquire)) {
-            ringbuf_reset(&engine->spectrogram_queue);
-            if (engine->spectrogram_mutex) {
-                SDL_LockMutex(engine->spectrogram_mutex);
-                engine_spectrogram_reset_history(engine);
-                SDL_UnlockMutex(engine->spectrogram_mutex);
-            }
-            filled = 0;
-            SDL_Delay(4);
+    Engine* engine = userdata;
+    if (!engine) return -1;
+    EngineAnalysisPlan plan;
+    if (!engine_analysis_prepare(&plan, ENGINE_SPECTROGRAM_FFT_SIZE, ENGINE_SPECTROGRAM_BINS,
+                                 engine->config.sample_rate, ENGINE_SPECTROGRAM_MIN_HZ,
+                                 ENGINE_SPECTROGRAM_MAX_HZ)) return -1;
+    EngineAnalysisPacket packet;
+    uint64_t revision = UINT64_MAX, epoch = UINT64_MAX, sequence = UINT64_MAX;
+    while (atomic_load(&engine->spectrogram_running)) {
+        if (!engine_analysis_receive(&engine->spectrogram_stream, &engine->spectrogram_queue, &packet)) { SDL_Delay(1); continue; }
+        if (!engine_analysis_current(&engine->spectrogram_stream, &packet) || packet.epoch != atomic_load(&engine->clock_epoch)) {
+            atomic_fetch_add(&engine->spectrogram_stream.stale, 1);
             continue;
         }
-
-        int track = atomic_load_explicit(&engine->spectrogram_target_track, memory_order_acquire);
-        FxInstId id = (FxInstId)atomic_load_explicit(&engine->spectrogram_target_id, memory_order_acquire);
-        if (engine->spectrogram_state.last_track != track || engine->spectrogram_state.last_id != id) {
-            ringbuf_reset(&engine->spectrogram_queue);
-            if (engine->spectrogram_mutex) {
-                SDL_LockMutex(engine->spectrogram_mutex);
-                engine_spectrogram_reset_history(engine);
-                SDL_UnlockMutex(engine->spectrogram_mutex);
-            }
-            filled = 0;
-            engine->spectrogram_state.last_track = track;
-            engine->spectrogram_state.last_id = id;
-        }
-
-        size_t avail = ringbuf_available_read(&engine->spectrogram_queue);
-        size_t hop_bytes = (size_t)hop * sizeof(float);
-        if (avail < hop_bytes) {
-            SDL_Delay(1);
-            continue;
-        }
-        size_t read_bytes = ringbuf_read(&engine->spectrogram_queue, hop_buf, hop_bytes);
-        if (read_bytes < hop_bytes) {
-            SDL_Delay(1);
-            continue;
-        }
-        int got_samples = (int)(read_bytes / sizeof(float));
-        if (got_samples <= 0) {
-            SDL_Delay(1);
-            continue;
-        }
-
-        if (filled < ENGINE_SPECTROGRAM_FFT_SIZE) {
-            int to_copy = ENGINE_SPECTROGRAM_FFT_SIZE - filled;
-            if (to_copy > got_samples) {
-                to_copy = got_samples;
-            }
-            memcpy(window + filled, hop_buf, (size_t)to_copy * sizeof(float));
-            filled += to_copy;
-            if (filled < ENGINE_SPECTROGRAM_FFT_SIZE) {
-                continue;
-            }
-            if (got_samples > to_copy) {
-                int remaining = got_samples - to_copy;
-                if (remaining >= ENGINE_SPECTROGRAM_FFT_SIZE) {
-                    memcpy(window,
-                           hop_buf + got_samples - ENGINE_SPECTROGRAM_FFT_SIZE,
-                           ENGINE_SPECTROGRAM_FFT_SIZE * sizeof(float));
-                } else {
-                    memmove(window,
-                            window + remaining,
-                            (size_t)(ENGINE_SPECTROGRAM_FFT_SIZE - remaining) * sizeof(float));
-                    memcpy(window + ENGINE_SPECTROGRAM_FFT_SIZE - remaining,
-                           hop_buf + to_copy,
-                           (size_t)remaining * sizeof(float));
-                }
-                filled = ENGINE_SPECTROGRAM_FFT_SIZE;
-            }
-        } else {
-            int shift = got_samples;
-            if (shift >= ENGINE_SPECTROGRAM_FFT_SIZE) {
-                memcpy(window,
-                       hop_buf + got_samples - ENGINE_SPECTROGRAM_FFT_SIZE,
-                       ENGINE_SPECTROGRAM_FFT_SIZE * sizeof(float));
-            } else {
-                memmove(window,
-                        window + shift,
-                        (size_t)(ENGINE_SPECTROGRAM_FFT_SIZE - shift) * sizeof(float));
-                memcpy(window + ENGINE_SPECTROGRAM_FFT_SIZE - shift,
-                       hop_buf,
-                       (size_t)shift * sizeof(float));
-            }
-        }
-
         float bins[ENGINE_SPECTROGRAM_BINS];
-        compute_spectrogram_bins(window, engine->config.sample_rate, bins, ENGINE_SPECTROGRAM_BINS);
-
-        if (engine->spectrogram_mutex) {
-            SDL_LockMutex(engine->spectrogram_mutex);
+        uint64_t began = SDL_GetPerformanceCounter();
+        engine_analysis_compute(&plan, packet.samples, bins);
+        engine_analysis_computed(&engine->spectrogram_stream, began);
+        for (int b = 0; b < ENGINE_SPECTROGRAM_BINS; ++b)
+            bins[b] = clampf(bins[b], ENGINE_SPECTROGRAM_DB_FLOOR, ENGINE_SPECTROGRAM_DB_CEIL);
+        SDL_LockMutex(engine->spectrogram_mutex);
+        if (engine_analysis_current(&engine->spectrogram_stream, &packet) && packet.epoch == atomic_load(&engine->clock_epoch)) {
+            if (revision != packet.selection.revision || epoch != packet.epoch || packet.sequence != sequence + 1)
+                engine_spectrogram_reset_history(engine);
+            revision = packet.selection.revision; epoch = packet.epoch; sequence = packet.sequence;
+            engine->spectrogram_result_epoch = packet.epoch;
+            engine->spectrogram_result_stamp.selection = packet.selection;
+            engine->spectrogram_result_stamp.epoch = packet.epoch;
+            engine->spectrogram_result_stamp.sequence = packet.sequence;
+            engine->spectrogram_result_stamp.first_sample = packet.first_sample;
             int next = (engine->spectrogram_state.head + 1) % ENGINE_SPECTROGRAM_HISTORY;
             engine->spectrogram_state.head = next;
             memcpy(engine->spectrogram_state.history[next], bins, sizeof(bins));
-            if (engine->spectrogram_state.count < ENGINE_SPECTROGRAM_HISTORY) {
-                engine->spectrogram_state.count += 1;
-            }
-            SDL_UnlockMutex(engine->spectrogram_mutex);
+            if (engine->spectrogram_state.count < ENGINE_SPECTROGRAM_HISTORY) ++engine->spectrogram_state.count;
+            atomic_fetch_add(&engine->spectrogram_stream.published, 1);
+        } else {
+            atomic_fetch_add(&engine->spectrogram_stream.stale, 1);
         }
+        SDL_UnlockMutex(engine->spectrogram_mutex);
     }
     return 0;
 }
@@ -325,7 +122,7 @@ bool engine_get_fx_spectrogram_snapshot(const Engine* engine,
     }
     SDL_LockMutex(engine->spectrogram_mutex);
     int bins = engine->spectrogram_state.bins;
-    int count = engine->spectrogram_state.count;
+    int count = engine->spectrogram_result_epoch == atomic_load(&engine->clock_epoch) ? engine->spectrogram_state.count : 0;
     int head = engine->spectrogram_state.head;
     if (bins > max_bins) {
         bins = max_bins;
@@ -341,6 +138,13 @@ bool engine_get_fx_spectrogram_snapshot(const Engine* engine,
                engine->spectrogram_state.history[idx],
                (size_t)bins * sizeof(float));
     }
+    out_meta->sample_rate = engine->config.sample_rate;
+    out_meta->window_frames = ENGINE_SPECTROGRAM_FFT_SIZE;
+    out_meta->epoch = engine->spectrogram_result_stamp.epoch;
+    out_meta->sequence = engine->spectrogram_result_stamp.sequence;
+    out_meta->first_sample = engine->spectrogram_result_stamp.first_sample;
+    out_meta->track_id = engine->spectrogram_result_stamp.selection.track_id;
+    out_meta->effect_id = engine->spectrogram_result_stamp.selection.effect_id;
     SDL_UnlockMutex(engine->spectrogram_mutex);
     out_meta->bins = bins;
     out_meta->frames = count;
@@ -349,12 +153,18 @@ bool engine_get_fx_spectrogram_snapshot(const Engine* engine,
     return count > 0;
 }
 
-// Updates the active spectrogram target used for per-FX capture.
-void engine_set_fx_spectrogram_target(Engine* engine, int track_index, FxInstId id, bool enabled) {
-    if (!engine) {
-        return;
+// Publishes one coherent stable target and clears history when its meaning changes.
+void engine_set_fx_spectrogram_target(Engine* engine, int track, FxInstId id, bool enabled) {
+    if (!engine || SDL_ThreadID() != engine->control_thread_id) return;
+    uint64_t identity = 0;
+    if (track >= 0) {
+        if (track >= engine->track_count) enabled = false;
+        else identity = engine->tracks[track].runtime_id;
     }
-    atomic_store_explicit(&engine->spectrogram_enabled, enabled, memory_order_release);
-    atomic_store_explicit(&engine->spectrogram_target_track, track_index, memory_order_release);
-    atomic_store_explicit(&engine->spectrogram_target_id, id, memory_order_release);
+    if (id == 0) enabled = false;
+    if (engine_analysis_select(&engine->spectrogram_stream, identity, 0, id, enabled)) {
+        SDL_LockMutex(engine->spectrogram_mutex);
+        engine_spectrogram_reset_history(engine);
+        SDL_UnlockMutex(engine->spectrogram_mutex);
+    }
 }

@@ -73,6 +73,7 @@ void config_set_defaults(EngineRuntimeConfig* cfg) {
     }
     cfg->sample_rate = 48000;
     cfg->block_size = 128;
+    cfg->output_queue_blocks = 32;
     cfg->default_fade_in_ms = 0.0f;
     cfg->default_fade_out_ms = 0.0f;
     cfg->fade_preset_count = CONFIG_FADE_PRESET_MAX;
@@ -103,6 +104,12 @@ static void apply_entry(EngineRuntimeConfig* cfg, const char* key, const char* v
         } else {
             log_config_diag(path, line_number, key, "ignored invalid positive integer; keeping default/current value", value);
         }
+    } else if (strcmp(key, "output_queue_blocks") == 0) {
+        char* end = NULL;
+        long blocks = strtol(value, &end, 10);
+        if (end != value && *end == '\0' && blocks >= 2 && blocks <= 32)
+            cfg->output_queue_blocks = (int)blocks;
+        else log_config_diag(path, line_number, key, "expected integer 2..32; keeping default/current value", value);
     } else if (strcmp(key, "fade_default_in_ms") == 0) {
         char* end = NULL;
         float val = strtof(value, &end);

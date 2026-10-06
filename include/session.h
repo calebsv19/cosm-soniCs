@@ -261,7 +261,9 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
 bool session_document_write_file(const SessionDocument* doc, const char* path);
 bool session_save_to_file(const struct AppState* state, const char* path);
 bool session_document_read_file(const char* path, SessionDocument* out_doc);
+// Reads the primary or its validated .bak recovery copy without modifying either file.
+bool session_document_read_recoverable(const char* path, SessionDocument* out_doc, bool* recovered);
 bool session_apply_document(struct AppState* state, const SessionDocument* doc);
 bool session_load_from_file(struct AppState* state, const char* path);
-void session_apply_pending_master_fx(struct AppState* state);
-void session_apply_pending_track_fx(struct AppState* state);
+bool session_apply_pending_master_fx(struct AppState* state);
+bool session_apply_pending_track_fx(struct AppState* state);

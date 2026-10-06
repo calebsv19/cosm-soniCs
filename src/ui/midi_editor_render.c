@@ -307,7 +307,7 @@ static void midi_editor_draw_playhead(SDL_Renderer* renderer,
     }
     uint64_t absolute_start = clip_start + visible_start;
     uint64_t absolute_end = clip_start + visible_end;
-    uint64_t playhead = engine_get_transport_frame(state->engine);
+    uint64_t playhead = engine_get_presentation_frame(state->engine);
     if (playhead < absolute_start || playhead > absolute_end || absolute_end <= absolute_start) {
         return;
     }

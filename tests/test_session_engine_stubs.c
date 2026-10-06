@@ -964,3 +964,16 @@ const TimeSignatureEvent* time_signature_map_event_at_beat(const TimeSignatureMa
     (void)beat;
     return NULL;
 }
+
+// Serialization-only fixtures do not run a control/audio thread pair.
+bool engine_is_control_thread(const Engine* engine) { return engine != NULL; }
+// Supplies neutral EQ metadata for serialization-only fixtures.
+bool engine_get_eq_curve(const Engine* engine, int track_index, EngineEqCurve* out) {
+    (void)track_index;
+    if (!engine || !out) return false;
+    *out = (EngineEqCurve){0};
+    return true;
+}
+
+// Supplies the display cursor for serializer-only fixtures without a live endpoint.
+uint64_t engine_get_presentation_frame(const Engine* engine) { return engine_get_transport_frame(engine); }

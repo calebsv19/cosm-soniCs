@@ -2,6 +2,7 @@
 
 #include "engine/graph.h"
 #include "engine/instrument.h"
+#include "core_time.h"
 
 #include <math.h>
 #include <string.h>
@@ -57,28 +58,13 @@ static void update_meter_state(EngineMeterState* state, float peak, float rms, i
     }
 }
 
-static void apply_track_pan(const EngineTrack* track, float* buffer, int frames, int channels) {
-    if (!track || !buffer || frames <= 0 || channels < 2) {
-        return;
-    }
-    float pan = track->pan;
-    if (pan < -1.0f) pan = -1.0f;
-    if (pan > 1.0f) pan = 1.0f;
-    if (pan == 0.0f) {
-        return;
-    }
-
-    float left = 1.0f;
-    float right = 1.0f;
-    if (pan < 0.0f) {
-        right = 1.0f + pan;
-    } else {
-        left = 1.0f - pan;
-    }
-    for (int i = 0; i < frames; ++i) {
-        int base = i * channels;
-        buffer[base] *= left;
-        buffer[base + 1] *= right;
+// Applies the existing balance law with a worker-owned sample ramp for live control changes.
+static void apply_track_pan(FxSampleRamp* pan_ramp, float* buffer, int frames, int channels) {
+    if (!pan_ramp || !buffer || frames <= 0 || channels < 2) return;
+    for (int frame = 0; frame < frames; ++frame) {
+        float pan = fminf(1, fmaxf(-1, fx_sample_ramp_next(pan_ramp)));
+        buffer[frame * channels] *= pan > 0 ? 1 - pan : 1;
+        buffer[frame * channels + 1] *= pan < 0 ? 1 + pan : 1;
     }
 }
 
@@ -96,99 +82,91 @@ void engine_audio_callback(float* output, int frames, int channels, void* userda
     if (!output || frames <= 0 || !engine) {
         return;
     }
+    atomic_fetch_add_explicit(&engine->diag_callback_count, 1, memory_order_relaxed);
+    atomic_fetch_add(&engine->clock_callback_seq, 1);
+    atomic_store(&engine->clock_callback_ns, core_time_now_ns());
+    atomic_store(&engine->clock_callback_start, atomic_load(&engine->clock_consumed));
     size_t grabbed = audio_queue_read(&engine->output_queue, output, (size_t)frames);
+    atomic_store(&engine->clock_callback_frames, grabbed);
+    uint64_t consumed = atomic_fetch_add(&engine->clock_consumed, grabbed) + grabbed;
+    atomic_store(&engine->clock_fallback_frame, engine_clock_advance(atomic_load(&engine->clock_origin),
+        atomic_load(&engine->clock_advancing) ? consumed : 0,
+        atomic_load(&engine->clock_loop_start), atomic_load(&engine->clock_loop_end)));
+    atomic_fetch_add(&engine->clock_callback_seq, 1);
     if (grabbed < (size_t)frames) {
         size_t missing = (size_t)frames - grabbed;
+        if (atomic_load_explicit(&engine->clock_advancing, memory_order_relaxed)) {
+            atomic_fetch_add_explicit(&engine->diag_underrun_callbacks, 1, memory_order_relaxed);
+            atomic_fetch_add_explicit(&engine->diag_underrun_frames, missing, memory_order_relaxed);
+        }
         memset(output + grabbed * channels, 0, missing * (size_t)channels * sizeof(float));
     }
 }
 
-void engine_mix_tracks(Engine* engine,
-                       uint64_t start_frame,
-                       int frames,
-                       float* out,
-                       float* track_buffer,
-                       int channels) {
-    if (!engine || !out || !track_buffer || frames <= 0 || channels <= 0) {
-        return;
-    }
+// Shares the serial source/FX/EQ/pan/compensation path between live and independently owned export plans.
+bool engine_mix_prepared(Engine* engine, EngineGraph* graph, EngineMixState* mix,
+                         uint64_t start_frame, int frames, float* out, float* track_buffer, int channels) {
+    if (!graph || !mix || !out || !track_buffer || frames <= 0 || channels <= 0) return false;
     memset(out, 0, (size_t)frames * (size_t)channels * sizeof(float));
 
-    int tcount = engine->track_count;
-    int hold_blocks = (int)lroundf((0.45f * (float)engine->config.sample_rate) / (float)frames);
+    if (mix->fxm) fxm_begin_render_block(mix->fxm, frames);
+    if (engine) atomic_store(&engine->diag_processing_latency, fxm_processing_latency(mix->fxm));
+    int tcount = mix->track_count;
+    int hold_blocks = (int)lroundf((0.45f * (float)engine_graph_get_sample_rate(graph)) / (float)frames);
     if (hold_blocks < 1) {
         hold_blocks = 1;
     }
-    int write_index = 1 - atomic_load_explicit(&engine->meter_snapshot_index, memory_order_acquire);
-    EngineMeterSnapshot* track_snaps = NULL;
-    if (engine->track_meter_snapshots && engine->track_meter_capacity > 0) {
-        track_snaps = engine->track_meter_snapshots +
-                      (size_t)write_index * (size_t)engine->track_meter_capacity;
-    }
     for (int t = 0; t < tcount; ++t) {
         memset(track_buffer, 0, (size_t)frames * (size_t)channels * sizeof(float));
-        engine_graph_render_track(engine->graph,
+        engine_graph_render_track(graph,
                                   track_buffer,
                                   frames,
                                   start_frame,
                                   t);
-        if (engine->fxm) {
-            fxm_render_track(engine->fxm, t, track_buffer, frames, channels);
+        if (mix->fxm) {
+            fxm_render_track(mix->fxm, t, track_buffer, frames, channels);
         }
-        engine_eq_process(&engine->tracks[t].track_eq, track_buffer, frames, channels);
-        engine_spectrum_update_track(engine, t, track_buffer, frames, channels);
-        apply_track_pan(&engine->tracks[t], track_buffer, frames, channels);
-        if (engine->track_meters && t < engine->track_meter_capacity) {
+        engine_eq_process(&mix->tracks[t].track_eq, track_buffer, frames, channels);
+        if (engine) engine_spectrum_update_track(engine, t, track_buffer, frames, channels);
+        apply_track_pan(&mix->track_pan_ramps[t], track_buffer, frames, channels);
+        if (mix->fxm) fxm_align_track(mix->fxm, t, track_buffer, frames, channels);
+        if (engine && mix->track_meters && t < mix->track_count) {
             float peak = 0.0f;
             float rms = 0.0f;
             compute_peak_rms(track_buffer, frames, channels, &peak, &rms);
-            update_meter_state(&engine->track_meters[t], peak, rms, hold_blocks);
-            if (track_snaps) {
-                track_snaps[t].peak = engine->track_meters[t].peak;
-                track_snaps[t].rms = engine->track_meters[t].rms;
-                track_snaps[t].clipped = engine->track_meters[t].clip_hold > 0;
-            }
+            update_meter_state(&mix->track_meters[t], peak, rms, hold_blocks);
+
         }
         for (int s = 0; s < frames * channels; ++s) {
             out[s] += track_buffer[s];
         }
     }
 
-    engine_eq_process(&engine->master_eq, out, frames, channels);
-    if (engine->fxm) {
-        fxm_render_master(engine->fxm, out, frames, channels);
+    engine_eq_process(&mix->master_eq, out, frames, channels);
+    if (mix->fxm) {
+        fxm_render_master(mix->fxm, out, frames, channels);
     }
 
+    if (!engine) for (size_t i = 0; i < (size_t)frames * channels; ++i)
+        if (!isfinite(out[i]) || fabsf(out[i]) > 64) return false;
     engine_sanitize_block(out, (size_t)frames * (size_t)channels);
-    if (engine->track_meters) {
+    if (engine && mix->track_meters) {
         float peak = 0.0f;
         float rms = 0.0f;
         compute_peak_rms(out, frames, channels, &peak, &rms);
-        update_meter_state(&engine->master_meter, peak, rms, hold_blocks);
-        engine->master_meter_snapshots[write_index].peak = engine->master_meter.peak;
-        engine->master_meter_snapshots[write_index].rms = engine->master_meter.rms;
-        engine->master_meter_snapshots[write_index].clipped = engine->master_meter.clip_hold > 0;
+        update_meter_state(&mix->master_meter, peak, rms, hold_blocks);
     }
-    atomic_store_explicit(&engine->meter_snapshot_index, write_index, memory_order_release);
+    if (engine) engine_publish_mix_meters(mix);
+    return true;
 }
 
-static bool engine_track_allowed_for_audition(const Engine* engine, int track_index) {
-    if (!engine || track_index < 0 || track_index >= engine->track_count) {
-        return false;
-    }
-    const EngineTrack* track = &engine->tracks[track_index];
-    if (!track->active || track->muted) {
-        return false;
-    }
-    bool any_solo = false;
-    for (int i = 0; i < engine->track_count; ++i) {
-        const EngineTrack* candidate = &engine->tracks[i];
-        if (candidate->active && !candidate->muted && candidate->solo) {
-            any_solo = true;
-            break;
-        }
-    }
-    return !any_solo || track->solo;
+// Renders the active live revision with its normal analysis and meter publication.
+void engine_mix_tracks(Engine* engine, uint64_t start_frame, int frames, float* out,
+                       float* track_buffer, int channels) {
+    if (!engine) return;
+    if (!engine_mix_prepared(engine, engine_render_source_graph(engine), engine_render_mix_state(engine),
+                             start_frame, frames, out, track_buffer, channels) && out && frames > 0 && channels > 0)
+        memset(out, 0, (size_t)frames * channels * sizeof(float));
 }
 
 void engine_mix_midi_audition_only(Engine* engine,
@@ -202,13 +180,15 @@ void engine_mix_midi_audition_only(Engine* engine,
     }
     memset(out, 0, (size_t)frames * (size_t)channels * sizeof(float));
 
+    EngineMixState* mix = engine_render_mix_state(engine);
+    if (!mix) return;
     int track_index = engine->midi_audition_track_index;
-    if (track_index < 0 || track_index >= engine->track_count) {
+    if (track_index < 0 || track_index >= mix->track_count) {
         track_index = 0;
     }
     if (!engine->midi_audition_source ||
-        engine->midi_audition_notes.note_count <= 0 ||
-        !engine_track_allowed_for_audition(engine, track_index)) {
+        (engine->midi_audition_notes.note_count <= 0 && !engine->midi_audition_tail_until) ||
+        track_index < 0 || track_index >= mix->track_count) {
         return;
     }
 
@@ -216,53 +196,53 @@ void engine_mix_midi_audition_only(Engine* engine,
     if (hold_blocks < 1) {
         hold_blocks = 1;
     }
-    int write_index = 1 - atomic_load_explicit(&engine->meter_snapshot_index, memory_order_acquire);
-    EngineMeterSnapshot* track_snaps = NULL;
-    if (engine->track_meter_snapshots && engine->track_meter_capacity > 0) {
-        track_snaps = engine->track_meter_snapshots +
-                      (size_t)write_index * (size_t)engine->track_meter_capacity;
-    }
 
     memset(track_buffer, 0, (size_t)frames * (size_t)channels * sizeof(float));
     engine_instrument_source_render(engine->midi_audition_source, track_buffer, frames, start_frame);
 
-    float track_gain = engine->tracks[track_index].gain != 0.0f ? engine->tracks[track_index].gain : 1.0f;
-    for (int s = 0; s < frames * channels; ++s) {
-        track_buffer[s] *= track_gain;
+    for (int frame = 0; frame < frames; ++frame) {
+        float gain = fx_sample_ramp_next(&mix->audition_gain_ramps[track_index]);
+        for (int ch = 0; ch < channels; ++ch) track_buffer[frame * channels + ch] *= gain;
     }
-    if (engine->fxm) {
-        fxm_render_track(engine->fxm, track_index, track_buffer, frames, channels);
+    if (mix->fxm) {
+        fxm_begin_render_block(mix->fxm, frames);
+        atomic_store(&engine->diag_processing_latency, fxm_processing_latency(mix->fxm));
+        fxm_render_track(mix->fxm, track_index, track_buffer, frames, channels);
     }
-    engine_eq_process(&engine->tracks[track_index].track_eq, track_buffer, frames, channels);
+    engine_eq_process(&mix->tracks[track_index].track_eq, track_buffer, frames, channels);
     engine_spectrum_update_track(engine, track_index, track_buffer, frames, channels);
-    apply_track_pan(&engine->tracks[track_index], track_buffer, frames, channels);
-    if (engine->track_meters && track_index < engine->track_meter_capacity) {
+    apply_track_pan(&mix->track_pan_ramps[track_index], track_buffer, frames, channels);
+    if (mix->fxm) fxm_align_track(mix->fxm, track_index, track_buffer, frames, channels);
+    if (mix->track_meters && track_index < mix->track_count) {
         float peak = 0.0f;
         float rms = 0.0f;
         compute_peak_rms(track_buffer, frames, channels, &peak, &rms);
-        update_meter_state(&engine->track_meters[track_index], peak, rms, hold_blocks);
-        if (track_snaps) {
-            track_snaps[track_index].peak = engine->track_meters[track_index].peak;
-            track_snaps[track_index].rms = engine->track_meters[track_index].rms;
-            track_snaps[track_index].clipped = engine->track_meters[track_index].clip_hold > 0;
-        }
+        update_meter_state(&mix->track_meters[track_index], peak, rms, hold_blocks);
+
     }
     memcpy(out, track_buffer, (size_t)frames * (size_t)channels * sizeof(float));
 
-    engine_eq_process(&engine->master_eq, out, frames, channels);
-    if (engine->fxm) {
-        fxm_render_master(engine->fxm, out, frames, channels);
+    engine_eq_process(&mix->master_eq, out, frames, channels);
+    if (mix->fxm) {
+        fxm_render_master(mix->fxm, out, frames, channels);
+    }
+
+    if (engine->midi_audition_tail_until) {
+        uint64_t fade = (uint64_t)engine->config.sample_rate / 200;
+        for (int frame = 0; frame < frames; ++frame) {
+            uint64_t now = start_frame + (uint64_t)frame;
+            uint64_t left = now < engine->midi_audition_tail_until ? engine->midi_audition_tail_until - now : 0;
+            float gain = left >= fade ? 1 : (float)left / (float)fade;
+            for (int ch = 0; ch < channels; ++ch) out[frame * channels + ch] *= gain;
+        }
     }
 
     engine_sanitize_block(out, (size_t)frames * (size_t)channels);
-    if (engine->track_meters) {
+    if (mix->track_meters) {
         float peak = 0.0f;
         float rms = 0.0f;
         compute_peak_rms(out, frames, channels, &peak, &rms);
-        update_meter_state(&engine->master_meter, peak, rms, hold_blocks);
-        engine->master_meter_snapshots[write_index].peak = engine->master_meter.peak;
-        engine->master_meter_snapshots[write_index].rms = engine->master_meter.rms;
-        engine->master_meter_snapshots[write_index].clipped = engine->master_meter.clip_hold > 0;
+        update_meter_state(&mix->master_meter, peak, rms, hold_blocks);
     }
-    atomic_store_explicit(&engine->meter_snapshot_index, write_index, memory_order_release);
+    engine_publish_mix_meters(mix);
 }

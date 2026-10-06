@@ -15,6 +15,7 @@ void project_modal_input_open_save_prompt(AppState* state) {
         return;
     }
     state->project_prompt.active = true;
+    state->project_prompt.error[0] = '\0';
     state->project_prompt.buffer[0] = '\0';
     state->project_prompt.cursor = 0;
     SDL_StartTextInput();
@@ -87,8 +88,11 @@ static bool project_prompt_handle_event(AppState* state, const SDL_Event* event)
         }
         if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
             const char* name = prompt->buffer[0] ? prompt->buffer : "project";
-            project_manager_save(state, name, true);
-            project_modal_input_close_save_prompt(state);
+            if (project_manager_save(state, name, true)) {
+                project_modal_input_close_save_prompt(state);
+            } else {
+                SDL_strlcpy(prompt->error, "Save failed. Retry or Esc to cancel.", sizeof(prompt->error));
+            }
             return true;
         }
         break;
@@ -129,6 +133,7 @@ bool project_modal_input_open_load_modal(AppState* state) {
         return false;
     }
     state->project_load.active = true;
+    state->project_load.error[0] = '\0';
     state->project_load.scroll_offset = 0.0f;
     state->project_load.selected_index = -1;
     state->project_load.last_click_index = -1;
@@ -162,8 +167,10 @@ static void project_load_selected(AppState* state, int selected_index) {
     }
     if (project_manager_load(state, state->project_load.entries[selected_index].path)) {
         project_manager_post_load(state);
+        project_modal_input_close_load_modal(state);
+    } else {
+        SDL_strlcpy(state->project_load.error, "Load failed. Choose another project or retry.", sizeof(state->project_load.error));
     }
-    project_modal_input_close_load_modal(state);
 }
 
 static bool project_load_handle_event(AppState* state, const SDL_Event* event) {
@@ -232,15 +239,18 @@ static bool project_load_handle_event(AppState* state, const SDL_Event* event) {
     return false;
 }
 
+// Keeps every modal event isolated from timeline shortcuts, including unhandled letter keydowns.
 bool project_modal_input_handle_event(AppState* state, const SDL_Event* event) {
     if (!state || !event) {
         return false;
     }
     if (state->project_load.active) {
-        return project_load_handle_event(state, event);
+        (void)project_load_handle_event(state, event);
+        return true;
     }
     if (state->project_prompt.active) {
-        return project_prompt_handle_event(state, event);
+        (void)project_prompt_handle_event(state, event);
+        return true;
     }
     return false;
 }
