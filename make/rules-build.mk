@@ -13,8 +13,8 @@ $(SHARED_BUILD_DIR):
 
 define build_copy_static_lib
 $($(1)_LIB): FORCE | $(SHARED_BUILD_DIR)
-	$$(MAKE) -C $($(1)_DIR) clean $(2)
-	PKG_CONFIG_LIBDIR="$(TARGET_PKG_CONFIG_LIBDIR)" PKG_CONFIG="$(PKG_CONFIG)" $$(MAKE) -C $($(1)_DIR) CC="$$(SHARED_CC)" $(2)
+	$$(MAKE) MAKEOVERRIDES= BUILD_DIR=build -C $($(1)_DIR) clean $(2)
+	PKG_CONFIG_LIBDIR="$(TARGET_PKG_CONFIG_LIBDIR)" PKG_CONFIG="$(PKG_CONFIG)" $$(MAKE) MAKEOVERRIDES= BUILD_DIR=build -C $($(1)_DIR) CC="$$(SHARED_CC)" $(2)
 	cp "$$($(1)_LIB_SRC)" "$$@"
 endef
 
@@ -57,6 +57,11 @@ $(APP_OBJ_DIR)/%.o: %.c $(COMPILER_STAMP)
 $(HOST_OBJ_DIR)/timer_hud/%.o: $(TIMER_HUD_DIR)/%.c
 	@mkdir -p "$(dir $@)"
 	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) -c "$<" -o "$@"
+
+# SDL event translation retains real SDL types; application drawing uses Vulkan aliases.
+$(HOST_OBJ_DIR)/kit_ui_platform/%.o: $(KIT_UI_DIR)/src/%.c
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(filter-out -include $(VK_RENDERER_DIR)/include/vk_renderer_sdl.h,$(CPPFLAGS)) $(addsuffix /SDL2,$(filter -I%,$(SDL2_CFLAGS))) $(CFLAGS) $(ARCH_FLAGS) -c "$<" -o "$@"
 
 clean:
 	rm -rf $(BUILD_DIR)

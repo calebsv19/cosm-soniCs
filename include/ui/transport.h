@@ -2,6 +2,7 @@
 
 #include <SDL2/SDL.h>
 #include <stdbool.h>
+#include "kit_ui_focus_scope.h"
 
 struct AppState;
 
@@ -47,6 +48,10 @@ typedef struct {
     bool adjusting_window;
     bool fit_width_hovered;
     bool fit_height_hovered;
+    KitUiSurface controls;
+    KitUiFocusScope control_focus;
+    uint32_t control_generation, pressed_modifiers;
+    const void* action_engine;
 } TransportUI;
 
 // Initialize transport UI rectangles and hover flags.

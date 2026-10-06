@@ -4,6 +4,8 @@
 #include "input/input_manager.h"
 #include "input/project_modal_input.h"
 #include "ui/transport.h"
+#include "ui/transport_controls.h"
+#include "app/audio_recording.h"
 #include "ui/timeline_view.h"
 #include "ui/layout.h"
 #include "input/timeline/timeline_geometry.h"
@@ -422,6 +424,96 @@ void transport_input_init(InputManager* manager) {
     manager->prev_vert_slider_down = false;
 }
 
+// Shared controls dispatch to these original audio/project/view command bodies.
+void transport_input_activate_control(AppState* state, DawTransportAction action, uint32_t modifiers) {
+    if(!state || !state->engine)return;
+    TransportUI* transport=&state->transport_ui;
+    if(action!=DAW_TRANSPORT_BEATS && (state->tempo_ui.focus!=TEMPO_FOCUS_NONE || state->tempo_ui.editing))
+        tempo_cancel_edit(state);
+    if(action==DAW_TRANSPORT_PLAY) {
+        if(daw_audio_recording_is_active(&state->audio_recording) && engine_transport_requested_playing(state->engine))
+            engine_transport_pause(state->engine);
+        else {
+            (void)daw_audio_recording_drain_if_transport_playing(state);
+            engine_transport_play(state->engine);
+        }
+        return;
+    }
+    if(action==DAW_TRANSPORT_STOP) {
+        if(daw_audio_recording_is_active(&state->audio_recording)) {
+            DawAudioRecordingResult result;
+            (void)daw_audio_recording_finish_timeline_capture(state,&result);
+        }
+        engine_transport_stop(state->engine);return;
+    }
+    if (action==DAW_TRANSPORT_BEATS) {
+        state->timeline_view_in_beats = !state->timeline_view_in_beats;
+        return;
+
+    }
+    if (action==DAW_TRANSPORT_SAVE) {
+        if (state->project.has_name) {
+            project_manager_save(state, state->project.name, true);
+        } else {
+            project_modal_input_open_save_prompt(state);
+        }
+        return;
+
+    }
+    if (action==DAW_TRANSPORT_LOAD) {
+        bool shift_down = (modifiers & KIT_UI_INTERACTION_MOD_SHIFT) != 0;
+        if (shift_down) {
+            if (project_manager_new(state)) {
+                project_manager_post_load(state);
+            }
+        } else {
+            (void)project_modal_input_open_load_modal(state);
+        }
+        transport_ui_sync(transport, state);
+        return;
+
+    }
+    if (action==DAW_TRANSPORT_GRID) {
+        state->timeline_show_all_grid_lines = !state->timeline_show_all_grid_lines;
+        return;
+
+    }
+    if (action==DAW_TRANSPORT_FIT_WIDTH) {
+        const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
+        int sample_rate = cfg ? cfg->sample_rate : 0;
+        uint64_t total = transport_total_frames(state);
+        float seconds = TIMELINE_DEFAULT_VISIBLE_SECONDS;
+        if (sample_rate > 0 && total > 0) {
+            seconds = (float)total / (float)sample_rate;
+            seconds *= 1.05f;
+        }
+        seconds = clamp_scalar(seconds, TIMELINE_MIN_VISIBLE_SECONDS, TIMELINE_MAX_VISIBLE_SECONDS);
+        state->timeline_visible_seconds = seconds;
+        clamp_timeline_window(state);
+        transport_ui_sync(transport, state);
+        return;
+
+    }
+    if (action==DAW_TRANSPORT_FIT_HEIGHT) {
+        const Pane* timeline = ui_layout_get_pane(state, 1);
+        int track_count = engine_get_track_count(state->engine);
+        if (timeline && track_count > 0) {
+            float header_padding = 20.0f + (float)(track_count - 1) * 12.0f + 24.0f;
+            float available = (float)timeline->rect.h - header_padding;
+            if (available < (float)track_count * 32.0f) {
+                available = (float)track_count * 32.0f;
+            }
+            float per_track = available / (float)track_count;
+            float target_scale = per_track / (float)TIMELINE_BASE_TRACK_HEIGHT;
+            target_scale = clamp_scalar(target_scale, TIMELINE_MIN_VERTICAL_SCALE, TIMELINE_MAX_VERTICAL_SCALE);
+            state->timeline_vertical_scale = target_scale;
+            transport_ui_sync(transport, state);
+        }
+        return;
+
+    }
+}
+
 void transport_input_handle_event(InputManager* manager, AppState* state, const SDL_Event* event) {
     if (!manager || !state || !event) {
         return;
@@ -459,70 +551,16 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
                 transport_ui_sync(transport, state);
                 break;
             }
-            if (SDL_PointInRect(&p, &transport->beat_toggle_rect)) {
-                state->timeline_view_in_beats = !state->timeline_view_in_beats;
-                break;
-            }
+
             // Clicked elsewhere: drop tempo focus/edit if active.
             if (state->tempo_ui.focus != TEMPO_FOCUS_NONE || state->tempo_ui.editing) {
                 tempo_cancel_edit(state);
             }
-            if (SDL_PointInRect(&p, &transport->save_rect)) {
-                if (state->project.has_name) {
-                    project_manager_save(state, state->project.name, true);
-                } else {
-                    project_modal_input_open_save_prompt(state);
-                }
-                break;
-            }
-            if (SDL_PointInRect(&p, &transport->load_rect)) {
-                bool shift_down = (SDL_GetModState() & KMOD_SHIFT) != 0;
-                if (shift_down) {
-                    if (project_manager_new(state)) {
-                        project_manager_post_load(state);
-                    }
-                } else {
-                    (void)project_modal_input_open_load_modal(state);
-                }
-                transport_ui_sync(transport, state);
-                break;
-            }
-            if (SDL_PointInRect(&p, &transport->grid_rect)) {
-                state->timeline_show_all_grid_lines = !state->timeline_show_all_grid_lines;
-                break;
-            }
-            if (SDL_PointInRect(&p, &transport->fit_width_rect)) {
-                const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
-                int sample_rate = cfg ? cfg->sample_rate : 0;
-                uint64_t total = transport_total_frames(state);
-                float seconds = TIMELINE_DEFAULT_VISIBLE_SECONDS;
-                if (sample_rate > 0 && total > 0) {
-                    seconds = (float)total / (float)sample_rate;
-                    seconds *= 1.05f;
-                }
-                seconds = clamp_scalar(seconds, TIMELINE_MIN_VISIBLE_SECONDS, TIMELINE_MAX_VISIBLE_SECONDS);
-                state->timeline_visible_seconds = seconds;
-                clamp_timeline_window(state);
-                transport_ui_sync(transport, state);
-                break;
-            }
-            if (SDL_PointInRect(&p, &transport->fit_height_rect)) {
-                const Pane* timeline = ui_layout_get_pane(state, 1);
-                int track_count = engine_get_track_count(state->engine);
-                if (timeline && track_count > 0) {
-                    float header_padding = 20.0f + (float)(track_count - 1) * 12.0f + 24.0f;
-                    float available = (float)timeline->rect.h - header_padding;
-                    if (available < (float)track_count * 32.0f) {
-                        available = (float)track_count * 32.0f;
-                    }
-                    float per_track = available / (float)track_count;
-                    float target_scale = per_track / (float)TIMELINE_BASE_TRACK_HEIGHT;
-                    target_scale = clamp_scalar(target_scale, TIMELINE_MIN_VERTICAL_SCALE, TIMELINE_MAX_VERTICAL_SCALE);
-                    state->timeline_vertical_scale = target_scale;
-                    transport_ui_sync(transport, state);
-                }
-                break;
-            }
+
+
+
+
+
             if (SDL_PointInRect(&p, &transport->seek_track_rect) || SDL_PointInRect(&p, &transport->seek_handle_rect)) {
                 float t = (float)(p.x - transport->seek_track_rect.x) / (float)transport->seek_track_rect.w;
                 transport->adjusting_seek = true;

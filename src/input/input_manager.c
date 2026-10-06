@@ -8,6 +8,7 @@
 #include "input/library_input.h"
 #include "input/timeline_input.h"
 #include "input/transport_input.h"
+#include "ui/transport_controls.h"
 #include "input/inspector_input.h"
 #include "input/effects_panel_input.h"
 #include "input/midi_editor_input.h"
@@ -31,29 +32,6 @@
 #include <SDL2/SDL.h>
 
 // Applies each transport pointer-down event once, even when down/up arrive in one loop iteration.
-static bool handle_transport_press(AppState* state, int x, int y) {
-    if (!state || !state->engine) return false;
-    if (transport_ui_click_play(&state->transport_ui, x, y)) {
-        if (daw_audio_recording_is_active(&state->audio_recording) &&
-            engine_transport_requested_playing(state->engine)) {
-            engine_transport_pause(state->engine);
-        } else {
-            (void)daw_audio_recording_drain_if_transport_playing(state);
-            engine_transport_play(state->engine);
-        }
-        return true;
-    }
-    if (transport_ui_click_stop(&state->transport_ui, x, y)) {
-        if (daw_audio_recording_is_active(&state->audio_recording)) {
-            DawAudioRecordingResult result;
-            (void)daw_audio_recording_finish_timeline_capture(state, &result);
-        }
-        engine_transport_stop(state->engine);
-        return true;
-    }
-    return false;
-}
-
 // Clears meter histories after a forced seek when the debug toggle is enabled.
 void input_manager_reset_meter_history_on_seek(AppState* state) {
     if (!state || !state->reset_meter_history_on_seek) {
@@ -400,6 +378,7 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
     if (!manager || !state || !event) {
         return;
     }
+    if (daw_transport_controls_event(state,event))return;
     if (event->type == SDL_DROPFILE) {
         if (event->drop.file) {
             (void)library_input_handle_drop_file(state, event->drop.file, state->mouse_x, state->mouse_y);
@@ -421,6 +400,7 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
             &state->workspace_authoring,
             event,
             input_manager_authoring_text_entry_active(state))) {
+        daw_transport_controls_sync(&state->transport_ui,state);
         input_manager_apply_authoring_preview_dirty(state);
         input_manager_save_authoring_accepted_preferences(state);
         return;
@@ -462,8 +442,6 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
         daw_media_import_cancel(state);
         return;
     }
-    if (event->type == SDL_MOUSEBUTTONDOWN && event->button.button == SDL_BUTTON_LEFT &&
-        handle_transport_press(state, event->button.x, event->button.y)) return;
     // Space is an edge-triggered action; key repeat and text editing cannot toggle transport.
     if (event->type == SDL_KEYDOWN && event->key.keysym.sym == SDLK_SPACE &&
         !state->track_name_editor.editing) {
@@ -504,6 +482,7 @@ void input_manager_update(InputManager* manager, AppState* state) {
     if (!manager || !state) {
         return;
     }
+    daw_transport_controls_sync(&state->transport_ui,state);
     if (project_modal_input_active(state)) {
         // Block normal updates while prompt is active.
         return;

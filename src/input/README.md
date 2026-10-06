@@ -36,7 +36,7 @@ Purpose: Translate SDL events and pointer state into engine/UI actions.
   - Timeline drag helpers keep MIDI right-edge resizing bounded by existing note content. MIDI left-edge trim shifts/clips notes relative to the new region start; both current-state and gesture-baseline helpers publish notes, duration and position atomically.
 - `transport_input.c`
   - `transport_input_init`: Clear slider drag flags.
-  - `transport_input_handle_event`: Handle clicks that toggle grid mode or begin slider drags.
+  - `transport_input_handle_event`: Handle existing tempo fields and slider gestures; shared transport actions dispatch through `transport_input_activate_control`.
   - `transport_input_update`: Continue slider adjustments while the mouse button stays down.
 
 ## Subdirectories
@@ -66,3 +66,5 @@ Effects slider, track gain/pan and EQ gesture startup now require a successful u
 
 
 Recovery continuation binds active effects gestures and mixer/EQ/FX history to the original track runtime identity. Discrete effect add/remove, bypass, reorder, parameter/mode edits, mute/solo and instrument preset selection reserve history before mutation. Native pointer/keyboard acceptance remains unverified; see S5 implementation section 24.
+
+Migrated transport/menu buttons now use shared matched-release activation and scope/geometry cancellation. Global Space/Shift+Space retain their engine shortcut meanings. Modal/text/authoring owners block background button scope.

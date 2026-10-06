@@ -33,3 +33,5 @@ S4.7 scans keep version-bound metadata and schedule owned background probing/con
 The rack spectrogram card now subscribes to the existing worker analyzer and renders its calibrated history directly. The selected spectrogram takes precedence when multiple meters are present; inactive cards explain how to select them, and bypassed cards are labeled. Raw lifetime audio totals are shown only with enable_timing_logs; recording status and edit rejection messages remain visible normally.
 
 Rack spectrogram cards expose W/B, B/W and Heat palette buttons. Palette choices use the existing effect parameter and undo transaction; display colors read back the accepted parameter, including after undo and project reload.
+
+- `transport_controls.c`: shared surface/focus and single rounded transport painter; product rectangles/palette/status and direct commands remain app-owned. See `docs/shared_ui_rollout.md`.

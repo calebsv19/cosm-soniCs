@@ -83,3 +83,5 @@ Repository and source-level identifiers still use `daw`.
 ## Runtime closeout navigation
 
 [S4 closeout](improvement/S4-CLOSEOUT.md) records the final bounded software disposition; [S5 functional slices](improvement/S5-FUNCTIONAL-SLICES.md) defines the next proposed behaviors.
+
+- [Shared UI rollout](shared_ui_rollout.md): accepted dependency, transport contract, proof boundaries and remaining adoption sequence.

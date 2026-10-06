@@ -6,6 +6,7 @@
 
 #include "ui/font.h"
 #include "ui/daw_ui_button.h"
+#include "ui/transport_controls.h"
 #include "ui/shared_theme_font_adapter.h"
 
 #include <string.h>
@@ -342,6 +343,7 @@ void transport_ui_sync(TransportUI* ui, const AppState* state) {
     if (!ui || !state) {
         return;
     }
+    daw_transport_controls_sync(ui,state);
     if (ui->horiz_track_rect.w <= 0 || ui->vert_track_rect.w <= 0 || ui->seek_track_rect.w <= 0 || ui->window_track_rect.w <= 0) {
         return;
     }
@@ -428,48 +430,6 @@ void transport_ui_sync(TransportUI* ui, const AppState* state) {
         ui->window_handle_rect.x = ui->window_track_rect.x + ui->window_track_rect.w - handle_w;
 }
 
-static void render_button(SDL_Renderer* renderer,
-                          const SDL_Rect* rect,
-                          bool hovered,
-                          bool active,
-                          const char* label,
-                          const DawThemePalette* palette) {
-    DawUiButtonSpec spec;
-    DawUiButtonStyle style;
-    SDL_Color text;
-    SDL_Color fill;
-    const int scale = 1;
-    int text_pad = 4;
-    int text_height = 0;
-    int text_y = 0;
-    int text_max_w = 0;
-
-    if (!renderer || !rect || !label || !palette) {
-        return;
-    }
-    daw_ui_button_spec_init(&spec, label);
-    spec.state.selected = active ? 1 : 0;
-    spec.state.focused = active ? 1 : 0;
-    spec.state.hovered = hovered ? 1 : 0;
-    if (daw_ui_button_style_resolve(palette, &spec, &style) != 0 ||
-        daw_ui_button_draw_frame(renderer, rect, &style) != 0) {
-        return;
-    }
-
-    fill = (SDL_Color){style.fill.r, style.fill.g, style.fill.b, style.fill.a};
-    text = (SDL_Color){style.text.r, style.text.g, style.text.b, style.text.a};
-    if ((text.r == fill.r && text.g == fill.g && text.b == fill.b) || text.a == 0u) {
-        text = palette->text_primary;
-    }
-    text_height = ui_font_line_height(scale);
-    text_y = rect->y + (rect->h - text_height) / 2;
-    text_max_w = rect->w - text_pad * 2;
-    if (text_max_w < 1) {
-        text_max_w = 1;
-    }
-    ui_draw_text_clipped(renderer, rect->x + text_pad, text_y, label, text, (float)scale, text_max_w);
-}
-
 static void draw_time_with_decimal(SDL_Renderer* renderer, const SDL_Rect* rect, const char* text, SDL_Color color, int scale, float dot_ratio, int dot_index) {
     if (!renderer || !rect || !text) {
         return;
@@ -533,21 +493,21 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
     SDL_SetRenderDrawColor(renderer, underline.r, underline.g, underline.b, underline.a);
     SDL_RenderDrawLine(renderer, ui->panel_rect.x, underline_y, ui->panel_rect.x + ui->panel_rect.w, underline_y);
 
-    render_button(renderer, &ui->load_rect, ui->load_hovered, false, "LOAD", &theme);
-    render_button(renderer, &ui->save_rect, ui->save_hovered, false, "SAVE", &theme);
+    daw_transport_control_draw(renderer, ui, DAW_TRANSPORT_LOAD, "LOAD", false, ui->load_hovered, &theme);
+    daw_transport_control_draw(renderer, ui, DAW_TRANSPORT_SAVE, "SAVE", false, ui->save_hovered, &theme);
     bool recording = state && daw_audio_recording_is_active(&state->audio_recording);
     EnginePlaybackSnapshot playback = engine_transport_get_playback_snapshot(state ? state->engine : NULL);
     if (state && state->engine) is_playing = playback.applied_playing;
     const char* play_label = recording ? "REC" : playback.pending && playback.requested_playing ? "PLAY…" : "PLAY";
     const char* stop_label = playback.pending && !playback.requested_playing ? "STOP…" : "STOP";
-    render_button(renderer, &ui->play_rect, ui->play_hovered, is_playing || recording, play_label, &theme);
-    render_button(renderer, &ui->stop_rect, ui->stop_hovered, !is_playing && !recording, stop_label, &theme);
+    daw_transport_control_draw(renderer, ui, DAW_TRANSPORT_PLAY, play_label, is_playing || recording, ui->play_hovered, &theme);
+    daw_transport_control_draw(renderer, ui, DAW_TRANSPORT_STOP, stop_label, !is_playing && !recording, ui->stop_hovered, &theme);
 
     SDL_Color track_bg = theme.slider_track;
     SDL_Color track_border = theme.timeline_border;
 
     bool grid_active = state ? state->timeline_show_all_grid_lines : false;
-    render_button(renderer, &ui->grid_rect, ui->grid_hovered, grid_active, grid_active ? "GRID:ALL" : "GRID:AUTO", &theme);
+    daw_transport_control_draw(renderer, ui, DAW_TRANSPORT_GRID, grid_active ? "GRID:ALL" : "GRID:AUTO", grid_active, ui->grid_hovered, &theme);
 
     if (state && state->engine) {
         SDL_Color time_bg = theme.timeline_fill;
@@ -680,21 +640,8 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         ui_draw_text(renderer, num_tx, ts_ty, ts_num_text, bpm_text_color, ts_scale);
         ui_draw_text(renderer, den_tx, ts_ty, ts_den_text, bpm_text_color, ts_scale);
 
-        SDL_Color toggle_bg = state->timeline_view_in_beats ? theme.control_active_fill : theme.control_fill;
-        SDL_Color toggle_border = state->timeline_view_in_beats || ui->beat_toggle_hovered
-                                      ? theme.pane_highlight_border
-                                      : bpm_border;
-        SDL_SetRenderDrawColor(renderer, toggle_bg.r, toggle_bg.g, toggle_bg.b, toggle_bg.a);
-        SDL_RenderFillRect(renderer, &ui->beat_toggle_rect);
-        SDL_SetRenderDrawColor(renderer, toggle_border.r, toggle_border.g, toggle_border.b, toggle_border.a);
-        SDL_RenderDrawRect(renderer, &ui->beat_toggle_rect);
-        const char* toggle_label = "B";
-        int toggle_scale = 1;
-        int togg_tw = ui_measure_text_width(toggle_label, toggle_scale);
-        int togg_th = ui_font_line_height(toggle_scale);
-        int togg_tx = ui->beat_toggle_rect.x + (ui->beat_toggle_rect.w - togg_tw) / 2;
-        int togg_ty = ui->beat_toggle_rect.y + (ui->beat_toggle_rect.h - togg_th) / 2;
-        ui_draw_text(renderer, togg_tx, togg_ty, toggle_label, theme.text_primary, toggle_scale);
+        daw_transport_control_draw(renderer,ui,DAW_TRANSPORT_BEATS,"B",
+            state->timeline_view_in_beats,ui->beat_toggle_hovered,&theme);
     }
 
     SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
@@ -740,26 +687,8 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         SDL_RenderDrawRect(renderer, &ui->vert_handle_rect);
     }
 
-    SDL_Color fit_base = theme.slider_track;
-    SDL_Color fit_border = theme.control_border;
-
-    SDL_Rect buttons[2] = {ui->fit_width_rect, ui->fit_height_rect};
-    const char* labels[2] = {"W", "H"};
-    bool hovers[2] = {ui->fit_width_hovered, ui->fit_height_hovered};
-    for (int i = 0; i < 2; ++i) {
-        SDL_Color fill = fit_base;
-        SDL_Color border = hovers[i] ? theme.pane_highlight_border : fit_border;
-        SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
-        SDL_RenderFillRect(renderer, &buttons[i]);
-        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-        SDL_RenderDrawRect(renderer, &buttons[i]);
-        int scale = 1;
-        int tw = ui_measure_text_width(labels[i], scale);
-        int th = ui_font_line_height(scale);
-        int tx = buttons[i].x + (buttons[i].w - tw) / 2;
-        int ty = buttons[i].y + (buttons[i].h - th) / 2;
-        ui_draw_text(renderer, tx, ty, labels[i], theme.text_primary, scale);
-    }
+    daw_transport_control_draw(renderer,ui,DAW_TRANSPORT_FIT_WIDTH,"W",false,ui->fit_width_hovered,&theme);
+    daw_transport_control_draw(renderer,ui,DAW_TRANSPORT_FIT_HEIGHT,"H",false,ui->fit_height_hovered,&theme);
 
     {
         int label_h = ui_font_line_height(1.0f);

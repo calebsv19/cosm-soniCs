@@ -39,6 +39,7 @@ int main(void) {
     click.button.button = SDL_BUTTON_LEFT;
     click.button.x = 20; click.button.y = 20;
     input_manager_handle_event(&state->input_manager, state, &click);
+    assert(!engine_transport_requested_playing(state->engine)); // Press only owns the control.
     click.type = SDL_MOUSEBUTTONUP;
     input_manager_handle_event(&state->input_manager, state, &click);
     assert(engine_transport_requested_playing(state->engine));
@@ -52,8 +53,61 @@ int main(void) {
     assert(engine_transport_requested_playing(state->engine));
     click.type = SDL_MOUSEBUTTONDOWN; click.button.x = 80;
     input_manager_handle_event(&state->input_manager, state, &click);
+    assert(engine_transport_requested_playing(state->engine));
+    click.type=SDL_MOUSEBUTTONUP;
+    input_manager_handle_event(&state->input_manager,state,&click);
     assert(!engine_transport_requested_playing(state->engine));
+    // Focused Enter activates on release once; Tab reaches the next registered control.
+    repeat.key.keysym.sym = SDLK_RETURN; repeat.key.repeat = 0;
+    input_manager_handle_event(&state->input_manager, state, &repeat);
+    assert(!engine_transport_requested_playing(state->engine));
+    repeat.key.repeat = 1;
+    input_manager_handle_event(&state->input_manager, state, &repeat);
+    repeat.type = SDL_KEYUP;
+    input_manager_handle_event(&state->input_manager, state, &repeat);
+    assert(!engine_transport_requested_playing(state->engine)); // STOP still focused.
+    key_press(state, SDLK_TAB, KMOD_NONE);
+    key_press(state, SDLK_RETURN, KMOD_NONE);
+    assert(engine_transport_requested_playing(state->engine));
+    engine_transport_stop(state->engine);
+    // Product toggles retain their meaning, with no mutation until matching release.
+    state->transport_ui.grid_rect = (SDL_Rect){130,10,50,20};
+    click.type=SDL_MOUSEBUTTONDOWN;click.button.x=140;
+    bool old_grid=state->timeline_show_all_grid_lines;
+    input_manager_handle_event(&state->input_manager,state,&click);
+    assert(state->timeline_show_all_grid_lines==old_grid);
+    click.type=SDL_MOUSEBUTTONUP;
+    input_manager_handle_event(&state->input_manager,state,&click);
+    assert(state->timeline_show_all_grid_lines!=old_grid);
+    state->transport_ui.beat_toggle_rect = (SDL_Rect){190,10,30,20};
+    click.type=SDL_MOUSEBUTTONDOWN;click.button.x=200;
+    bool old_beats=state->timeline_view_in_beats;
+    input_manager_handle_event(&state->input_manager,state,&click);
+    assert(state->timeline_view_in_beats==old_beats);
+    click.type=SDL_MOUSEBUTTONUP;
+    input_manager_handle_event(&state->input_manager,state,&click);
+    assert(state->timeline_view_in_beats!=old_beats);
+    // A release elsewhere, changed geometry, focus loss or modal takeover cannot play.
+    click.type=SDL_MOUSEBUTTONDOWN;click.button.x=20;
+    input_manager_handle_event(&state->input_manager,state,&click);
+    click.type=SDL_MOUSEBUTTONUP;click.button.x=150;
+    input_manager_handle_event(&state->input_manager,state,&click);
+    assert(!engine_transport_requested_playing(state->engine));
+    click.type=SDL_MOUSEBUTTONDOWN;click.button.x=20;
+    input_manager_handle_event(&state->input_manager,state,&click);
+    state->transport_ui.play_rect.x=30;click.type=SDL_MOUSEBUTTONUP;click.button.x=40;
+    input_manager_handle_event(&state->input_manager,state,&click);
+    assert(!engine_transport_requested_playing(state->engine));state->transport_ui.play_rect.x=10;
+    click.type=SDL_MOUSEBUTTONDOWN;click.button.x=20;
+    input_manager_handle_event(&state->input_manager,state,&click);
+    SDL_Event lost={.type=SDL_WINDOWEVENT};lost.window.event=SDL_WINDOWEVENT_FOCUS_LOST;
+    input_manager_handle_event(&state->input_manager,state,&lost);
+    click.type=SDL_MOUSEBUTTONUP;input_manager_handle_event(&state->input_manager,state,&click);
+    assert(!engine_transport_requested_playing(state->engine));
+    click.type=SDL_MOUSEBUTTONDOWN;input_manager_handle_event(&state->input_manager,state,&click);
     project_modal_input_open_save_prompt(state);
+    click.type=SDL_MOUSEBUTTONUP;input_manager_handle_event(&state->input_manager,state,&click);
+    assert(!engine_transport_requested_playing(state->engine));
     key_press(state, SDLK_r, KMOD_NONE);
     key_press(state, SDLK_SPACE, KMOD_NONE);
     assert(state->audio_recording.status == DAW_AUDIO_RECORDING_IDLE);
