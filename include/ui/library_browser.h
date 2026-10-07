@@ -79,3 +79,6 @@ bool library_browser_select_active_index(LibraryBrowser* browser, int index);
 int  library_browser_row_height(void);
 void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* renderer, const SDL_Rect* rect);
 int  library_browser_hit_test(const LibraryBrowser* browser, const SDL_Rect* rect, int x, int y);
+
+// Shares original library mode button rectangles with interaction owners.
+void library_browser_mode_rects(const SDL_Rect*, SDL_Rect*, SDL_Rect*);

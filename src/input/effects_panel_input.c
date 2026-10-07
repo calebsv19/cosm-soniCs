@@ -66,7 +66,8 @@ void effects_panel_input_init(AppState* state) {
     }
 }
 
-void effects_panel_input_handle_event(InputManager* manager, AppState* state, const SDL_Event* event) {
+// Routes original effects commands with event-bound activation modifiers.
+static void effects_panel_event(InputManager* manager, AppState* state, const SDL_Event* event, SDL_Keymod activation_mods) {
     (void)manager;
     if (!state || !event) {
         return;
@@ -92,7 +93,7 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
             SDL_Keycode key = event->key.keysym.sym;
             if (panel->focused && !overlay_open) {
                 if (key == SDLK_p) {
-                    SDL_Keymod mods = SDL_GetModState();
+                    SDL_Keymod mods = activation_mods;
                     if (mods & KMOD_SHIFT) {
                         effects_panel_flip_all_previews(panel);
                     } else {
@@ -122,7 +123,7 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
                 break;
             }
             int new_index = selected;
-            SDL_Keymod mods = SDL_GetModState();
+            SDL_Keymod mods = activation_mods;
             bool move_prev = (key == SDLK_LEFT || key == SDLK_UP);
             bool move_next = (key == SDLK_RIGHT || key == SDLK_DOWN);
             if (move_prev) {
@@ -384,7 +385,7 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
             }
 
             if (SDL_PointInRect(&pt, &layout.preview_toggle_rect)) {
-                SDL_Keymod mods = SDL_GetModState();
+                SDL_Keymod mods = activation_mods;
                 if (mods & KMOD_SHIFT) {
                     effects_panel_flip_all_previews(panel);
                 } else {
@@ -877,4 +878,13 @@ void effects_panel_input_handle_event(InputManager* manager, AppState* state, co
 
 void effects_panel_input_update(InputManager* manager, AppState* state, bool left_was_down, bool left_is_down) {
     effects_panel_input_update_state(manager, state, left_was_down, left_is_down);
+}
+
+// Retains the original effects event API for continuous gestures and keyboard commands.
+void effects_panel_input_handle_event(InputManager* manager, AppState* state, const SDL_Event* event) {
+    effects_panel_event(manager,state,event,SDL_GetModState());
+}
+// Executes only an accepted discrete control with the original press modifiers.
+void effects_panel_input_activate_control(InputManager* manager, AppState* state, const SDL_Event* event, SDL_Keymod mods) {
+    effects_panel_event(manager,state,event,mods);
 }

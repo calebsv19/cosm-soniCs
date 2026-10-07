@@ -15,3 +15,6 @@ void midi_editor_input_set_selected_clip(struct AppState* state,
                                          int clip_index,
                                          uint64_t clip_creation_index);
 void midi_editor_input_clear_selected_clip(struct AppState* state);
+
+// Executes an accepted discrete control at its current product bounds.
+bool midi_editor_input_activate_at(struct AppState*, int, int);

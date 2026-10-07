@@ -13,3 +13,6 @@ void timeline_input_mouse_click_update(struct InputManager* manager,
                                        struct AppState* state,
                                        bool was_down,
                                        bool is_down);
+
+// Executes accepted discrete toolbar controls through their original product owner.
+bool timeline_controls_activate_at(struct AppState*, int, int);

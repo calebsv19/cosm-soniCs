@@ -1,4 +1,5 @@
 #include "ui/text_edit.h"
+#include "ui/daw_ui_button.h"
 #include "ui/effects_panel.h"
 #include "ui/effects_panel_meter_detail.h"
 
@@ -382,14 +383,15 @@ static void draw_button(SDL_Renderer* renderer,
 
     SDL_Color fill = base;
     SDL_Color draw_border = highlighted ? highlight : border;
-    SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
-    SDL_RenderFillRect(renderer, rect);
-    SDL_SetRenderDrawColor(renderer, draw_border.r, draw_border.g, draw_border.b, draw_border.a);
-    SDL_RenderDrawRect(renderer, rect);
+    DawUiButtonStyle style={0};
+    style.fill=(CoreThemeColor){fill.r,fill.g,fill.b,fill.a};
+    style.outline=(CoreThemeColor){draw_border.r,draw_border.g,draw_border.b,draw_border.a};
+    (void)daw_ui_button_draw_frame(renderer,rect,&style);
     if (label) {
         int text_h = ui_font_line_height(scale);
         int text_w = ui_measure_text_width(label, scale);
-        int text_x = rect->x + FX_PANEL_HEADER_BUTTON_PAD_X;
+        int text_x = rect->x + (text_w <= rect->w - FX_PANEL_HEADER_BUTTON_PAD_X*2
+            ? (rect->w - text_w)/2 : FX_PANEL_HEADER_BUTTON_PAD_X);
         int text_y = rect->y + (rect->h - text_h) / 2;
         int max_w = rect->w - FX_PANEL_HEADER_BUTTON_PAD_X * 2;
         if (text_w <= max_w) {

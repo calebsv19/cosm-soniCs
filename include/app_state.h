@@ -14,6 +14,7 @@
 #include "ui/transport.h"
 #include "kit_ui_text_edit.h"
 #include "ui/project_modal_controls.h"
+#include "ui/editor_controls.h"
 #include "ui/timeline_view.h"
 #include "ui/library_browser.h"
 #include "audio/media_registry.h"
@@ -700,6 +701,7 @@ struct AppState {
     ProjectSavePrompt project_prompt;
     ProjectLoadModal project_load;
     DawProjectModalControls project_modal_controls;
+    DawEditorControls editor_controls;
     WaveformCache waveform_cache;
     UndoManager undo;
     DawWorkspaceAuthoringHostState workspace_authoring;

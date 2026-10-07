@@ -210,7 +210,8 @@ static bool midi_editor_handle_viewport_keydown(AppState* state, const SDL_Event
     return false;
 }
 
-static bool midi_editor_handle_left_down(AppState* state, int x, int y) {
+// Executes an accepted control through the original product pointer owner.
+bool midi_editor_input_activate_at(AppState* state, int x, int y) {
     MidiEditorSelection selection = {0};
     MidiEditorLayout layout = {0};
     if (!midi_editor_get_fresh_selection(state, &selection, &layout)) {
@@ -343,7 +344,7 @@ bool midi_editor_input_handle_event(InputManager* manager, AppState* state, cons
     switch (event->type) {
     case SDL_MOUSEBUTTONDOWN:
         if (event->button.button == SDL_BUTTON_LEFT) {
-            return midi_editor_handle_left_down(state, event->button.x, event->button.y);
+            return midi_editor_input_activate_at(state, event->button.x, event->button.y);
         }
         return midi_editor_point_in_panel(state, event->button.x, event->button.y);
     case SDL_MOUSEBUTTONUP:

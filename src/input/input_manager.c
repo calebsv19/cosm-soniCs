@@ -382,6 +382,7 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
     if (event->type == SDL_WINDOWEVENT && (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
         event->window.event == SDL_WINDOWEVENT_HIDDEN)) daw_text_cancel_composition(state);
     daw_project_modal_controls_sync(state);
+    if (daw_editor_controls_event(manager,state,event)) return;
     if (daw_transport_controls_event(state,event))return;
     if (event->type == SDL_DROPFILE) {
         if (event->drop.file) {
@@ -486,6 +487,7 @@ void input_manager_update(InputManager* manager, AppState* state) {
     if (!manager || !state) {
         return;
     }
+    daw_editor_controls_sync(state);
     daw_transport_controls_sync(&state->transport_ui,state);
     if (project_modal_input_active(state)) {
         // Block normal updates while prompt is active.

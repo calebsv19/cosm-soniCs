@@ -99,7 +99,7 @@ static void library_draw_mode_button(SDL_Renderer* renderer,
     text = (SDL_Color){style.text.r, style.text.g, style.text.b, style.text.a};
     text_y = rect->y + (rect->h - ui_font_line_height(1.0f)) / 2;
     ui_draw_text_clipped(renderer,
-                         rect->x + 8,
+                         rect->x + (rect->w - ui_measure_text_width(label, 1.0f)) / 2,
                          text_y,
                          label,
                          text,
@@ -129,6 +129,12 @@ static SDL_Rect library_project_button_rect(const SDL_Rect* rect) {
         k_library_button_height
     };
     return out;
+}
+
+// Exposes the same mode geometry to the shared interaction adapter.
+void library_browser_mode_rects(const SDL_Rect* header, SDL_Rect* source, SDL_Rect* project) {
+    *source = library_source_button_rect(header);
+    *project = library_project_button_rect(header);
 }
 
 static int library_content_header_height(void) {

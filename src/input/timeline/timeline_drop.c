@@ -220,6 +220,7 @@ void timeline_drop_handle_library_drag(InputManager* manager, AppState* state, b
         return;
     }
     if (!was_down && is_down && !state->layout_runtime.drag.active) {
+        if (daw_editor_controls_at(state,state->mouse_x,state->mouse_y)) return;
         if (library_input_handle_primary_click(state, state->mouse_x, state->mouse_y)) {
             return;
         }

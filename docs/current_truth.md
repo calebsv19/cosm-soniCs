@@ -237,3 +237,12 @@ owner tests and native dark/light Vulkan overlay checks qualify this subset.
 Remaining editor controls, pane composition and actual-loop fullscreen lifecycle
 are separate rollout slices. Native OS IME and physical audio acceptance are not
 claimed. See `docs/shared_ui_rollout.md`. VERSION remains 0.3.0; no release action.
+
+### Editor controls rollout (2026-10-06)
+
+Five discrete-control groups now share release/cancellation/focus through sibling
+`editor_controls` adapters: library modes, timeline toolbar, MIDI editor,
+instrument navigation/presets and effects header/slot/overlay controls. Existing
+command owners and continuous gestures remain local. The common button frame
+uses shared rounded tokens; product palette, status and geometry remain owned by
+Sonics. See `docs/shared_ui_rollout.md` for exact coverage and retained exceptions.

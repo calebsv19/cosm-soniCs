@@ -575,6 +575,8 @@ void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
         }
     }
 
+    daw_editor_controls_draw_focus(renderer,state);
+
     // Status log display removed per request.
 
     ui_render_project_prompt_overlay(renderer, state);

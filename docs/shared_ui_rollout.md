@@ -92,3 +92,49 @@ audio acceptance remain separate. Evidence is retained under
 2. Shared pane composition preserving DAW layout policy and subtle divider drag.
 3. Fullscreen/window lifecycle qualification in the real application loop.
 4. Full rollout audit and human Main Edit comparison before canonical adoption.
+
+## 2026-10-06 editor discrete-control adoption
+
+The next five host groups now use the pinned shared surface contract through
+`editor_controls.c` and `editor_controls_layout.c`. Product layouts, colors and
+engine/undo commands remain app-owned. The adapter binds accepted releases to the
+original product action owner; it does not add an engine command registry.
+
+1. Library Source/In Project modes, with sampled header activation suppressed.
+2. Timeline add/remove track, MIDI region, loop, snap, automation mode/target,
+   tempo overlay and automation labels.
+3. MIDI editor preset menu, panel transition, Test, quantize and division,
+   octave and default velocity; visible preset/category rows.
+4. Instrument Notes/Preset controls, parameter group tabs and preset/category rows.
+5. Effects view/spec/global preview/Add FX, overlay back/category/type controls,
+   stack/detail enable/remove/preview and list enable toggles.
+
+All registered discrete controls use matching release and cancel on interrupted
+ownership. Scope context includes engine, window size, selected region creation
+identity, track runtime identities, panel mode and effect-chain identity. Captured
+or armed geometry changes cancel. Text/modal/authoring and active undo/pane drags
+retain priority. After an editor control receives pointer focus, Tab/Shift+Tab
+traverse registered editor controls and Enter activates on release; clicking
+outside returns keyboard routing to the existing transport/other owners. Space
+retains the global playback shortcut. This is discrete-button traversal, not
+universal field/button or arbitrary widget navigation.
+
+The existing button frame helper replaces rectangular chrome with shared compact
+rounded geometry while preserving resolved product colors. Library and instrument
+captions are measured/centered; effects header paint now uses that single frame
+helper. A small focus underline is the only additional indicator. Product sliders,
+knobs, list rows, clip/note gestures, and status visuals remain their original
+painters. No generic fill is drawn over legacy controls.
+
+Verification: fresh `make`, `test-shared-editor-controls`, `test-shared-text-focus`,
+`test-input-delivery`, `test-engine-parameter-transaction`, `test-midi-editor-shell`,
+then `run-headless-smoke`. `build-native-editor-controls-proof` renders actual
+library/timeline/effects/MIDI/instrument painters in four frames per theme and
+checks native Vulkan validation. Test execution uses an offline engine and isolated
+runtime data. These proofs do not claim physical audio or arbitrary OS input.
+
+Remaining discrete exceptions: timeline track-header mute/solo, effects track
+snapshot controls and specialized EQ/meter/spec widgets. These need their own
+target/gesture checks; existing behavior is retained. Continuous gesture ownership
+is not migrated by wrapping button events. Next: qualify those exceptions before
+shared pane composition and actual-loop fullscreen lifecycle.

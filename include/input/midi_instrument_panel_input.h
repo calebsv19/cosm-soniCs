@@ -13,3 +13,6 @@ void midi_instrument_panel_input_update(struct InputManager* manager,
                                         struct AppState* state,
                                         bool left_was_down,
                                         bool left_is_down);
+
+// Executes an accepted discrete control at its current product bounds.
+bool midi_instrument_panel_input_activate_at(struct AppState*, int, int);

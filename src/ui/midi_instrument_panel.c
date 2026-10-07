@@ -158,7 +158,7 @@ static void instrument_panel_draw_button(SDL_Renderer* renderer,
     text_h = ui_font_line_height(0.8f);
     text_y = rect.y + instrument_panel_max_int(0, (rect.h - text_h) / 2);
     ui_draw_text_clipped(renderer,
-                         rect.x + 7,
+                         rect.x + instrument_panel_max_int(6, (rect.w - ui_measure_text_width(label ? label : "", 0.8f)) / 2),
                          text_y,
                          label ? label : "",
                          text,

@@ -154,7 +154,8 @@ static bool instrument_panel_update_param_drag(AppState* state, int y) {
                                         value);
 }
 
-static bool instrument_panel_handle_left_down(AppState* state, int x, int y) {
+// Executes an accepted control through the original product pointer owner.
+bool midi_instrument_panel_input_activate_at(AppState* state, int x, int y) {
     if (!midi_instrument_panel_should_render(state)) {
         return false;
     }
@@ -263,7 +264,7 @@ bool midi_instrument_panel_input_handle_event(InputManager* manager, AppState* s
     switch (event->type) {
     case SDL_MOUSEBUTTONDOWN:
         if (event->button.button == SDL_BUTTON_LEFT) {
-            return instrument_panel_handle_left_down(state, event->button.x, event->button.y);
+            return midi_instrument_panel_input_activate_at(state, event->button.x, event->button.y);
         }
         return instrument_panel_point_in_panel(state, event->button.x, event->button.y);
     case SDL_MOUSEBUTTONUP:

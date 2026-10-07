@@ -366,3 +366,18 @@ build-native-text-ui-proof: $(TEST_BUILD_ROOT)/native_text_ui_test
 $(TEST_BUILD_ROOT)/native_text_ui_test: tests/native_text_ui_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
 	@mkdir -p "$(dir $@)"
 	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-shared-editor-controls
+test-shared-editor-controls: $(TEST_BUILD_ROOT)/shared_editor_controls_test
+	$(TEST_BUILD_ROOT)/shared_editor_controls_test
+
+$(TEST_BUILD_ROOT)/shared_editor_controls_test: tests/shared_editor_controls_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: build-native-editor-controls-proof
+build-native-editor-controls-proof: $(TEST_BUILD_ROOT)/native_editor_controls_test
+
+$(TEST_BUILD_ROOT)/native_editor_controls_test: tests/native_editor_controls_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)

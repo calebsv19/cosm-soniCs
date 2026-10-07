@@ -304,6 +304,12 @@ static bool timeline_controls_handle_click(AppState* state, const SDL_Point* poi
     return false;
 }
 
+// Executes an accepted timeline toolbar action without changing its product command.
+bool timeline_controls_activate_at(AppState* state, int x, int y) {
+    SDL_Point point = {x,y};
+    return timeline_controls_handle_click(state, &point);
+}
+
 static bool snap_time_to_any_clip(const AppState* state, int sample_rate, float threshold_sec, float* inout_seconds) {
     if (!state || !state->engine || !inout_seconds || threshold_sec <= 0.0f || sample_rate <= 0) {
         return false;
