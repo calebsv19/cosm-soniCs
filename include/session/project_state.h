@@ -2,6 +2,7 @@
 
 #include <SDL2/SDL.h>
 #include <stdbool.h>
+#include "kit_ui_text_edit.h"
 
 #include "session.h"
 #include "session/project_manager.h"
@@ -19,6 +20,7 @@ typedef struct {
     char error[128];
     char buffer[SESSION_NAME_MAX];
     int cursor;
+    KitUiTextEdit text_edit;
 } ProjectSavePrompt;
 
 // Tracks the active Load Project modal list and selection state.

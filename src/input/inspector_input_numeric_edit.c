@@ -1,3 +1,4 @@
+#include "ui/text_edit.h"
 #include "input/inspector_input_numeric_edit.h"
 
 #include "engine/audio_source.h"
@@ -68,6 +69,7 @@ void inspector_numeric_clear_edit(AppState* state) {
     if (!state) {
         return;
     }
+    kit_ui_text_cancel_composition(&state->inspector.edit.text_edit);
     state->inspector.edit.editing_timeline_start = false;
     state->inspector.edit.editing_timeline_end = false;
     state->inspector.edit.editing_timeline_length = false;
@@ -189,6 +191,10 @@ void inspector_numeric_begin_edit(AppState* state, const EngineClip* clip, bool*
     char* buffer = inspector_numeric_active_buffer(&state->inspector.edit);
     if (buffer) {
         state->inspector.edit.cursor = (int)strlen(buffer);
+        size_t capacity = buffer == state->inspector.edit.playback_rate
+            ? sizeof(state->inspector.edit.playback_rate) : sizeof(state->inspector.edit.timeline_start);
+        daw_text_edit_begin(&state->inspector.edit.text_edit, buffer, capacity,
+            &state->inspector.edit.cursor, KIT_UI_TEXT_SINGLE_LINE);
     }
     SDL_StartTextInput();
 }

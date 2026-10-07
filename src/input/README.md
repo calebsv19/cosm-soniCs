@@ -68,3 +68,13 @@ Effects slider, track gain/pan and EQ gesture startup now require a successful u
 Recovery continuation binds active effects gestures and mixer/EQ/FX history to the original track runtime identity. Discrete effect add/remove, bypass, reorder, parameter/mode edits, mute/solo and instrument preset selection reserve history before mutation. Native pointer/keyboard acceptance remains unverified; see S5 implementation section 24.
 
 Migrated transport/menu buttons now use shared matched-release activation and scope/geometry cancellation. Global Space/Shift+Space retain their engine shortcut meanings. Modal/text/authoring owners block background button scope.
+
+## 2026-10-06 bounded text/modal adoption
+
+Main Edit now adopts the pinned kit_ui 0.18.0 text editing/presentation contract in
+six existing owner families and shared Load/Cancel focus. Product publication,
+validation, retry and cancel policies remain local. Fresh compile, targeted real
+owner tests and native dark/light Vulkan overlay checks qualify this subset.
+Remaining editor controls, pane composition and actual-loop fullscreen lifecycle
+are separate rollout slices. Native OS IME and physical audio acceptance are not
+claimed. See `docs/shared_ui_rollout.md`. VERSION remains 0.3.0; no release action.

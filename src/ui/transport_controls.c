@@ -63,6 +63,8 @@ bool daw_transport_controls_event(AppState* state, const SDL_Event* event) {
        event->key.keysym.sym==SDLK_SPACE)return false;
     KitUiInteractionEvent input;KitUiInteractionResult result;
     if(!kit_ui_interaction_event_from_sdl(event,&input))return false;
+    // The active text/modal owner receives new keys; old background releases still drain.
+    if ((blocked(state) || !state->engine) && input.type == KIT_UI_INTERACTION_KEY_DOWN) return false;
     if(event->type==SDL_MOUSEBUTTONDOWN && (SDL_GetModState()&KMOD_SHIFT))
         input.modifiers|=KIT_UI_INTERACTION_MOD_SHIFT;
     (void)kit_ui_surface_route(&ui->controls,&input,&result);

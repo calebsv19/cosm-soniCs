@@ -48,11 +48,47 @@ SDL provides events and the platform window. This does not qualify a separate SD
 renderer, physical audio, OS IME, all fullscreen transitions or other platforms.
 Shared module builds keep their own BUILD_DIR rather than inheriting the app path.
 
+## Text editing and modal focus
+
+The second bounded slice replaces byte-oriented editing in Project Save, BPM/time
+signature, library rename, track rename, inspector clip name and inspector numeric
+fields. Caller-owned kit_ui text state supplies UTF-8 scalar boundaries, selection,
+clipboard, atomic capacity checks, single-line policy and staged SDL composition.
+Sonics retains numeric grammar, validation, engine/undo/filesystem publication,
+failed-submit retention, and original commit/cancel meanings.
+
+`text_edit.c` adapts real SDL events; `text_edit_draw.c` uses shared measured text
+presentation for selection, caret, preedit, horizontal reveal and pointer position.
+The synchronous painter intersects and restores the real native Vulkan enclosing
+clip. Existing field backgrounds remain; replaced glyph/caret passes are removed.
+
+`project_modal_controls.c` owns Load/Cancel shared focus and matched-release
+activation. Geometry, selection and modal changes cancel captured actions.
+Background transport drains interrupted releases but gives new keys to the active
+owner. Modal opening cancels staged composition, nesting is refused, and closing
+restores text delivery to a surviving field without discarding its typed buffer.
+Focus loss clears staged composition. Load rows retain their product selection and
+double-click gesture; mixed field/button traversal is not claimed for every editor.
+
+Qualification adds:
+
+```sh
+make BUILD_DIR=build/ui-text-20261006 -j4
+make BUILD_DIR=build/ui-text-20261006 test-shared-text-focus test-input-delivery test-engine-parameter-transaction
+make BUILD_DIR=build/ui-text-20261006 run-headless-smoke
+make BUILD_DIR=build/ui-text-20261006 build-native-text-ui-proof
+```
+
+The finite native proof renders actual Save/Load overlays in dark/light themes,
+checks enclosing native clip restoration, and enables Vulkan validation. Injected
+SDL composition proves adapter behavior; actual OS IME interaction and physical
+audio acceptance remain separate. Evidence is retained under
+`_private_workspace_artifacts/ui_unification/sonics_text_20261006`.
+
 ## Next slices
 
-1. Bounded project/library/track/inspector/tempo text editing and modal focus.
-2. Timeline, library, effects and MIDI/instrument control adoption, one surface at
+1. Timeline, library, effects and MIDI/instrument control adoption, one surface at
    a time with direct product command and one-painter checks.
-3. Shared pane composition preserving DAW layout policy and subtle divider drag.
-4. Fullscreen/window lifecycle qualification in the real application loop.
-5. Full rollout audit and human Main Edit comparison before canonical adoption.
+2. Shared pane composition preserving DAW layout policy and subtle divider drag.
+3. Fullscreen/window lifecycle qualification in the real application loop.
+4. Full rollout audit and human Main Edit comparison before canonical adoption.

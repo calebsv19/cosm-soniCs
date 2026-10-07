@@ -2,6 +2,7 @@
 
 #include <SDL2/SDL.h>
 #include <stdbool.h>
+#include "kit_ui_text_edit.h"
 #include <sys/stat.h>
 
 #include "audio/media_registry.h"
@@ -57,6 +58,7 @@ typedef struct {
     int edit_index;
     char edit_buffer[LIBRARY_NAME_MAX];
     int edit_cursor;
+    KitUiTextEdit text_edit;
 } LibraryBrowser;
 
 void library_browser_init(LibraryBrowser* browser, const char* directory);

@@ -1,3 +1,4 @@
+#include "ui/text_edit.h"
 #include "ui/transport.h"
 #include "app/audio_recording.h"
 #include "app_state.h"
@@ -582,7 +583,12 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         int bpm_th = ui_font_line_height(bpm_scale);
         int bpm_tx = bpm_rect.x + (bpm_rect.w - bpm_tw) / 2;
         int bpm_ty = bpm_rect.y + (bpm_rect.h - bpm_th) / 2;
-        ui_draw_text(renderer, bpm_tx, bpm_ty, bpm_text, bpm_text_color, bpm_scale);
+        if (state->tempo_ui.editing && state->tempo_ui.focus == TEMPO_FOCUS_BPM) {
+            SDL_Rect view = {bpm_rect.x + 4,bpm_rect.y + 2,bpm_rect.w - 8,bpm_rect.h - 4};
+            daw_text_edit_draw(renderer, &state->tempo_ui.text_edit, (char*)state->tempo_ui.buffer,
+                sizeof(state->tempo_ui.buffer), state->tempo_ui.cursor, view, bpm_text_color,
+                theme.control_active_fill, bpm_scale);
+        } else ui_draw_text(renderer, bpm_tx, bpm_ty, bpm_text, bpm_text_color, bpm_scale);
 
         int ts_num = state->tempo.ts_num;
         int ts_den = state->tempo.ts_den;
@@ -637,8 +643,18 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         int num_tx = ts_num_rect.x + (ts_num_rect.w - num_tw) / 2;
         int den_tx = ts_den_rect.x + (ts_den_rect.w - den_tw) / 2;
         int ts_ty = ts_num_rect.y + (ts_num_rect.h - ts_th) / 2;
-        ui_draw_text(renderer, num_tx, ts_ty, ts_num_text, bpm_text_color, ts_scale);
-        ui_draw_text(renderer, den_tx, ts_ty, ts_den_text, bpm_text_color, ts_scale);
+        SDL_Rect signature_rects[2] = {ts_num_rect,ts_den_rect};
+        const char* signature_text[] = {ts_num_text,ts_den_text};
+        int signature_x[] = {num_tx,den_tx};
+        for (int i = 0; i < 2; ++i) {
+            if (editing_ts && state->tempo_ui.ts_part == (i ? TEMPO_TS_PART_DEN : TEMPO_TS_PART_NUM)) {
+                SDL_Rect rect = signature_rects[i];
+                SDL_Rect view = {rect.x + 3,rect.y + 2,rect.w - 6,rect.h - 4};
+                daw_text_edit_draw(renderer, &state->tempo_ui.text_edit, (char*)state->tempo_ui.ts_buffer,
+                    sizeof(state->tempo_ui.ts_buffer), state->tempo_ui.ts_cursor, view,
+                    bpm_text_color, theme.control_active_fill, ts_scale);
+            } else ui_draw_text(renderer, signature_x[i], ts_ty, signature_text[i], bpm_text_color, ts_scale);
+        }
 
         daw_transport_control_draw(renderer,ui,DAW_TRANSPORT_BEATS,"B",
             state->timeline_view_in_beats,ui->beat_toggle_hovered,&theme);

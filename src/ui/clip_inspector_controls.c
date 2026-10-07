@@ -1,3 +1,4 @@
+#include "ui/text_edit.h"
 #include "ui/clip_inspector_controls.h"
 
 #include "app_state.h"
@@ -98,95 +99,6 @@ static void clip_inspector_draw_edit_box(SDL_Renderer* renderer,
     SDL_RenderDrawRect(renderer, rect);
 }
 
-static int clip_inspector_name_visible_end(const char* text,
-                                           int start,
-                                           int available_width,
-                                           float scale) {
-    if (!text || available_width <= 0) {
-        return start;
-    }
-    int len = (int)strlen(text);
-    if (start < 0) start = 0;
-    if (start > len) start = len;
-    const char* ellipsis = "...";
-    int ellipsis_w = ui_measure_text_width(ellipsis, scale);
-    int end = len;
-    while (end > start) {
-        int left_w = start > 0 ? ellipsis_w : 0;
-        int right_w = end < len ? ellipsis_w : 0;
-        char scratch[ENGINE_CLIP_NAME_MAX];
-        int count = end - start;
-        if (count >= (int)sizeof(scratch)) count = (int)sizeof(scratch) - 1;
-        memcpy(scratch, text + start, (size_t)count);
-        scratch[count] = '\0';
-        int text_w = ui_measure_text_width(scratch, scale);
-        if (left_w + text_w + right_w <= available_width) {
-            break;
-        }
-        end--;
-    }
-    return end;
-}
-
-static void clip_inspector_build_name_view(const char* text,
-                                           int start,
-                                           int available_width,
-                                           float scale,
-                                           char* out,
-                                           size_t out_size,
-                                           int* out_start,
-                                           int* out_end,
-                                           int* out_left_ellipsis_w) {
-    if (!out || out_size == 0) {
-        return;
-    }
-    out[0] = '\0';
-    if (!text) {
-        return;
-    }
-    int len = (int)strlen(text);
-    if (start < 0) start = 0;
-    if (start > len) start = len;
-    int end = clip_inspector_name_visible_end(text, start, available_width, scale);
-    int visible_len = end - start;
-    int attempts = 0;
-    while (start > 0 && visible_len < CLIP_INSPECTOR_NAME_MIN_VISIBLE_CHARS && attempts < 64) {
-        start--;
-        end = clip_inspector_name_visible_end(text, start, available_width, scale);
-        visible_len = end - start;
-        attempts++;
-    }
-    if (visible_len <= 0 && len > 0) {
-        end = start + 1;
-        if (end > len) end = len;
-        visible_len = end - start;
-    }
-    const char* ellipsis = "...";
-    int ellipsis_w = ui_measure_text_width(ellipsis, scale);
-    if (out_left_ellipsis_w) {
-        *out_left_ellipsis_w = start > 0 ? ellipsis_w : 0;
-    }
-    if (out_start) {
-        *out_start = start;
-    }
-    if (start > 0) {
-        SDL_strlcpy(out, ellipsis, out_size);
-    }
-    char scratch[ENGINE_CLIP_NAME_MAX];
-    int count = end - start;
-    if (count < 0) count = 0;
-    if (count >= (int)sizeof(scratch)) count = (int)sizeof(scratch) - 1;
-    memcpy(scratch, text + start, (size_t)count);
-    scratch[count] = '\0';
-    SDL_strlcat(out, scratch, out_size);
-    if (end < len) {
-        SDL_strlcat(out, ellipsis, out_size);
-    }
-    if (out_end) {
-        *out_end = end;
-    }
-}
-
 static void clip_inspector_draw_row(SDL_Renderer* renderer,
                                     const ClipInspectorRow* row,
                                     const char* label_text,
@@ -263,22 +175,22 @@ void clip_inspector_render_controls_panel(SDL_Renderer* renderer,
     snprintf(playback_rate_line, sizeof(playback_rate_line), "%.2fx", playback_rate);
 
     const char* timeline_start_text = state->inspector.edit.editing_timeline_start
-                                          ? state->inspector.edit.timeline_start
+                                          ? ""
                                           : timeline_start_line;
     const char* timeline_end_text = state->inspector.edit.editing_timeline_end
-                                        ? state->inspector.edit.timeline_end
+                                        ? ""
                                         : timeline_end_line;
     const char* timeline_length_text = state->inspector.edit.editing_timeline_length
-                                           ? state->inspector.edit.timeline_length
+                                           ? ""
                                            : timeline_length_line;
     const char* source_start_text = state->inspector.edit.editing_source_start
-                                        ? state->inspector.edit.source_start
+                                        ? ""
                                         : source_start_line;
     const char* source_end_text = state->inspector.edit.editing_source_end
-                                      ? state->inspector.edit.source_end
+                                      ? ""
                                       : source_end_line;
     const char* playback_rate_text = state->inspector.edit.editing_playback_rate
-                                         ? state->inspector.edit.playback_rate
+                                         ? ""
                                          : playback_rate_line;
 
     float gain_value = clip->gain;
@@ -396,43 +308,11 @@ void clip_inspector_render_controls_panel(SDL_Renderer* renderer,
     int name_available = layout->name_rect.w - 12;
     if (name_available < 0) name_available = 0;
     if (state->inspector.editing_name) {
-        char visible_name[ENGINE_CLIP_NAME_MAX + 8];
-        int visible_start = 0;
-        int visible_end = 0;
-        int left_ellipsis_w = 0;
-        clip_inspector_build_name_view(state->inspector.name,
-                                       state->inspector.name_scroll,
-                                       name_available,
-                                       INSPECTOR_VALUE_SCALE,
-                                       visible_name,
-                                       sizeof(visible_name),
-                                       &visible_start,
-                                       &visible_end,
-                                       &left_ellipsis_w);
-        ui_draw_text_clipped(renderer,
-                             layout->name_rect.x + 6,
-                             name_y,
-                             visible_name,
-                             value,
-                             INSPECTOR_VALUE_SCALE,
-                             name_available);
-        int cursor = state->inspector.name_cursor;
-        if (cursor < visible_start) {
-            cursor = visible_start;
-        }
-        if (cursor > visible_end) {
-            cursor = visible_end;
-        }
-        char scratch[ENGINE_CLIP_NAME_MAX];
-        int count = cursor - visible_start;
-        if (count < 0) count = 0;
-        if (count >= (int)sizeof(scratch)) count = (int)sizeof(scratch) - 1;
-        memcpy(scratch, state->inspector.name + visible_start, (size_t)count);
-        scratch[count] = '\0';
-        int caret_x = layout->name_rect.x + 6 + left_ellipsis_w + ui_measure_text_width(scratch, INSPECTOR_VALUE_SCALE);
-        int caret_y = layout->name_rect.y + 2;
-        SDL_SetRenderDrawColor(renderer, value.r, value.g, value.b, value.a);
-        SDL_RenderDrawLine(renderer, caret_x, caret_y, caret_x, caret_y + layout->name_rect.h - 4);
+        SDL_Rect view = {layout->name_rect.x + 6, layout->name_rect.y + 2,
+            name_available, layout->name_rect.h - 4};
+        daw_text_edit_draw(renderer, &state->inspector.name_text_edit, (char*)state->inspector.name,
+            sizeof(state->inspector.name), state->inspector.name_cursor, view,
+            value, theme->control_active_fill, INSPECTOR_VALUE_SCALE);
     } else {
         ui_draw_text_clipped(renderer,
                              layout->name_rect.x + 6,
@@ -465,10 +345,11 @@ void clip_inspector_render_controls_panel(SDL_Renderer* renderer,
         edit_text = state->inspector.edit.playback_rate;
     }
     if (edit_rect && edit_text) {
-        int caret_x = edit_rect->x + 6 + ui_measure_text_width(edit_text, INSPECTOR_VALUE_SCALE);
-        int caret_y = edit_rect->y + 2;
-        SDL_SetRenderDrawColor(renderer, value.r, value.g, value.b, value.a);
-        SDL_RenderDrawLine(renderer, caret_x, caret_y, caret_x, caret_y + edit_rect->h - 4);
+        SDL_Rect view = {edit_rect->x + 6,edit_rect->y + 2,edit_rect->w - 12,edit_rect->h - 4};
+        size_t capacity = edit_text == state->inspector.edit.playback_rate
+            ? sizeof(state->inspector.edit.playback_rate) : sizeof(state->inspector.edit.timeline_start);
+        daw_text_edit_draw(renderer, &state->inspector.edit.text_edit, (char*)edit_text,
+            capacity, state->inspector.edit.cursor, view, value, theme->control_active_fill, INSPECTOR_VALUE_SCALE);
     }
 
     draw_slider(renderer,

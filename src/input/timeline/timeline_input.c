@@ -1,6 +1,7 @@
 #include "input/timeline_input.h"
 
 #include "app_state.h"
+#include "ui/text_edit.h"
 #include "engine/engine.h"
 #include "input/input_manager.h"
 #include "input/library_input.h"
@@ -39,6 +40,7 @@ void track_name_editor_stop(AppState* state, bool commit) {
             effects_panel_sync_from_engine(state);
         }
     }
+    kit_ui_text_cancel_composition(&editor->text_edit);
     editor->editing = false;
     editor->track_index = -1;
     editor->buffer[0] = '\0';
@@ -72,6 +74,8 @@ void track_name_editor_start(AppState* state, int track_index) {
     strncpy(editor->buffer, source, sizeof(editor->buffer) - 1);
     editor->buffer[sizeof(editor->buffer) - 1] = '\0';
     editor->cursor = (int)strlen(editor->buffer);
+    daw_text_edit_begin(&editor->text_edit, editor->buffer, sizeof(editor->buffer),
+        &editor->cursor, KIT_UI_TEXT_SINGLE_LINE);
     SDL_StartTextInput();
 }
 

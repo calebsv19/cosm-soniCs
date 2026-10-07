@@ -1,6 +1,7 @@
 #include "input/inspector_input.h"
 
 #include "app_state.h"
+#include "ui/text_edit.h"
 #include "engine/engine.h"
 #include "engine/sampler.h"
 #include "input/automation_input.h"
@@ -128,102 +129,9 @@ static void inspector_stop_text_input(AppState* state) {
     if (state->inspector.editing_name) {
         SDL_StopTextInput();
     }
+    kit_ui_text_cancel_composition(&state->inspector.name_text_edit);
     state->inspector.editing_name = false;
 }
-
-static int inspector_name_available_width(const AppState* state) {
-    if (!state) {
-        return 0;
-    }
-    ClipInspectorLayout layout;
-    clip_inspector_compute_layout(state, &layout);
-    int w = layout.name_rect.w - 12;
-    if (w < 0) w = 0;
-    return w;
-}
-
-static int inspector_name_visible_end(const char* text, int start, int available_width) {
-    if (!text || available_width <= 0) {
-        return start;
-    }
-    int len = (int)strlen(text);
-    if (start < 0) start = 0;
-    if (start > len) start = len;
-    const char* ellipsis = "...";
-    int ellipsis_w = ui_measure_text_width(ellipsis, 1.0f);
-    int end = len;
-    while (end > start) {
-        int left_w = start > 0 ? ellipsis_w : 0;
-        int right_w = end < len ? ellipsis_w : 0;
-        char scratch[ENGINE_CLIP_NAME_MAX];
-        int count = end - start;
-        if (count >= (int)sizeof(scratch)) count = (int)sizeof(scratch) - 1;
-        memcpy(scratch, text + start, (size_t)count);
-        scratch[count] = '\0';
-        int text_w = ui_measure_text_width(scratch, 1.0f);
-        if (left_w + text_w + right_w <= available_width) {
-            break;
-        }
-        end--;
-    }
-    return end;
-}
-
-static void inspector_update_name_scroll(AppState* state) {
-    if (!state) {
-        return;
-    }
-    int available_width = inspector_name_available_width(state);
-    if (available_width <= 0) {
-        state->inspector.name_scroll = 0;
-        return;
-    }
-    const char* text = state->inspector.name;
-    int len = (int)strlen(text);
-    int cursor = state->inspector.name_cursor;
-    if (cursor < 0) cursor = 0;
-    if (cursor > len) cursor = len;
-
-    int start = state->inspector.name_scroll;
-    if (start < 0) start = 0;
-    if (start > len) start = len;
-    int end = inspector_name_visible_end(text, start, available_width);
-    int visible_len = end - start;
-    int page_chars = visible_len;
-    if (page_chars < CLIP_INSPECTOR_NAME_MIN_VISIBLE_CHARS) {
-        page_chars = CLIP_INSPECTOR_NAME_MIN_VISIBLE_CHARS;
-    }
-    if (page_chars < 1) {
-        page_chars = 1;
-    }
-
-    if (visible_len <= 0 || cursor < start || cursor > end) {
-        if (cursor < start) {
-            start = cursor - (page_chars - 1);
-        } else if (cursor > end) {
-            start = cursor;
-        } else {
-            start = cursor;
-            if (start > 0) start--;
-        }
-        if (start < 0) start = 0;
-        if (start > len) start = len;
-    }
-
-    end = inspector_name_visible_end(text, start, available_width);
-    while (cursor > end && start > 0) {
-        start--;
-        end = inspector_name_visible_end(text, start, available_width);
-    }
-    visible_len = end - start;
-    while (start > 0 && visible_len < CLIP_INSPECTOR_NAME_MIN_VISIBLE_CHARS) {
-        start--;
-        end = inspector_name_visible_end(text, start, available_width);
-        visible_len = end - start;
-    }
-    state->inspector.name_scroll = start;
-}
-
 
 // Converts a mouse y position into an automation value in -1..1.
 static float inspector_automation_value_from_y(const SDL_Rect* rect, int y) {
@@ -394,7 +302,8 @@ void inspector_input_begin_rename(AppState* state) {
     state->inspector.editing_name = true;
     state->inspector.name_creation_index = clip->creation_index;
     state->inspector.name_scroll = 0;
-    inspector_update_name_scroll(state);
+    daw_text_edit_begin(&state->inspector.name_text_edit, state->inspector.name,
+        sizeof(state->inspector.name), &state->inspector.name_cursor, KIT_UI_TEXT_SINGLE_LINE);
     SDL_StartTextInput();
 }
 
@@ -434,6 +343,31 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
     (void)manager;
     if (!state || !event) {
         return;
+    }
+
+    if (state->inspector.editing_name || inspector_numeric_is_editing(&state->inspector.edit)) {
+        bool name = state->inspector.editing_name;
+        char* buffer = name ? state->inspector.name : inspector_numeric_active_buffer(&state->inspector.edit);
+        size_t capacity = name ? sizeof(state->inspector.name) :
+            (buffer == state->inspector.edit.playback_rate ? sizeof(state->inspector.edit.playback_rate) : sizeof(state->inspector.edit.timeline_start));
+        int* cursor = name ? &state->inspector.name_cursor : &state->inspector.edit.cursor;
+        KitUiTextEdit* edit = name ? &state->inspector.name_text_edit : &state->inspector.edit.text_edit;
+        KitUiTextEventResult result = daw_text_edit_event(edit, buffer, capacity,
+            cursor, KIT_UI_TEXT_SINGLE_LINE, event);
+        if (result.submit) inspector_input_commit_if_editing(state);
+        if (result.cancel) {
+            if (name) {
+                const EngineClip* clip = inspector_get_clip_const(state);
+                SDL_strlcpy(state->inspector.name, clip ? clip->name : "", sizeof(state->inspector.name));
+                state->inspector.name_cursor = (int)strlen(state->inspector.name);
+                state->inspector.name_scroll = state->inspector.name_cursor;
+                inspector_stop_text_input(state);
+            } else {
+                inspector_numeric_clear_edit(state);
+                SDL_StopTextInput();
+            }
+        }
+        if (result.consumed || event->type == SDL_KEYDOWN || event->type == SDL_KEYUP) return;
     }
 
     switch (event->type) {
@@ -699,122 +633,8 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
             break;
         }
         break;
-    case SDL_TEXTINPUT:
-        if (state->inspector.editing_name) {
-            size_t current_len = strlen(state->inspector.name);
-            size_t incoming = strlen(event->text.text);
-            size_t max_len = sizeof(state->inspector.name) - 1;
-            if (incoming > 0 && current_len < max_len) {
-                size_t copy = incoming;
-                if (current_len + copy > max_len) {
-                    copy = max_len - current_len;
-                }
-                int cursor = state->inspector.name_cursor;
-                if (cursor < 0) cursor = 0;
-                if (cursor > (int)current_len) cursor = (int)current_len;
-                memmove(state->inspector.name + cursor + (int)copy,
-                        state->inspector.name + cursor,
-                        current_len - (size_t)cursor + 1);
-                memcpy(state->inspector.name + cursor, event->text.text, copy);
-                state->inspector.name_cursor = cursor + (int)copy;
-                inspector_update_name_scroll(state);
-            }
-        } else if (inspector_numeric_is_editing(&state->inspector.edit)) {
-            char* buffer = inspector_numeric_active_buffer(&state->inspector.edit);
-            if (buffer) {
-                size_t current_len = strlen(buffer);
-                size_t incoming = strlen(event->text.text);
-                size_t max_len = 0;
-                if (buffer == state->inspector.edit.playback_rate) {
-                    max_len = sizeof(state->inspector.edit.playback_rate) - 1;
-                } else if (buffer == state->inspector.edit.timeline_start) {
-                    max_len = sizeof(state->inspector.edit.timeline_start) - 1;
-                } else if (buffer == state->inspector.edit.timeline_end) {
-                    max_len = sizeof(state->inspector.edit.timeline_end) - 1;
-                } else if (buffer == state->inspector.edit.timeline_length) {
-                    max_len = sizeof(state->inspector.edit.timeline_length) - 1;
-                } else if (buffer == state->inspector.edit.source_start) {
-                    max_len = sizeof(state->inspector.edit.source_start) - 1;
-                } else {
-                    max_len = sizeof(state->inspector.edit.source_end) - 1;
-                }
-                if (incoming > 0 && current_len < max_len) {
-                    size_t copy = incoming;
-                    if (current_len + copy > max_len) {
-                        copy = max_len - current_len;
-                    }
-                    strncat(buffer, event->text.text, copy);
-                    state->inspector.edit.cursor = (int)strlen(buffer);
-                }
-            }
-        }
-        break;
     case SDL_KEYDOWN:
-        if (state->inspector.editing_name) {
-            SDL_Keycode key = event->key.keysym.sym;
-            if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
-                inspector_input_commit_if_editing(state);
-            } else if (key == SDLK_ESCAPE) {
-                const EngineClip* clip = inspector_get_clip_const(state);
-                if (clip) {
-                    strncpy(state->inspector.name, clip->name, sizeof(state->inspector.name) - 1);
-                    state->inspector.name[sizeof(state->inspector.name) - 1] = '\0';
-                } else {
-                    state->inspector.name[0] = '\0';
-                }
-                state->inspector.name_cursor = (int)strlen(state->inspector.name);
-                state->inspector.name_scroll = state->inspector.name_cursor;
-                inspector_update_name_scroll(state);
-                inspector_stop_text_input(state);
-            } else if (key == SDLK_BACKSPACE) {
-                size_t len = strlen(state->inspector.name);
-                int cursor = state->inspector.name_cursor;
-                if (cursor > 0 && cursor <= (int)len) {
-                    memmove(state->inspector.name + cursor - 1,
-                            state->inspector.name + cursor,
-                            len - (size_t)cursor + 1);
-                    state->inspector.name_cursor = cursor - 1;
-                    inspector_update_name_scroll(state);
-                }
-            } else if (key == SDLK_DELETE) {
-                size_t len = strlen(state->inspector.name);
-                int cursor = state->inspector.name_cursor;
-                if (cursor >= 0 && cursor < (int)len) {
-                    memmove(state->inspector.name + cursor,
-                            state->inspector.name + cursor + 1,
-                            len - (size_t)cursor);
-                    inspector_update_name_scroll(state);
-                }
-            } else if (key == SDLK_LEFT) {
-                if (state->inspector.name_cursor > 0) {
-                    state->inspector.name_cursor -= 1;
-                    inspector_update_name_scroll(state);
-                }
-            } else if (key == SDLK_RIGHT) {
-                int len = (int)strlen(state->inspector.name);
-                if (state->inspector.name_cursor < len) {
-                    state->inspector.name_cursor += 1;
-                    inspector_update_name_scroll(state);
-                }
-            }
-        } else if (inspector_numeric_is_editing(&state->inspector.edit)) {
-            SDL_Keycode key = event->key.keysym.sym;
-            if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
-                inspector_numeric_commit_edit(state);
-            } else if (key == SDLK_ESCAPE) {
-                inspector_numeric_clear_edit(state);
-                SDL_StopTextInput();
-            } else if (key == SDLK_BACKSPACE || key == SDLK_DELETE) {
-                char* buffer = inspector_numeric_active_buffer(&state->inspector.edit);
-                if (buffer) {
-                    size_t len = strlen(buffer);
-                    if (len > 0) {
-                        buffer[len - 1] = '\0';
-                        state->inspector.edit.cursor = (int)strlen(buffer);
-                    }
-                }
-            }
-        } else if (state->inspector.visible) {
+        if (state->inspector.visible) {
             SDL_Keycode key = event->key.keysym.sym;
             if (inspector_fade_input_handle_keydown(state, key)) {
                 break;

@@ -1,3 +1,4 @@
+#include "ui/text_edit.h"
 #include "ui/effects_panel.h"
 #include "ui/effects_panel_meter_detail.h"
 
@@ -726,22 +727,18 @@ void effects_panel_render(SDL_Renderer* renderer, const AppState* state, const E
     int text_y = title_rect.y + (title_rect.h - text_h) / 2;
     int title_text_x = title_rect.x + 6;
     int title_text_w = title_rect.w - 12;
-    if (title_text_w > 0) {
-        ui_draw_text_clipped(renderer, title_text_x, text_y, target_line, label_color, title_scale, title_text_w);
-    }
-    if (editor && editor->editing) {
+    bool editing_target = panel->target == FX_PANEL_TARGET_TRACK && editor->editing &&
+        editor->track_index == panel->target_track_index;
+    if (editing_target && title_text_w > 0) {
         const char* prefix = "Track FX: ";
-        int prefix_w = ui_measure_text_width(prefix, title_scale);
-        char temp[ENGINE_CLIP_NAME_MAX + 32];
-        snprintf(temp, sizeof(temp), "%.*s", editor->cursor, editor->buffer);
-        int caret_x = title_text_x + prefix_w + ui_measure_text_width(temp, title_scale);
-        if (caret_x > title_rect.x + title_rect.w - 1) {
-            caret_x = title_rect.x + title_rect.w - 1;
-        }
-        int caret_h = ui_font_line_height(title_scale);
-        SDL_Rect caret = {caret_x, text_y, 2, caret_h};
-        SDL_SetRenderDrawColor(renderer, theme.text_primary.r, theme.text_primary.g, theme.text_primary.b, theme.text_primary.a);
-        SDL_RenderFillRect(renderer, &caret);
+        int prefix_width = ui_measure_text_width(prefix, title_scale);
+        ui_draw_text_clipped(renderer, title_text_x, text_y, prefix, label_color, title_scale, title_text_w);
+        SDL_Rect view = {title_text_x + prefix_width, title_rect.y + 2,
+            title_text_w - prefix_width, title_rect.h - 4};
+        daw_text_edit_draw(renderer, &editor->text_edit, (char*)editor->buffer,
+            sizeof(editor->buffer), editor->cursor, view, label_color, theme.text_primary, title_scale);
+    } else if (title_text_w > 0) {
+        ui_draw_text_clipped(renderer, title_text_x, text_y, target_line, label_color, title_scale, title_text_w);
     }
 
     // View mode + add button

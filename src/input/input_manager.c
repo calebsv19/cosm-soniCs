@@ -3,6 +3,7 @@
 
 #include "app/audio_recording.h"
 #include "app_state.h"
+#include "ui/text_edit.h"
 #include "app/workspace_authoring/daw_workspace_authoring_host.h"
 #include "engine/engine.h"
 #include "input/library_input.h"
@@ -378,6 +379,9 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
     if (!manager || !state || !event) {
         return;
     }
+    if (event->type == SDL_WINDOWEVENT && (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
+        event->window.event == SDL_WINDOWEVENT_HIDDEN)) daw_text_cancel_composition(state);
+    daw_project_modal_controls_sync(state);
     if (daw_transport_controls_event(state,event))return;
     if (event->type == SDL_DROPFILE) {
         if (event->drop.file) {
@@ -420,7 +424,7 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
         return;
     }
 
-    if (event->type == SDL_KEYDOWN || event->type == SDL_KEYUP || event->type == SDL_TEXTINPUT) {
+    if (event->type == SDL_KEYDOWN || event->type == SDL_KEYUP || event->type == SDL_TEXTINPUT || event->type == SDL_TEXTEDITING) {
         if (inspector_input_has_text_focus(state)) {
             inspector_input_handle_event(manager, state, event);
             return;

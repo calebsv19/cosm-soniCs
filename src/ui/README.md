@@ -35,3 +35,13 @@ The rack spectrogram card now subscribes to the existing worker analyzer and ren
 Rack spectrogram cards expose W/B, B/W and Heat palette buttons. Palette choices use the existing effect parameter and undo transaction; display colors read back the accepted parameter, including after undo and project reload.
 
 - `transport_controls.c`: shared surface/focus and single rounded transport painter; product rectangles/palette/status and direct commands remain app-owned. See `docs/shared_ui_rollout.md`.
+
+## 2026-10-06 bounded text/modal adoption
+
+Main Edit now adopts the pinned kit_ui 0.18.0 text editing/presentation contract in
+six existing owner families and shared Load/Cancel focus. Product publication,
+validation, retry and cancel policies remain local. Fresh compile, targeted real
+owner tests and native dark/light Vulkan overlay checks qualify this subset.
+Remaining editor controls, pane composition and actual-loop fullscreen lifecycle
+are separate rollout slices. Native OS IME and physical audio acceptance are not
+claimed. See `docs/shared_ui_rollout.md`. VERSION remains 0.3.0; no release action.

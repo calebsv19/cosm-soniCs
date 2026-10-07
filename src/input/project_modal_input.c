@@ -1,6 +1,9 @@
 #include "input/project_modal_input.h"
 
 #include "app_state.h"
+#include "ui/text_edit.h"
+#include "ui/project_modal_controls.h"
+#include "ui/transport_controls.h"
 #include "session/project_manager.h"
 
 #include <SDL2/SDL.h>
@@ -14,10 +17,15 @@ void project_modal_input_open_save_prompt(AppState* state) {
     if (!state) {
         return;
     }
+    if (project_modal_input_active(state)) return;
+    daw_text_cancel_composition(state);
     state->project_prompt.active = true;
     state->project_prompt.error[0] = '\0';
     state->project_prompt.buffer[0] = '\0';
     state->project_prompt.cursor = 0;
+    daw_text_edit_begin(&state->project_prompt.text_edit, state->project_prompt.buffer,
+        sizeof(state->project_prompt.buffer), &state->project_prompt.cursor, KIT_UI_TEXT_SINGLE_LINE);
+    daw_transport_controls_sync(&state->transport_ui, state);
     SDL_StartTextInput();
 }
 
@@ -26,9 +34,11 @@ void project_modal_input_close_save_prompt(AppState* state) {
         return;
     }
     state->project_prompt.active = false;
+    kit_ui_text_cancel_composition(&state->project_prompt.text_edit);
     state->project_prompt.buffer[0] = '\0';
     state->project_prompt.cursor = 0;
-    SDL_StopTextInput();
+    daw_transport_controls_sync(&state->transport_ui, state);
+    daw_text_resume_input(state);
 }
 
 static bool project_prompt_handle_event(AppState* state, const SDL_Event* event) {
@@ -36,71 +46,26 @@ static bool project_prompt_handle_event(AppState* state, const SDL_Event* event)
         return false;
     }
     ProjectSavePrompt* prompt = &state->project_prompt;
-    switch (event->type) {
-    case SDL_TEXTINPUT: {
-        const char* txt = event->text.text;
-        int len = (int)strlen(prompt->buffer);
-        int cur = prompt->cursor;
-        if (cur < 0) {
-            cur = 0;
+    if (event->type == SDL_MOUSEBUTTONDOWN && event->button.button == SDL_BUTTON_LEFT) {
+        int width = state->window_width > 0 ? state->window_width : 800;
+        int height = state->window_height > 0 ? state->window_height : 600;
+        SDL_Rect field = {(width - 480) / 2 + 16, (height - 180) / 2 + 60, 448, 44};
+        SDL_Point point = {event->button.x,event->button.y};
+        if (SDL_PointInRect(&point,&field)) {
+            daw_text_edit_click(&prompt->text_edit,prompt->buffer,sizeof(prompt->buffer),
+                &prompt->cursor,KIT_UI_TEXT_SINGLE_LINE,2,field.x + 8,field.w - 16,point.x);
+            return true;
         }
-        if (cur > len) {
-            cur = len;
-        }
-        for (const char* p = txt; *p; ++p) {
-            if ((int)strlen(prompt->buffer) >= (int)sizeof(prompt->buffer) - 1) {
-                break;
-            }
-            memmove(prompt->buffer + cur + 1, prompt->buffer + cur, strlen(prompt->buffer + cur) + 1);
-            prompt->buffer[cur] = *p;
-            cur++;
-        }
-        prompt->cursor = cur;
-        return true;
     }
-    case SDL_KEYDOWN: {
-        SDL_Keycode key = event->key.keysym.sym;
-        if (key == SDLK_BACKSPACE) {
-            int len = (int)strlen(prompt->buffer);
-            int cur = prompt->cursor;
-            if (cur > 0 && len > 0) {
-                memmove(prompt->buffer + cur - 1, prompt->buffer + cur, (size_t)(len - cur + 1));
-                prompt->cursor = cur - 1;
-            }
-            return true;
-        }
-        if (key == SDLK_LEFT) {
-            if (prompt->cursor > 0) {
-                prompt->cursor--;
-            }
-            return true;
-        }
-        if (key == SDLK_RIGHT) {
-            int len = (int)strlen(prompt->buffer);
-            if (prompt->cursor < len) {
-                prompt->cursor++;
-            }
-            return true;
-        }
-        if (key == SDLK_ESCAPE) {
-            project_modal_input_close_save_prompt(state);
-            return true;
-        }
-        if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
-            const char* name = prompt->buffer[0] ? prompt->buffer : "project";
-            if (project_manager_save(state, name, true)) {
-                project_modal_input_close_save_prompt(state);
-            } else {
-                SDL_strlcpy(prompt->error, "Save failed. Retry or Esc to cancel.", sizeof(prompt->error));
-            }
-            return true;
-        }
-        break;
+    KitUiTextEventResult result = daw_text_edit_event(&prompt->text_edit, prompt->buffer,
+        sizeof(prompt->buffer), &prompt->cursor, KIT_UI_TEXT_SINGLE_LINE, event);
+    if (result.cancel) project_modal_input_close_save_prompt(state);
+    if (result.submit) {
+        const char* name = prompt->buffer[0] ? prompt->buffer : "project";
+        if (project_manager_save(state, name, true)) project_modal_input_close_save_prompt(state);
+        else SDL_strlcpy(prompt->error, "Save failed. Retry or Esc to cancel.", sizeof(prompt->error));
     }
-    default:
-        break;
-    }
-    return false;
+    return result.consumed != 0;
 }
 
 void project_modal_input_close_load_modal(AppState* state) {
@@ -110,6 +75,9 @@ void project_modal_input_close_load_modal(AppState* state) {
     state->project_load.active = false;
     state->project_load.count = 0;
     state->project_load.selected_index = -1;
+    daw_project_modal_controls_sync(state);
+    daw_transport_controls_sync(&state->transport_ui, state);
+    daw_text_resume_input(state);
 }
 
 static void project_load_clamp_scroll(ProjectLoadModal* modal, int item_height, int view_height) {
@@ -132,12 +100,17 @@ bool project_modal_input_open_load_modal(AppState* state) {
     if (!state) {
         return false;
     }
+    if (project_modal_input_active(state)) return false;
+    daw_text_cancel_composition(state);
+    SDL_StopTextInput();
     state->project_load.active = true;
     state->project_load.error[0] = '\0';
     state->project_load.scroll_offset = 0.0f;
     state->project_load.selected_index = -1;
     state->project_load.last_click_index = -1;
     state->project_load.last_click_ticks = 0;
+    daw_project_modal_controls_sync(state);
+    daw_transport_controls_sync(&state->transport_ui, state);
 
     int count = 0;
     project_manager_list(state,
@@ -183,12 +156,18 @@ static bool project_load_handle_event(AppState* state, const SDL_Event* event) {
     int height = state->window_height > 0 ? state->window_height : 600;
     SDL_Rect box = {(width - 720) / 2, (height - 420) / 2, 720, 420};
     SDL_Rect list_rect = {box.x + 16, box.y + 56, box.w / 2 - 32, box.h - 96};
-    SDL_Rect info_rect = {box.x + box.w / 2 + 8, box.y + 56, box.w / 2 - 24, box.h - 126};
-    SDL_Rect load_button = {info_rect.x, box.y + box.h - 52, 120, 36};
-    SDL_Rect cancel_button = {load_button.x + load_button.w + 12, load_button.y, 120, 36};
 
     int item_h = 28;
     project_load_clamp_scroll(modal, item_h, list_rect.h);
+
+    if (!(event->type == SDL_KEYDOWN && event->key.keysym.sym == SDLK_ESCAPE)) {
+        int action;
+        if (daw_project_modal_controls_event(state, event, &action)) {
+            if (action == 1) project_load_selected(state, modal->selected_index);
+            if (action == 2) project_modal_input_close_load_modal(state);
+            return true;
+        }
+    }
 
     switch (event->type) {
     case SDL_MOUSEWHEEL:
@@ -213,17 +192,11 @@ static bool project_load_handle_event(AppState* state, const SDL_Event* event) {
                 }
                 return true;
             }
-            if (SDL_PointInRect(&p, &load_button)) {
-                project_load_selected(state, modal->selected_index);
-                return true;
-            }
-            if (SDL_PointInRect(&p, &cancel_button)) {
-                project_modal_input_close_load_modal(state);
-                return true;
-            }
+
         }
         break;
     case SDL_KEYDOWN:
+        if (event->key.repeat) return true;
         if (event->key.keysym.sym == SDLK_ESCAPE) {
             project_modal_input_close_load_modal(state);
             return true;

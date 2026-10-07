@@ -2,6 +2,7 @@
 
 #include "app/audio_recording.h"
 #include "app_state.h"
+#include "ui/text_edit.h"
 #include "engine/engine.h"
 #include "engine/sampler.h"
 #include "input/inspector_input.h"
@@ -67,23 +68,13 @@ bool timeline_input_keyboard_handle_event(InputManager* manager, AppState* state
     }
 
     TrackNameEditor* editor = &state->track_name_editor;
-    if (event->type == SDL_TEXTINPUT && editor->editing) {
-        size_t len = strlen(editor->buffer);
-        size_t free_space = sizeof(editor->buffer) - 1 - len;
-        if (free_space > 0) {
-            size_t incoming = strlen(event->text.text);
-            if (incoming > free_space) {
-                incoming = free_space;
-            }
-            int cursor = editor->cursor;
-            if (cursor < 0) cursor = 0;
-            if (cursor > (int)len) cursor = (int)len;
-            // Make room for incoming text at cursor
-            memmove(editor->buffer + cursor + incoming, editor->buffer + cursor, len - cursor + 1);
-            memcpy(editor->buffer + cursor, event->text.text, incoming);
-            editor->cursor = cursor + (int)incoming;
-        }
-        return true;
+    if (editor->editing) {
+        KitUiTextEventResult result = daw_text_edit_event(&editor->text_edit, editor->buffer,
+            sizeof(editor->buffer), &editor->cursor, KIT_UI_TEXT_SINGLE_LINE, event);
+        if (result.submit) track_name_editor_stop(state, true);
+        if (result.cancel) track_name_editor_stop(state, false);
+        if (result.consumed || event->type == SDL_KEYDOWN || event->type == SDL_KEYUP)
+            return true;
     }
 
     if (event->type != SDL_KEYDOWN) {
@@ -115,37 +106,6 @@ bool timeline_input_keyboard_handle_event(InputManager* manager, AppState* state
                 return true;
             }
         }
-    }
-
-    if (editor->editing) {
-        if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
-            track_name_editor_stop(state, true);
-        } else if (key == SDLK_ESCAPE) {
-            track_name_editor_stop(state, false);
-        } else if (key == SDLK_BACKSPACE) {
-            size_t len = strlen(editor->buffer);
-            if (len > 0 && editor->cursor > 0) {
-                int cur = editor->cursor;
-                memmove(editor->buffer + cur - 1, editor->buffer + cur, len - (size_t)cur + 1);
-                editor->cursor = cur - 1;
-            }
-        } else if (key == SDLK_DELETE) {
-            size_t len = strlen(editor->buffer);
-            int cur = editor->cursor;
-            if (len > 0 && cur >= 0 && cur < (int)len) {
-                memmove(editor->buffer + cur, editor->buffer + cur + 1, len - (size_t)cur);
-            }
-        } else if (key == SDLK_LEFT) {
-            if (editor->cursor > 0) {
-                editor->cursor -= 1;
-            }
-        } else if (key == SDLK_RIGHT) {
-            int len = (int)strlen(editor->buffer);
-            if (editor->cursor < len) {
-                editor->cursor += 1;
-            }
-        }
-        return true;
     }
 
     if ((key == SDLK_DELETE || key == SDLK_BACKSPACE) && state->timeline_tempo_overlay_enabled) {

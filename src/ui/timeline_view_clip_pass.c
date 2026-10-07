@@ -1,3 +1,4 @@
+#include "ui/text_edit.h"
 #include "ui/timeline_view_clip_pass.h"
 
 #include "audio/media_registry.h"
@@ -517,36 +518,17 @@ void timeline_view_render_track_clip_pass(SDL_Renderer* renderer,
         int available_px = text_max_x - text_x;
         char text_buf[ENGINE_CLIP_NAME_MAX];
         const char* display = label;
-        if (available_px > 0) {
+        if (available_px > 0 && !(editor->editing && editor->track_index == t)) {
             fit_label_ellipsis(label, available_px, 1.0f, text_buf, sizeof(text_buf));
             display = text_buf;
         }
         int label_text_y = header_layout.text_y;
-        ui_draw_text(renderer, text_x, label_text_y, display, label_color, 1);
         if (editor && editor->editing && editor->track_index == t) {
-            float scale = 1.0f;
-            int caret_limit = text_max_x;
-            if (caret_limit < text_x) caret_limit = text_x;
-            char temp[ENGINE_CLIP_NAME_MAX];
-            int len = (int)strlen(editor->buffer);
-            int caret_x = text_x;
-            int target_index = editor->cursor;
-            if (target_index < 0) target_index = 0;
-            if (target_index > len) target_index = len;
-            snprintf(temp, sizeof(temp), "%.*s", target_index, editor->buffer);
-            caret_x = text_x + ui_measure_text_width(temp, scale);
-            if (caret_x > caret_limit) {
-                caret_x = caret_limit;
-            }
-            int caret_h = ui_font_line_height(scale);
-            SDL_Rect caret_rect = {
-                caret_x,
-                label_text_y,
-                2,
-                caret_h
-            };
-            SDL_SetRenderDrawColor(renderer, theme->text.r, theme->text.g, theme->text.b, theme->text.a);
-            SDL_RenderFillRect(renderer, &caret_rect);
+            SDL_Rect view = {text_x, label_text_y, available_px, ui_font_line_height(1)};
+            daw_text_edit_draw(renderer, &editor->text_edit, (char*)editor->buffer,
+                sizeof(editor->buffer), editor->cursor, view, label_color, theme->text, 1);
+        } else {
+            ui_draw_text(renderer, text_x, label_text_y, display, label_color, 1);
         }
 
         if (!track || track->clip_count <= 0) {

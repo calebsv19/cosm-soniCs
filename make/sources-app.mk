@@ -23,6 +23,9 @@ APP_SRCS := \
 	$(SRC_DIR)/core/loop/daw_render_invalidation.c \
 	$(SRC_DIR)/app/daw_app_main.c \
 	$(SRC_DIR)/ui/transport_controls.c \
+	$(SRC_DIR)/ui/text_edit.c \
+	$(SRC_DIR)/ui/text_edit_draw.c \
+	$(SRC_DIR)/ui/project_modal_controls.c \
 	$(SRC_DIR)/app/daw_vulkan_rollout.c \
 	$(SRC_DIR)/app/media_import.c \
 	$(SRC_DIR)/app/audio_recording.c \

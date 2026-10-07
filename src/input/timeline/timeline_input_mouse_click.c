@@ -1,3 +1,4 @@
+#include "ui/text_edit.h"
 #include "input/timeline/timeline_input_mouse_click.h"
 
 #include "app_state.h"
@@ -26,27 +27,6 @@
 #include <SDL2/SDL.h>
 #include <math.h>
 #include <string.h>
-
-static int track_name_cursor_from_x(const char* text, float scale, int start_x, int end_x, int mouse_x) {
-    if (!text) return 0;
-    int len = (int)strlen(text);
-    if (mouse_x <= start_x) return 0;
-    if (mouse_x >= end_x) return len;
-    int rel = mouse_x - start_x;
-    int cursor = len;
-    char temp[ENGINE_CLIP_NAME_MAX];
-    for (int i = 0; i <= len; ++i) {
-        snprintf(temp, sizeof(temp), "%.*s", i, text);
-        int w = ui_measure_text_width(temp, scale);
-        if (w >= rel) {
-            cursor = i;
-            break;
-        }
-    }
-    if (cursor < 0) cursor = 0;
-    if (cursor > len) cursor = len;
-    return cursor;
-}
 
 static SDL_Rect timeline_lane_clip_rect(const TimelineGeometry* geom, int lane_top, int clip_x, int clip_w) {
     SDL_Rect rect = {0, 0, 0, 0};
@@ -795,11 +775,9 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
             if (SDL_PointInRect(&mouse_point, &header_rect)) {
                 TrackNameEditor* editor = &state->track_name_editor;
                 if (editor->editing && editor->track_index == t) {
-                    editor->cursor = track_name_cursor_from_x(editor->buffer,
-                                                              1.0f,
-                                                              header_layout.text_x,
-                                                              header_layout.text_max_x,
-                                                              mouse_point.x);
+                    daw_text_edit_click(&editor->text_edit, editor->buffer, sizeof(editor->buffer),
+                        &editor->cursor, KIT_UI_TEXT_SINGLE_LINE, 1, header_layout.text_x,
+                        header_layout.text_max_x - header_layout.text_x, mouse_point.x);
                     return;
                 }
 
@@ -831,11 +809,9 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
                     track_name_editor_start(state, t);
                     TrackNameEditor* editor = &state->track_name_editor;
                     if (editor->editing) {
-                        editor->cursor = track_name_cursor_from_x(editor->buffer,
-                                                                  1.0f,
-                                                                  header_layout.text_x,
-                                                                  header_layout.text_max_x,
-                                                                  mouse_point.x);
+                        daw_text_edit_click(&editor->text_edit, editor->buffer, sizeof(editor->buffer),
+                        &editor->cursor, KIT_UI_TEXT_SINGLE_LINE, 1, header_layout.text_x,
+                        header_layout.text_max_x - header_layout.text_x, mouse_point.x);
                     }
                 }
                 return;

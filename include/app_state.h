@@ -12,6 +12,8 @@
 #include "ui/panes.h"
 #include "ui/resize.h"
 #include "ui/transport.h"
+#include "kit_ui_text_edit.h"
+#include "ui/project_modal_controls.h"
 #include "ui/timeline_view.h"
 #include "ui/library_browser.h"
 #include "audio/media_registry.h"
@@ -220,6 +222,7 @@ typedef struct {
     char source_end[32];
     char playback_rate[16];
     int cursor;
+    KitUiTextEdit text_edit;
 } ClipInspectorEditState;
 
 // Tracks the right panel view/gesture state for clip waveform inspection.
@@ -245,6 +248,7 @@ typedef struct {
     uint64_t name_creation_index; // Binds the rename buffer to its original clip.
     bool editing_name;
     int name_cursor;
+    KitUiTextEdit name_text_edit;
     bool adjusting_gain;
     bool adjusting_fade_in;
     bool adjusting_fade_out;
@@ -560,6 +564,7 @@ typedef struct {
     char buffer[ENGINE_CLIP_NAME_MAX];
     char original[ENGINE_CLIP_NAME_MAX];
     int cursor;
+    KitUiTextEdit text_edit;
 } TrackNameEditor;
 
 typedef struct {
@@ -606,6 +611,7 @@ typedef struct {
     Uint32 last_click_ticks;
     TempoFocus last_click_focus;
     TempoTSPart last_click_ts_part;
+    KitUiTextEdit text_edit;
 } TempoUIState;
 
 typedef struct AppState AppState;
@@ -693,6 +699,7 @@ struct AppState {
     ProjectState project;
     ProjectSavePrompt project_prompt;
     ProjectLoadModal project_load;
+    DawProjectModalControls project_modal_controls;
     WaveformCache waveform_cache;
     UndoManager undo;
     DawWorkspaceAuthoringHostState workspace_authoring;

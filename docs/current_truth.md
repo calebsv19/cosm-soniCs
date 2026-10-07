@@ -227,3 +227,13 @@ The current gesture audit confirms trim and ripple movement are separate modes. 
 Timeline selection duplicate/delete now publishes complete audio/MIDI actions with one reserved history entry and explicit selection restoration. Ctrl/Cmd-D uses event-local modifiers; native shortcut and gesture rehearsal remains pending.
 
 Clipboard paste now prepares complete audio/MIDI content and required topology before one publication and one reserved undo entry, including guarded generated-track retirement and empty-project restoration. Missing media/preparation rejection preserves the prior authored project. Native acceptance remains pending.
+
+## 2026-10-06 bounded text/modal adoption
+
+Main Edit now adopts the pinned kit_ui 0.18.0 text editing/presentation contract in
+six existing owner families and shared Load/Cancel focus. Product publication,
+validation, retry and cancel policies remain local. Fresh compile, targeted real
+owner tests and native dark/light Vulkan overlay checks qualify this subset.
+Remaining editor controls, pane composition and actual-loop fullscreen lifecycle
+are separate rollout slices. Native OS IME and physical audio acceptance are not
+claimed. See `docs/shared_ui_rollout.md`. VERSION remains 0.3.0; no release action.

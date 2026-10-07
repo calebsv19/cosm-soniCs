@@ -1,3 +1,4 @@
+#include "ui/text_edit.h"
 #include "ui/library_browser.h"
 
 #include "audio/media_clip.h"
@@ -556,21 +557,17 @@ void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* rendere
             if (text_max_w < 1) {
                 text_max_w = 1;
             }
-            ui_draw_text_clipped(renderer, text_x, text_y, label, text_color, k_library_text_scale, text_max_w);
-
             if (is_editing) {
-                char temp[LIBRARY_NAME_MAX];
-                int len = (int)strlen(browser->edit_buffer);
-                int cursor = browser->edit_cursor;
-                if (cursor < 0) cursor = 0;
-                if (cursor > len) cursor = len;
-                snprintf(temp, sizeof(temp), "%.*s", cursor, browser->edit_buffer);
-                int cursor_x = text_x + ui_measure_text_width(temp, k_library_text_scale);
-                int cursor_y = text_y;
-                int cursor_h = ui_font_line_height(k_library_text_scale);
-                SDL_SetRenderDrawColor(renderer, muted_color.r, muted_color.g, muted_color.b, muted_color.a);
-                SDL_RenderDrawLine(renderer, cursor_x, cursor_y, cursor_x, cursor_y + cursor_h);
+                SDL_Rect view = {text_x, row.y + 2, text_max_w, row_h - 4};
+                SDL_Rect clipped;
+                if (SDL_IntersectRect(&view, rect, &clipped))
+                    daw_text_edit_draw(renderer, &browser->text_edit, (char*)browser->edit_buffer,
+                        sizeof(browser->edit_buffer), browser->edit_cursor, clipped,
+                        text_color, muted_color, k_library_text_scale);
+            } else {
+                ui_draw_text_clipped(renderer, text_x, text_y, label, text_color, k_library_text_scale, text_max_w);
             }
+
         }
         y += row_h;
     }

@@ -351,3 +351,18 @@ test-input-delivery: $(TEST_BUILD_ROOT)/input_delivery_test
 $(TEST_BUILD_ROOT)/input_delivery_test: tests/input_delivery_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
 	@mkdir -p "$(dir $@)"
 	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-shared-text-focus
+test-shared-text-focus: $(TEST_BUILD_ROOT)/shared_text_focus_test
+	$(TEST_BUILD_ROOT)/shared_text_focus_test
+
+$(TEST_BUILD_ROOT)/shared_text_focus_test: tests/shared_text_focus_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: build-native-text-ui-proof
+build-native-text-ui-proof: $(TEST_BUILD_ROOT)/native_text_ui_test
+
+$(TEST_BUILD_ROOT)/native_text_ui_test: tests/native_text_ui_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)

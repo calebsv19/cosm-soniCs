@@ -1,6 +1,7 @@
 #include "input/transport_input.h"
 
 #include "app_state.h"
+#include "ui/text_edit.h"
 #include "input/input_manager.h"
 #include "input/project_modal_input.h"
 #include "ui/transport.h"
@@ -202,6 +203,7 @@ static void tempo_finish_edit(AppState* state) {
     if (state->tempo_ui.editing) {
         SDL_StopTextInput();
     }
+    kit_ui_text_cancel_composition(&state->tempo_ui.text_edit);
     state->tempo_ui.editing = false;
     state->tempo_ui.buffer[0] = '\0';
     state->tempo_ui.cursor = 0;
@@ -228,6 +230,8 @@ static void tempo_focus(AppState* state, TempoFocus focus, bool editing) {
         state->tempo_ui.editing = true;
         snprintf(state->tempo_ui.buffer, sizeof(state->tempo_ui.buffer), "%.0f", state->tempo.bpm);
         state->tempo_ui.cursor = (int)strlen(state->tempo_ui.buffer);
+        daw_text_edit_begin(&state->tempo_ui.text_edit, state->tempo_ui.buffer,
+            sizeof(state->tempo_ui.buffer), &state->tempo_ui.cursor, KIT_UI_TEXT_SINGLE_LINE | DAW_TEXT_DECIMAL);
         SDL_StartTextInput();
     } else {
         state->tempo_ui.editing = false;
@@ -252,6 +256,8 @@ static void tempo_focus_time_signature_part(AppState* state, TempoTSPart part, b
         int value = (part == TEMPO_TS_PART_DEN) ? state->tempo.ts_den : state->tempo.ts_num;
         snprintf(state->tempo_ui.ts_buffer, sizeof(state->tempo_ui.ts_buffer), "%d", value);
         state->tempo_ui.ts_cursor = (int)strlen(state->tempo_ui.ts_buffer);
+        daw_text_edit_begin(&state->tempo_ui.text_edit, state->tempo_ui.ts_buffer,
+            sizeof(state->tempo_ui.ts_buffer), &state->tempo_ui.ts_cursor, KIT_UI_TEXT_SINGLE_LINE | KIT_UI_TEXT_DIGITS);
         SDL_StartTextInput();
     } else {
         state->tempo_ui.editing = false;
@@ -522,6 +528,24 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
     TransportUI* transport = &state->transport_ui;
     transport_ui_sync(transport, state);
 
+    if (state->tempo_ui.editing) {
+        char* buffer = NULL;
+        int* cursor = NULL;
+        size_t capacity = 0;
+        tempo_edit_target(state, &buffer, &cursor, &capacity);
+        unsigned flags = KIT_UI_TEXT_SINGLE_LINE | (state->tempo_ui.focus == TEMPO_FOCUS_TS
+            ? KIT_UI_TEXT_DIGITS : DAW_TEXT_DECIMAL);
+        KitUiTextEventResult result = daw_text_edit_event(&state->tempo_ui.text_edit,
+            buffer, capacity, cursor, flags, event);
+        if (result.cancel) tempo_cancel_edit(state);
+        if (result.submit) {
+            if (state->tempo_ui.focus == TEMPO_FOCUS_TS) {
+                if (time_signature_apply_buffer(state)) tempo_finish_edit(state);
+            } else tempo_apply_buffer(state);
+        }
+        if (result.consumed || event->type == SDL_KEYDOWN || event->type == SDL_KEYUP) return;
+    }
+
     switch (event->type) {
     case SDL_MOUSEBUTTONDOWN:
         if (event->button.button == SDL_BUTTON_LEFT) {
@@ -641,81 +665,7 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
             transport_ui_sync(transport, state);
         }
         break;
-    case SDL_TEXTINPUT:
-        if (state->tempo_ui.editing) {
-            char* buffer = NULL;
-            int* cursor = NULL;
-            size_t cap = 0;
-            tempo_edit_target(state, &buffer, &cursor, &cap);
-            if (!buffer || !cursor || cap == 0) {
-                break;
-            }
-            int len = (int)strlen(buffer);
-            int cur = *cursor;
-            if (cur < 0) cur = 0;
-            if (cur > len) cur = len;
-            for (const char* p = event->text.text; *p; ++p) {
-                if (state->tempo_ui.focus == TEMPO_FOCUS_TS) {
-                    if (!isdigit((unsigned char)*p)) {
-                        continue;
-                    }
-                } else if (state->tempo_ui.focus == TEMPO_FOCUS_BPM) {
-                    if (!isdigit((unsigned char)*p) && *p != '.') {
-                        continue;
-                    }
-                    if (*p == '.' && strchr(buffer, '.') != NULL) {
-                        continue;
-                    }
-                }
-                if ((int)strlen(buffer) >= (int)cap - 1) {
-                    break;
-                }
-                memmove(buffer + cur + 1,
-                        buffer + cur,
-                        strlen(buffer + cur) + 1);
-                buffer[cur] = *p;
-                cur++;
-            }
-            *cursor = cur;
-        }
-        break;
     case SDL_KEYDOWN:
-        if (state->tempo_ui.editing) {
-            SDL_Keycode key = event->key.keysym.sym;
-            char* buffer = NULL;
-            int* cursor = NULL;
-            size_t cap = 0;
-            tempo_edit_target(state, &buffer, &cursor, &cap);
-            if (!buffer || !cursor || cap == 0) {
-                break;
-            }
-            if (key == SDLK_BACKSPACE) {
-                int len = (int)strlen(buffer);
-                int cur = *cursor;
-                if (cur > 0 && len > 0) {
-                    memmove(buffer + cur - 1,
-                            buffer + cur,
-                            (size_t)(len - cur + 1));
-                    *cursor = cur - 1;
-                }
-            } else if (key == SDLK_LEFT) {
-                if (*cursor > 0) (*cursor)--;
-            } else if (key == SDLK_RIGHT) {
-                int len = (int)strlen(buffer);
-                if (*cursor < len) (*cursor)++;
-            } else if (key == SDLK_ESCAPE) {
-                tempo_cancel_edit(state);
-            } else if (key == SDLK_RETURN || key == SDLK_KP_ENTER) {
-                if (state->tempo_ui.focus == TEMPO_FOCUS_TS) {
-                    if (time_signature_apply_buffer(state)) {
-                        tempo_finish_edit(state);
-                    }
-                } else {
-                    tempo_apply_buffer(state);
-                }
-            }
-            break;
-        }
         if (state->tempo_ui.focus == TEMPO_FOCUS_BPM) {
             SDL_Keycode key = event->key.keysym.sym;
             int step = (SDL_GetModState() & KMOD_SHIFT) ? 5 : 1;

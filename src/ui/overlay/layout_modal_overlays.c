@@ -2,6 +2,8 @@
 
 #include "session/project_manager.h"
 #include "ui/font.h"
+#include "ui/text_edit.h"
+#include "ui/project_modal_controls.h"
 #include "ui/render_utils.h"
 #include "ui/shared_theme_font_adapter.h"
 
@@ -88,23 +90,11 @@ void ui_render_project_prompt_overlay(SDL_Renderer* renderer, AppState* state) {
     SDL_SetRenderDrawColor(renderer, input_border.r, input_border.g, input_border.b, input_border.a);
     SDL_RenderDrawRect(renderer, &input_box);
 
-    int scale = 2;
-    int text_x = input_box.x + 8;
-    int text_y = input_box.y + (input_box.h - ui_font_line_height(scale)) / 2;
-    ui_draw_text(renderer, text_x, text_y, state->project_prompt.buffer, text_col, scale);
+    SDL_Rect text_view = {input_box.x + 8, input_box.y + 2, input_box.w - 16, input_box.h - 4};
+    daw_text_edit_draw(renderer, &state->project_prompt.text_edit, state->project_prompt.buffer,
+        sizeof(state->project_prompt.buffer), state->project_prompt.cursor, text_view,
+        text_col, caret_fill, 2);
 
-    int cursor_len = (int)strlen(state->project_prompt.buffer);
-    int cursor_index = state->project_prompt.cursor;
-    if (cursor_index < 0) cursor_index = 0;
-    if (cursor_index > cursor_len) cursor_index = cursor_len;
-    char temp[SESSION_NAME_MAX];
-    snprintf(temp, sizeof(temp), "%.*s", cursor_index, state->project_prompt.buffer);
-    int caret_x = text_x + ui_measure_text_width(temp, scale);
-    if (caret_x < text_x) caret_x = text_x;
-    int caret_h = ui_font_line_height(scale);
-    SDL_Rect caret = {caret_x, text_y, 2, caret_h};
-    SDL_SetRenderDrawColor(renderer, caret_fill.r, caret_fill.g, caret_fill.b, caret_fill.a);
-    SDL_RenderFillRect(renderer, &caret);
 }
 
 void ui_render_project_load_overlay(SDL_Renderer* renderer, AppState* state) {
@@ -158,18 +148,7 @@ void ui_render_project_load_overlay(SDL_Renderer* renderer, AppState* state) {
         modal.w / 2 - 24,
         modal.h - 126
     };
-    SDL_Rect load_button = {
-        info_rect.x,
-        modal.y + modal.h - 52,
-        120,
-        36
-    };
-    SDL_Rect cancel_button = {
-        load_button.x + load_button.w + 12,
-        load_button.y,
-        120,
-        36
-    };
+
 
     SDL_SetRenderDrawColor(renderer, input_fill.r, input_fill.g, input_fill.b, input_fill.a);
     SDL_RenderFillRect(renderer, &list_rect);
@@ -253,15 +232,5 @@ void ui_render_project_load_overlay(SDL_Renderer* renderer, AppState* state) {
         ui_draw_text(renderer, info_rect.x + 8, info_rect.y + 8, none, text_col, 1.2f);
     }
 
-    SDL_SetRenderDrawColor(renderer, button_fill.r, button_fill.g, button_fill.b, button_fill.a);
-    SDL_RenderFillRect(renderer, &load_button);
-    SDL_SetRenderDrawColor(renderer, modal_border.r, modal_border.g, modal_border.b, modal_border.a);
-    SDL_RenderDrawRect(renderer, &load_button);
-    ui_draw_text(renderer, load_button.x + 12, load_button.y + 10, "Load", text_col, 1);
-
-    SDL_SetRenderDrawColor(renderer, button_fill_alt.r, button_fill_alt.g, button_fill_alt.b, button_fill_alt.a);
-    SDL_RenderFillRect(renderer, &cancel_button);
-    SDL_SetRenderDrawColor(renderer, modal_border.r, modal_border.g, modal_border.b, modal_border.a);
-    SDL_RenderDrawRect(renderer, &cancel_button);
-    ui_draw_text(renderer, cancel_button.x + 8, cancel_button.y + 10, "Cancel", text_col, 1);
+    daw_project_modal_controls_draw(renderer, state);
 }
