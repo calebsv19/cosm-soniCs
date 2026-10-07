@@ -224,7 +224,7 @@ static void draw_effects_list_background(SDL_Renderer* renderer, const EffectsPa
     SDL_Rect prev_clip;
     SDL_bool had_clip = ui_clip_is_enabled(renderer);
     ui_get_clip_rect(renderer, &prev_clip);
-    ui_set_clip_rect(renderer, &snap->list_rect);
+    ui_set_content_clip_rect(renderer, &snap->list_rect);
 
     SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
     SDL_RenderFillRect(renderer, &snap->list_rect);

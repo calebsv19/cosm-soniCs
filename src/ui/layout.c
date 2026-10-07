@@ -1,4 +1,5 @@
 #include "ui/layout.h"
+#include "ui/pane_composition.h"
 
 #include "app_state.h"
 #include "engine/engine.h"
@@ -39,19 +40,7 @@ int ui_layout_pane_header_height(const Pane* pane) {
 }
 
 SDL_Rect ui_layout_pane_content_rect(const Pane* pane) {
-    SDL_Rect content = {0, 0, 0, 0};
-    int header_h;
-    if (!pane) {
-        return content;
-    }
-    content = pane->rect;
-    header_h = ui_layout_pane_header_height(pane);
-    if (header_h > content.h) {
-        header_h = content.h;
-    }
-    content.y += header_h;
-    content.h -= header_h;
-    return content;
+    return daw_pane_content_rect(pane);
 }
 
 static bool layout_rect_has_positive_size(const SDL_Rect* rect) {
@@ -262,27 +251,6 @@ static void render_layout_grid(SDL_Renderer* renderer, const AppState* state) {
     }
 }
 
-static void render_content_separators(SDL_Renderer* renderer, const AppState* state) {
-    if (!renderer || !state || state->pane_count < 3) {
-        return;
-    }
-
-    const Pane* timeline = &state->panes[1];
-    const Pane* mixer = &state->panes[2];
-    if (!timeline->visible || !mixer->visible) {
-        return;
-    }
-
-    DawThemePalette theme_palette = {0};
-    SDL_Color border_color = daw_shared_theme_resolve_palette(&theme_palette)
-                                 ? theme_palette.pane_border
-                                 : (SDL_Color){200, 200, 210, 255};
-    int y = mixer->rect.y;
-    SDL_SetRenderDrawColor(renderer, border_color.r, border_color.g, border_color.b, border_color.a);
-    SDL_RenderDrawLine(renderer, timeline->rect.x, y, timeline->rect.x + timeline->rect.w, y);
-}
-
-
 void ui_init_panes(AppState* state) {
     if (!state) {
         return;
@@ -363,6 +331,7 @@ void ui_layout_panes(AppState* state, int width, int height) {
     if (width < 1) width = 1;
     if (height < 1) height = 1;
 
+    if (state->window_width!=width || state->window_height!=height) daw_pane_resize_cancel(state);
     state->window_width = width;
     state->window_height = height;
 
@@ -494,87 +463,49 @@ void ui_render_panes(SDL_Renderer* renderer, const AppState* state) {
         return;
     }
     for (int i = 0; i < state->pane_count; ++i) {
-        render_single_pane(renderer, &state->panes[i]);
-    }
-    const Pane* library = ui_layout_get_pane(state, 3);
-    if (library) {
-        int header_h = ui_layout_pane_header_height(library);
-        if (header_h > 0) {
-            SDL_Rect header_rect = library->rect;
-            if (header_h < header_rect.h) {
-                header_rect.h = header_h;
-            }
-            library_browser_render_header_controls(&state->library, renderer, &header_rect);
+        DawPaneClip clip;
+        if (daw_pane_clip_begin(renderer,state,i,KIT_PANE_REGION_SHELL,&clip)) {
+            render_single_pane(renderer,&state->panes[i]);
+            daw_pane_clip_end(renderer,&clip);
         }
-        SDL_Rect content_rect = ui_layout_pane_content_rect(library);
-        library_browser_render(&state->library, renderer, &content_rect);
     }
-    render_layout_grid(renderer, state);
+    const Pane* library = ui_layout_get_pane(state,3);
+    DawPaneClip clip;
+    if (library && daw_pane_clip_begin(renderer,state,3,KIT_PANE_REGION_HEADER,&clip)) {
+        SDL_Rect header=library->rect; header.h=ui_layout_pane_header_height(library);
+        library_browser_render_header_controls(&state->library,renderer,&header);
+        daw_pane_clip_end(renderer,&clip);
+    }
+    if (library && daw_pane_clip_begin(renderer,state,3,KIT_PANE_REGION_CONTENT,&clip)) {
+        SDL_Rect content=ui_layout_pane_content_rect(library);
+        library_browser_render(&state->library,renderer,&content);
+        daw_pane_clip_end(renderer,&clip);
+    }
 }
 
 void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
     if (!renderer || !state) {
         return;
     }
-    ui_set_clip_rect(renderer, NULL);
-    if (midi_instrument_panel_should_render(state)) {
-        MidiInstrumentPanelLayout instrument_layout;
-        midi_instrument_panel_compute_layout(state, &instrument_layout);
-        const Pane* mixer = ui_layout_get_pane(state, 2);
-        SDL_Rect prev_clip;
-        SDL_bool had_clip = ui_clip_is_enabled(renderer);
-        if (mixer) {
-            ui_get_clip_rect(renderer, &prev_clip);
-            ui_set_clip_rect(renderer, &mixer->rect);
+    DawPaneClip clip;
+    if (daw_pane_clip_begin(renderer,state,2,KIT_PANE_REGION_CONTENT,&clip)) {
+        if (midi_instrument_panel_should_render(state)) {
+            MidiInstrumentPanelLayout layout; midi_instrument_panel_compute_layout(state,&layout);
+            midi_instrument_panel_render(renderer,state,&layout);
+        } else if (midi_editor_should_render(state)) {
+            MidiEditorLayout layout; midi_editor_compute_layout(state,&layout);
+            midi_editor_render(renderer,state,&layout);
+        } else if (state->inspector.visible) {
+            ClipInspectorLayout layout; clip_inspector_compute_layout(state,&layout);
+            clip_inspector_render(renderer,state,&layout);
+        } else {
+            EffectsPanelLayout layout; effects_panel_compute_layout(state,&layout);
+            effects_panel_render(renderer,state,&layout);
         }
-        midi_instrument_panel_render(renderer, state, &instrument_layout);
-        if (mixer) {
-            ui_set_clip_rect(renderer, had_clip ? &prev_clip : NULL);
-        }
-    } else if (midi_editor_should_render(state)) {
-        MidiEditorLayout midi_layout;
-        midi_editor_compute_layout(state, &midi_layout);
-        const Pane* mixer = ui_layout_get_pane(state, 2);
-        SDL_Rect prev_clip;
-        SDL_bool had_clip = ui_clip_is_enabled(renderer);
-        if (mixer) {
-            ui_get_clip_rect(renderer, &prev_clip);
-            ui_set_clip_rect(renderer, &mixer->rect);
-        }
-        midi_editor_render(renderer, state, &midi_layout);
-        if (mixer) {
-            ui_set_clip_rect(renderer, had_clip ? &prev_clip : NULL);
-        }
-    } else if (state->inspector.visible) {
-        ClipInspectorLayout inspector_layout;
-        clip_inspector_compute_layout(state, &inspector_layout);
-        const Pane* mixer = ui_layout_get_pane(state, 2);
-        SDL_Rect prev_clip;
-        SDL_bool had_clip = ui_clip_is_enabled(renderer);
-        if (mixer) {
-            ui_get_clip_rect(renderer, &prev_clip);
-            ui_set_clip_rect(renderer, &mixer->rect);
-        }
-        clip_inspector_render(renderer, state, &inspector_layout);
-        if (mixer) {
-            ui_set_clip_rect(renderer, had_clip ? &prev_clip : NULL);
-        }
-    } else {
-        EffectsPanelLayout effects_layout;
-        effects_panel_compute_layout(state, &effects_layout);
-        const Pane* mixer = ui_layout_get_pane(state, 2);
-        SDL_Rect prev_clip;
-        SDL_bool had_clip = ui_clip_is_enabled(renderer);
-        if (mixer) {
-            ui_get_clip_rect(renderer, &prev_clip);
-            ui_set_clip_rect(renderer, &mixer->rect);
-        }
-        effects_panel_render(renderer, state, &effects_layout);
-        if (mixer) {
-            ui_set_clip_rect(renderer, had_clip ? &prev_clip : NULL);
-        }
+        daw_pane_clip_end(renderer,&clip);
     }
-
+    // One thin divider pass precedes modal painting; resizing adds no authoring chrome.
+    render_layout_grid(renderer,state);
     daw_editor_controls_draw_focus(renderer,state);
 
     // Status log display removed per request.
@@ -582,7 +513,7 @@ void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
     ui_render_project_prompt_overlay(renderer, state);
     ui_render_project_load_overlay(renderer, state);
 
-    render_content_separators(renderer, state);
+
 }
 
 void ui_render_controls(SDL_Renderer* renderer, AppState* state) {
@@ -594,13 +525,15 @@ void ui_render_controls(SDL_Renderer* renderer, AppState* state) {
         playing = engine_transport_is_playing(state->engine);
     }
     transport_ui_sync(&state->transport_ui, state);
-    transport_ui_render(renderer, &state->transport_ui, state, playing);
-
-    const Pane* timeline = ui_layout_get_pane(state, 1);
-    if (timeline) {
-        ui_set_clip_rect(renderer, &timeline->rect);
-        timeline_view_render(renderer, &timeline->rect, state);
-        ui_set_clip_rect(renderer, NULL);
+    DawPaneClip clip;
+    if (daw_pane_clip_begin(renderer,state,0,KIT_PANE_REGION_CONTENT,&clip)) {
+        transport_ui_render(renderer,&state->transport_ui,state,playing);
+        daw_pane_clip_end(renderer,&clip);
+    }
+    const Pane* timeline=ui_layout_get_pane(state,1);
+    if (timeline && daw_pane_clip_begin(renderer,state,1,KIT_PANE_REGION_CONTENT,&clip)) {
+        timeline_view_render(renderer,&timeline->rect,state);
+        daw_pane_clip_end(renderer,&clip);
     }
 }
 
@@ -737,6 +670,11 @@ bool ui_layout_handle_pointer(AppState* state, Uint32 prev_buttons, Uint32 curr_
 
     bool prev_down = (prev_buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
     bool curr_down = (curr_buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0;
+    if (runtime->divider_wait_release) {
+        if (!curr_down) runtime->divider_wait_release=false;
+        return false;
+    }
+
 
     if (!prev_down && curr_down && !runtime->drag.active) {
         bool library_header_control_hit = false;

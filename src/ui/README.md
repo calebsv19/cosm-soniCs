@@ -64,3 +64,7 @@ geometry/clips with the existing painters and command owners. Hidden detail
 controls are excluded, preset overlays own their rows, and time-mode/spec/view
 changes cancel pending presses. The pinned shared API remains unchanged. See
 `docs/shared_ui_rollout.md`; pane composition and full window lifecycle remain next.
+
+## Pane composition adapter
+
+`pane_composition.c` maps the fixed product panes to pinned kit_pane shell/header/content regions and preserves enclosing native Vulkan clips. Product layout and painters remain local; resize cancellation is separate from explicit workspace authoring. See `docs/shared_ui_rollout.md` for qualification and limits.

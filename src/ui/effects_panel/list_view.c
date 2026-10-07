@@ -88,7 +88,7 @@ void effects_panel_render_list(SDL_Renderer* renderer, const AppState* state, co
     bool set_clip = false;
     if (layout->track_snapshot.list_clip_rect.w > 0 && layout->track_snapshot.list_clip_rect.h > 0) {
         ui_get_clip_rect(renderer, &prev_clip);
-        ui_set_clip_rect(renderer, &layout->track_snapshot.list_clip_rect);
+        ui_set_content_clip_rect(renderer, &layout->track_snapshot.list_clip_rect);
         set_clip = true;
     }
 

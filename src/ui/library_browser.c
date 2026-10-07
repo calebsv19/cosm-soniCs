@@ -467,7 +467,7 @@ void library_browser_render(const LibraryBrowser* browser, SDL_Renderer* rendere
 
     had_clip = ui_clip_is_enabled(renderer);
     ui_get_clip_rect(renderer, &prev_clip);
-    ui_set_clip_rect(renderer, rect);
+    ui_set_content_clip_rect(renderer, rect);
 
     int line_y = rect->y + k_library_content_top_padding;
     int line_w = rect->w - 20;

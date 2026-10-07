@@ -1,3 +1,4 @@
+#include "ui/render_utils.h"
 #include "ui/effects_panel_meter_history_grid.h"
 
 #include "ui/shared_theme_font_adapter.h"
@@ -160,7 +161,7 @@ void effects_meter_history_grid_draw(SDL_Renderer* renderer,
     if (had_clip) {
         SDL_RenderGetClipRect(renderer, &prior_clip);
     }
-    SDL_RenderSetClipRect(renderer, rect);
+    ui_set_content_clip_rect(renderer, rect);
 
     if (grid->beat_mode) {
         draw_beats_grid(renderer,

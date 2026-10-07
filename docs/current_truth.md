@@ -12,7 +12,7 @@ engine/project commands and product theme. Focused and stable headless gates
 pass; actual dark/light frames and native Vulkan startup/resize/restart proof
 are retained. This is partial UI adoption: bounded text/modal hosts, five editor control
 groups and their discrete track/snapshot/EQ/meter/spec exceptions are now adopted.
-Pane composition and full window lifecycle remain future slices. See
+Fixed-pane composition is now adopted; full window lifecycle remains the next slice. See
 [shared UI rollout](shared_ui_rollout.md). Canonical functional UI and stable
 Desktop package are not promoted by this work; VERSION remains 0.3.0.
 
@@ -258,3 +258,37 @@ remain intact. Generic detail hit regions are excluded from specialized views;
 menus suppress covered controls. The exact spec clip is shared across painting
 and input. See [the current contract](shared_ui_rollout.md) for gates and limits.
 Next: pane composition, actual-loop fullscreen, then program-wide rollout review.
+
+## Pane composition adoption (2026-10-06)
+
+The sibling `pane_composition.c` adapter adopts immutable shared `09ff89a` /
+kit_pane 0.5.0 shell, header and content geometry for the existing four fixed panes.
+Product topology, ratios, minimum sizes, colors, fonts, specialized painters and
+continuous gestures stay with Sonics. Ordinary divider resizing retains generous
+hit regions and thin visuals without activating workspace authoring.
+
+The native Vulkan clip helpers now operate on renderer state rather than being
+no-ops. Pane painters receive shared region clips; nested library/effect/preview
+and Load-list clips intersect the enclosing clip and restore its exact state.
+One divider pass runs before modal overlays. Focus loss, hiding/minimizing, size
+changes and modal/authoring takeover cancel active divider dragging; a held pointer
+must release before another drag. Shared controls and active undo gestures retain
+priority over sampled divider input. Last accepted pane geometry is retained.
+
+Qualification used a fresh task build, geometry/hit/hidden-pane/clip/resize tests,
+existing layout, editor, text, input and authoring tests, and stable headless smoke:
+
+```sh
+make BUILD_DIR=build/ui-panes-20261006 -j4
+make BUILD_DIR=build/ui-panes-20261006 test-shared-pane-composition test-layout-sweep test-shared-editor-exceptions test-shared-editor-controls test-shared-text-focus test-input-delivery test-workspace-authoring-host test-workspace-authoring-profile build-native-editor-controls-proof run-headless-smoke
+make BUILD_DIR=build/ui-panes-20261006 package-desktop-main-edit-refresh
+```
+
+Thirteen actual Vulkan frames per dark/light theme pass native validation. An exact
+pixel containment check at 2x drawable scale proves all pixels outside an enclosing
+clip remain unchanged while real pane content paints inside it. Evidence:
+`_private_workspace_artifacts/ui_unification/sonics_panes_20261006`.
+This qualifies fixed-pane composition, not generic pane trees or shared splitter
+migration. Next: actual-loop fullscreen/window lifecycle, then a program-wide audit
+and human comparison. Physical audio, OS IME and other-platform acceptance remain
+separate. VERSION stays 0.3.0; Main Edit delivery does not promote canonical/release.

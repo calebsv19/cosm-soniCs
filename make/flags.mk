@@ -81,3 +81,5 @@ ifeq ($(UNAME_S),Darwin)
 	CFLAGS += -DVK_USE_PLATFORM_METAL_EXT
 	LDFLAGS += -framework AudioToolbox -framework CoreFoundation -framework Metal -framework QuartzCore -framework Cocoa -framework IOKit -framework CoreVideo
 endif
+
+CPPFLAGS += -I$(KIT_PANE_DIR)/include

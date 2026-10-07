@@ -407,7 +407,7 @@ void effects_slot_preview_render(SDL_Renderer* renderer,
         SDL_Rect prev_clip;
         SDL_bool had_clip = ui_clip_is_enabled(renderer);
         ui_get_clip_rect(renderer, &prev_clip);
-        ui_set_clip_rect(renderer, preview_rect);
+        ui_set_content_clip_rect(renderer, preview_rect);
         if (preview_mode == FX_PREVIEW_CURVE) {
             effects_slot_preview_render_curve(renderer,
                                               slot,

@@ -1,3 +1,4 @@
+#include "ui/pane_composition.h"
 #include "app/media_import.h"
 #include "input/input_manager.h"
 
@@ -381,6 +382,7 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
     }
     if (event->type == SDL_WINDOWEVENT && (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
         event->window.event == SDL_WINDOWEVENT_HIDDEN)) daw_text_cancel_composition(state);
+    daw_pane_lifecycle_event(state,event);
     daw_project_modal_controls_sync(state);
     if (daw_editor_controls_event(manager,state,event)) return;
     if (daw_transport_controls_event(state,event))return;
@@ -486,7 +488,7 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
 // Keeps sampled divider gestures from stealing an event-owned discrete press.
 void input_manager_update_layout_pointer(AppState* state, Uint32 previous, Uint32 current, int x, int y) {
     if (!state || state->editor_controls.surface.interaction.pointer_owned ||
-        state->transport_ui.controls.interaction.pointer_owned) return;
+        state->transport_ui.controls.interaction.pointer_owned || state->undo.active_drag_valid) return;
     ui_layout_handle_pointer(state,previous,current,x,y);
 }
 
@@ -497,6 +499,7 @@ void input_manager_update(InputManager* manager, AppState* state) {
     daw_editor_controls_sync(state);
     daw_transport_controls_sync(&state->transport_ui,state);
     if (project_modal_input_active(state)) {
+        daw_pane_resize_cancel(state);
         // Block normal updates while prompt is active.
         return;
     }
@@ -512,6 +515,7 @@ void input_manager_update(InputManager* manager, AppState* state) {
     state->mouse_y = mouse_y;
 
     if (daw_workspace_authoring_host_active(&state->workspace_authoring)) {
+        daw_pane_resize_cancel(state);
         return;
     }
 

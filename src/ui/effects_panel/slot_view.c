@@ -218,7 +218,7 @@ void effects_slot_render(SDL_Renderer* renderer,
         SDL_Rect prev_clip;
         SDL_bool had_clip = ui_clip_is_enabled(renderer);
         ui_get_clip_rect(renderer, &prev_clip);
-        ui_set_clip_rect(renderer, &body_clip);
+        ui_set_content_clip_rect(renderer, &body_clip);
 
         if (slot->type_id == 105u) {
             effects_panel_spectrogram_card_render(renderer, state, slot_index, &body_clip, label_color, text_dim);

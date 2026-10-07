@@ -24,3 +24,5 @@ KIT_VIZ_DIR := $(SHARED_ROOT)/kit/kit_viz
 KIT_RENDER_DIR := $(SHARED_ROOT)/kit/kit_render
 KIT_UI_DIR := $(SHARED_ROOT)/kit/kit_ui
 KIT_WORKSPACE_AUTHORING_DIR := $(SHARED_ROOT)/kit/kit_workspace_authoring
+
+KIT_PANE_DIR := $(SHARED_ROOT)/kit/kit_pane

@@ -1,6 +1,7 @@
 #include "app_state.h"
 #include "ui/editor_controls.h"
 #include "ui/layout.h"
+#include "ui/render_utils.h"
 #include "ui/font.h"
 #include "ui/midi_editor.h"
 #include "ui/midi_instrument_panel.h"
@@ -27,6 +28,25 @@ static void capture(VkRenderer* renderer, AppState* state, const char* prefix, c
     const VkRuntimeCapabilityReport* report=vk_runtime_get_capability_report(&renderer->context.device->runtime);
     assert(report && report->validation_enabled && !report->validation_warning_count && !report->validation_error_count);
     assert(renderer->draw_state.draw_call_count>20);
+}
+// Captures a sentinel frame to prove every product pass respects an enclosing native clip.
+static void containment(VkRenderer* renderer, AppState* state, const char* prefix) {
+    char path[4096]; snprintf(path,sizeof(path),"%s-pane-clip.bmp",prefix);
+    assert(vk_renderer_request_capture(renderer,path)==VK_SUCCESS);
+    VkCommandBuffer cmd; VkFramebuffer fb; VkExtent2D extent;
+    assert(vk_renderer_begin_frame(renderer,&cmd,&fb,&extent)==VK_SUCCESS);
+    vk_renderer_set_logical_size(renderer,1600,1000);
+    SDL_Renderer* native=(SDL_Renderer*)renderer;
+    SDL_Rect window={0,0,1600,1000}, clip={600,650,500,200}, after;
+    SDL_SetRenderDrawColor(native,31,191,79,255); SDL_RenderFillRect(native,&window);
+    ui_set_clip_rect(native,&clip);
+    ui_render_panes(native,state); ui_get_clip_rect(native,&after); assert(!memcmp(&after,&clip,sizeof(clip)));
+    ui_render_controls(native,state); ui_get_clip_rect(native,&after); assert(!memcmp(&after,&clip,sizeof(clip)));
+    ui_render_overlays(native,state); ui_get_clip_rect(native,&after); assert(!memcmp(&after,&clip,sizeof(clip)));
+    ui_set_clip_rect(native,NULL);
+    assert(vk_renderer_end_frame(renderer,cmd)==VK_SUCCESS); vk_renderer_wait_idle(renderer);
+    const VkRuntimeCapabilityReport* report=vk_runtime_get_capability_report(&renderer->context.device->runtime);
+    assert(report && !report->validation_warning_count && !report->validation_error_count);
 }
 // Sets focus through application input without applying a release action.
 static void focus(AppState* state, unsigned domain, uint64_t key) {
@@ -55,6 +75,7 @@ int main(int argc,char** argv) {
     state->active_track_index=0; state->selected_track_index=-1; state->selected_clip_index=-1;
     ui_init_panes(state); state->layout_runtime.mixer_ratio=0.55f; ui_layout_panes(state,1600,1000); effects_panel_input_init(state);
     assert(undo_manager_add_effect(state,-1,1)); effects_panel_sync_from_engine(state);
+    containment(&renderer,state,argv[1]);
     focus(state,11,4); capture(&renderer,state,argv[1],"effects-stack");
     state->effects_panel.view_mode=FX_PANEL_VIEW_LIST; focus(state,10,1); capture(&renderer,state,argv[1],"effects-list");
     timeline_selection_set_single(state,0,-1); effects_panel_sync_from_engine(state);

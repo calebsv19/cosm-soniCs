@@ -168,7 +168,10 @@ void ui_render_project_load_overlay(SDL_Renderer* renderer, AppState* state) {
     if (scroll > (float)max_scroll) scroll = (float)max_scroll;
 
     SDL_Rect clip_rect = list_rect;
-    ui_set_clip_rect(renderer, &clip_rect);
+    SDL_Rect previous_clip;
+    SDL_bool had_clip=ui_clip_is_enabled(renderer);
+    ui_get_clip_rect(renderer,&previous_clip);
+    ui_set_content_clip_rect(renderer,&clip_rect);
     for (int i = 0; i < state->project_load.count; ++i) {
         int y = list_rect.y + (int)((float)i * item_h - scroll);
         if (y > list_rect.y + list_rect.h) {
@@ -188,7 +191,7 @@ void ui_render_project_load_overlay(SDL_Renderer* renderer, AppState* state) {
         const char* name = state->project_load.entries[i].name[0] ? state->project_load.entries[i].name : "project";
         ui_draw_text(renderer, row.x + 8, row.y + 4, name, text_col, 1.2f);
     }
-    ui_set_clip_rect(renderer, NULL);
+    ui_set_clip_rect(renderer,had_clip ? &previous_clip : NULL);
 
     if (max_scroll > 0) {
         float t = scroll / (float)max_scroll;

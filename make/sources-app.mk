@@ -111,6 +111,7 @@ APP_SRCS := \
 	$(SRC_DIR)/app/workspace_authoring/daw_workspace_authoring_overlay.c \
 	$(SRC_DIR)/ui/panes.c \
 	$(SRC_DIR)/ui/layout.c \
+	$(SRC_DIR)/ui/pane_composition.c \
 	$(SRC_DIR)/ui/overlay/layout_modal_overlays.c \
 	$(SRC_DIR)/ui/layout_config.c \
 	$(SRC_DIR)/ui/library_browser.c \

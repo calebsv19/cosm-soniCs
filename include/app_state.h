@@ -43,6 +43,7 @@ typedef struct {
     UIResizeZone zones[6];
     int zone_count;
     UIResizeDrag drag;
+    bool divider_wait_release; // Drains a cancelled divider press before recapture.
 } UILayoutRuntime;
 
 // Describes the active manipulation mode for a timeline drag gesture.
