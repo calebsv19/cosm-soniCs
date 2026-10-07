@@ -2,6 +2,8 @@
 #include <SDL2/SDL.h>
 #include "vk_renderer_sdl.h"
 #include <stdbool.h>
+#include "kit_ui_window_sdl.h"
+#include "kit_ui_window_probe_sdl.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -44,6 +46,10 @@ typedef struct {
     bool pending_swapchain_recreate;
     int pending_swapchain_width;
     int pending_swapchain_height;
+    KitUiWindowState window_state;
+    KitUiWindowProbe window_probe;
+    uint64_t presented_frames;
+    int window_proof_status;
 
     // NEW: configurable render behavior
     RenderMode renderMode;

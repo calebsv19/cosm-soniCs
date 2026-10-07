@@ -15,6 +15,8 @@ EFFECTS_SRCS := $(filter-out $(SRC_DIR)/effects/effects_manager.c,$(EFFECTS_SRCS
 
 APP_SRCS := \
 	$(SDLAPP_DIR)/sdl_app_framework.c \
+	$(SDLAPP_DIR)/window_lifecycle.c \
+	$(SRC_DIR)/input/window_input.c \
 	$(SRC_DIR)/core/loop/daw_mainthread_wake.c \
 	$(SRC_DIR)/core/loop/daw_mainthread_timer.c \
 	$(SRC_DIR)/core/loop/daw_mainthread_jobs.c \

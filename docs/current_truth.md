@@ -12,7 +12,7 @@ engine/project commands and product theme. Focused and stable headless gates
 pass; actual dark/light frames and native Vulkan startup/resize/restart proof
 are retained. This is partial UI adoption: bounded text/modal hosts, five editor control
 groups and their discrete track/snapshot/EQ/meter/spec exceptions are now adopted.
-Fixed-pane composition is now adopted; full window lifecycle remains the next slice. See
+Fixed-pane composition is now adopted; window lifecycle is qualified; populated surface closure remains next. See
 [shared UI rollout](shared_ui_rollout.md). Canonical functional UI and stable
 Desktop package are not promoted by this work; VERSION remains 0.3.0.
 
@@ -292,3 +292,9 @@ This qualifies fixed-pane composition, not generic pane trees or shared splitter
 migration. Next: actual-loop fullscreen/window lifecycle, then a program-wide audit
 and human comparison. Physical audio, OS IME and other-platform acceptance remain
 separate. VERSION stays 0.3.0; Main Edit delivery does not promote canonical/release.
+
+## Window lifecycle adoption (2026-10-06)
+
+The shared kit_ui 0.18.0 window observer, logical coordinate contract, F11 desktop-fullscreen helper and opt-in lifecycle probe now operate in the actual application loop. Geometry, drawable, display, mode and visibility observations request swapchain updates; hidden/minimized windows suspend presentation while background work continues. Focused/presentable windows receive sampled input. Native transitions cancel discrete captures/preedit, finish accepted continuous edits through existing release/undo owners, and require pointer release. Text/meter caches wait for submitted GPU work before recovery or teardown.
+
+Fresh build, window/pane/control/text/input checks and stable headless smoke pass. Final native dark/light runs qualify eight stages per theme (initial, resize, fullscreen, windowed, hidden, shown, minimized, restored), with twelve captures and continued rendering after controlled renderer rebuild, without Vulkan validation messages. This does not certify physical GPU loss, other display hardware/platforms, physical audio or OS IME. Evidence: `_private_workspace_artifacts/ui_unification/sonics_window_20261006`. Run `make BUILD_DIR=build/ui-window-20261006 test-shared-window-lifecycle`; use `CODEWORK_WINDOW_LIFECYCLE_PROOF=<isolated-output-dir>` only for explicit native qualification. VERSION remains 0.3.0. Next: populated surface audit and presentation refinement, then Main Edit comparison delivery.

@@ -1,4 +1,5 @@
 #include "sdl_app_framework.h"
+#include "window_lifecycle.h"
 #include "ui/effects_panel_meter_history_cache.h"
 #include "ui/font.h"
 #include "core_time.h"
@@ -34,7 +35,7 @@ static bool app_env_headless_enabled(void) {
 static VkRendererConfig app_build_renderer_config(void) {
     VkRendererConfig cfg;
     vk_renderer_config_set_defaults(&cfg);
-    cfg.enable_validation = SDL_FALSE;
+    cfg.enable_validation = getenv("CODEWORK_WINDOW_LIFECYCLE_PROOF") ? SDL_TRUE : SDL_FALSE;
 #ifdef VULKAN_RENDER_DEBUG
     cfg.enable_validation = SDL_TRUE;
 #endif
@@ -66,6 +67,7 @@ static bool app_recover_device_lost(AppContext* ctx, int width, int height) {
         return false;
     }
     if (ctx->renderer) {
+        vk_renderer_wait_idle(ctx->renderer);
         effects_meter_history_cache_invalidate(ctx->renderer);
         ui_font_invalidate_cache(ctx->renderer);
         vk_renderer_shutdown(ctx->renderer);
@@ -191,12 +193,20 @@ static bool app_process_event(AppContext* ctx, AppCallbacks* callbacks, const SD
         ctx->quit = true;
     }
 
+    bool fullscreen_key=daw_window_event(ctx,event);
+    if (fullscreen_key && !event->key.repeat) {
+        SDL_Event changed={.type=SDL_WINDOWEVENT};
+        changed.window.event=SDL_WINDOWEVENT_SIZE_CHANGED;
+        if(callbacks && callbacks->handleInput){ctx->current_event=changed;ctx->has_event=true;callbacks->handleInput(ctx);ctx->has_event=false;}
+    }
+    if(fullscreen_key)return false;
+
     if (event->type == SDL_WINDOWEVENT) {
         if (event->window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
             event->window.event == SDL_WINDOWEVENT_RESIZED) {
             ctx->pending_swapchain_recreate = true;
-            ctx->pending_swapchain_width = event->window.data1;
-            ctx->pending_swapchain_height = event->window.data2;
+            ctx->pending_swapchain_width = ctx->window_state.logical_width;
+            ctx->pending_swapchain_height = ctx->window_state.logical_height;
         }
     }
 
@@ -296,6 +306,8 @@ void App_Run(AppContext* ctx, AppCallbacks* callbacks) {
     AppLoopDiagAccum diag = {0};
     diag.period_start_ns = last_time_ns;
 
+    kit_ui_window_probe_init_sdl(&ctx->window_probe,"sonics");
+    bool proof_recovered=false;
     while (!ctx->quit) {
         uint64_t loop_start_ns = core_time_now_ns();
         SDL_Event event;
@@ -309,7 +321,13 @@ void App_Run(AppContext* ctx, AppCallbacks* callbacks) {
             }
         }
 
-        if (ctx->pending_swapchain_recreate) {
+        daw_window_refresh(ctx);
+        daw_window_probe_tick(ctx);
+        if(ctx->window_probe.directory && ctx->window_probe.phase==7 && !proof_recovered && ctx->window_state.presentable) {
+            if(!app_recover_device_lost(ctx,ctx->window_state.logical_width,ctx->window_state.logical_height)){ctx->window_proof_status=-1;ctx->quit=true;}
+            proof_recovered=true;SDL_Log("WINDOW_LIFECYCLE renderer_rebuild=%s",ctx->window_proof_status<0 ? "fail" : "pass");
+        }
+        if (ctx->pending_swapchain_recreate && ctx->window_state.presentable) {
             if (app_try_recreate_swapchain(ctx,
                                            ctx->pending_swapchain_width,
                                            ctx->pending_swapchain_height)) {
@@ -329,7 +347,7 @@ void App_Run(AppContext* ctx, AppCallbacks* callbacks) {
         }
 
         // Step 4: determine immediate work and render cadence state.
-        bool immediate_work = had_polled_events || ctx->pending_swapchain_recreate;
+        bool immediate_work = had_polled_events || (ctx->pending_swapchain_recreate && ctx->window_state.presentable);
         if (callbacks && callbacks->hasImmediateWork && callbacks->hasImmediateWork(ctx)) {
             immediate_work = true;
         }
@@ -354,6 +372,7 @@ void App_Run(AppContext* ctx, AppCallbacks* callbacks) {
         } else {
             should_render = app_should_render_default(ctx);
         }
+        if(ctx->window_probe.directory && ctx->window_state.presentable)should_render=true;
         if (should_render && callbacks && callbacks->handleRender) {
             bool rendered = false;
             if (ctx->window == NULL && ctx->renderer == NULL && app_env_headless_enabled()) {
@@ -373,7 +392,7 @@ void App_Run(AppContext* ctx, AppCallbacks* callbacks) {
         }
 
         // Step 6: wait path when idle and wake-block mode is enabled.
-        bool immediate_after = ctx->pending_swapchain_recreate;
+        bool immediate_after = ctx->pending_swapchain_recreate && ctx->window_state.presentable;
         if (callbacks && callbacks->hasImmediateWork && callbacks->hasImmediateWork(ctx)) {
             immediate_after = true;
         }
@@ -467,7 +486,8 @@ bool App_RenderOnce(AppContext* ctx, void (*handleRender)(AppContext* ctx)) {
     if (!ctx || !ctx->renderer || !ctx->window) {
         return false;
     }
-    if (ctx->pending_swapchain_recreate) {
+    daw_window_refresh(ctx);
+    if (ctx->pending_swapchain_recreate || !ctx->window_state.presentable) {
         return false;
     }
     Uint32 window_flags = SDL_GetWindowFlags(ctx->window);
@@ -517,5 +537,6 @@ bool App_RenderOnce(AppContext* ctx, void (*handleRender)(AppContext* ctx)) {
         app_recover_device_lost(ctx, winW, winH);
         return false;
     }
+    if(end==VK_SUCCESS)++ctx->presented_frames;
     return end == VK_SUCCESS;
 }

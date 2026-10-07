@@ -87,3 +87,5 @@ instrument navigation/presets and effects header/slot/overlay controls. Existing
 command owners and continuous gestures remain local. The common button frame
 uses shared rounded tokens; product palette, status and geometry remain owned by
 Sonics. See `docs/shared_ui_rollout.md` for exact coverage and retained exceptions.
+
+`window_input.c` closes accepted continuous gestures through existing release/undo owners, explicitly cancels shared discrete captures and preedit, and latches pointer release across native transitions.

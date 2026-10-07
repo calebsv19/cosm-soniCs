@@ -10,3 +10,5 @@ Purpose: SDL2 application harness that wraps window creation, the render loop, a
   - `App_Shutdown`: Dispose of SDL objects and shut the subsystem down safely.
 - `sdl_app_framework.c`: Implements the framework helpers declared in the header.
   - Polls SDL events, tracks delta time, and enforces the optional render throttle.
+
+`window_lifecycle.c` adopts shared native window observations/F11 and the opt-in probe. The host retains renderer recovery and application input policy. See `docs/shared_ui_rollout.md`.

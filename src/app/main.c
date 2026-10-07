@@ -201,6 +201,7 @@ static bool daw_loop_has_immediate_work(AppContext* ctx) {
     if (!state) {
         return false;
     }
+    if(ctx->window && !ctx->window_state.presentable)return false;
     if (ctx->pending_swapchain_recreate) {
         return true;
     }
@@ -239,6 +240,7 @@ static uint32_t daw_loop_compute_wait_timeout_ms(AppContext* ctx) {
         return timeout_ms;
     }
     AppState* state = (AppState*)ctx->userData;
+    if(ctx->window && !ctx->window_state.presentable)return timeout_ms;
     if (state && (state->bounce_active || state->bounce_requested)) {
         return 0;
     }
@@ -377,6 +379,12 @@ static void handle_update(AppContext* ctx) {
     if (!state) {
         return;
     }
+    if(ctx->window && state->input_manager.window_generation!=ctx->window_state.generation) {
+        input_manager_cancel_window_gestures(state);
+        state->input_manager.window_generation=ctx->window_state.generation;
+        daw_invalidate_all(state->panes,state->pane_count,DAW_RENDER_INVALIDATION_RESIZE);
+        daw_request_full_redraw(DAW_RENDER_INVALIDATION_RESIZE);
+    }
     if (state->bounce_requested && !state->bounce_active) {
         perform_bounce(ctx, state, handle_render);
         return;
@@ -395,7 +403,7 @@ static void handle_update(AppContext* ctx) {
         daw_invalidate_all(state->panes, state->pane_count, update_derivation.invalidation_reason_bits);
         daw_request_full_redraw(update_derivation.invalidation_reason_bits);
     }
-    input_manager_update(&state->input_manager, state);
+    if(!ctx->window || (ctx->window_state.presentable && (ctx->window_state.flags&SDL_WINDOW_INPUT_FOCUS))) input_manager_update(&state->input_manager, state);
 }
 
 // Derives render intent from runtime state without mutating render invalidation state.
@@ -955,6 +963,7 @@ int daw_app_main_legacy(void) {
     }
 
     if (state.engine) engine_stop(state.engine);
+    if(ctx.renderer)vk_renderer_wait_idle(ctx.renderer);
     effects_meter_history_cache_shutdown(ctx.renderer);
     ui_font_shutdown();
     timer_hud_shutdown_session();
@@ -986,7 +995,7 @@ int daw_app_main_legacy(void) {
         engine_destroy(state.engine);
         state.engine = NULL;
     }
-    return daw_visual_artifact_proof_exit_code();
+    return ctx.window_proof_status<0 ? 1 : daw_visual_artifact_proof_exit_code();
 }
 
 int main(int argc, char **argv) {

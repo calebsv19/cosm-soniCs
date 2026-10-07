@@ -7,6 +7,8 @@
 struct AppState;
 
 typedef struct InputManager {
+    bool window_wait_release;
+    uint64_t window_generation;
     Uint32 previous_buttons;
     Uint32 current_buttons;
     bool previous_space;
@@ -37,6 +39,7 @@ typedef struct InputManager {
     int last_library_click_index;
 } InputManager;
 
+void input_manager_cancel_window_gestures(struct AppState* state);
 void input_manager_init(InputManager* manager);
 void input_manager_update(InputManager* manager, struct AppState* state);
 void input_manager_handle_event(InputManager* manager, struct AppState* state, const SDL_Event* event);

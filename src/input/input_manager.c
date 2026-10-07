@@ -1,4 +1,5 @@
 #include "ui/pane_composition.h"
+#include "kit_ui_window_sdl.h"
 #include "app/media_import.h"
 #include "input/input_manager.h"
 
@@ -343,6 +344,8 @@ void input_manager_init(InputManager* manager) {
     if (!manager) {
         return;
     }
+    manager->window_wait_release=false;
+    manager->window_generation=0;
     manager->previous_buttons = 0;
     manager->current_buttons = 0;
     manager->previous_space = false;
@@ -382,7 +385,12 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
     }
     if (event->type == SDL_WINDOWEVENT && (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
         event->window.event == SDL_WINDOWEVENT_HIDDEN)) daw_text_cancel_composition(state);
+    if(kit_ui_window_event_invalidates_sdl(event)) input_manager_cancel_window_gestures(state);
     daw_pane_lifecycle_event(state,event);
+    if(manager->window_wait_release && (event->type==SDL_MOUSEBUTTONDOWN || event->type==SDL_MOUSEBUTTONUP || event->type==SDL_MOUSEMOTION)) {
+        if(event->type==SDL_MOUSEBUTTONUP && event->button.button==SDL_BUTTON_LEFT)manager->window_wait_release=false;
+        return;
+    }
     daw_project_modal_controls_sync(state);
     if (daw_editor_controls_event(manager,state,event)) return;
     if (daw_transport_controls_event(state,event))return;
@@ -509,6 +517,10 @@ void input_manager_update(InputManager* manager, AppState* state) {
     Uint32 prev_buttons = manager->current_buttons;
     Uint32 buttons = SDL_GetMouseState(&mouse_x, &mouse_y);
 
+    if(manager->window_wait_release) {
+        if(buttons) return;
+        manager->window_wait_release=false;prev_buttons=0;
+    }
     manager->previous_buttons = prev_buttons;
     manager->current_buttons = buttons;
     state->mouse_x = mouse_x;
