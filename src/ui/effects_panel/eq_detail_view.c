@@ -67,17 +67,7 @@ static void draw_centered_label(SDL_Renderer* renderer,
     if (!renderer || !rect || !text || rect->w <= 0 || rect->h <= 0) {
         return;
     }
-    int text_h = ui_font_line_height(scale);
-    int text_w = ui_measure_text_width(text, scale);
-    int text_x = rect->x + (rect->w - text_w) / 2;
-    int text_y = rect->y + (rect->h - text_h) / 2;
-    int max_w = rect->w - 2;
-    if (max_w > 0) {
-        if (text_x < rect->x + 1) {
-            text_x = rect->x + 1;
-        }
-        ui_draw_text_clipped(renderer, text_x, text_y, text, color, scale, max_w);
-    }
+    daw_control_text(renderer, *rect, text, color, scale, true);
 }
 
 static void resolve_eq_theme(EffectsEqTheme* out) {

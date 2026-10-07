@@ -123,11 +123,7 @@ void effects_slot_draw_remove_button(SDL_Renderer* renderer,
     }
     daw_control_frame(renderer,rect,fill,border);
     float scale = rect->h >= 18 ? 1.5f : 1.2f;
-    int text_h = ui_font_line_height(scale);
-    int text_x = rect->x + (rect->w - ui_measure_text_width("-", scale)) / 2;
-    int text_y = rect->y + (rect->h - text_h) / 2;
-    SDL_Color text = theme.text;
-    ui_draw_text(renderer, text_x, text_y, "-", text, scale);
+    daw_control_text(renderer, *rect, "-", theme.text, scale, true);
 }
 
 // effects_slot_draw_enable_toggle renders the enabled/disabled toggle.
@@ -167,8 +163,5 @@ void effects_slot_draw_mode_toggle(SDL_Renderer* renderer,
     daw_control_frame(renderer,rect,fill,border);
     const char* label = (mode == FX_PARAM_MODE_NATIVE) ? "N" : "B";
     float scale = 1.1f;
-    int text_h = ui_font_line_height(scale);
-    int text_x = rect->x + (rect->w - ui_measure_text_width(label, scale)) / 2;
-    int text_y = rect->y + (rect->h - text_h) / 2;
-    ui_draw_text(renderer, text_x, text_y, label, text, scale);
+    daw_control_text(renderer, *rect, label, text, scale, true);
 }

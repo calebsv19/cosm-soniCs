@@ -260,58 +260,31 @@ void effects_panel_spec_render(SDL_Renderer* renderer,
                 if (idx < 0) idx = 0;
                 if (idx >= (int)spec->enum_count) idx = (int)spec->enum_count - 1;
                 const char* opt = spec->enum_labels[idx];
-                int opt_x = widget->control_rect.x + 4;
-                int opt_y = widget->control_rect.y + (widget->control_rect.h - ui_font_line_height(1.0f)) / 2;
-                int opt_w = widget->control_rect.w - 8;
-                if (opt_w > 0) {
-                    ui_draw_text_clipped(renderer,
-                                         opt_x,
-                                         opt_y,
-                                         opt ? opt : "",
-                                         label_color,
-                                         1.0f,
-                                         opt_w);
-                }
+                daw_control_text(renderer, widget->control_rect, opt ? opt : "",
+                                 label_color, 1.0f, true);
             }
         }
 
-        int label_x = widget->label_rect.x + 2;
-        int label_w = widget->label_rect.w - 4;
-        if (label_w > 0) {
-            ui_draw_text_clipped(renderer,
-                                 label_x,
-                                 widget->label_rect.y,
-                                 label,
-                                 label_color,
-                                 1.1f,
-                                 label_w);
-        }
+        SDL_Rect label_view = widget->label_rect;
+        label_view.y += 4;
+        if (widget->type == FX_SPEC_WIDGET_SLIDER) label_view.w = widget->rect.w;
+        daw_control_text(renderer, label_view, label, label_color, 1.1f, false);
 
         if (widget->mode_rect.w > 0 && widget->mode_rect.h > 0) {
             daw_control_frame(renderer,&widget->mode_rect,fill,border);
             const char* mode_label = slot->param_mode[widget->param_index] == FX_PARAM_MODE_NATIVE ? "" : "B";
             if (mode_label[0]) {
-                int mode_scale_h = ui_font_line_height(0.9f);
-                int mode_y = widget->mode_rect.y + (widget->mode_rect.h - mode_scale_h) / 2;
-                ui_draw_text_clipped(renderer,
-                                     widget->mode_rect.x + 1,
-                                     mode_y,
-                                     mode_label,
-                                     label_color,
-                                     0.9f,
-                                     widget->mode_rect.w - 2);
+                daw_control_text(renderer, widget->mode_rect, mode_label,
+                                 label_color, 0.9f, true);
             }
         }
 
         char value_line[64];
         format_value_label(spec, display_value, slot->param_mode[widget->param_index], value_line, sizeof(value_line));
-        ui_draw_text_clipped(renderer,
-                             widget->value_rect.x,
-                             widget->value_rect.y,
-                             value_line,
-                             value_color,
-                             1.0f,
-                             widget->value_rect.w);
+        SDL_Rect value_view = widget->value_rect;
+        value_view.y -= 4;
+        if (widget->type == FX_SPEC_WIDGET_SLIDER) value_view.w = widget->rect.w;
+        daw_control_text(renderer, value_view, value_line, value_color, 1.0f, false);
     }
 }
 

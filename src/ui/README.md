@@ -72,3 +72,5 @@ changes cancel pending presses. The pinned shared API remains unchanged. See
 ## Control chrome and initial rollout closeout
 
 `control_chrome.c` owns thin slider rails/markers and their independent input geometry. Rounded frames reuse the existing kit_ui-backed `daw_ui_button` painter with product colors. It is an adapter, not a second rendering layer. Rack/title/parameter and specialized EQ/meter controls use one replacement frame. Plots and continuous command/undo owners remain product-specific. The initial macOS rollout is source-qualified; human Main Edit comparison and OS IME/platform/physical acceptance remain separate. See `docs/shared_ui_rollout.md`.
+
+`daw_control_text` centralizes rounded-frame caption insets, measured alignment, vertical fitting and horizontal clipping. Parameter names/values use leading alignment and explicit vertical clearance; action/toggle captions use centered alignment. It paints once using the existing font facade and pane clips, without altering semantic hit or editing rectangles.

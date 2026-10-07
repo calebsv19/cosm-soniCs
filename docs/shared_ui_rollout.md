@@ -282,3 +282,7 @@ other-platform/display qualification, physical GPU loss and physical audio are
 follow-up boundaries. They do not require another generic widget layer over
 this product. Future rollout audits should check populated views, keep input
 bounds separate from visible geometry, and replace each existing painter once.
+
+### Rounded-control text placement refinement (2026-10-06)
+
+Effect parameter names and values now have explicit top/bottom clearance and share the compact-rounded horizontal inset. `daw_control_text` uses the adopted kit_ui appearance padding with bounded small-control insets, actual font measurements, vertical fitting and width clipping. Meter palettes, EQ buttons, enum captions and mode/remove buttons center their captions; preview action rows remain leading aligned with the same inset. Text is drawn synchronously inside existing pane clips. Input geometry, value mapping, edit/caret viewports, command ownership and undo remain unchanged. This is a local presentation refinement with no shared API or dependency change. Qualify with `make BUILD_DIR=build/ui-text-20261006`, `test-shared-control-chrome`, `test-shared-text-focus`, `test-shared-editor-exceptions`, `build-native-editor-controls-proof` and native dark/light populated captures. Evidence: `_private_workspace_artifacts/ui_unification/sonics_text_20261006`.

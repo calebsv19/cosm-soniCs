@@ -371,11 +371,7 @@ static void effects_slot_preview_draw_toggle(SDL_Renderer* renderer,
     }
     daw_control_frame(renderer,rect,bg,border);
     const char* label = open ? "Hide Preview" : "Show Preview";
-    int text_y = rect->y + (rect->h - ui_font_line_height(1.0f)) / 2;
-    int max_w = rect->w - 12;
-    if (max_w > 0) {
-        ui_draw_text_clipped(renderer, rect->x + 6, text_y, label, label_color, 1.0f, max_w);
-    }
+    daw_control_text(renderer, *rect, label, label_color, 1.0f, false);
 }
 
 // effects_slot_preview_render draws the preview panel and toggle for a slot.

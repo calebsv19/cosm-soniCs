@@ -162,9 +162,7 @@ static void draw_centered_toggle_text(SDL_Renderer* renderer,
     if (!renderer || !rect || !label || rect->w <= 0 || rect->h <= 0) {
         return;
     }
-    int text_h = ui_font_line_height(1.0f);
-    int text_y = rect->y + (rect->h - text_h) / 2;
-    ui_draw_text_clipped(renderer, rect->x + 2, text_y, label, color, 1.0f, rect->w - 4);
+    daw_control_text(renderer, *rect, label, color, 1.0f, true);
 }
 
 void effects_panel_meter_detail_compute_toggle_rects(const SDL_Rect* detail_rect,
