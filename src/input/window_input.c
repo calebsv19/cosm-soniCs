@@ -1,6 +1,7 @@
 #include "app_state.h"
 #include "input/input_manager.h"
 #include "input/timeline_input.h"
+#include "input/transport_input.h"
 #include "input/inspector_input.h"
 #include "input/effects_panel_input.h"
 #include "input/midi_editor_input.h"
@@ -27,6 +28,7 @@ void input_manager_cancel_window_gestures(AppState* state) {
     SDL_Event release={.type=SDL_MOUSEBUTTONUP};release.button.button=SDL_BUTTON_LEFT;
     release.button.x=state->mouse_x;release.button.y=state->mouse_y;
     InputManager* manager=&state->input_manager;
+    transport_input_handle_event(manager,state,&release);
     inspector_input_handle_event(manager,state,&release);
     effects_panel_input_handle_event(manager,state,&release);
     midi_instrument_panel_input_handle_event(manager,state,&release);

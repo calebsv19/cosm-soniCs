@@ -1,3 +1,4 @@
+#include "ui/control_chrome.h"
 #include "ui/effects_panel_overlay.h"
 
 #include "ui/font.h"
@@ -313,10 +314,7 @@ void effects_panel_render_overlay(SDL_Renderer* renderer,
 
     if (panel->overlay_layer == FX_PANEL_OVERLAY_EFFECTS) {
         SDL_Color back_color = theme.control_hover_fill;
-        SDL_SetRenderDrawColor(renderer, back_color.r, back_color.g, back_color.b, back_color.a);
-        SDL_RenderFillRect(renderer, &layout->overlay_back_rect);
-        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-        SDL_RenderDrawRect(renderer, &layout->overlay_back_rect);
+        daw_control_frame(renderer,&layout->overlay_back_rect,back_color,border);
         int back_text_y = layout->overlay_back_rect.y +
                           (layout->overlay_back_rect.h - ui_font_line_height(2.0f)) / 2;
         int back_text_x = layout->overlay_back_rect.x + (layout->overlay_back_rect.w - ui_measure_text_width("<", 2.0f)) / 2;

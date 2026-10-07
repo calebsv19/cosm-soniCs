@@ -25,6 +25,6 @@ void timeline_view_draw_button(SDL_Renderer* renderer,
                                const char* label,
                                bool hovered,
                                bool enabled,
-                               const TimelineTheme* theme);
+                               const TimelineTheme* theme, const SDL_Color* active_border);
 
 void timeline_view_get_text_metrics_snapshot(TimelineViewTextMetricsSnapshot* out_metrics);

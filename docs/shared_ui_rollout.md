@@ -231,3 +231,54 @@ separate. VERSION stays 0.3.0; Main Edit delivery does not promote canonical/rel
 The shared kit_ui 0.18.0 window observer, logical coordinate contract, F11 desktop-fullscreen helper and opt-in lifecycle probe now operate in the actual application loop. Geometry, drawable, display, mode and visibility observations request swapchain updates; hidden/minimized windows suspend presentation while background work continues. Focused/presentable windows receive sampled input. Native transitions cancel discrete captures/preedit, finish accepted continuous edits through existing release/undo owners, and require pointer release. Text/meter caches wait for submitted GPU work before recovery or teardown.
 
 Fresh build, window/pane/control/text/input checks and stable headless smoke pass. Final native dark/light runs qualify eight stages per theme (initial, resize, fullscreen, windowed, hidden, shown, minimized, restored), with twelve captures and continued rendering after controlled renderer rebuild, without Vulkan validation messages. This does not certify physical GPU loss, other display hardware/platforms, physical audio or OS IME. Evidence: `_private_workspace_artifacts/ui_unification/sonics_window_20261006`. Run `make BUILD_DIR=build/ui-window-20261006 test-shared-window-lifecycle`; use `CODEWORK_WINDOW_LIFECYCLE_PROOF=<isolated-output-dir>` only for explicit native qualification. VERSION remains 0.3.0. Next: populated surface audit and presentation refinement, then Main Edit comparison delivery.
+
+## Initial macOS UI rollout closeout (2026-10-06)
+
+The initial Sonics shared UI adoption is source-qualified in persistent Main Edit.
+The remaining boundary is human comparison of the installed Main Edit, followed by
+separately authorized canonical/release adoption. This is not an all-platform or
+physical audio qualification claim.
+
+| Area | Adopted behavior | Product ownership retained |
+| --- | --- | --- |
+| Transport, library, timeline, MIDI, instrument, effects discrete controls | Shared activation, cancellation, focus and rounded measured presentation | Direct commands, selection and action identities |
+| Bounded text/modal hosts | Shared editing/presentation and modal ownership | Validation, commit/retry/cancel policy |
+| Fixed four-pane composition | Shared shell/header/content geometry, native nested clipping and subtle resize cancellation | Topology, ratios, minimum sizes and painter order |
+| Native window lifecycle | Logical/drawable observation, F11 enter/leave fullscreen, hidden/minimized suspension and recovery | App loop, background work and resource ownership |
+| Continuous slider presentation | Two-pixel rail and marker, independent generous input region | Value mapping, drag ownership, undo and engine transactions |
+
+The sibling `control_chrome.c` uses the pinned kit_ui rounded frame tokens and
+existing native painter. Effect rack cards, parameter cells, enable/remove/beat
+controls, previews, EQ/meter palette buttons, snapshot controls and editable
+track-effect titles now use one rounded frame each. Active timeline states are
+part of their existing frame rather than additional square outlines. Graphs,
+waveforms, meters and note/clip regions retain specialized data geometry.
+Toolbar rails draw at two logical pixels; markers are two pixels wide and nine
+high. Slider input targets are sixteen pixels high and existing handle regions
+remain usable. Visible shapes do not expand to match interaction bounds. Native
+window cancellation now also invokes the transport release owner so seeking and
+zooming cannot remain latched after a resize.
+
+Final qualification commands:
+
+```sh
+make BUILD_DIR=build/ui-window-20261006 -j4
+make BUILD_DIR=build/ui-window-20261006 test-shared-control-chrome test-shared-window-lifecycle test-shared-pane-composition test-layout-sweep test-shared-editor-exceptions test-shared-editor-controls test-shared-text-focus test-input-delivery test-engine-parameter-transaction build-native-editor-controls-proof run-headless-smoke
+make BUILD_DIR=build/ui-window-20261006 package-desktop-main-edit-refresh
+```
+
+The stable test lane and headless smoke pass. Native dark/light qualification
+covers fourteen populated control frames per theme, plus eight actual-loop
+window stages per theme and twelve window captures. Exact 2x pixel containment
+passes in both themes. Vulkan validation reports no messages; controlled
+renderer rebuild continues rendering. Final evidence is retained under
+`_private_workspace_artifacts/ui_unification/sonics_closeout_20261006`.
+
+Shared dependency remains immutable `09ff89a`; no shared API/source version
+change was needed. VERSION remains 0.3.0. Dedicated knobs, MIDI/clip gestures,
+list interaction and engine commands remain local, with their existing undo.
+General pane trees, complete mixed field/button traversal, actual OS IME,
+other-platform/display qualification, physical GPU loss and physical audio are
+follow-up boundaries. They do not require another generic widget layer over
+this product. Future rollout audits should check populated views, keep input
+bounds separate from visible geometry, and replace each existing painter once.

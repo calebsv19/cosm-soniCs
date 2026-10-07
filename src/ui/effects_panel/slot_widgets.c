@@ -1,3 +1,4 @@
+#include "ui/control_chrome.h"
 #include "ui/effects_panel_widgets.h"
 #include "ui/font.h"
 #include "ui/shared_theme_font_adapter.h"
@@ -101,35 +102,8 @@ void effects_slot_draw_slider(SDL_Renderer* renderer,
     }
     EffectsSlotWidgetTheme theme = {0};
     resolve_slot_widget_theme(&theme);
-    SDL_Color track = theme.track;
-    SDL_Color track_border = theme.track_border;
-    SDL_SetRenderDrawColor(renderer, track.r, track.g, track.b, track.a);
-    SDL_RenderFillRect(renderer, rect);
-    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
-    SDL_RenderDrawRect(renderer, rect);
-
-    SDL_Rect fill_rect = *rect;
-    fill_rect.w = (int)roundf(clampf(t, 0.0f, 1.0f) * (float)rect->w);
-    SDL_Color fill_color = theme.fill;
-    SDL_SetRenderDrawColor(renderer, fill_color.r, fill_color.g, fill_color.b, fill_color.a);
-    SDL_RenderFillRect(renderer, &fill_rect);
-
-    SDL_Rect handle = {
-        rect->x + fill_rect.w - 4,
-        rect->y - 3,
-        8,
-        rect->h + 6,
-    };
-    if (handle.x < rect->x - 4) {
-        handle.x = rect->x - 4;
-    }
-    if (handle.x + handle.w > rect->x + rect->w + 4) {
-        handle.x = rect->x + rect->w - 4;
-    }
-    SDL_SetRenderDrawColor(renderer, theme.handle.r, theme.handle.g, theme.handle.b, theme.handle.a);
-    SDL_RenderFillRect(renderer, &handle);
-    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
-    SDL_RenderDrawRect(renderer, &handle);
+    int position=rect->x+(int)lroundf(clampf(t,0.0f,1.0f)*rect->w);
+    daw_slider_draw(renderer,*rect,position,theme.track_border,theme.handle);
 }
 
 // effects_slot_draw_remove_button renders the remove button for a slot.
@@ -147,10 +121,7 @@ void effects_slot_draw_remove_button(SDL_Renderer* renderer,
     if (highlighted) {
         fill = active;
     }
-    SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
-    SDL_RenderFillRect(renderer, rect);
-    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-    SDL_RenderDrawRect(renderer, rect);
+    daw_control_frame(renderer,rect,fill,border);
     float scale = rect->h >= 18 ? 1.5f : 1.2f;
     int text_h = ui_font_line_height(scale);
     int text_x = rect->x + (rect->w - ui_measure_text_width("-", scale)) / 2;
@@ -176,14 +147,7 @@ void effects_slot_draw_enable_toggle(SDL_Renderer* renderer,
         border = theme.toggle_hover;
     }
     SDL_Color fill = enabled ? fill_on : fill_off;
-    SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
-    SDL_RenderFillRect(renderer, rect);
-    if (!enabled) {
-        SDL_SetRenderDrawColor(renderer, fill_off.r, fill_off.g, fill_off.b, fill_off.a);
-        SDL_RenderFillRect(renderer, rect);
-    }
-    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-    SDL_RenderDrawRect(renderer, rect);
+    daw_control_frame(renderer,rect,fill,border);
 }
 
 // effects_slot_draw_mode_toggle renders the native/beat mode selector.
@@ -200,10 +164,7 @@ void effects_slot_draw_mode_toggle(SDL_Renderer* renderer,
     SDL_Color border = theme.track_border;
     SDL_Color text = theme.text;
     SDL_Color fill = (mode == FX_PARAM_MODE_NATIVE) ? base : active;
-    SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
-    SDL_RenderFillRect(renderer, rect);
-    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-    SDL_RenderDrawRect(renderer, rect);
+    daw_control_frame(renderer,rect,fill,border);
     const char* label = (mode == FX_PARAM_MODE_NATIVE) ? "N" : "B";
     float scale = 1.1f;
     int text_h = ui_font_line_height(scale);

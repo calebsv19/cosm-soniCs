@@ -25,6 +25,7 @@ APP_SRCS := \
 	$(SRC_DIR)/core/loop/daw_render_invalidation.c \
 	$(SRC_DIR)/app/daw_app_main.c \
 	$(SRC_DIR)/ui/transport_controls.c \
+	$(SRC_DIR)/ui/control_chrome.c \
 	$(SRC_DIR)/ui/editor_controls.c \
   $(SRC_DIR)/ui/editor_controls_layout.c \
 	$(SRC_DIR)/ui/editor_control_exceptions.c \

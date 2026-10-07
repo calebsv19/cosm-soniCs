@@ -22,11 +22,13 @@ static void window_contract(AppState* state) {
     for(unsigned i=0;i<sizeof(kinds);++i) {
         state->layout_runtime.drag.active=true;state->dragging_library=true;
         state->timeline_controls.adjusting_loop_start=true;
+        state->input_manager.prev_horiz_slider_down=true;state->transport_ui.adjusting_seek=true;
         state->editor_controls.surface.interaction.pointer_owned=1;
         state->transport_ui.controls.interaction.pointer_owned=1;
         e.window.event=kinds[i];input_manager_handle_event(&state->input_manager,state,&e);
         assert(!state->layout_runtime.drag.active && !state->dragging_library);
         assert(!state->timeline_controls.adjusting_loop_start);
+        assert(!state->input_manager.prev_horiz_slider_down && !state->transport_ui.adjusting_seek);
         assert(!state->editor_controls.surface.interaction.pointer_owned && !state->transport_ui.controls.interaction.pointer_owned);
         assert(state->input_manager.window_wait_release);
         SDL_Event held={.type=SDL_MOUSEBUTTONDOWN};held.button.button=SDL_BUTTON_LEFT;

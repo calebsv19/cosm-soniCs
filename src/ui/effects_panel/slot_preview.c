@@ -1,3 +1,4 @@
+#include "ui/control_chrome.h"
 #include "ui/effects_panel_preview.h"
 #include "ui/effects_panel_preview_delay.h"
 #include "ui/effects_panel_preview_eq_curve.h"
@@ -368,10 +369,7 @@ static void effects_slot_preview_draw_toggle(SDL_Renderer* renderer,
         border = theme.control_border;
         border.a = 200;
     }
-    SDL_SetRenderDrawColor(renderer, bg.r, bg.g, bg.b, bg.a);
-    SDL_RenderFillRect(renderer, rect);
-    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-    SDL_RenderDrawRect(renderer, rect);
+    daw_control_frame(renderer,rect,bg,border);
     const char* label = open ? "Hide Preview" : "Show Preview";
     int text_y = rect->y + (rect->h - ui_font_line_height(1.0f)) / 2;
     int max_w = rect->w - 12;

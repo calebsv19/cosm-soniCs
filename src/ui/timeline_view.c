@@ -186,37 +186,16 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
 
     bool remove_enabled = track_count > 0;
     bool midi_region_enabled = track_count > 0;
-    timeline_view_draw_button(renderer, &controls->add_rect, "+", controls->add_hovered, true, &theme);
-    timeline_view_draw_button(renderer, &controls->remove_rect, "-", controls->remove_hovered, remove_enabled, &theme);
-    timeline_view_draw_button(renderer, &controls->midi_region_rect, "+ MIDI", controls->midi_region_hovered, midi_region_enabled, &theme);
-    timeline_view_draw_button(renderer, &controls->loop_toggle_rect, "LOOP", controls->loop_toggle_hovered, true, &theme);
-    timeline_view_draw_button(renderer, &controls->snap_toggle_rect, "SNAP", controls->snap_toggle_hovered, true, &theme);
-    timeline_view_draw_button(renderer, &controls->automation_toggle_rect, "AUTO", controls->automation_toggle_hovered, true, &theme);
+    timeline_view_draw_button(renderer, &controls->add_rect, "+", controls->add_hovered, true, &theme,NULL);
+    timeline_view_draw_button(renderer, &controls->remove_rect, "-", controls->remove_hovered, remove_enabled, &theme,NULL);
+    timeline_view_draw_button(renderer, &controls->midi_region_rect, "+ MIDI", controls->midi_region_hovered, midi_region_enabled, &theme,NULL);
+    timeline_view_draw_button(renderer, &controls->loop_toggle_rect, "LOOP", controls->loop_toggle_hovered, true, &theme,state->loop_enabled ? &theme.toggle_active_loop : NULL);
+    timeline_view_draw_button(renderer, &controls->snap_toggle_rect, "SNAP", controls->snap_toggle_hovered, true, &theme,state->timeline_snap_enabled ? &theme.toggle_active_snap : NULL);
+    timeline_view_draw_button(renderer, &controls->automation_toggle_rect, "AUTO", controls->automation_toggle_hovered, true, &theme,state->timeline_automation_mode ? &theme.toggle_active_auto : NULL);
     const char* target_label = engine_automation_target_display_label(state->automation_ui.target);
-    timeline_view_draw_button(renderer, &controls->automation_target_rect, target_label, controls->automation_target_hovered, true, &theme);
-    timeline_view_draw_button(renderer, &controls->tempo_toggle_rect, "TEMPO", controls->tempo_toggle_hovered, true, &theme);
-    timeline_view_draw_button(renderer, &controls->automation_label_toggle_rect, "VAL", controls->automation_label_toggle_hovered, true, &theme);
-    if (state->loop_enabled) {
-        SDL_SetRenderDrawColor(renderer, theme.toggle_active_loop.r, theme.toggle_active_loop.g, theme.toggle_active_loop.b, theme.toggle_active_loop.a);
-        SDL_RenderDrawRect(renderer, &controls->loop_toggle_rect);
-    }
-    if (state->timeline_snap_enabled) {
-        SDL_SetRenderDrawColor(renderer, theme.toggle_active_snap.r, theme.toggle_active_snap.g, theme.toggle_active_snap.b, theme.toggle_active_snap.a);
-        SDL_RenderDrawRect(renderer, &controls->snap_toggle_rect);
-    }
-    if (state->timeline_automation_mode) {
-        SDL_SetRenderDrawColor(renderer, theme.toggle_active_auto.r, theme.toggle_active_auto.g, theme.toggle_active_auto.b, theme.toggle_active_auto.a);
-        SDL_RenderDrawRect(renderer, &controls->automation_toggle_rect);
-    }
-    if (state->timeline_tempo_overlay_enabled) {
-        SDL_SetRenderDrawColor(renderer, theme.toggle_active_tempo.r, theme.toggle_active_tempo.g, theme.toggle_active_tempo.b, theme.toggle_active_tempo.a);
-        SDL_RenderDrawRect(renderer, &controls->tempo_toggle_rect);
-    }
-    if (state->timeline_automation_labels_enabled) {
-        SDL_SetRenderDrawColor(renderer, theme.toggle_active_label.r, theme.toggle_active_label.g, theme.toggle_active_label.b, theme.toggle_active_label.a);
-        SDL_RenderDrawRect(renderer, &controls->automation_label_toggle_rect);
-    }
-
+    timeline_view_draw_button(renderer, &controls->automation_target_rect, target_label, controls->automation_target_hovered, true, &theme,NULL);
+    timeline_view_draw_button(renderer, &controls->tempo_toggle_rect, "TEMPO", controls->tempo_toggle_hovered, true, &theme,state->timeline_tempo_overlay_enabled ? &theme.toggle_active_tempo : NULL);
+    timeline_view_draw_button(renderer, &controls->automation_label_toggle_rect, "VAL", controls->automation_label_toggle_hovered, true, &theme,state->timeline_automation_labels_enabled ? &theme.toggle_active_label : NULL);
     controls->loop_start_rect = (SDL_Rect){0,0,0,0};
     controls->loop_end_rect = (SDL_Rect){0,0,0,0};
 

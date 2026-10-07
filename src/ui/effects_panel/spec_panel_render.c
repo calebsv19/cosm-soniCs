@@ -1,3 +1,4 @@
+#include "ui/control_chrome.h"
 #include "ui/effects_panel_spec.h"
 
 #include "effects/param_utils.h"
@@ -244,30 +245,16 @@ void effects_panel_spec_render(SDL_Renderer* renderer,
         if (t < 0.0f) t = 0.0f;
         if (t > 1.0f) t = 1.0f;
 
-        SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
-        SDL_RenderFillRect(renderer, &widget->rect);
-        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-        SDL_RenderDrawRect(renderer, &widget->rect);
-
-        SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
-        SDL_RenderFillRect(renderer, &widget->control_rect);
-        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-        SDL_RenderDrawRect(renderer, &widget->control_rect);
-
+        daw_control_frame(renderer,&widget->rect,fill,border);
         if (widget->type == FX_SPEC_WIDGET_SLIDER) {
-            int fill_w = (int)lroundf((float)widget->control_rect.w * t);
-            SDL_Rect bar = widget->control_rect;
-            bar.w = fill_w;
-            SDL_SetRenderDrawColor(renderer, active.r, active.g, active.b, active.a);
-            SDL_RenderFillRect(renderer, &bar);
+            DawThemePalette palette={0};daw_shared_theme_resolve_palette(&palette);
+            daw_slider_draw(renderer,widget->control_rect,widget->control_rect.x+(int)lroundf(widget->control_rect.w*t),border,palette.slider_handle);
         } else if (widget->type == FX_SPEC_WIDGET_KNOB) {
             draw_knob(renderer, &widget->control_rect, t, &theme);
         } else if (widget->type == FX_SPEC_WIDGET_TOGGLE) {
-            if (display_value >= 0.5f) {
-                SDL_SetRenderDrawColor(renderer, active.r, active.g, active.b, active.a);
-                SDL_RenderFillRect(renderer, &widget->control_rect);
-            }
+            daw_control_frame(renderer,&widget->control_rect,display_value>=0.5f ? active : fill,border);
         } else if (widget->type == FX_SPEC_WIDGET_DROPDOWN) {
+            daw_control_frame(renderer,&widget->control_rect,fill,border);
             if (spec->enum_count > 0 && spec->enum_labels[0]) {
                 int idx = (int)lroundf(display_value);
                 if (idx < 0) idx = 0;
@@ -301,8 +288,7 @@ void effects_panel_spec_render(SDL_Renderer* renderer,
         }
 
         if (widget->mode_rect.w > 0 && widget->mode_rect.h > 0) {
-            SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-            SDL_RenderDrawRect(renderer, &widget->mode_rect);
+            daw_control_frame(renderer,&widget->mode_rect,fill,border);
             const char* mode_label = slot->param_mode[widget->param_index] == FX_PARAM_MODE_NATIVE ? "" : "B";
             if (mode_label[0]) {
                 int mode_scale_h = ui_font_line_height(0.9f);

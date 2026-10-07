@@ -1,3 +1,4 @@
+#include "ui/control_chrome.h"
 #include "input/transport_input.h"
 
 #include "app_state.h"
@@ -585,14 +586,14 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
 
 
 
-            if (SDL_PointInRect(&p, &transport->seek_track_rect) || SDL_PointInRect(&p, &transport->seek_handle_rect)) {
+            if (daw_slider_hit(transport->seek_track_rect,p.x,p.y) || SDL_PointInRect(&p, &transport->seek_handle_rect)) {
                 float t = (float)(p.x - transport->seek_track_rect.x) / (float)transport->seek_track_rect.w;
                 transport->adjusting_seek = true;
                 transport_seek_to(state, t);
                 transport_ui_sync(transport, state);
                 break;
             }
-            if (SDL_PointInRect(&p, &transport->window_track_rect) || SDL_PointInRect(&p, &transport->window_handle_rect)) {
+            if (daw_slider_hit(transport->window_track_rect,p.x,p.y) || SDL_PointInRect(&p, &transport->window_handle_rect)) {
                 manager->prev_window_slider_down = true;
                 transport->adjusting_window = true;
                 state->timeline_follow_override = true;
@@ -605,7 +606,7 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
                 transport_ui_sync(transport, state);
                 break;
             }
-            if (SDL_PointInRect(&p, &transport->horiz_track_rect)) {
+            if (daw_slider_hit(transport->horiz_track_rect,p.x,p.y)) {
                 manager->prev_horiz_slider_down = true;
                 float t = (float)(p.x - transport->horiz_track_rect.x) / (float)transport->horiz_track_rect.w;
                 t = clamp_scalar(t, 0.0f, 1.0f);
@@ -614,7 +615,7 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
                     t * (TIMELINE_MAX_VISIBLE_SECONDS - TIMELINE_MIN_VISIBLE_SECONDS);
                 zoom_keep_playhead(state, old_vis, new_vis);
                 transport_ui_sync(transport, state);
-            } else if (SDL_PointInRect(&p, &transport->vert_track_rect)) {
+            } else if (daw_slider_hit(transport->vert_track_rect,p.x,p.y)) {
                 manager->prev_vert_slider_down = true;
                 float t = (float)(p.x - transport->vert_track_rect.x) / (float)transport->vert_track_rect.w;
                 t = clamp_scalar(t, 0.0f, 1.0f);

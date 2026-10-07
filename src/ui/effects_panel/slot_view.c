@@ -1,3 +1,4 @@
+#include "ui/control_chrome.h"
 #include "app_state.h"
 #include "effects/param_utils.h"
 #include "ui/effects_panel.h"
@@ -142,14 +143,10 @@ void effects_slot_render(SDL_Renderer* renderer,
     SDL_Color box_border = have_theme ? theme.control_border : (SDL_Color){80, 85, 100, 255};
     SDL_Color header_bg = have_theme ? theme.control_fill : (SDL_Color){44, 48, 58, 255};
     SDL_Color selected_border = have_theme ? theme.selection_fill : (SDL_Color){120, 160, 220, 180};
-    SDL_SetRenderDrawColor(renderer, box_bg.r, box_bg.g, box_bg.b, box_bg.a);
-    SDL_RenderFillRect(renderer, &slot_layout->column_rect);
-
+    daw_control_frame(renderer,&slot_layout->column_rect,box_bg,selected ? selected_border : box_border);
     SDL_Rect header = slot_layout->header_rect;
-    SDL_SetRenderDrawColor(renderer, header_bg.r, header_bg.g, header_bg.b, header_bg.a);
-    SDL_RenderFillRect(renderer, &header);
-    SDL_SetRenderDrawColor(renderer, box_border.r, box_border.g, box_border.b, box_border.a);
-    SDL_RenderDrawRect(renderer, &header);
+    header.x+=1;header.y+=1;header.w-=2;header.h-=1;
+    daw_control_frame(renderer,&header,header_bg,header_bg);
     const char* fx_name = info ? info->name : "Effect";
     float title_scale = FX_PANEL_BUTTON_SCALE;
     int title_h = ui_font_line_height(title_scale);
@@ -201,17 +198,6 @@ void effects_slot_render(SDL_Renderer* renderer,
 
     effects_slot_draw_enable_toggle(renderer, &slot_layout->toggle_rect, slot->enabled, toggle_highlight);
     effects_slot_draw_remove_button(renderer, &slot_layout->remove_rect, remove_highlight);
-
-    SDL_SetRenderDrawColor(renderer, box_border.r, box_border.g, box_border.b, box_border.a);
-    SDL_RenderDrawRect(renderer, &slot_layout->column_rect);
-    if (selected) {
-        SDL_SetRenderDrawColor(renderer,
-                               selected_border.r,
-                               selected_border.g,
-                               selected_border.b,
-                               selected_border.a);
-        SDL_RenderDrawRect(renderer, &slot_layout->column_rect);
-    }
 
     SDL_Rect body_clip = slot_layout->body_rect;
     if (body_clip.w > 0 && body_clip.h > 0) {

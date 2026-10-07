@@ -1,3 +1,4 @@
+#include "ui/control_chrome.h"
 #include "ui/text_edit.h"
 #include "ui/timeline_view_clip_pass.h"
 
@@ -172,11 +173,7 @@ static void draw_toggle_button(SDL_Renderer* renderer,
             border_color = theme->clip_border_selected;
         }
     }
-    SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
-    SDL_RenderFillRect(renderer, rect);
-
-    SDL_SetRenderDrawColor(renderer, border_color.r, border_color.g, border_color.b, border_color.a);
-    SDL_RenderDrawRect(renderer, rect);
+    daw_control_frame(renderer,rect,fill,border_color);
 
     int scale = 1;
     int text_w = ui_measure_text_width(label, 1.0f);

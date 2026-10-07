@@ -1,3 +1,4 @@
+#include "ui/control_chrome.h"
 #include "ui/effects_panel_meter_detail.h"
 
 #include "app_state.h"
@@ -853,15 +854,9 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
         SDL_Color ms_fill = ms_active ? btn_on : btn_off;
         SDL_Color lr_fill = ms_active ? btn_off : btn_on;
 
-        SDL_SetRenderDrawColor(renderer, ms_fill.r, ms_fill.g, ms_fill.b, ms_fill.a);
-        SDL_RenderFillRect(renderer, &toggle_ms);
-        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-        SDL_RenderDrawRect(renderer, &toggle_ms);
+        daw_control_frame(renderer,&toggle_ms,ms_fill,border);
 
-        SDL_SetRenderDrawColor(renderer, lr_fill.r, lr_fill.g, lr_fill.b, lr_fill.a);
-        SDL_RenderFillRect(renderer, &toggle_lr);
-        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-        SDL_RenderDrawRect(renderer, &toggle_lr);
+        daw_control_frame(renderer,&toggle_lr,lr_fill,border);
 
         draw_centered_toggle_text(renderer, &toggle_ms, "MS", label_color);
         draw_centered_toggle_text(renderer, &toggle_lr, "LR", label_color);
@@ -874,20 +869,11 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
         SDL_Color short_fill = short_active ? btn_on : btn_off;
         SDL_Color momentary_fill = (!int_active && !short_active) ? btn_on : btn_off;
 
-        SDL_SetRenderDrawColor(renderer, int_fill.r, int_fill.g, int_fill.b, int_fill.a);
-        SDL_RenderFillRect(renderer, &toggle_int);
-        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-        SDL_RenderDrawRect(renderer, &toggle_int);
+        daw_control_frame(renderer,&toggle_int,int_fill,border);
 
-        SDL_SetRenderDrawColor(renderer, short_fill.r, short_fill.g, short_fill.b, short_fill.a);
-        SDL_RenderFillRect(renderer, &toggle_short);
-        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-        SDL_RenderDrawRect(renderer, &toggle_short);
+        daw_control_frame(renderer,&toggle_short,short_fill,border);
 
-        SDL_SetRenderDrawColor(renderer, momentary_fill.r, momentary_fill.g, momentary_fill.b, momentary_fill.a);
-        SDL_RenderFillRect(renderer, &toggle_momentary);
-        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-        SDL_RenderDrawRect(renderer, &toggle_momentary);
+        daw_control_frame(renderer,&toggle_momentary,momentary_fill,border);
 
         draw_centered_toggle_text(renderer, &toggle_int, "INT", label_color);
         draw_centered_toggle_text(renderer, &toggle_short, "ST", label_color);
@@ -901,20 +887,11 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
         SDL_Color bw_fill = bw_active ? btn_on : btn_off;
         SDL_Color heat_fill = (!wb_active && !bw_active) ? btn_on : btn_off;
 
-        SDL_SetRenderDrawColor(renderer, wb_fill.r, wb_fill.g, wb_fill.b, wb_fill.a);
-        SDL_RenderFillRect(renderer, &toggle_wb);
-        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-        SDL_RenderDrawRect(renderer, &toggle_wb);
+        daw_control_frame(renderer,&toggle_wb,wb_fill,border);
 
-        SDL_SetRenderDrawColor(renderer, bw_fill.r, bw_fill.g, bw_fill.b, bw_fill.a);
-        SDL_RenderFillRect(renderer, &toggle_bw);
-        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-        SDL_RenderDrawRect(renderer, &toggle_bw);
+        daw_control_frame(renderer,&toggle_bw,bw_fill,border);
 
-        SDL_SetRenderDrawColor(renderer, heat_fill.r, heat_fill.g, heat_fill.b, heat_fill.a);
-        SDL_RenderFillRect(renderer, &toggle_heat);
-        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-        SDL_RenderDrawRect(renderer, &toggle_heat);
+        daw_control_frame(renderer,&toggle_heat,heat_fill,border);
 
         draw_centered_toggle_text(renderer, &toggle_wb, "W/B", label_color);
         draw_centered_toggle_text(renderer, &toggle_bw, "B/W", label_color);
@@ -972,10 +949,7 @@ void effects_panel_spectrogram_card_render(SDL_Renderer* renderer, const AppStat
     const char* names[3] = {"W/B", "B/W", "Heat"};
     for (int i = 0; i < 3; ++i) {
         SDL_Color color = i == palette ? on : off;
-        SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
-        SDL_RenderFillRect(renderer, &buttons[i]);
-        SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-        SDL_RenderDrawRect(renderer, &buttons[i]);
+        daw_control_frame(renderer,&buttons[i],color,border);
         draw_centered_toggle_text(renderer, &buttons[i], names[i], label_color);
     }
     SDL_Rect plot = *rect;

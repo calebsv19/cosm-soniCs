@@ -405,3 +405,11 @@ test-shared-window-lifecycle: $(TEST_BUILD_ROOT)/shared_window_lifecycle_test
 $(TEST_BUILD_ROOT)/shared_window_lifecycle_test: tests/shared_window_lifecycle_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
 	@mkdir -p "$(dir $@)"
 	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-shared-control-chrome
+test-shared-control-chrome: $(TEST_BUILD_ROOT)/shared_control_chrome_test
+	$(TEST_BUILD_ROOT)/shared_control_chrome_test
+
+$(TEST_BUILD_ROOT)/shared_control_chrome_test: tests/shared_control_chrome_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)

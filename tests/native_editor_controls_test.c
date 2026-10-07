@@ -111,6 +111,13 @@ int main(int argc,char** argv) {
     FxInstId delay=undo_manager_add_effect(state,0,50); assert(delay);
     effects_panel_sync_from_engine(state); state->effects_panel.spec_panel_enabled=true;
     focus(state,18,(uint64_t)delay*128+1); capture(&renderer,state,argv[1],"spec-widgets");
+    while(state->effects_panel.chain_count) {
+        assert(engine_fx_track_remove(state->engine,0,state->effects_panel.chain[0].id));effects_panel_sync_from_engine(state);
+    }
+    assert(undo_manager_add_effect(state,0,50));
+    assert(undo_manager_add_effect(state,0,105));effects_panel_sync_from_engine(state);
+    state->effects_panel.view_mode=FX_PANEL_VIEW_STACK;state->effects_panel.spec_panel_enabled=true;
+    capture(&renderer,state,argv[1],"delay-spectrogram-rack");
     int clip=-1; assert(engine_add_midi_clip_to_track(state->engine,0,0,96000,&clip));
     assert(engine_clip_midi_add_note(state->engine,0,clip,(EngineMidiNote){0,12000,60,0.8f},NULL));
     timeline_selection_set_single(state,0,clip); state->inspector.visible=true;

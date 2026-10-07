@@ -1,3 +1,4 @@
+#include "ui/control_chrome.h"
 #include "ui/effects_panel.h"
 
 #include "app_state.h"
@@ -95,29 +96,7 @@ static void draw_slider(SDL_Renderer* renderer, const SDL_Rect* rect, float t) {
     t = clampf(t, 0.0f, 1.0f);
     TrackSnapshotTheme theme = {0};
     resolve_track_snapshot_theme(&theme);
-    SDL_Color track_bg = theme.slider_bg;
-    SDL_Color track_border = theme.slider_border;
-    SDL_Color fill = theme.slider_fill;
-    SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
-    SDL_RenderFillRect(renderer, rect);
-    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
-    SDL_RenderDrawRect(renderer, rect);
-    SDL_Rect fill_rect = *rect;
-    fill_rect.w = (int)(t * (float)rect->w);
-    SDL_SetRenderDrawColor(renderer, fill.r, fill.g, fill.b, fill.a);
-    SDL_RenderFillRect(renderer, &fill_rect);
-    SDL_Rect handle = {
-        rect->x + fill_rect.w - 3,
-        rect->y - 2,
-        6,
-        rect->h + 4
-    };
-    if (handle.x < rect->x - 2) handle.x = rect->x - 2;
-    if (handle.x + handle.w > rect->x + rect->w + 2) handle.x = rect->x + rect->w - 2;
-    SDL_SetRenderDrawColor(renderer, theme.slider_handle.r, theme.slider_handle.g, theme.slider_handle.b, theme.slider_handle.a);
-    SDL_RenderFillRect(renderer, &handle);
-    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
-    SDL_RenderDrawRect(renderer, &handle);
+    daw_slider_draw(renderer,*rect,rect->x+(int)lroundf(t*rect->w),theme.slider_border,theme.slider_handle);
 }
 
 static float linear_to_db(float linear) {
@@ -394,14 +373,7 @@ void effects_panel_render_track_snapshot(SDL_Renderer* renderer, const AppState*
                                               ? engine_track_midi_instrument_preset(state->engine,
                                                                                     panel->target_track_index)
                                               : ENGINE_INSTRUMENT_PRESET_PURE_SINE;
-        SDL_SetRenderDrawColor(renderer,
-                               panel->track_snapshot.instrument_menu_open ? active_bg.r : button_bg.r,
-                               panel->track_snapshot.instrument_menu_open ? active_bg.g : button_bg.g,
-                               panel->track_snapshot.instrument_menu_open ? active_bg.b : button_bg.b,
-                               panel->track_snapshot.instrument_menu_open ? active_bg.a : button_bg.a);
-        SDL_RenderFillRect(renderer, &snap->instrument_button_rect);
-        SDL_SetRenderDrawColor(renderer, card_border.r, card_border.g, card_border.b, card_border.a);
-        SDL_RenderDrawRect(renderer, &snap->instrument_button_rect);
+        daw_control_frame(renderer,&snap->instrument_button_rect,panel->track_snapshot.instrument_menu_open ? active_bg : button_bg,card_border);
         char instrument_label[96];
         snprintf(instrument_label,
                  sizeof(instrument_label),
@@ -419,14 +391,7 @@ void effects_panel_render_track_snapshot(SDL_Renderer* renderer, const AppState*
     draw_effects_list_background(renderer, snap);
 
     if (snap->mute_rect.w > 0 && snap->mute_rect.h > 0) {
-        SDL_SetRenderDrawColor(renderer,
-                               muted ? active_bg.r : button_bg.r,
-                               muted ? active_bg.g : button_bg.g,
-                               muted ? active_bg.b : button_bg.b,
-                               muted ? active_bg.a : button_bg.a);
-        SDL_RenderFillRect(renderer, &snap->mute_rect);
-        SDL_SetRenderDrawColor(renderer, card_border.r, card_border.g, card_border.b, card_border.a);
-        SDL_RenderDrawRect(renderer, &snap->mute_rect);
+        daw_control_frame(renderer,&snap->mute_rect,muted ? active_bg : button_bg,card_border);
         ui_draw_text(renderer,
                      snap->mute_rect.x + 8,
                      snap->mute_rect.y + 6,
@@ -436,14 +401,7 @@ void effects_panel_render_track_snapshot(SDL_Renderer* renderer, const AppState*
     }
 
     if (snap->solo_rect.w > 0 && snap->solo_rect.h > 0) {
-        SDL_SetRenderDrawColor(renderer,
-                               solo ? active_bg.r : button_bg.r,
-                               solo ? active_bg.g : button_bg.g,
-                               solo ? active_bg.b : button_bg.b,
-                               solo ? active_bg.a : button_bg.a);
-        SDL_RenderFillRect(renderer, &snap->solo_rect);
-        SDL_SetRenderDrawColor(renderer, card_border.r, card_border.g, card_border.b, card_border.a);
-        SDL_RenderDrawRect(renderer, &snap->solo_rect);
+        daw_control_frame(renderer,&snap->solo_rect,solo ? active_bg : button_bg,card_border);
         ui_draw_text(renderer,
                      snap->solo_rect.x + 8,
                      snap->solo_rect.y + 6,

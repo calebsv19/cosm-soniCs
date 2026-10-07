@@ -1,3 +1,4 @@
+#include "ui/control_chrome.h"
 #include "ui/effects_panel_eq_detail.h"
 
 #include "app_state.h"
@@ -310,40 +311,19 @@ static void draw_band_toggles(SDL_Renderer* renderer,
     SDL_Rect high_rect;
     effects_panel_eq_detail_compute_toggle_rects(panel, &low_rect, mid_rects, &high_rect);
 
-    SDL_SetRenderDrawColor(renderer,
-                           curve->hover_toggle_low ? btn_hover.r : (curve->low_cut.enabled ? btn_on.r : btn_off.r),
-                           curve->hover_toggle_low ? btn_hover.g : (curve->low_cut.enabled ? btn_on.g : btn_off.g),
-                           curve->hover_toggle_low ? btn_hover.b : (curve->low_cut.enabled ? btn_on.b : btn_off.b),
-                           curve->hover_toggle_low ? btn_hover.a : (curve->low_cut.enabled ? btn_on.a : btn_off.a));
-    SDL_RenderFillRect(renderer, &low_rect);
-    SDL_SetRenderDrawColor(renderer, btn_border.r, btn_border.g, btn_border.b, btn_border.a);
-    SDL_RenderDrawRect(renderer, &low_rect);
+    daw_control_frame(renderer,&low_rect,curve->hover_toggle_low ? btn_hover : (curve->low_cut.enabled ? btn_on : btn_off),btn_border);
     draw_centered_label(renderer, &low_rect, "L", label, 1.0f);
 
     for (int i = 0; i < 4; ++i) {
         bool enabled = curve->bands[i].enabled;
-        SDL_SetRenderDrawColor(renderer,
-                               curve->hover_toggle_band == i ? btn_hover.r : (enabled ? btn_on.r : btn_off.r),
-                               curve->hover_toggle_band == i ? btn_hover.g : (enabled ? btn_on.g : btn_off.g),
-                               curve->hover_toggle_band == i ? btn_hover.b : (enabled ? btn_on.b : btn_off.b),
-                               curve->hover_toggle_band == i ? btn_hover.a : (enabled ? btn_on.a : btn_off.a));
-        SDL_RenderFillRect(renderer, &mid_rects[i]);
-        SDL_SetRenderDrawColor(renderer, btn_border.r, btn_border.g, btn_border.b, btn_border.a);
-        SDL_RenderDrawRect(renderer, &mid_rects[i]);
+        daw_control_frame(renderer,&mid_rects[i],curve->hover_toggle_band == i ? btn_hover : (enabled ? btn_on : btn_off),btn_border);
         char label_text[2];
         label_text[0] = (char)('1' + i);
         label_text[1] = '\0';
         draw_centered_label(renderer, &mid_rects[i], label_text, label, 1.0f);
     }
 
-    SDL_SetRenderDrawColor(renderer,
-                           curve->hover_toggle_high ? btn_hover.r : (curve->high_cut.enabled ? btn_on.r : btn_off.r),
-                           curve->hover_toggle_high ? btn_hover.g : (curve->high_cut.enabled ? btn_on.g : btn_off.g),
-                           curve->hover_toggle_high ? btn_hover.b : (curve->high_cut.enabled ? btn_on.b : btn_off.b),
-                           curve->hover_toggle_high ? btn_hover.a : (curve->high_cut.enabled ? btn_on.a : btn_off.a));
-    SDL_RenderFillRect(renderer, &high_rect);
-    SDL_SetRenderDrawColor(renderer, btn_border.r, btn_border.g, btn_border.b, btn_border.a);
-    SDL_RenderDrawRect(renderer, &high_rect);
+    daw_control_frame(renderer,&high_rect,curve->hover_toggle_high ? btn_hover : (curve->high_cut.enabled ? btn_on : btn_off),btn_border);
     draw_centered_label(renderer, &high_rect, "H", label, 1.0f);
 }
 
@@ -361,25 +341,8 @@ static void draw_mode_buttons(SDL_Renderer* renderer,
     SDL_Rect track_rect;
     effects_panel_eq_detail_compute_selector_rects(panel, &master_rect, &track_rect);
 
-    SDL_SetRenderDrawColor(renderer,
-                           eq_state->view_mode == EQ_DETAIL_VIEW_MASTER ? btn_on.r : btn_off.r,
-                           eq_state->view_mode == EQ_DETAIL_VIEW_MASTER ? btn_on.g : btn_off.g,
-                           eq_state->view_mode == EQ_DETAIL_VIEW_MASTER ? btn_on.b : btn_off.b,
-                           eq_state->view_mode == EQ_DETAIL_VIEW_MASTER ? btn_on.a : btn_off.a);
-    SDL_RenderFillRect(renderer, &master_rect);
-    SDL_SetRenderDrawColor(renderer,
-                           !track_available ? btn_disabled.r :
-                           (eq_state->view_mode == EQ_DETAIL_VIEW_TRACK ? btn_on.r : btn_off.r),
-                           !track_available ? btn_disabled.g :
-                           (eq_state->view_mode == EQ_DETAIL_VIEW_TRACK ? btn_on.g : btn_off.g),
-                           !track_available ? btn_disabled.b :
-                           (eq_state->view_mode == EQ_DETAIL_VIEW_TRACK ? btn_on.b : btn_off.b),
-                           !track_available ? btn_disabled.a :
-                           (eq_state->view_mode == EQ_DETAIL_VIEW_TRACK ? btn_on.a : btn_off.a));
-    SDL_RenderFillRect(renderer, &track_rect);
-    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-    SDL_RenderDrawRect(renderer, &master_rect);
-    SDL_RenderDrawRect(renderer, &track_rect);
+    daw_control_frame(renderer,&master_rect,eq_state->view_mode==EQ_DETAIL_VIEW_MASTER ? btn_on : btn_off,border);
+    daw_control_frame(renderer,&track_rect,!track_available ? btn_disabled : (eq_state->view_mode==EQ_DETAIL_VIEW_TRACK ? btn_on : btn_off),border);
     draw_centered_label(renderer, &master_rect, "Master", label, 1.0f);
     SDL_Color track_label = track_available ? label : text_dim;
     draw_centered_label(renderer, &track_rect, "Track", track_label, 1.0f);

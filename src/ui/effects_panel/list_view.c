@@ -1,3 +1,4 @@
+#include "ui/control_chrome.h"
 #include "ui/effects_panel.h"
 #include "ui/effects_panel_eq_detail.h"
 #include "ui/effects_panel_meter_detail.h"
@@ -49,12 +50,8 @@ static void draw_list_toggle(SDL_Renderer* renderer,
     }
     SDL_Color border = theme ? theme->control_border : (SDL_Color){90, 95, 110, 255};
     SDL_Color fill_off = theme ? theme->accent_error : (SDL_Color){180, 60, 60, 220};
-    if (!enabled) {
-        SDL_SetRenderDrawColor(renderer, fill_off.r, fill_off.g, fill_off.b, fill_off.a);
-        SDL_RenderFillRect(renderer, rect);
-    }
-    SDL_SetRenderDrawColor(renderer, border.r, border.g, border.b, border.a);
-    SDL_RenderDrawRect(renderer, rect);
+    SDL_Color fill=enabled ? (theme ? theme->control_fill : (SDL_Color){50,55,66,255}) : fill_off;
+    daw_control_frame(renderer,rect,fill,border);
 }
 
 void effects_panel_render_list(SDL_Renderer* renderer, const AppState* state, const EffectsPanelLayout* layout) {

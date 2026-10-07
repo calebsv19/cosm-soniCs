@@ -411,7 +411,7 @@ void timeline_view_draw_button(SDL_Renderer* renderer,
                                const char* label,
                                bool hovered,
                                bool enabled,
-                               const TimelineTheme* theme) {
+                               const TimelineTheme* theme, const SDL_Color* active_border) {
     DawThemePalette palette = {0};
     DawUiButtonSpec spec = {0};
     DawUiButtonStyle style = {0};
@@ -437,6 +437,7 @@ void timeline_view_draw_button(SDL_Renderer* renderer,
     if (daw_ui_button_style_resolve(&palette, &spec, &style) != 0) {
         return;
     }
+    if(active_border)style.outline=(CoreThemeColor){active_border->r,active_border->g,active_border->b,active_border->a};
     if (daw_ui_button_draw_frame(renderer, rect, &style) != 0) {
         return;
     }

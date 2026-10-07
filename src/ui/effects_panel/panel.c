@@ -1,4 +1,5 @@
 #include "ui/text_edit.h"
+#include "ui/control_chrome.h"
 #include "ui/daw_ui_button.h"
 #include "ui/effects_panel.h"
 #include "ui/effects_panel_meter_detail.h"
@@ -721,10 +722,9 @@ void effects_panel_render(SDL_Renderer* renderer, const AppState* state, const E
                                                                        layout->panel_rect.y + FX_PANEL_MARGIN + 6,
                                                                        ui_measure_text_width(target_line, title_scale) + 12,
                                                                        ui_font_line_height(title_scale) + 8};
-    SDL_SetRenderDrawColor(renderer, theme.control_fill.r, theme.control_fill.g, theme.control_fill.b, 200);
-    SDL_RenderFillRect(renderer, &title_rect);
-    SDL_SetRenderDrawColor(renderer, theme.control_border.r, theme.control_border.g, theme.control_border.b, theme.control_border.a);
-    SDL_RenderDrawRect(renderer, &title_rect);
+    SDL_Color title_fill = theme.control_fill;
+    title_fill.a = 200;
+    daw_control_frame(renderer, &title_rect, title_fill, theme.control_border);
     int text_h = ui_font_line_height(title_scale);
     int text_y = title_rect.y + (title_rect.h - text_h) / 2;
     int title_text_x = title_rect.x + 6;

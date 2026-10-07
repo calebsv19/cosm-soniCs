@@ -1,3 +1,4 @@
+#include "ui/control_chrome.h"
 #include "ui/text_edit.h"
 #include "ui/transport.h"
 #include "app/audio_recording.h"
@@ -302,10 +303,10 @@ void transport_ui_update_hover(TransportUI* ui, int mouse_x, int mouse_y) {
         || SDL_PointInRect(&p, &ui->ts_num_rect)
         || SDL_PointInRect(&p, &ui->ts_den_rect);
     ui->beat_toggle_hovered = SDL_PointInRect(&p, &ui->beat_toggle_rect);
-    ui->seek_hovered = SDL_PointInRect(&p, &ui->seek_track_rect) || SDL_PointInRect(&p, &ui->seek_handle_rect);
-    ui->window_hovered = SDL_PointInRect(&p, &ui->window_track_rect) || SDL_PointInRect(&p, &ui->window_handle_rect);
-    ui->horiz_hovered = SDL_PointInRect(&p, &ui->horiz_track_rect);
-    ui->vert_hovered = SDL_PointInRect(&p, &ui->vert_track_rect);
+    ui->seek_hovered = daw_slider_hit(ui->seek_track_rect,mouse_x,mouse_y) || SDL_PointInRect(&p, &ui->seek_handle_rect);
+    ui->window_hovered = daw_slider_hit(ui->window_track_rect,mouse_x,mouse_y) || SDL_PointInRect(&p, &ui->window_handle_rect);
+    ui->horiz_hovered = daw_slider_hit(ui->horiz_track_rect,mouse_x,mouse_y);
+    ui->vert_hovered = daw_slider_hit(ui->vert_track_rect,mouse_x,mouse_y);
     ui->fit_width_hovered = SDL_PointInRect(&p, &ui->fit_width_rect);
     ui->fit_height_hovered = SDL_PointInRect(&p, &ui->fit_height_rect);
 }
@@ -374,19 +375,11 @@ void transport_ui_sync(TransportUI* ui, const AppState* state) {
     ui->horiz_handle_rect.h = ui->horiz_track_rect.h + 8;
     ui->horiz_handle_rect.y = ui->horiz_track_rect.y - 4;
     ui->horiz_handle_rect.x = ui->horiz_track_rect.x + (int)(horiz_t * ui->horiz_track_rect.w) - handle_w / 2;
-    if (ui->horiz_handle_rect.x < ui->horiz_track_rect.x)
-        ui->horiz_handle_rect.x = ui->horiz_track_rect.x;
-    if (ui->horiz_handle_rect.x + handle_w > ui->horiz_track_rect.x + ui->horiz_track_rect.w)
-        ui->horiz_handle_rect.x = ui->horiz_track_rect.x + ui->horiz_track_rect.w - handle_w;
 
     ui->vert_handle_rect.w = handle_w;
     ui->vert_handle_rect.h = ui->vert_track_rect.h + 8;
     ui->vert_handle_rect.y = ui->vert_track_rect.y - 4;
     ui->vert_handle_rect.x = ui->vert_track_rect.x + (int)(vert_t * ui->vert_track_rect.w) - handle_w / 2;
-    if (ui->vert_handle_rect.x < ui->vert_track_rect.x)
-        ui->vert_handle_rect.x = ui->vert_track_rect.x;
-    if (ui->vert_handle_rect.x + handle_w > ui->vert_track_rect.x + ui->vert_track_rect.w)
-        ui->vert_handle_rect.x = ui->vert_track_rect.x + ui->vert_track_rect.w - handle_w;
 
     const Engine* engine = state->engine;
     const EngineRuntimeConfig* cfg = engine_get_config(engine);
@@ -409,10 +402,6 @@ void transport_ui_sync(TransportUI* ui, const AppState* state) {
     ui->seek_handle_rect.h = ui->seek_track_rect.h + 8;
     ui->seek_handle_rect.y = ui->seek_track_rect.y - 4;
     ui->seek_handle_rect.x = ui->seek_track_rect.x + (int)(seek_t * ui->seek_track_rect.w) - handle_w / 2;
-    if (ui->seek_handle_rect.x < ui->seek_track_rect.x)
-        ui->seek_handle_rect.x = ui->seek_track_rect.x;
-    if (ui->seek_handle_rect.x + handle_w > ui->seek_track_rect.x + ui->seek_track_rect.w)
-        ui->seek_handle_rect.x = ui->seek_track_rect.x + ui->seek_track_rect.w - handle_w;
 
     float total_seconds = (sample_rate > 0) ? (float)total_frames / (float)sample_rate : 0.0f;
     float max_window_start = total_seconds > visible_seconds ? total_seconds - visible_seconds : 0.0f;
@@ -425,10 +414,6 @@ void transport_ui_sync(TransportUI* ui, const AppState* state) {
     ui->window_handle_rect.h = ui->window_track_rect.h + 8;
     ui->window_handle_rect.y = ui->window_track_rect.y - 4;
     ui->window_handle_rect.x = ui->window_track_rect.x + (int)(window_t * ui->window_track_rect.w) - handle_w / 2;
-    if (ui->window_handle_rect.x < ui->window_track_rect.x)
-        ui->window_handle_rect.x = ui->window_track_rect.x;
-    if (ui->window_handle_rect.x + handle_w > ui->window_track_rect.x + ui->window_track_rect.w)
-        ui->window_handle_rect.x = ui->window_track_rect.x + ui->window_track_rect.w - handle_w;
 }
 
 static void draw_time_with_decimal(SDL_Renderer* renderer, const SDL_Rect* rect, const char* text, SDL_Color color, int scale, float dot_ratio, int dot_index) {
@@ -504,7 +489,6 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
     daw_transport_control_draw(renderer, ui, DAW_TRANSPORT_PLAY, play_label, is_playing || recording, ui->play_hovered, &theme);
     daw_transport_control_draw(renderer, ui, DAW_TRANSPORT_STOP, stop_label, !is_playing && !recording, ui->stop_hovered, &theme);
 
-    SDL_Color track_bg = theme.slider_track;
     SDL_Color track_border = theme.timeline_border;
 
     bool grid_active = state ? state->timeline_show_all_grid_lines : false;
@@ -512,10 +496,7 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
 
     if (state && state->engine) {
         SDL_Color time_bg = theme.timeline_fill;
-        SDL_SetRenderDrawColor(renderer, time_bg.r, time_bg.g, time_bg.b, time_bg.a);
-        SDL_RenderFillRect(renderer, &ui->time_label_rect);
-        SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
-        SDL_RenderDrawRect(renderer, &ui->time_label_rect);
+        daw_control_frame(renderer,&ui->time_label_rect,time_bg,track_border);
         const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
         int sample_rate = cfg ? cfg->sample_rate : 0;
         uint64_t frame = engine_get_presentation_frame(state->engine);
@@ -562,10 +543,7 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         if (state->tempo_ui.editing && state->tempo_ui.focus == TEMPO_FOCUS_BPM) {
             bpm_bg = theme.control_active_fill;
         }
-        SDL_SetRenderDrawColor(renderer, bpm_bg.r, bpm_bg.g, bpm_bg.b, bpm_bg.a);
-        SDL_RenderFillRect(renderer, &bpm_rect);
-        SDL_SetRenderDrawColor(renderer, bpm_border.r, bpm_border.g, bpm_border.b, bpm_border.a);
-        SDL_RenderDrawRect(renderer, &bpm_rect);
+        daw_control_frame(renderer,&bpm_rect,bpm_bg,bpm_border);
         char bpm_text[32];
         double tempo_bpm = state->tempo.bpm;
         const TempoEvent* active_tempo = tempo_map_event_at_beat(&state->tempo_map,
@@ -616,13 +594,8 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
         if (focus_ts && state->tempo_ui.ts_part == TEMPO_TS_PART_DEN) {
             den_bg = editing_ts ? ts_edit_bg : ts_focus_bg;
         }
-        SDL_SetRenderDrawColor(renderer, num_bg.r, num_bg.g, num_bg.b, num_bg.a);
-        SDL_RenderFillRect(renderer, &ts_num_rect);
-        SDL_SetRenderDrawColor(renderer, den_bg.r, den_bg.g, den_bg.b, den_bg.a);
-        SDL_RenderFillRect(renderer, &ts_den_rect);
-        SDL_SetRenderDrawColor(renderer, bpm_border.r, bpm_border.g, bpm_border.b, bpm_border.a);
-        SDL_RenderDrawRect(renderer, &ts_num_rect);
-        SDL_RenderDrawRect(renderer, &ts_den_rect);
+        daw_control_frame(renderer,&ts_num_rect,num_bg,bpm_border);
+        daw_control_frame(renderer,&ts_den_rect,den_bg,bpm_border);
 
         char ts_num_text[8];
         char ts_den_text[8];
@@ -660,47 +633,12 @@ void transport_ui_render(SDL_Renderer* renderer, const TransportUI* ui, const Ap
             state->timeline_view_in_beats,ui->beat_toggle_hovered,&theme);
     }
 
-    SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
-    SDL_RenderFillRect(renderer, &ui->seek_track_rect);
-    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
-    SDL_RenderDrawRect(renderer, &ui->seek_track_rect);
-    SDL_Color seek_handle_col = theme.slider_handle;
-    if (ui->seek_hovered || ui->adjusting_seek) {
-        seek_handle_col = theme.slider_handle_hover;
-    }
-    SDL_SetRenderDrawColor(renderer, seek_handle_col.r, seek_handle_col.g, seek_handle_col.b, seek_handle_col.a);
-    SDL_RenderFillRect(renderer, &ui->seek_handle_rect);
-    SDL_RenderDrawRect(renderer, &ui->seek_handle_rect);
-
-    SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
-    SDL_RenderFillRect(renderer, &ui->window_track_rect);
-    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
-    SDL_RenderDrawRect(renderer, &ui->window_track_rect);
-    SDL_Color window_handle_col = theme.slider_handle;
-    if (ui->window_hovered || ui->adjusting_window) {
-        window_handle_col = theme.slider_handle_hover;
-    }
-    SDL_SetRenderDrawColor(renderer, window_handle_col.r, window_handle_col.g, window_handle_col.b, window_handle_col.a);
-    SDL_RenderFillRect(renderer, &ui->window_handle_rect);
-    SDL_RenderDrawRect(renderer, &ui->window_handle_rect);
-
-    SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
-    SDL_RenderFillRect(renderer, &ui->horiz_track_rect);
-    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
-    SDL_RenderDrawRect(renderer, &ui->horiz_track_rect);
-
-    SDL_SetRenderDrawColor(renderer, track_bg.r, track_bg.g, track_bg.b, track_bg.a);
-    SDL_RenderFillRect(renderer, &ui->vert_track_rect);
-    SDL_SetRenderDrawColor(renderer, track_border.r, track_border.g, track_border.b, track_border.a);
-    SDL_RenderDrawRect(renderer, &ui->vert_track_rect);
-
-    if (state) {
-        SDL_SetRenderDrawColor(renderer, theme.slider_handle.r, theme.slider_handle.g, theme.slider_handle.b, theme.slider_handle.a);
-        SDL_RenderFillRect(renderer, &ui->horiz_handle_rect);
-        SDL_RenderDrawRect(renderer, &ui->horiz_handle_rect);
-
-        SDL_RenderFillRect(renderer, &ui->vert_handle_rect);
-        SDL_RenderDrawRect(renderer, &ui->vert_handle_rect);
+    const SDL_Rect tracks[]={ui->seek_track_rect,ui->window_track_rect,ui->horiz_track_rect,ui->vert_track_rect};
+    const SDL_Rect handles[]={ui->seek_handle_rect,ui->window_handle_rect,ui->horiz_handle_rect,ui->vert_handle_rect};
+    const bool emphasized[]={ui->seek_hovered || ui->adjusting_seek,ui->window_hovered || ui->adjusting_window,ui->horiz_hovered,ui->vert_hovered};
+    for(unsigned i=0;i<4;++i) {
+        daw_slider_draw(renderer,tracks[i],handles[i].x+handles[i].w/2,theme.control_border,
+            emphasized[i] ? theme.slider_handle_hover : theme.slider_handle);
     }
 
     daw_transport_control_draw(renderer,ui,DAW_TRANSPORT_FIT_WIDTH,"W",false,ui->fit_width_hovered,&theme);

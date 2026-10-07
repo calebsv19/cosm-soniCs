@@ -1,6 +1,6 @@
 # soniCs Current Truth
 
-Last updated: 2026-10-06 (checkpoint and Main Edit transport UI adoption; historical release claims retain their original scope)
+Last updated: 2026-10-06 (initial macOS Main Edit shared UI rollout source-qualified; historical release claims retain their original scope)
 
 ## 2026-10-06 Main Edit UI adoption
 
@@ -10,9 +10,9 @@ commit `9dc47a0`. Main Edit now adopts shared transport/menu button interaction,
 focus and rounded measured presentation while preserving the existing direct
 engine/project commands and product theme. Focused and stable headless gates
 pass; actual dark/light frames and native Vulkan startup/resize/restart proof
-are retained. This is partial UI adoption: bounded text/modal hosts, five editor control
+are retained. Initial macOS adoption includes bounded text/modal hosts, five editor control
 groups and their discrete track/snapshot/EQ/meter/spec exceptions are now adopted.
-Fixed-pane composition is now adopted; window lifecycle is qualified; populated surface closure remains next. See
+Fixed-pane composition, actual-loop window lifecycle and populated surface presentation are qualified. Thin slider visuals remain independent of generous hit targets; effect controls use single rounded painters. Human Main Edit comparison and separate release adoption remain next. See
 [shared UI rollout](shared_ui_rollout.md). Canonical functional UI and stable
 Desktop package are not promoted by this work; VERSION remains 0.3.0.
 
