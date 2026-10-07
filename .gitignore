@@ -37,4 +37,5 @@
 **/.DS_Store
 *.swp
 *.swo
-tools/packaging/macos/local_app_icon/
+tools/packaging/macos/local_app_icon/*
+!tools/packaging/macos/local_app_icon/AppIcon.icns

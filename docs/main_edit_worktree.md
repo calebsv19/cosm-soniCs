@@ -91,3 +91,13 @@ the lane to recover its name.
 Main Edit proof is local development evidence only. It does not change
 `VERSION`, create a release candidate, mutate Production Registry, publish,
 deploy, push, or authorize replacement or closure of a running app.
+
+## Main Edit icon packaging
+
+The existing product icon is retained at
+`tools/packaging/macos/local_app_icon/AppIcon.icns`; this file is deliberately
+excluded from the local-icon ignore rule so future source checkpoints and
+worktrees retain it. Main Edit packaging requires an icon input. Its self-test
+requires the bundled icon, the matching `CFBundleIconFile`, and byte equality
+with the selected `.icns` input. Missing icons must fail rather than silently
+produce a generic Desktop icon. Other local icon experiments remain ignored.
