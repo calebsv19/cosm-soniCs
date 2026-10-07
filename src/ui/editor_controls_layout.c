@@ -1,4 +1,4 @@
-#include "ui/editor_controls.h"
+#include "ui/editor_controls_internal.h"
 #include "app_state.h"
 #include "ui/layout.h"
 #include "ui/timeline_view_controls.h"
@@ -14,7 +14,7 @@
 static uint64_t mix(uint64_t hash, uint64_t value) { return (hash ^ value) * 1099511628211ULL; }
 
 // Registers only visible portions, borrowing geometry from the original product layouts.
-static void add(KitUiSurface* surface, unsigned domain, uint64_t key, SDL_Rect rect, SDL_Rect clip, bool enabled) {
+void daw_editor_control_add(KitUiSurface* surface, unsigned domain, uint64_t key, SDL_Rect rect, SDL_Rect clip, bool enabled) {
     if (rect.w <= 0 || rect.h <= 0 || clip.w <= 0 || clip.h <= 0) return;
     KitRenderRect bounds = {rect.x,rect.y,rect.w,rect.h};
     KitRenderRect visible = {clip.x,clip.y,clip.w,clip.h};
@@ -27,7 +27,7 @@ static void presets(KitUiSurface* surface, unsigned domain, const MidiPresetBrow
         const MidiPresetBrowserRow* row = &browser->rows[i];
         if (row->type == MIDI_PRESET_BROWSER_ROW_EMPTY) continue;
         uint64_t key = row->type == MIDI_PRESET_BROWSER_ROW_CATEGORY ? 1000u+row->category : 2000u+row->preset;
-        add(surface,domain,key,row->rect,browser->menu_rect,true);
+        daw_editor_control_add(surface,domain,key,row->rect,browser->menu_rect,true);
     }
 }
 
@@ -39,7 +39,7 @@ static void collect(AppState* state, KitUiSurface* surface) {
         header.h = ui_layout_pane_header_height(library);
         SDL_Rect source, project;
         library_browser_mode_rects(&header,&source,&project);
-        add(surface,10,0,source,header,true); add(surface,10,1,project,header,true);
+        daw_editor_control_add(surface,10,0,source,header,true); daw_editor_control_add(surface,10,1,project,header,true);
     }
     const Pane* timeline = ui_layout_get_pane(state,1);
     if (timeline && timeline->visible) {
@@ -50,52 +50,56 @@ static void collect(AppState* state, KitUiSurface* surface) {
             c->snap_toggle_rect,c->automation_toggle_rect,c->automation_target_rect,c->tempo_toggle_rect,
             c->automation_label_toggle_rect};
         for (unsigned i = 0; i < sizeof(buttons)/sizeof(buttons[0]); ++i)
-            add(surface,11,i,buttons[i],content,(i!=1 && i!=2) || engine_get_track_count(state->engine)>0);
+            daw_editor_control_add(surface,11,i,buttons[i],content,(i!=1 && i!=2) || engine_get_track_count(state->engine)>0);
     }
+    daw_editor_track_controls_collect(state, surface);
     const Pane* mixer = ui_layout_get_pane(state,2);
     if (!mixer || !mixer->visible) return;
     if (midi_instrument_panel_should_render(state)) {
         MidiInstrumentPanelLayout layout; midi_instrument_panel_compute_layout(state,&layout);
-        add(surface,13,0,layout.notes_button_rect,layout.panel_rect,true);
-        add(surface,13,1,layout.preset_button_rect,layout.panel_rect,true);
+        daw_editor_control_add(surface,13,0,layout.notes_button_rect,layout.panel_rect,true);
+        daw_editor_control_add(surface,13,1,layout.preset_button_rect,layout.panel_rect,true);
         if (state->midi_editor_ui.instrument_menu_open) presets(surface,13,&layout.preset_browser);
-        else for (int i=0;i<layout.group_tab_count;++i) add(surface,13,10+i,layout.group_tab_rects[i],layout.panel_rect,true);
+        else for (int i=0;i<layout.group_tab_count;++i) daw_editor_control_add(surface,13,10+i,layout.group_tab_rects[i],layout.panel_rect,true);
     } else if (midi_editor_should_render(state)) {
         MidiEditorLayout layout; midi_editor_compute_layout(state,&layout);
-        add(surface,12,0,layout.instrument_button_rect,layout.panel_rect,true);
+        daw_editor_control_add(surface,12,0,layout.instrument_button_rect,layout.panel_rect,true);
         if (state->midi_editor_ui.instrument_menu_open) presets(surface,12,&layout.instrument_browser);
         else {
             SDL_Rect buttons[]={layout.instrument_panel_button_rect,layout.test_button_rect,layout.quantize_button_rect,
                 layout.quantize_down_button_rect,layout.quantize_up_button_rect,layout.octave_down_button_rect,
                 layout.octave_up_button_rect,layout.velocity_down_button_rect,layout.velocity_up_button_rect};
-            for(unsigned i=0;i<sizeof(buttons)/sizeof(buttons[0]);++i) add(surface,12,i+1,buttons[i],layout.panel_rect,true);
+            for(unsigned i=0;i<sizeof(buttons)/sizeof(buttons[0]);++i) daw_editor_control_add(surface,12,i+1,buttons[i],layout.panel_rect,true);
         }
     } else if (!state->inspector.visible) {
         EffectsPanelLayout layout; effects_panel_compute_layout(state,&layout);
         EffectsPanelState* panel=&state->effects_panel;
         SDL_Rect buttons[]={layout.view_toggle_rect,layout.spec_toggle_rect,layout.preview_toggle_rect,layout.dropdown_button_rect};
-        for(unsigned i=0;i<4;++i) add(surface,14,i,buttons[i],layout.panel_rect,true);
+        for(unsigned i=0;i<4;++i) daw_editor_control_add(surface,14,i,buttons[i],layout.panel_rect,true);
         if (layout.overlay_visible) {
-            add(surface,14,4,layout.overlay_back_rect,layout.overlay_rect,true);
-            for(int i=0;i<layout.overlay_item_count;++i) add(surface,14,1000+layout.overlay_item_order[i],layout.overlay_item_rects[i],layout.overlay_rect,true);
+            daw_editor_control_add(surface,14,4,layout.overlay_back_rect,layout.overlay_rect,true);
+            for(int i=0;i<layout.overlay_item_count;++i) daw_editor_control_add(surface,14,1000+layout.overlay_item_order[i],layout.overlay_item_rects[i],layout.overlay_rect,true);
+        } else if (panel->view_mode==FX_PANEL_VIEW_LIST && panel->track_snapshot.instrument_menu_open) {
+            // The snapshot menu owns the lower-pane overlay; hidden rows/detail are not controls.
         } else if (panel->view_mode==FX_PANEL_VIEW_STACK) {
             for(int i=0;i<layout.column_count && i<panel->chain_count;++i) {
                 uint64_t key=(uint64_t)panel->chain[i].id*16+8;
-                add(surface,14,key,layout.slots[i].toggle_rect,layout.panel_rect,true);
-                add(surface,14,key+1,layout.slots[i].remove_rect,layout.panel_rect,true);
-                add(surface,14,key+2,layout.slots[i].preview_toggle_rect,layout.panel_rect,true);
+                daw_editor_control_add(surface,14,key,layout.slots[i].toggle_rect,layout.panel_rect,true);
+                daw_editor_control_add(surface,14,key+1,layout.slots[i].remove_rect,layout.panel_rect,true);
+                daw_editor_control_add(surface,14,key+2,layout.slots[i].preview_toggle_rect,layout.panel_rect,true);
             }
         } else {
             for(int row=0;row<layout.list_row_count && row<panel->chain_count;++row)
-                add(surface,14,(uint64_t)panel->chain[row].id*16+11,layout.list_toggle_rects[row],layout.list_rect,true);
+                daw_editor_control_add(surface,14,(uint64_t)panel->chain[row].id*16+11,layout.list_toggle_rects[row],layout.list_rect,true);
             int i=panel->list_open_slot_index; EffectsSlotLayout detail;
-            if(compute_detail_slot_layout(state,&layout,i,&detail)) {
+            if(panel->list_detail_mode==FX_LIST_DETAIL_EFFECT && compute_detail_slot_layout(state,&layout,i,&detail)) {
                 uint64_t key=(uint64_t)panel->chain[i].id*16+8;
-                add(surface,14,key,detail.toggle_rect,layout.detail_rect,true);
-                add(surface,14,key+1,detail.remove_rect,layout.detail_rect,true);
-                add(surface,14,key+2,detail.preview_toggle_rect,layout.detail_rect,true);
+                daw_editor_control_add(surface,14,key,detail.toggle_rect,layout.detail_rect,true);
+                daw_editor_control_add(surface,14,key+1,detail.remove_rect,layout.detail_rect,true);
+                daw_editor_control_add(surface,14,key+2,detail.preview_toggle_rect,layout.detail_rect,true);
             }
         }
+        daw_editor_effect_exceptions_collect(state, surface, &layout);
     }
 }
 
@@ -114,6 +118,12 @@ void daw_editor_controls_sync(AppState* state) {
     hash=mix(hash,state->effects_panel.target_track_index); hash=mix(hash,state->effects_panel.view_mode);
     hash=mix(hash,state->effects_panel.overlay_layer); hash=mix(hash,state->effects_panel.active_category_index);
     hash=mix(hash,state->effects_panel.list_open_slot_index);
+    hash=mix(hash,state->effects_panel.target);
+    hash=mix(hash,state->effects_panel.list_detail_mode);
+    hash=mix(hash,state->effects_panel.eq_detail.view_mode);
+    hash=mix(hash,state->effects_panel.spec_panel_enabled);
+    hash=mix(hash,state->effects_panel.track_snapshot.instrument_menu_open);
+    hash=mix(hash,state->effects_panel.track_snapshot.instrument_menu_expanded_category);
     if(state->engine) {
         int n=engine_get_track_count(state->engine); hash=mix(hash,n);
         const EngineTrack* tracks=engine_get_tracks(state->engine);

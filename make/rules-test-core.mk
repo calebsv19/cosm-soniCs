@@ -381,3 +381,11 @@ build-native-editor-controls-proof: $(TEST_BUILD_ROOT)/native_editor_controls_te
 $(TEST_BUILD_ROOT)/native_editor_controls_test: tests/native_editor_controls_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
 	@mkdir -p "$(dir $@)"
 	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-shared-editor-exceptions
+test-shared-editor-exceptions: $(TEST_BUILD_ROOT)/shared_editor_exceptions_test
+	$(TEST_BUILD_ROOT)/shared_editor_exceptions_test
+
+$(TEST_BUILD_ROOT)/shared_editor_exceptions_test: tests/shared_editor_exceptions_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)

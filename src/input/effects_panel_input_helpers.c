@@ -218,6 +218,8 @@ bool compute_detail_slot_layout(const AppState* state,
     if (slot_index < 0 || slot_index >= state->effects_panel.chain_count) {
         return false;
     }
+    // Specialized EQ/meter views have no generic effect-detail hit regions.
+    if (state->effects_panel.list_detail_mode != FX_LIST_DETAIL_EFFECT) return false;
     SDL_Rect slot_rect = layout->detail_rect;
     if (slot_rect.w <= 0 || slot_rect.h <= 0) {
         return false;

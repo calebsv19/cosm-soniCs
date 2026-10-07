@@ -133,14 +133,61 @@ library/timeline/effects/MIDI/instrument painters in four frames per theme and
 checks native Vulkan validation. Test execution uses an offline engine and isolated
 runtime data. These proofs do not claim physical audio or arbitrary OS input.
 
-Remaining discrete exceptions: timeline track-header mute/solo, effects track
-snapshot controls and specialized EQ/meter/spec widgets. These need their own
-target/gesture checks; existing behavior is retained. Continuous gesture ownership
-is not migrated by wrapping button events. Next: qualify those exceptions before
-shared pane composition and actual-loop fullscreen lifecycle.
+The formerly retained track-header, snapshot and specialized EQ/meter/spec
+exceptions are qualified in the follow-up below. Continuous gestures remain
+app-owned. Next: shared pane composition and actual-loop fullscreen lifecycle.
 
 Sampled pane-divider handling now skips presses owned by shared editor or transport
 controls. A real routed toolbar capture plus sampled-divider regression proves
 that a generous divider hit region cannot steal the pending button release.
 Focused input/text and layout-sweep gates verify this follow-up; the preceding
 full stable headless suite remains the broad checkpoint for this control slice.
+
+
+## Discrete exceptions adoption (2026-10-06)
+
+`editor_control_exceptions.c` registers the remaining discrete controls using
+existing product geometry and the immutable kit_ui 0.18.0 surface. Timeline
+mute/solo keys bind track runtime identity; their sampled press actions are
+removed. Accepted releases invoke the same direct engine setters and selection
+policy. Snapshot mute/solo and preset rows preserve their original undo commands.
+EQ Master/Track and low/four mid/high toggles preserve the curve/history owner.
+Meter MS/LR, LUFS modes and spectrogram palettes, spec toggles/dropdowns and
+native/beats buttons retain the original accepted parameter publication paths.
+Meter selection presentation reads back accepted parameters after activation.
+
+These controls keep their existing specialized painters, colors and captions.
+Only the existing small focus marker is added. No second frame, background fill,
+plot or generic widget renderer covers them. The spec visible-body helper is
+shared by its painter, legacy hit test and semantic collector, including the
+six-pixel vertical inset. Sliders, knobs, curve handles, list double-clicks,
+clip/note gestures and audio commands retain their product owners.
+
+Registration follows the painted detail mode: generic effect-detail controls
+are absent in EQ/meter views in both shared and legacy input paths. Snapshot
+preset menus suppress underlying registered detail/row controls and dismiss
+before a background detail action. Scope includes target, detail view, EQ source,
+spec mode and preset menu/category state. Changed target identity, geometry,
+presentation, modal/focus takeover and outside release cancel the old action.
+The finite shared surface remains bounded to 256 controls; large-layout and
+program-wide pane qualification remains a later acceptance boundary.
+
+Qualification commands:
+
+```sh
+make BUILD_DIR=build/ui-exceptions-20261006 -j4
+make BUILD_DIR=build/ui-exceptions-20261006 test-shared-editor-exceptions test-shared-editor-controls test-shared-text-focus test-input-delivery test-engine-parameter-transaction build-native-editor-controls-proof run-headless-smoke
+make BUILD_DIR=build/ui-exceptions-20261006 package-desktop-main-edit-refresh
+```
+
+The new test uses real application routing, initialized product fonts and an
+offline engine. It checks matching release, sampled duplicate suppression,
+snapshot undo, preset category ownership, EQ source takeover, meter parameter
+readback/undo, spec control action and both spec/legacy time-mode cancellation.
+Native qualification renders twelve actual frames per dark/light theme with
+Vulkan validation: existing editor groups, snapshot/menu, EQ, three meter views,
+spectrogram rack and spec widgets. Enlarged lower-pane geometry uses the existing
+supported mixer ratio; menu rows are absent when available height is insufficient.
+Evidence: `_private_workspace_artifacts/ui_unification/sonics_exceptions_20261006`.
+Physical audio, actual OS IME, other platforms and all real-loop fullscreen cases
+remain separate. VERSION stays 0.3.0; this is Main Edit development delivery.

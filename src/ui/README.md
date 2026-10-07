@@ -54,3 +54,13 @@ instrument navigation/presets and effects header/slot/overlay controls. Existing
 command owners and continuous gestures remain local. The common button frame
 uses shared rounded tokens; product palette, status and geometry remain owned by
 Sonics. See `docs/shared_ui_rollout.md` for exact coverage and retained exceptions.
+
+
+### Discrete exceptions (2026-10-06)
+
+`editor_control_exceptions.c` collects track-header, snapshot, EQ/meter and spec
+controls without painting another widget layer. It shares exact specialized
+geometry/clips with the existing painters and command owners. Hidden detail
+controls are excluded, preset overlays own their rows, and time-mode/spec/view
+changes cancel pending presses. The pinned shared API remains unchanged. See
+`docs/shared_ui_rollout.md`; pane composition and full window lifecycle remain next.

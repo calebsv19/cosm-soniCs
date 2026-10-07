@@ -1,4 +1,5 @@
 #include "ui/text_edit.h"
+#include "ui/editor_controls.h"
 #include "input/timeline/timeline_input_mouse_click.h"
 
 #include "app_state.h"
@@ -389,6 +390,8 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
         return;
     }
 
+    // Shared discrete captures must not become sampled clip/header gestures.
+    if (is_down && daw_editor_controls_at(state, state->mouse_x, state->mouse_y)) return;
     timeline_controls_update_hover(state);
 
     if (!is_down && was_down && state->timeline_drag.pending_shift_select) {
@@ -555,30 +558,6 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
             continue;
         }
         int lane_top = geom.track_top + t * (geom.track_height + geom.track_spacing);
-
-        TimelineTrackHeaderLayout header_layout = {0};
-        timeline_view_compute_track_header_layout(&timeline->rect,
-                                                  lane_top,
-                                                  geom.track_height,
-                                                  geom.header_width,
-                                                  &header_layout);
-        SDL_Rect mute_rect = header_layout.mute_rect;
-        SDL_Rect solo_rect = header_layout.solo_rect;
-
-        if (!was_down && is_down) {
-            if (SDL_PointInRect(&mouse_point, &mute_rect)) {
-                timeline_selection_set_single(state, t, -1);
-                engine_track_set_muted(state->engine, t, !track->muted);
-                effects_panel_sync_from_engine(state);
-                return;
-            }
-            if (SDL_PointInRect(&mouse_point, &solo_rect)) {
-                timeline_selection_set_single(state, t, -1);
-                engine_track_set_solo(state->engine, t, !track->solo);
-                effects_panel_sync_from_engine(state);
-                return;
-            }
-        }
 
         for (int i = 0; i < track->clip_count; ++i) {
             const EngineClip* clip = &track->clips[i];

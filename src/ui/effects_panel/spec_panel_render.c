@@ -69,7 +69,8 @@ static bool rect_intersects(const SDL_Rect* a, const SDL_Rect* b) {
     return (a->x < bx2 && ax2 > b->x && a->y < by2 && ay2 > b->y);
 }
 
-static SDL_Rect spec_body_clip_rect(const SDL_Rect* body_rect) {
+// Shares the visible spec inset between painting, legacy input and semantic registration.
+SDL_Rect effects_panel_spec_body_clip_rect(const SDL_Rect* body_rect) {
     SDL_Rect clip = body_rect ? *body_rect : (SDL_Rect){0, 0, 0, 0};
     const int inset_y = 6;
     if (clip.h > inset_y * 2) {
@@ -209,7 +210,7 @@ void effects_panel_spec_render(SDL_Renderer* renderer,
     SDL_Color border = theme.border;
     SDL_Color fill = theme.fill;
     SDL_Color active = theme.active;
-    SDL_Rect clip_rect = spec_body_clip_rect(&layout->body_rect);
+    SDL_Rect clip_rect = effects_panel_spec_body_clip_rect(&layout->body_rect);
 
     for (int g = 0; g < layout->group_count; ++g) {
         const char* label = layout->group_labels[g] ? layout->group_labels[g] : "";
@@ -337,7 +338,7 @@ bool effects_panel_spec_hit_test(const EffectsSpecPanelLayout* layout,
     }
     *out_index = -1;
     *out_mode_toggle = false;
-    SDL_Rect clip_rect = spec_body_clip_rect(&layout->body_rect);
+    SDL_Rect clip_rect = effects_panel_spec_body_clip_rect(&layout->body_rect);
     if (!SDL_PointInRect(point, &clip_rect)) {
         return false;
     }

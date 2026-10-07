@@ -74,3 +74,6 @@ float effects_panel_spec_value_from_point(const struct AppState* state,
                                           int widget_index,
                                           int mouse_x,
                                           int mouse_y);
+
+// Returns the exact visible spec body used by rendering and both input paths.
+SDL_Rect effects_panel_spec_body_clip_rect(const SDL_Rect*);

@@ -53,10 +53,43 @@ int main(int argc,char** argv) {
     state->engine=engine_create(&cfg); assert(state->engine); state->runtime_cfg=cfg;
     undo_manager_init(&state->undo); input_manager_init(&state->input_manager);
     state->active_track_index=0; state->selected_track_index=-1; state->selected_clip_index=-1;
-    ui_init_panes(state); ui_layout_panes(state,1600,1000); effects_panel_input_init(state);
+    ui_init_panes(state); state->layout_runtime.mixer_ratio=0.55f; ui_layout_panes(state,1600,1000); effects_panel_input_init(state);
     assert(undo_manager_add_effect(state,-1,1)); effects_panel_sync_from_engine(state);
     focus(state,11,4); capture(&renderer,state,argv[1],"effects-stack");
     state->effects_panel.view_mode=FX_PANEL_VIEW_LIST; focus(state,10,1); capture(&renderer,state,argv[1],"effects-list");
+    timeline_selection_set_single(state,0,-1); effects_panel_sync_from_engine(state);
+    focus(state,16,1); capture(&renderer,state,argv[1],"track-snapshot");
+    state->effects_panel.track_snapshot.instrument_menu_open=true;
+    EffectsPanelLayout snapshot; effects_panel_compute_layout(state,&snapshot);
+    assert(snapshot.track_snapshot.instrument_browser.row_count);
+    focus(state,16,1000+snapshot.track_snapshot.instrument_browser.rows[0].category);
+    capture(&renderer,state,argv[1],"snapshot-preset-menu");
+    state->effects_panel.track_snapshot.instrument_menu_open=false;
+    state->effects_panel.list_detail_mode=FX_LIST_DETAIL_EQ;
+    state->effects_panel.track_snapshot.eq_open=true;
+    focus(state,17,2); capture(&renderer,state,argv[1],"eq-detail");
+    state->effects_panel.track_snapshot.eq_open=false;
+    const unsigned meters[]={102,104,105};
+    const char* meter_names[]={"scope-detail","lufs-detail","spectrogram-detail"};
+    for(unsigned i=0;i<3;++i) {
+        FxInstId id=undo_manager_add_effect(state,0,meters[i]); assert(id);
+        effects_panel_sync_from_engine(state);
+        state->effects_panel.list_open_slot_index=state->effects_panel.chain_count-1;
+        state->effects_panel.list_detail_mode=FX_LIST_DETAIL_METER;
+        focus(state,18,(uint64_t)id*128+101); capture(&renderer,state,argv[1],meter_names[i]);
+    }
+    state->effects_panel.view_mode=FX_PANEL_VIEW_STACK;
+    FxInstId spectrogram=state->effects_panel.chain[state->effects_panel.chain_count-1].id;
+    focus(state,18,(uint64_t)spectrogram*128+102); capture(&renderer,state,argv[1],"spectrogram-rack");
+    while(state->effects_panel.chain_count) {
+        assert(engine_fx_track_remove(state->engine,0,state->effects_panel.chain[0].id));
+        effects_panel_sync_from_engine(state);
+    }
+    assert(undo_manager_add_effect(state,0,4));
+    assert(undo_manager_add_effect(state,0,30));
+    FxInstId delay=undo_manager_add_effect(state,0,50); assert(delay);
+    effects_panel_sync_from_engine(state); state->effects_panel.spec_panel_enabled=true;
+    focus(state,18,(uint64_t)delay*128+1); capture(&renderer,state,argv[1],"spec-widgets");
     int clip=-1; assert(engine_add_midi_clip_to_track(state->engine,0,0,96000,&clip));
     assert(engine_clip_midi_add_note(state->engine,0,clip,(EngineMidiNote){0,12000,60,0.8f},NULL));
     timeline_selection_set_single(state,0,clip); state->inspector.visible=true;
@@ -66,5 +99,5 @@ int main(int argc,char** argv) {
     ui_font_invalidate_cache((SDL_Renderer*)&renderer); ui_font_shutdown(); undo_manager_free(&state->undo);
     engine_destroy(state->engine); free(state); vk_renderer_shutdown(&renderer);
     SDL_DestroyWindow(window); TTF_Quit(); SDL_Quit();
-    puts("native_editor_controls_test: success (actual five-group painters, native focus and validation-clean frames)");
+    puts("native_editor_controls_test: success (actual product painters, discrete exceptions, native focus and validation-clean frames)");
 }

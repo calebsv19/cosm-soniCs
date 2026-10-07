@@ -8,6 +8,9 @@
 #include "input/midi_editor_input.h"
 #include "input/midi_instrument_panel_input.h"
 #include "input/effects_panel_input.h"
+#include "input/effects_panel_input_helpers.h"
+#include "input/effects_panel_track_snapshot.h"
+#include "input/effects_panel_eq_detail_input.h"
 #include "kit_ui_interaction_sdl.h"
 #include "ui/shared_theme_font_adapter.h"
 
@@ -28,12 +31,25 @@ static void activate(InputManager* manager, AppState* state, KitUiSurfaceKey key
     case 11: (void)timeline_controls_activate_at(state, x, y); break;
     case 12: (void)midi_editor_input_activate_at(state, x, y); break;
     case 13: (void)midi_instrument_panel_input_activate_at(state, x, y); break;
-    case 14: {
+    case 15: timeline_track_control_activate(state, key.value); break;
+    case 14:
+    case 16:
+    case 17:
+    case 18: {
         // Legacy effects commands remain in their owner; modifiers are bound to the press.
         SDL_Event click = {.type = SDL_MOUSEBUTTONDOWN};
         click.button.button = SDL_BUTTON_LEFT; click.button.clicks = 1;
         click.button.x = x; click.button.y = y;
-        effects_panel_input_activate_control(manager, state, &click, state->editor_controls.modifiers);
+        if (key.domain == 16 || key.domain == 17) {
+            EffectsPanelLayout layout; effects_panel_compute_layout(state, &layout);
+            if (key.domain == 16) (void)effects_panel_track_snapshot_handle_mouse_down(state, &layout, &click);
+            else (void)effects_panel_eq_detail_handle_mouse_down(state, &layout, &click);
+        } else effects_panel_input_activate_control(manager, state, &click, state->editor_controls.modifiers);
+        // Meter presentation follows the accepted parameter even if publication/history refused.
+        if (key.domain == 18) {
+            int slot = find_slot_index_by_id(&state->effects_panel, (FxInstId)(key.value / 128));
+            if (slot >= 0) sync_meter_modes_from_slot_params(&state->effects_panel, &state->effects_panel.chain[slot]);
+        }
         break;
     }
     }

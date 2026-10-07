@@ -25,6 +25,7 @@ APP_SRCS := \
 	$(SRC_DIR)/ui/transport_controls.c \
 	$(SRC_DIR)/ui/editor_controls.c \
   $(SRC_DIR)/ui/editor_controls_layout.c \
+	$(SRC_DIR)/ui/editor_control_exceptions.c \
   $(SRC_DIR)/ui/text_edit.c \
 	$(SRC_DIR)/ui/text_edit_draw.c \
 	$(SRC_DIR)/ui/project_modal_controls.c \
@@ -176,6 +177,7 @@ APP_SRCS := \
 	$(SRC_DIR)/input/timeline/timeline_input_keyboard.c \
 	$(SRC_DIR)/input/timeline/timeline_input_mouse.c \
 	$(SRC_DIR)/input/timeline/timeline_input_mouse_click.c \
+	$(SRC_DIR)/input/timeline/timeline_track_controls.c \
 	$(SRC_DIR)/input/timeline/timeline_input_mouse_clip_press.c \
 	$(SRC_DIR)/input/timeline/timeline_input_mouse_tempo_overlay.c \
 	$(SRC_DIR)/input/timeline/timeline_input_mouse_drag.c \

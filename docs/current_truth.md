@@ -10,8 +10,9 @@ commit `9dc47a0`. Main Edit now adopts shared transport/menu button interaction,
 focus and rounded measured presentation while preserving the existing direct
 engine/project commands and product theme. Focused and stable headless gates
 pass; actual dark/light frames and native Vulkan startup/resize/restart proof
-are retained. This is partial UI adoption; text/modal hosts, editor controls,
-pane composition and full window lifecycle remain future slices. See
+are retained. This is partial UI adoption: bounded text/modal hosts, five editor control
+groups and their discrete track/snapshot/EQ/meter/spec exceptions are now adopted.
+Pane composition and full window lifecycle remain future slices. See
 [shared UI rollout](shared_ui_rollout.md). Canonical functional UI and stable
 Desktop package are not promoted by this work; VERSION remains 0.3.0.
 
@@ -246,3 +247,14 @@ instrument navigation/presets and effects header/slot/overlay controls. Existing
 command owners and continuous gestures remain local. The common button frame
 uses shared rounded tokens; product palette, status and geometry remain owned by
 Sonics. See `docs/shared_ui_rollout.md` for exact coverage and retained exceptions.
+
+
+### Discrete exceptions checkpoint (2026-10-06)
+
+The Main Edit control surface now includes track-header mute/solo, snapshot
+mute/solo/presets, EQ selectors/band toggles, meter modes/rack palettes and spec
+boolean/enum/native-beats controls. Product painters and direct engine/undo owners
+remain intact. Generic detail hit regions are excluded from specialized views;
+menus suppress covered controls. The exact spec clip is shared across painting
+and input. See [the current contract](shared_ui_rollout.md) for gates and limits.
+Next: pane composition, actual-loop fullscreen, then program-wide rollout review.

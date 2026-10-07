@@ -170,6 +170,10 @@ static void effects_panel_event(InputManager* manager, AppState* state, const SD
                 return;
             }
             panel->focused = true;
+            // A snapshot menu dismisses before any covered/background detail control acts.
+            if (!overlay_open && panel->view_mode == FX_PANEL_VIEW_LIST &&
+                panel->track_snapshot.instrument_menu_open &&
+                effects_panel_track_snapshot_handle_mouse_down(state, &layout, event)) return;
 
             if (!overlay_open && panel->view_mode == FX_PANEL_VIEW_LIST) {
                 if (SDL_PointInRect(&pt, &layout.list_rect)) {
