@@ -342,7 +342,10 @@ $(TEST_BUILD_ROOT)/media_ffmpeg_test: tests/media_ffmpeg_test.c src/audio/media_
 	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(APP_OBJ_DIR)/src/audio/resample.o -o "$@" $(LDFLAGS)
 
 # Keep directly linked media harnesses current after public-header-only changes.
--include $(addprefix $(TEST_BUILD_ROOT)/,media_preparation_test.d media_jobs_test.d media_import_test.d media_ffmpeg_test.d)
+-include $(TEST_BUILD_ROOT)/media_preparation_test.d
+-include $(TEST_BUILD_ROOT)/media_jobs_test.d
+-include $(TEST_BUILD_ROOT)/media_import_test.d
+-include $(TEST_BUILD_ROOT)/media_ffmpeg_test.d
 
 .PHONY: test-input-delivery
 test-input-delivery: $(TEST_BUILD_ROOT)/input_delivery_test

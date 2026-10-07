@@ -7,30 +7,7 @@ RELEASE_ARTIFACT_MANIFEST = $(RELEASE_ROOT)/$(RELEASE_DISPOSABLE_BASENAME).manif
 .PHONY: release-artifact-disposable
 release-artifact-disposable:
 	@set -eu; \
-	root="$(RELEASE_ROOT)"; \
-	[ -n "$$root" ] || { echo "RELEASE_ROOT is required"; exit 1; }; \
-	case "$$root" in /*|.|./*|*/.|*//*|*'..'*) echo "RELEASE_ROOT must be a contained job-scoped relative path: $$root"; exit 1;; esac; \
-	case "/$$root/" in */../*) echo "RELEASE_ROOT must be a contained job-scoped relative path: $$root"; exit 1;; esac; \
-	case "$$root" in build/release-authenticated/*) job_id="$${root#build/release-authenticated/}";; *) echo "RELEASE_ROOT must use build/release-authenticated/<job-id>: $$root"; exit 1;; esac; \
-	case "$$job_id" in ''|*/*|-*|*[^a-z0-9-]*) echo "RELEASE_ROOT job id is invalid: $$job_id"; exit 1;; esac; \
-	job_length=$${#job_id}; \
-	[ "$$job_length" -ge 3 ] && [ "$$job_length" -le 81 ] || { echo "RELEASE_ROOT job id is invalid: $$job_id"; exit 1; }; \
-	source_root="$$(cd "$(CURDIR)" && pwd -P)"; \
-	[ -d "$$source_root" ] || { echo "RELEASE_ROOT source root is invalid: $$source_root"; exit 1; }; \
-	root="$$source_root/$$root"; \
-	[ ! -L "$$root" ] || { echo "RELEASE_ROOT must not be a symlink: $$root"; exit 1; }; \
-	[ ! -e "$$root" ] || { echo "RELEASE_ROOT must not already exist: $$root"; exit 1; }; \
-	parent="$$source_root"; \
-	for component in build release-authenticated; do \
-		candidate="$$parent/$$component"; \
-		[ ! -L "$$candidate" ] || { echo "RELEASE_ROOT ancestor must not be a symlink: $$candidate"; exit 1; }; \
-		if [ -e "$$candidate" ]; then [ -d "$$candidate" ] || { echo "RELEASE_ROOT ancestor must be a directory: $$candidate"; exit 1; }; else mkdir "$$candidate"; fi; \
-		resolved="$$(cd "$$candidate" && pwd -P)"; \
-		[ "$$resolved" = "$$candidate" ] || { echo "RELEASE_ROOT ancestor escaped source tree: $$candidate"; exit 1; }; \
-		parent="$$candidate"; \
-	done; \
-	[ "$$parent" = "$$(dirname "$$root")" ] || { echo "RELEASE_ROOT selected parent drifted: $$root"; exit 1; }; \
-	mkdir "$$root"; \
+	root="$$(python3 tools/packaging/prepare_release_root.py --output "$(RELEASE_ROOT)")"; \
 	$(MAKE) release-package-self-test \
 		DIST_DIR="$$root"; \
 	archive="$(RELEASE_ARTIFACT_ZIP)"; \

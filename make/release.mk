@@ -8,7 +8,12 @@ RELEASE_PRODUCT_NAME := soniCs
 RELEASE_PROGRAM_KEY := daw
 RELEASE_BUNDLE_ID := com.cosm.sonics
 RELEASE_ARTIFACT_BASENAME := $(RELEASE_PRODUCT_NAME)-$(RELEASE_VERSION)-$(RELEASE_PLATFORM)-$(RELEASE_ARCH)-$(RELEASE_CHANNEL)
-RELEASE_DIR := build/release
+RELEASE_ROOT ?= build/release
+RELEASE_DIR = $(RELEASE_ROOT)
+# Explicit authentication roots isolate both the app bundle and final artifacts.
+ifneq ($(filter command line environment,$(origin RELEASE_ROOT)),)
+DIST_DIR := $(RELEASE_ROOT)/package
+endif
 RELEASE_APP_ZIP := $(RELEASE_DIR)/$(RELEASE_ARTIFACT_BASENAME).zip
 RELEASE_MANIFEST := $(RELEASE_DIR)/$(RELEASE_ARTIFACT_BASENAME).manifest.txt
 RELEASE_CODESIGN_IDENTITY ?= $(if $(strip $(APPLE_SIGN_IDENTITY)),$(APPLE_SIGN_IDENTITY),$(PACKAGE_ADHOC_SIGN_IDENTITY))
@@ -48,7 +53,7 @@ release-build:
 	@$(MAKE) BUILD_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" PACKAGE_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" release-build-internal
 
 release-build-internal:
-	@$(MAKE) package-desktop-self-test
+	@$(MAKE) release-package-self-test
 	@echo "release-build complete."
 
 release-bundle-audit:
@@ -64,9 +69,11 @@ release-bundle-audit-internal: release-build-internal
 		out="$(RELEASE_DIR)/otool_$$(basename "$$dylib").txt"; \
 		otool -L "$$dylib" > "$$out"; \
 	done
-	@! rg -q '/opt/homebrew|/usr/local|/Users/' "$(RELEASE_DIR)"/otool_*.txt || (echo "Found non-portable dylib linkage"; exit 1)
-	@! rg -q '@rpath/' "$(RELEASE_DIR)"/otool_*.txt || (echo "Found unresolved @rpath dylib linkage"; exit 1)
-	@"$(PACKAGE_MACOS_DIR)/daw-launcher" --print-config > "$(RELEASE_DIR)/print_config.txt"
+	@! rg -q '^[[:space:]]+/(opt/homebrew|usr/local|Users)/' "$(RELEASE_DIR)"/otool_*.txt || (echo "Found non-portable dylib linkage"; exit 1)
+	@! rg -q '^[[:space:]]+@rpath/' "$(RELEASE_DIR)"/otool_*.txt || (echo "Found unresolved @rpath dylib linkage"; exit 1)
+	@set -eu; runtime="$$(mktemp -d "$(RELEASE_DIR)/audit-runtime.XXXXXX")"; \
+	trap 'rm -rf "$$runtime"' EXIT HUP INT TERM; \
+	DAW_RUNTIME_DIR="$$runtime" "$(PACKAGE_MACOS_DIR)/daw-launcher" --print-config > "$(RELEASE_DIR)/print_config.txt"
 	@rg -q '^DAW_RUNTIME_DIR=' "$(RELEASE_DIR)/print_config.txt" || (echo "Missing DAW_RUNTIME_DIR in launcher config"; exit 1)
 	@rg -q '^VK_ICD_FILENAMES=' "$(RELEASE_DIR)/print_config.txt" || (echo "Missing VK_ICD_FILENAMES in launcher config"; exit 1)
 	@test ! -e "$(PACKAGE_RESOURCES_DIR)/config/runtime" || (echo "Release bundle includes generated config/runtime"; exit 1)
@@ -167,6 +174,7 @@ release-verify-notarized-internal: release-staple-internal
 	@echo "release-verify-notarized passed."
 
 release-artifact:
+	@if [ "$(RELEASE_ROOT)" != "build/release" ]; then python3 tools/packaging/prepare_release_root.py --output "$(RELEASE_ROOT)" >/dev/null; fi
 	@$(MAKE) BUILD_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" PACKAGE_TOOLCHAIN="$(RELEASE_TOOLCHAIN)" TARGET_OS="$(TARGET_OS)" TARGET_ARCH="$(TARGET_ARCH)" TARGET_VARIANT="$(TARGET_VARIANT)" release-artifact-internal
 
 release-artifact-internal: release-verify-notarized-internal
