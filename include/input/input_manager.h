@@ -42,3 +42,6 @@ void input_manager_update(InputManager* manager, struct AppState* state);
 void input_manager_handle_event(InputManager* manager, struct AppState* state, const SDL_Event* event);
 // Clears meter histories after a forced seek when the debug toggle is enabled.
 void input_manager_reset_meter_history_on_seek(struct AppState* state);
+
+// Gives captured discrete controls priority over sampled pane-divider gestures.
+void input_manager_update_layout_pointer(struct AppState*, Uint32, Uint32, int, int);

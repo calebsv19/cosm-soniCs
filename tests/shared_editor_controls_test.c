@@ -46,6 +46,9 @@ static void timeline_and_library(AppState* s) {
     assert(s->library.panel_mode==LIBRARY_PANEL_MODE_SOURCE);
     SDL_Rect snap=control(s,11,4); bool before=s->timeline_snap_enabled;
     pointer(s,SDL_MOUSEBUTTONDOWN,snap); assert(s->timeline_snap_enabled==before);
+    // The toolbar lies beside a generous divider hit region: sampled input must not steal it.
+    input_manager_update_layout_pointer(s,0,SDL_BUTTON(SDL_BUTTON_LEFT),snap.x+snap.w/2,snap.y+snap.h/2);
+    assert(!s->layout_runtime.drag.active);
     pointer(s,SDL_MOUSEBUTTONUP,snap); assert(s->timeline_snap_enabled!=before);
     before=s->timeline_snap_enabled;
     key(s,SDL_KEYDOWN,SDLK_RETURN,false); key(s,SDL_KEYDOWN,SDLK_RETURN,true);

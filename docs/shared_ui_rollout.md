@@ -138,3 +138,9 @@ snapshot controls and specialized EQ/meter/spec widgets. These need their own
 target/gesture checks; existing behavior is retained. Continuous gesture ownership
 is not migrated by wrapping button events. Next: qualify those exceptions before
 shared pane composition and actual-loop fullscreen lifecycle.
+
+Sampled pane-divider handling now skips presses owned by shared editor or transport
+controls. A real routed toolbar capture plus sampled-divider regression proves
+that a generous divider hit region cannot steal the pending button release.
+Focused input/text and layout-sweep gates verify this follow-up; the preceding
+full stable headless suite remains the broad checkpoint for this control slice.

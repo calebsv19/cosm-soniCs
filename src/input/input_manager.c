@@ -483,6 +483,13 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
     timeline_input_handle_event(manager, state, event);
 }
 
+// Keeps sampled divider gestures from stealing an event-owned discrete press.
+void input_manager_update_layout_pointer(AppState* state, Uint32 previous, Uint32 current, int x, int y) {
+    if (!state || state->editor_controls.surface.interaction.pointer_owned ||
+        state->transport_ui.controls.interaction.pointer_owned) return;
+    ui_layout_handle_pointer(state,previous,current,x,y);
+}
+
 void input_manager_update(InputManager* manager, AppState* state) {
     if (!manager || !state) {
         return;
@@ -508,7 +515,7 @@ void input_manager_update(InputManager* manager, AppState* state) {
         return;
     }
 
-    ui_layout_handle_pointer(state, prev_buttons, buttons, mouse_x, mouse_y);
+    input_manager_update_layout_pointer(state,prev_buttons,buttons,mouse_x,mouse_y);
     if (state->layout_runtime.drag.active) {
         state->dragging_library = false;
         state->drag_library_index = -1;
