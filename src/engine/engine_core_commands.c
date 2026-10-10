@@ -217,12 +217,13 @@ void engine_process_commands(Engine* engine) {
                     if (mix->tracks[t].runtime_id == cmd.payload.midi_audition.track_runtime_id) { track = t; break; }
                 }
                 if (track < 0) break;
-                engine_midi_audition_apply_note_on(engine,
+                engine_midi_audition_apply_preview(engine,
                                                    track,
                                                    cmd.payload.midi_audition.preset,
                                                    cmd.payload.midi_audition.params,
                                                    cmd.payload.midi_audition.note,
-                                                   cmd.payload.midi_audition.velocity);
+                                                   cmd.payload.midi_audition.velocity,
+                                                   cmd.payload.midi_audition.gate_frames);
                 break;
             }
             case ENGINE_CMD_MIDI_AUDITION_NOTE_OFF:

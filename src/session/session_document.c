@@ -506,6 +506,16 @@ static bool session_document_capture_candidate(const AppState* state, SessionDoc
         dst_track->pan = src_track->pan;
         dst_track->muted = src_track->muted;
         dst_track->solo = src_track->solo;
+        dst_track->is_return = src_track->is_return;
+        for (int send = 0; send < ENGINE_SEND_CAP; ++send) {
+            dst_track->sends[send].gain = src_track->sends[send].gain;
+            uint64_t destination = src_track->sends[send].return_id;
+            if (!destination) continue;
+            int index = 0;
+            while (index < engine_track_count && engine_tracks[index].runtime_id != destination) ++index;
+            if (index == engine_track_count) { session_document_reset(out_doc); return false; }
+            dst_track->sends[send].destination_track = index + 1;
+        }
         dst_track->midi_instrument_enabled = engine_track_midi_instrument_enabled(state->engine, t);
         dst_track->midi_instrument_preset = engine_track_midi_instrument_preset(state->engine, t);
         dst_track->midi_instrument_params = engine_track_midi_instrument_params(state->engine, t);

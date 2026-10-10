@@ -41,6 +41,7 @@ typedef struct FxChain {
     int capacity;
     float* alignment;
     uint32_t alignment_capacity, alignment_write, latency;
+    bool is_return; // Separates source and return compensation groups.
 } FxChain;
 
 struct EffectsManager {
@@ -65,7 +66,8 @@ struct EffectsManager {
     FxChain* tracks;
     int track_count;
     int track_capacity;
-    uint32_t track_latency, master_latency;
+    uint32_t track_latency, return_latency, master_latency;
+    FxChain dry_path; // Owns prepared source-sum compensation for the serial return stage.
     bool alignment_dirty, block_prepared;
 
     // Simple built-in registry table
@@ -98,6 +100,7 @@ static void chain_free(FxChain* c) {
     c->items = NULL;
     c->count = 0;
     c->capacity = 0;
+    c->is_return = false;
 }
 
 static FxInstance* chain_insert(FxChain* c, int at_index) {
@@ -341,6 +344,7 @@ void fxm_destroy(EffectsManager* fm) {
     }
     free(fm->bypass_dry);
     free(fm->scratch);
+    chain_free(&fm->dry_path);
     free(fm->reg);
     free(fm);
 }
@@ -420,6 +424,7 @@ static bool instantiate_fx(EffectsManager* fm, const FxRegistryEntry* ent, FxIns
 
 // Builds independent handles while copying identities and parameter targets from a control chain.
 static bool chain_clone_for_render(EffectsManager* destination, FxChain* output, const FxChain* input) {
+    output->is_return = input->is_return;
     for (int i = 0; i < input->count; ++i) {
         const FxInstance* source = &input->items[i];
         const FxRegistryEntry* entry = reg_find_by_id(destination, source->type);
@@ -536,10 +541,11 @@ static uint32_t chain_latency(const FxChain* chain, bool maximum) {
 // Allocates compensation rings off the render thread for every possible current-chain delay.
 bool fxm_prepare_delay_compensation(EffectsManager* fm) {
     if (!fm) return false;
-    uint32_t maximum = 0;
+    uint32_t maximum = 0, return_maximum = 0;
     for (int t = 0; t < fm->track_count; ++t) {
         uint32_t bound = chain_latency(&fm->tracks[t], true);
         if (bound > maximum) maximum = bound;
+        if (fm->tracks[t].is_return && bound > return_maximum) return_maximum = bound;
     }
     if (maximum == UINT32_MAX || (size_t)maximum + 1 > SIZE_MAX / sizeof(float) / fm->max_channels) return false;
     uint32_t capacity = maximum ? maximum + 1 : 0;
@@ -554,11 +560,20 @@ bool fxm_prepare_delay_compensation(EffectsManager* fm) {
         chain->alignment_write = 0;
         fm->alignment_dirty = true;
     }
+    uint32_t dry_capacity = return_maximum ? return_maximum + 1 : 0;
+    if (fm->dry_path.alignment_capacity != dry_capacity) {
+        float* data = dry_capacity ? calloc((size_t)dry_capacity * fm->max_channels, sizeof(float)) : NULL;
+        if (dry_capacity && !data) return false;
+        free(fm->dry_path.alignment); fm->dry_path.alignment = data;
+        fm->dry_path.alignment_capacity = dry_capacity; fm->dry_path.alignment_write = 0;
+        fm->alignment_dirty = true;
+    }
     return true;
 }
 
 // Detects routing edits that invalidate captured audio in a latency-bearing chain.
 static bool chain_timing_topology_changed(const FxChain* next, const FxChain* old) {
+    if (next->is_return != old->is_return) return true;
     if (!chain_latency(next, true) && !chain_latency(old, true)) return false;
     if (next->count != old->count) return true;
     for (int i = 0; i < next->count; ++i)
@@ -594,6 +609,9 @@ bool fxm_transfer_render_state(EffectsManager* prepared, EffectsManager* previou
     prepared->alignment_dirty = previous->alignment_dirty ||
         chain_timing_topology_changed(&prepared->master, &previous->master);
     prepared->track_latency = previous->track_latency;
+    prepared->return_latency = previous->return_latency;
+    prepared->alignment_dirty |= prepared->dry_path.alignment_capacity != previous->dry_path.alignment_capacity;
+    chain_transfer_alignment(&prepared->dry_path, &previous->dry_path);
     prepared->master_latency = previous->master_latency;
     prepared->master.latency = previous->master.latency;
     chain_transfer_render_state(&prepared->master, &previous->master);
@@ -1027,7 +1045,7 @@ static void chain_clear_timing(FxChain* chain, int channels) {
 // Applies controls once, then establishes a single track-alignment delay for the whole render block.
 void fxm_begin_render_block(EffectsManager* fm, int frames) {
     if (!fm || frames <= 0) return;
-    uint32_t maximum = 0;
+    uint32_t maximum = 0, return_maximum = 0;
     bool changed = fm->alignment_dirty;
     for (int t = -1; t < fm->track_count; ++t) {
         FxChain* chain = t < 0 ? &fm->master : &fm->tracks[t];
@@ -1036,30 +1054,29 @@ void fxm_begin_render_block(EffectsManager* fm, int frames) {
         uint32_t latency = chain_latency(chain, false);
         changed |= latency != chain->latency;
         chain->latency = latency;
-        if (t >= 0 && latency > maximum) maximum = latency;
+        if (t >= 0) {
+            uint32_t* group = chain->is_return ? &return_maximum : &maximum;
+            if (latency > *group) *group = latency;
+        }
     }
-    changed |= maximum != fm->track_latency;
-    fm->track_latency = maximum;
+    changed |= maximum != fm->track_latency || return_maximum != fm->return_latency;
+    fm->track_latency = maximum; fm->return_latency = return_maximum;
     fm->master_latency = fm->master.latency;
     if (changed) {
         chain_clear_timing(&fm->master, fm->max_channels);
+        chain_clear_timing(&fm->dry_path, fm->max_channels);
         for (int t = 0; t < fm->track_count; ++t) chain_clear_timing(&fm->tracks[t], fm->max_channels);
     }
     fm->alignment_dirty = false;
     fm->block_prepared = true;
 }
 
-// Delays a processed track to the longest active serial chain before the master sum.
-void fxm_align_track(EffectsManager* fm, int track, float* io, int frames, int channels) {
-    if (!fm || track < 0 || track >= fm->track_count || !io || frames <= 0 ||
-        channels <= 0 || channels > fm->max_channels) return;
-    FxChain* chain = &fm->tracks[track];
-    uint32_t delay = fm->track_latency - chain->latency;
+// Applies one prepared compensation ring without allocating on the render thread.
+static void align_path(EffectsManager* fm, FxChain* chain, uint32_t delay, float* io, int frames, int channels) {
+    if (!fm || !chain || !io || frames <= 0 || frames > fm->max_block || channels <= 0 || channels > fm->max_channels) return;
     if (!delay) return;
     if (!chain->alignment || delay >= chain->alignment_capacity) {
-        // A caller skipped non-RT preparation; never silently emit a misaligned track.
-        memset(io, 0, (size_t)frames * channels * sizeof(float));
-        return;
+        memset(io, 0, (size_t)frames * channels * sizeof(float)); return;
     }
     for (int n = 0; n < frames; ++n) {
         uint32_t read = (chain->alignment_write + chain->alignment_capacity - delay) % chain->alignment_capacity;
@@ -1070,10 +1087,31 @@ void fxm_align_track(EffectsManager* fm, int track, float* io, int frames, int c
         chain->alignment_write = (chain->alignment_write + 1) % chain->alignment_capacity;
     }
 }
-
-// Returns the common project-rate output delay of the prepared render block.
+// Assigns one existing chain to a compensation group before cloning/preparing its render revision.
+bool fxm_set_track_return(EffectsManager* fm, int track, bool is_return) {
+    if (!fm || track < 0 || track >= fm->track_count) return false;
+    if (fm->tracks[track].is_return != is_return) { fm->tracks[track].is_return = is_return; fm->alignment_dirty = true; fm->block_prepared = false; }
+    return true;
+}
+// Reads only a captured chain's routing stage.
+bool fxm_track_is_return(const EffectsManager* fm, int track) {
+    return fm && track >= 0 && track < fm->track_count && fm->tracks[track].is_return;
+}
+// Aligns processed tracks within their source or return stage.
+void fxm_align_track(EffectsManager* fm, int track, float* io, int frames, int channels) {
+    if (!fm || track < 0 || track >= fm->track_count) return;
+    FxChain* chain = &fm->tracks[track];
+    uint32_t maximum = chain->is_return ? fm->return_latency : fm->track_latency;
+    if (chain->latency > maximum) return;
+    align_path(fm, chain, maximum - chain->latency, io, frames, channels);
+}
+// Aligns the parallel dry output with the complete second-stage return path.
+void fxm_align_dry(EffectsManager* fm, float* io, int frames, int channels) {
+    if (fm) align_path(fm, &fm->dry_path, fm->return_latency, io, frames, channels);
+}
+// Reports serial source, return and master delay for output clock/export compensation.
 uint64_t fxm_processing_latency(const EffectsManager* fm) {
-    return fm ? (uint64_t)fm->track_latency + fm->master_latency : 0;
+    return fm ? (uint64_t)fm->track_latency + fm->return_latency + fm->master_latency : 0;
 }
 
 // Real-time render (master bus)
@@ -1162,6 +1200,7 @@ void fxm_reset_render_state(EffectsManager* fm) {
     if (!fm) return;
     fm->block_prepared = false;
     chain_clear_timing(&fm->master, fm->max_channels);
+    chain_clear_timing(&fm->dry_path, fm->max_channels);
     for (int t = 0; t < fm->track_count; ++t) chain_clear_timing(&fm->tracks[t], fm->max_channels);
     chain_reset_render_state(&fm->master);
     for (int t = 0; t < fm->track_count; ++t) chain_reset_render_state(&fm->tracks[t]);

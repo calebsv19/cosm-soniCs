@@ -1,6 +1,46 @@
 # soniCs Current Truth
 
-Last updated: 2026-10-06 (initial macOS Main Edit shared UI rollout source-qualified; historical release claims retain their original scope)
+Last updated: 2026-10-10 (Main Edit authoring development; installed packages and historical release records retain their original scope).
+
+## Current creative-control state
+
+Main Edit exposes 45 local MCP tools through the opt-in same-user Unix bridge and official SDK adapter. Common application actions provide guarded instruments, personal presets, isolated sound analysis, empty-project MIDI region creation/extension, note/pattern edits, expression transforms, MIDI arrangement, track/master effects and reusable effect chains. Complete project settings are embedded independently of personal library files. See [MCP usage](../tools/mcp/README.md), [effect chains/composition](effect_chains.md), [MIDI region creation](midi_regions.md), [expression](midi_expression.md), and [arrangement](arrangement.md).
+
+Actual native App_Run acceptance covers creative MCP edits/history/receipts, processed composition capture, normal shutdown save and real restart with exact audio comparisons. These are local development results; client registration, installed app adoption and physical listening are separate.
+
+Shared post-fader return processing and complete routing save/reopen now pass production signal, latency, rollback, ASan and actual native acceptance. Common exact-state routing actions and scoped undo/redo reserve complete history before publication. Guarded return creation and routing batches/history now have MCP adoption; native routing controls now adopt these common actions with staged percentages, explicit Refresh and guarded creation; the current effects tools edit serial track/master chains, including agent-created returns. See [routing](routing.md). Filtered voices now have per-note cutoff decay and retriggered LFO controls, with Sweep Bass, Filter Pluck and Moving Pad presets; all share native/MCP, library and project controls. Captured inspection previews now have direct finite current/reference listening through the existing output endpoint, with actual native input/painter and active dummy-endpoint qualification. The requested five-stage creative-control development sequence is implemented and verified; physical listening, installed package delivery and global MCP registration remain separate.
+
+## 2026-10-09 Filtered synth and native MCP loop
+
+Main Edit now contains the reconciled 0.4.0 source and the previously accepted
+instrument controls/MCP slice. Filtered Keys and Filtered Pad add real per-note
+low-pass state, cutoff/Q controls and automation through existing instrument
+actions. Capabilities report fifteen presets and fourteen parameters. Native
+MCP edits, exact history restoration and saved cutoff/Q readback pass. See
+[filtered synth contracts, evidence and remaining sequence](filtered_synth.md).
+Reusable personal presets now use a user library with complete sound settings embedded in projects; see [user presets](user_presets.md).
+
+## 2026-10-08 Rounded oscillator family
+
+Three additive presets (Rounded Keys, Rounded Pluck, Rounded Pad) share a
+phase-aligned sine/triangle oscillator with brightness, detuned second-voice
+blend, sub and continuous drive. Existing preset IDs/defaults/DSP are preserved.
+All ten advertised parameters use existing UI actions and MCP operations;
+modulation stays hidden because this family does not consume vibrato controls.
+See [rounded synth design and evidence](rounded_synth.md). This is an oscillator
+slice; it does not change the legacy vibrato calculation or add a filter.
+
+## 2026-10-08 Instrument control refinement
+
+Preset-specific supported controls, ADSR control order, log-time envelope knobs
+and latched Shift fine dragging now share engine metadata. Instrument preview
+plots use the actual isolated voice/ADSR kernel rather than illustrative formulas.
+Original preset defaults, physical ranges, serialized values and automation
+semantics are unchanged. The existing MCP tools expose supported controls and
+additive control-scale metadata. The musical fixture proves actual distinct
+rendered output and byte-identical undo/redo restoration. See
+[instrument control contract](instrument_controls.md). Human listening, installed
+package delivery and new synth models remain separate.
 
 ## 2026-10-06 Main Edit UI adoption
 
@@ -298,3 +338,40 @@ separate. VERSION stays 0.3.0; Main Edit delivery does not promote canonical/rel
 The shared kit_ui 0.18.0 window observer, logical coordinate contract, F11 desktop-fullscreen helper and opt-in lifecycle probe now operate in the actual application loop. Geometry, drawable, display, mode and visibility observations request swapchain updates; hidden/minimized windows suspend presentation while background work continues. Focused/presentable windows receive sampled input. Native transitions cancel discrete captures/preedit, finish accepted continuous edits through existing release/undo owners, and require pointer release. Text/meter caches wait for submitted GPU work before recovery or teardown.
 
 Fresh build, window/pane/control/text/input checks and stable headless smoke pass. Final native dark/light runs qualify eight stages per theme (initial, resize, fullscreen, windowed, hidden, shown, minimized, restored), with twelve captures and continued rendering after controlled renderer rebuild, without Vulkan validation messages. This does not certify physical GPU loss, other display hardware/platforms, physical audio or OS IME. Evidence: `_private_workspace_artifacts/ui_unification/sonics_window_20261006`. Run `make BUILD_DIR=build/ui-window-20261006 test-shared-window-lifecycle`; use `CODEWORK_WINDOW_LIFECYCLE_PROOF=<isolated-output-dir>` only for explicit native qualification. VERSION remains 0.3.0. Next: populated surface audit and presentation refinement, then Main Edit comparison delivery.
+
+## 2026-10-09 reusable user presets
+
+Persistent Main Edit implements the five-step [user preset sequence](user_presets.md): versioned personal library, My Presets search/save/update, complete project-owned settings, finite note/chord auditions, and five guarded/read-only MCP additions with production standardized WAV previews. Library updates require current revisions and preserve a previous file; project settings remain independent. No new shared dependency, VERSION change, commit, release, Desktop installation or global client configuration is implied. Custom preset names/provenance are editor metadata; the full sound values are persisted in projects. General spectral analysis, project render and MIDI authoring remain later slices.
+
+## 2026-10-09 sound inspection and comparison
+
+Persistent Main Edit implements the five-step [sound inspection](sound_inspection.md) sequence: shared isolated production rendering/WAVs, original-level calibrated waveform/RMS/tonal plots, transient reference comparisons and finite auditions, plus two read-only MCP analysis tools (fourteen total). Calibration, exact render parity, SDK state preservation, native renderer/owner and three listening pairs are qualified separately. No project schema/shared dependency/VERSION change, commit, release, Desktop install or global MCP registration is implied. General project analysis and transactional MIDI authoring remain separate slices.
+
+## 2026-10-09 transactional MIDI patterns
+
+Persistent Main Edit delivers [copied MIDI snapshots and one-step append/replace actions](midi_authoring.md), a bounded tempo-aware major-key generator and a C-major Patterns popup. Common-action history is bound to generation/track/region identity and refuses stale replay. Atomic failure, musical timing, native renderer, production undo/redo and session-reopen checks qualify the local workflow. MCP remains fourteen tools; MIDI protocol adoption is the next boundary. No shared dependency, schema, VERSION, commit, release, installation or client-registration change is implied.
+
+
+## 2026-10-09 MIDI MCP adoption
+
+Main Edit adopts common MIDI actions through `get_midi_region`, `set_midi_notes`, `create_midi_pattern`, `undo_midi` and `redo_midi` (nineteen tools total). Exact copied snapshots back eight bounded endpoint-lifetime tokens; note/tempo pages fit existing transport limits. The immutable request ledger remains shared with instrument/preset edits. Official SDK, maximum pagination, receipt/state/history refusals, sanitizer, production audio and actual App_Run save/restart qualify the source workflow. See [MIDI MCP](midi_mcp.md). No VERSION, shared dependency/schema, commit, release, installation or global registration changes.
+
+### Guarded MIDI region authoring
+
+Main Edit adds five guarded structural MIDI tools, bringing the local MCP surface to 24. Agents can create a first region with an optional new trailing track, extend its right edge and replay structural history. See [region authoring](midi_regions.md); selected qualification is retained under `build/receipts/midi-regions-20261009/`. No installed app, VERSION, commit, release or client-registration change is implied.
+
+### Effects authoring development
+
+Main Edit implements five guarded effect tools, bringing MCP to 31 tools with composition analysis and captured preview adoption. Native composition inspection and reusable-chain storage now have focused qualification; library MCP/editor adoption, arrangement expansion and advanced routing/synthesis remain active work. See [effect chains](effect_chains.md).
+
+Processed composition analysis and captured PCM previews now have MCP adapters, bringing the surface to 31 tools. Native Region inspection supports dry/processed capture, reference comparison and exact WAV saving. Reusable-chain storage and portable application pass all 54 registered effect types; library MCP/editor adoption, arrangement/expression and advanced routing/synthesis remain active work.
+
+## 2026-10-10 Effects-library adoption and MIDI expression
+
+Main Edit now exposes 40 MCP tools. `list_effect_presets`, `get_effect_preset`, `save_effect_preset` and `apply_effect_preset` adopt the complete portable chain library through common guarded actions. The native Chains browser uses shared name editing, explicit Save As/Update/Refresh, stale-state refusal and one-step recall. Native Vulkan browser/save frames and enclosing clip checks pass separately from SDK/library/project independence tests. See [effect chains](effect_chains.md).
+
+`transform_midi` and native Patterns shortcuts add tempo-aware swung quantize, velocity scaling and seeded bounded variation with unchanged note durations and complete state/history guards. See [expression](midi_expression.md). Full arrangement operations and advanced routing/synthesis remain active requirements. This is development source, not an installed delivery or full five-stage completion.
+
+The actual native expression/library loop now qualifies normal save and real restart with exact note/settings/audio readback after private library removal. A directly blocking session precision defect was repaired: authored floats now round-trip with `FLT_DECIMAL_DIG` significant digits instead of six decimal places and near-zero truncation. Focused session serialization, stable regression and sanitizer-backed MCP reopen checks pass.
+
+Guarded MIDI arrangement now supports common/MCP duplicate, move, right-edge trim and delete batches with full captured content guards and one undo step. Native MIDI duplicate/delete shares this action; dedicated native Arrange fields and actual-window painter/App_Run acceptance now pass. See [arrangement](arrangement.md). Advanced routing and synthesis remain active goal work.

@@ -6,11 +6,19 @@ test-stable:
 	@$(MAKE) $(STABLE_TEST_TARGETS)
 	@echo "daw stable test lane passed"
 
+.PHONY: test-application-instrument-action
+test-application-instrument-action: $(TEST_BUILD_ROOT)/application_instrument_action_test
+	$(TEST_BUILD_ROOT)/application_instrument_action_test
+
+$(TEST_BUILD_ROOT)/application_instrument_action_test: tests/application_instrument_action_test.c src/app/app_actions.c src/engine/engine_clips_midi.c src/undo/undo_manager_stack.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(filter-out $(APP_OBJ_DIR)/src/app/app_actions.o $(APP_OBJ_DIR)/src/engine/engine_clips_midi.o $(APP_OBJ_DIR)/src/undo/undo_manager_stack.o,$(ENGINE_TEST_SUPPORT_OBJS)),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
 .PHONY: test-audio-output-device
 test-audio-output-device: $(TEST_BUILD_ROOT)/audio_output_device_test
 	$(TEST_BUILD_ROOT)/audio_output_device_test
 
-$(TEST_BUILD_ROOT)/audio_output_device_test: tests/audio_output_device_test.c src/audio/device_sdl.c include/audio/audio_device.h
+$(TEST_BUILD_ROOT)/audio_output_device_test: tests/audio_output_device_test.c src/audio/device_sdl.c src/audio/device_preview.c include/audio/audio_device.h
 	@mkdir -p "$(dir $@)"
 	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< -o "$@" $(LDFLAGS)
 
@@ -72,6 +80,10 @@ test-session: $(TEST_BIN)
 	$(TEST_BIN)
 
 $(TEST_BIN): $(TEST_OBJS) \
+	$(APP_OBJ_DIR)/src/engine/automation.o \
+	$(APP_OBJ_DIR)/src/engine/instrument_catalog.o \
+	$(APP_OBJ_DIR)/src/engine/instrument_controls.o \
+	$(APP_OBJ_DIR)/src/engine/instrument_filter.o \
 	$(APP_OBJ_DIR)/src/session/save_file.o \
 	$(APP_OBJ_DIR)/src/session/session_document.o \
 	$(APP_OBJ_DIR)/src/session/session_validation.o \
@@ -416,3 +428,166 @@ test-shared-control-chrome: $(TEST_BUILD_ROOT)/shared_control_chrome_test
 $(TEST_BUILD_ROOT)/shared_control_chrome_test: tests/shared_control_chrome_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
 	@mkdir -p "$(dir $@)"
 	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: build-mcp-control-fixture test-mcp-control
+build-mcp-control-fixture: $(TEST_BUILD_ROOT)/mcp_control_fixture
+
+$(TEST_BUILD_ROOT)/mcp_control_fixture: tests/mcp_control_fixture.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+MCP_PYTHON ?= build/mcp-venv/bin/python
+test-mcp-control: $(TEST_BUILD_ROOT)/mcp_control_fixture
+	$(MCP_PYTHON) tests/mcp_control_test.py --fixture $(TEST_BUILD_ROOT)/mcp_control_fixture
+
+.PHONY: test-instrument-controls
+test-instrument-controls: $(TEST_BUILD_ROOT)/instrument_controls_test
+	$(TEST_BUILD_ROOT)/instrument_controls_test
+
+$(TEST_BUILD_ROOT)/instrument_controls_test: tests/instrument_controls_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-mcp-instrument-loop
+test-mcp-instrument-loop: $(TEST_BUILD_ROOT)/mcp_control_fixture
+	$(MCP_PYTHON) tests/mcp_instrument_loop_test.py --fixture $(TEST_BUILD_ROOT)/mcp_control_fixture --output-root $(BUILD_DIR)/receipts
+
+.PHONY: test-preset-library test-mcp-presets
+test-preset-library: $(TEST_BUILD_ROOT)/preset_library_test
+	$(TEST_BUILD_ROOT)/preset_library_test
+
+$(TEST_BUILD_ROOT)/preset_library_test: tests/preset_library_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+test-mcp-presets: $(TEST_BUILD_ROOT)/mcp_control_fixture
+	$(MCP_PYTHON) tests/mcp_preset_library_test.py --fixture $(TEST_BUILD_ROOT)/mcp_control_fixture --output-root $(BUILD_DIR)/receipts
+
+.PHONY: test-sound-inspection test-mcp-sound-analysis
+test-sound-inspection: $(TEST_BUILD_ROOT)/sound_inspection_test
+	$(TEST_BUILD_ROOT)/sound_inspection_test
+
+$(TEST_BUILD_ROOT)/sound_inspection_test: tests/sound_inspection_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+test-mcp-sound-analysis: $(TEST_BUILD_ROOT)/mcp_control_fixture
+	$(MCP_PYTHON) tests/mcp_sound_analysis_test.py --fixture $(TEST_BUILD_ROOT)/mcp_control_fixture --output-root $(BUILD_DIR)/receipts
+
+.PHONY: test-midi-authoring
+test-midi-authoring: $(TEST_BUILD_ROOT)/midi_authoring_test
+	$(TEST_BUILD_ROOT)/midi_authoring_test
+
+$(TEST_BUILD_ROOT)/midi_authoring_test: tests/midi_authoring_test.c src/app/midi_actions.c src/engine/engine_clips_midi.c src/undo/undo_manager_stack.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(filter-out $(APP_OBJ_DIR)/src/app/midi_actions.o $(APP_OBJ_DIR)/src/engine/engine_clips_midi.o $(APP_OBJ_DIR)/src/undo/undo_manager_stack.o,$(ENGINE_TEST_SUPPORT_OBJS)),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-mcp-midi
+test-mcp-midi: $(TEST_BUILD_ROOT)/mcp_control_fixture
+	$(MCP_PYTHON) tests/mcp_midi_test.py --fixture $(TEST_BUILD_ROOT)/mcp_control_fixture --output-root $(BUILD_DIR)/receipts
+
+.PHONY: test-midi-regions test-mcp-midi-regions
+test-midi-regions: $(TEST_BUILD_ROOT)/midi_regions_test
+	$(TEST_BUILD_ROOT)/midi_regions_test
+$(TEST_BUILD_ROOT)/midi_regions_test: tests/midi_regions_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(filter-out %/src/engine/engine_clips.o %/src/engine/engine_tracks.o %/src/undo/undo_manager_stack.o,$(ENGINE_TEST_SUPPORT_OBJS)),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+test-mcp-midi-regions: $(TEST_BUILD_ROOT)/mcp_control_fixture
+	$(MCP_PYTHON) tests/mcp_midi_regions_test.py --fixture $(TEST_BUILD_ROOT)/mcp_control_fixture --output-root $(BUILD_DIR)/receipts
+
+.PHONY: test-fx-actions
+test-fx-actions: $(TEST_BUILD_ROOT)/fx_actions_test
+	$(TEST_BUILD_ROOT)/fx_actions_test
+$(TEST_BUILD_ROOT)/fx_actions_test: tests/fx_actions_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(filter-out %/src/engine/engine_fx_chain.o %/src/undo/undo_manager_stack.o,$(ENGINE_TEST_SUPPORT_OBJS)),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-mcp-fx
+test-mcp-fx: $(TEST_BUILD_ROOT)/mcp_control_fixture
+	$(MCP_PYTHON) tests/mcp_fx_test.py --fixture $(TEST_BUILD_ROOT)/mcp_control_fixture --output-root $(BUILD_DIR)/receipts
+
+.PHONY: test-composition
+test-composition: $(TEST_BUILD_ROOT)/composition_test
+	$(TEST_BUILD_ROOT)/composition_test
+$(TEST_BUILD_ROOT)/composition_test: tests/composition_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-mcp-composition
+test-mcp-composition: $(TEST_BUILD_ROOT)/mcp_control_fixture
+	$(MCP_PYTHON) tests/mcp_composition_test.py --fixture $(TEST_BUILD_ROOT)/mcp_control_fixture --output-root $(BUILD_DIR)/receipts
+
+.PHONY: test-fx-library
+test-fx-library: $(TEST_BUILD_ROOT)/fx_library_test
+	$(TEST_BUILD_ROOT)/fx_library_test
+$(TEST_BUILD_ROOT)/fx_library_test: tests/fx_library_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-mcp-fx-library
+test-mcp-fx-library: $(TEST_BUILD_ROOT)/mcp_control_fixture
+	$(MCP_PYTHON) tests/mcp_fx_library_test.py --fixture $(TEST_BUILD_ROOT)/mcp_control_fixture --output-root $(BUILD_DIR)/receipts
+
+.PHONY: test-fx-library-ui
+test-fx-library-ui: $(TEST_BUILD_ROOT)/fx_library_ui_test
+	$(TEST_BUILD_ROOT)/fx_library_ui_test
+$(TEST_BUILD_ROOT)/fx_library_ui_test: tests/fx_library_ui_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-midi-expression
+test-midi-expression: $(TEST_BUILD_ROOT)/midi_expression_test
+	$(TEST_BUILD_ROOT)/midi_expression_test
+$(TEST_BUILD_ROOT)/midi_expression_test: tests/midi_expression_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-arrangement
+test-arrangement: $(TEST_BUILD_ROOT)/arrangement_test
+	$(TEST_BUILD_ROOT)/arrangement_test
+$(TEST_BUILD_ROOT)/arrangement_test: tests/arrangement_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(filter-out $(APP_OBJ_DIR)/src/engine/engine_clip_history.o $(APP_OBJ_DIR)/src/undo/undo_manager_stack.o,$(ENGINE_TEST_SUPPORT_OBJS)),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-mcp-arrangement
+test-mcp-arrangement: $(TEST_BUILD_ROOT)/mcp_control_fixture
+	$(MCP_PYTHON) tests/mcp_arrangement_test.py --fixture $(TEST_BUILD_ROOT)/mcp_control_fixture --output-root $(BUILD_DIR)/receipts
+
+.PHONY: test-fx-return-alignment
+test-fx-return-alignment: $(TEST_BUILD_ROOT)/fx_return_alignment_test
+	$(TEST_BUILD_ROOT)/fx_return_alignment_test
+$(TEST_BUILD_ROOT)/fx_return_alignment_test: tests/fx_return_alignment_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p $(dir $@)
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(filter-out $(APP_OBJ_DIR)/src/effects/effects_manager.o,$(ENGINE_TEST_SUPPORT_OBJS)),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-engine-routing
+test-engine-routing: $(TEST_BUILD_ROOT)/engine_routing_test
+	$(TEST_BUILD_ROOT)/engine_routing_test
+$(TEST_BUILD_ROOT)/engine_routing_test: tests/engine_routing_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(filter-out $(APP_OBJ_DIR)/src/engine/engine_routing.o $(APP_OBJ_DIR)/src/engine/engine_source_plan.o $(APP_OBJ_DIR)/src/engine/engine_audio.o,$(ENGINE_TEST_SUPPORT_OBJS)),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-routing-actions
+test-routing-actions: $(TEST_BUILD_ROOT)/routing_actions_test
+	$(TEST_BUILD_ROOT)/routing_actions_test
+$(TEST_BUILD_ROOT)/routing_actions_test: tests/routing_actions_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(filter-out $(APP_OBJ_DIR)/src/engine/engine_routing.o $(APP_OBJ_DIR)/src/engine/engine_tracks.o $(APP_OBJ_DIR)/src/undo/undo_manager_stack.o,$(ENGINE_TEST_SUPPORT_OBJS)),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-mcp-routing
+test-mcp-routing: $(TEST_BUILD_ROOT)/mcp_control_fixture
+	$(MCP_PYTHON) tests/mcp_routing_test.py --fixture $(TEST_BUILD_ROOT)/mcp_control_fixture --output-root $(BUILD_DIR)/receipts
+
+.PHONY: test-routing-ui
+test-routing-ui: $(TEST_BUILD_ROOT)/routing_ui_test
+	$(TEST_BUILD_ROOT)/routing_ui_test
+$(TEST_BUILD_ROOT)/routing_ui_test: tests/routing_ui_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-audio-preview
+test-audio-preview: $(TEST_BUILD_ROOT)/audio_preview_test
+	$(TEST_BUILD_ROOT)/audio_preview_test
+$(TEST_BUILD_ROOT)/audio_preview_test: tests/audio_preview_test.c src/audio/device_preview.c include/audio/audio_device.h
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< -o "$@" $(LDFLAGS)

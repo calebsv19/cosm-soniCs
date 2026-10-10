@@ -501,6 +501,8 @@ void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
         } else {
             EffectsPanelLayout layout; effects_panel_compute_layout(state,&layout);
             effects_panel_render(renderer,state,&layout);
+            daw_fx_library_panel_render(renderer,state);
+            daw_routing_panel_render(renderer,state);
         }
         daw_pane_clip_end(renderer,&clip);
     }

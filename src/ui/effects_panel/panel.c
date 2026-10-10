@@ -616,7 +616,11 @@ void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* lay
     layout->preview_toggle_rect = (SDL_Rect){preview_x, button_y, preview_w, button_h};
 
     int target_x = content_x + content_w - target_w;
-    int target_min_x = preview_x + preview_w + button_gap;
+    int library_w=fx_panel_button_width("Chains",button_scale);
+    layout->library_button_rect=(SDL_Rect){preview_x+preview_w+button_gap,button_y,library_w,button_h};
+    int routing_w=fx_panel_button_width("Routing",button_scale);
+    layout->routing_button_rect=(SDL_Rect){layout->library_button_rect.x+library_w+button_gap,button_y,routing_w,button_h};
+    int target_min_x = layout->routing_button_rect.x + routing_w + button_gap;
     if (target_x < target_min_x) {
         target_x = target_min_x;
         target_w = content_x + content_w - target_x;
@@ -747,6 +751,8 @@ void effects_panel_render(SDL_Renderer* renderer, const AppState* state, const E
     const char* toggle_label = panel->view_mode == FX_PANEL_VIEW_STACK ? "List" : "Rack";
     draw_button(renderer, &layout->view_toggle_rect, false, toggle_label, FX_PANEL_BUTTON_SCALE, &theme);
     draw_button(renderer, &layout->spec_toggle_rect, panel->spec_panel_enabled, "Spec", FX_PANEL_BUTTON_SCALE, &theme);
+    draw_button(renderer,&layout->library_button_rect,false,"Chains",FX_PANEL_BUTTON_SCALE,&theme);
+    draw_button(renderer,&layout->routing_button_rect,false,"Routing",FX_PANEL_BUTTON_SCALE,&theme);
     bool button_active = (panel->overlay_layer != FX_PANEL_OVERLAY_CLOSED);
     draw_button(renderer, &layout->dropdown_button_rect, button_active, "Add FX", FX_PANEL_BUTTON_SCALE, &theme);
     draw_button(renderer, &layout->preview_toggle_rect, panel->preview_toggle_hovered, "Preview", FX_PANEL_BUTTON_SCALE, &theme);

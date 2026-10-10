@@ -65,7 +65,7 @@ void daw_text_cancel_composition(AppState* state) {
     KitUiTextEdit* edits[] = {&state->project_prompt.text_edit,
         &state->tempo_ui.text_edit, &state->library.text_edit,
         &state->track_name_editor.text_edit, &state->inspector.name_text_edit,
-        &state->inspector.edit.text_edit};
+        &state->inspector.edit.text_edit, &state->preset_ui.text_edit, &state->fx_library_ui.text_edit, &state->routing_ui.text_edit, &state->midi_arrangement_ui.text_edit};
     for (size_t i = 0; i < sizeof(edits) / sizeof(edits[0]); ++i)
         kit_ui_text_cancel_composition(edits[i]);
 }
@@ -76,7 +76,7 @@ void daw_text_resume_input(AppState* state) {
     bool numeric = edit->editing_timeline_start || edit->editing_timeline_end ||
         edit->editing_timeline_length || edit->editing_source_start ||
         edit->editing_source_end || edit->editing_playback_rate;
-    if (state->project_prompt.active || (!state->project_load.active &&
+    if ((state->routing_ui.open && state->routing_ui.focused >= 0) || (state->midi_arrangement_ui.open && state->midi_arrangement_ui.focused >= 0) || state->fx_library_ui.editing || state->preset_ui.editing || state->project_prompt.active || (!state->project_load.active &&
         (state->tempo_ui.editing || state->library.editing || state->track_name_editor.editing ||
          state->inspector.editing_name || numeric))) SDL_StartTextInput();
     else SDL_StopTextInput();

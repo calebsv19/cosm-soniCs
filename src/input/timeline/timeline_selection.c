@@ -7,8 +7,10 @@
 #include "input/timeline/timeline_clip_helpers.h"
 #include "input/timeline_drag.h"
 #include "undo/undo_manager.h"
+#include "daw/arrangement.h"
 
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 
 bool timeline_selection_contains(const AppState* state, int track_index, int clip_index, int* out_index) {
@@ -207,6 +209,48 @@ static bool timeline_selection_edit_content(AppState* state, bool duplicate) {
         if (entry.track_index == state->selected_track_index && entry.clip_index == state->selected_clip_index) anchor = i;
     }
     uint64_t first = identities[0]; identities[0] = identities[anchor]; identities[anchor] = first;
+    bool midi_only = true;
+    for (int i = 0; i < count; ++i)
+        for (int t = 0; t < engine_get_track_count(state->engine); ++t)
+            for (int c = 0; c < tracks[t].clip_count; ++c)
+                if (tracks[t].clips[c].creation_index == identities[i] && tracks[t].clips[c].kind != ENGINE_CLIP_KIND_MIDI) midi_only = false;
+    if (midi_only) {
+        if (count > DAW_ARRANGEMENT_BATCH_CAP) return undo_manager_reject(&state->undo, "Select at most sixteen MIDI regions for this edit.");
+        DawArrangementSnapshot* snapshot = calloc(1, sizeof(*snapshot));
+        if (!snapshot) return false;
+        DawArrangementEdit edits[DAW_ARRANGEMENT_BATCH_CAP] = {0};
+        DawActionTarget targets[DAW_ARRANGEMENT_BATCH_CAP] = {0};
+        const EngineRuntimeConfig* config = engine_get_config(state->engine);
+        uint64_t gap = config && config->block_size > 0 ? (uint64_t)config->block_size : 0;
+        bool prepared = daw_action_get_arrangement(state, snapshot).status == DAW_MIDI_UNCHANGED;
+        for (int i = 0; i < count && prepared; ++i) {
+            for (int t = 0; t < engine_get_track_count(state->engine); ++t)
+                for (int c = 0; c < tracks[t].clip_count; ++c) if (tracks[t].clips[c].creation_index == identities[i]) {
+                    const EngineClip* clip = &tracks[t].clips[c];
+                    prepared = daw_instrument_target_capture(state, t, c, &edits[i].target) == DAW_ACTION_UNCHANGED;
+                    edits[i].operation = duplicate ? ENGINE_ARRANGE_DUPLICATE : ENGINE_ARRANGE_DELETE;
+                    if (duplicate) {
+                        if (clip->timeline_start_frames > UINT64_MAX - clip->duration_frames ||
+                            clip->timeline_start_frames + clip->duration_frames > UINT64_MAX - gap) prepared = false;
+                        else edits[i].start_frame = clip->timeline_start_frames + clip->duration_frames + gap;
+                    }
+                }
+        }
+        DawMidiResult result = prepared ? daw_action_arrange(state, snapshot, edits, count, targets) :
+            (DawMidiResult){.status = DAW_MIDI_INVALID, .message = "Arrangement could not be prepared."};
+        daw_arrangement_snapshot_free(snapshot); free(snapshot);
+        if (result.status != DAW_MIDI_APPLIED) return undo_manager_reject(&state->undo, result.message);
+        timeline_selection_clear(state);
+        for (int i = 0; i < count; ++i) if (targets[i].clip_id) {
+            int t, c;
+            if (daw_action_target_resolve(state, targets[i], &t, &c) == DAW_ACTION_UNCHANGED) timeline_selection_add(state, t, c);
+        }
+        if (state->selection_count) {
+            timeline_selection_set_primary(state, state->selection[0].track_index, state->selection[0].clip_index);
+            inspector_input_set_clip(state, state->selection[0].track_index, state->selection[0].clip_index);
+        }
+        return true;
+    }
     UndoCommand command = {.type = UNDO_CMD_CLIP_CONTENT};
     command.data.clip_content_selection = (UndoClipContentSelection){.count = count, .before = identities, .after = outputs};
     if (!undo_manager_begin_drag(&state->undo, &command)) return false;

@@ -1,4 +1,13 @@
+#define _POSIX_C_SOURCE 200809L
 #include "app_state.h"
+#include "engine/engine_internal.h"
+#include "daw/preset_actions.h"
+#include "ui/preset_panel.h"
+#include "ui/fx_library_panel.h"
+#include "ui/routing_panel.h"
+#include <unistd.h>
+#include <dirent.h>
+#include <sys/stat.h>
 #include "ui/editor_controls.h"
 #include "ui/layout.h"
 #include "ui/render_utils.h"
@@ -61,6 +70,24 @@ static void focus(AppState* state, unsigned domain, uint64_t key) {
     }
     assert(!"native control missing");
 }
+// Activates a collected product control only with a matching application-owned release.
+static void activate_control(AppState* state,unsigned domain,uint64_t key) {
+    daw_editor_controls_sync(state);KitUiSurface* surface=&state->editor_controls.surface;
+    for(unsigned i=0;i<surface->count;++i)if(surface->keys[i].domain==domain && surface->keys[i].value==key){
+        KitRenderRect r=surface->controls[i].bounds;SDL_Event e={.type=SDL_MOUSEBUTTONDOWN};e.button.button=SDL_BUTTON_LEFT;e.button.x=r.x+r.width/2;e.button.y=r.y+r.height/2;
+        input_manager_handle_event(&state->input_manager,state,&e);e.type=SDL_MOUSEBUTTONUP;input_manager_handle_event(&state->input_manager,state,&e);return;
+    }
+    assert(!"native control missing");
+}
+// Retires only regular fixture files within a task-owned library directory.
+static void retire_library_directory(const char* root) {
+    DIR* dir=opendir(root);assert(dir);struct dirent* entry;
+    while((entry=readdir(dir))){if(!strcmp(entry->d_name,".") || !strcmp(entry->d_name,".."))continue;
+        char path[2048];snprintf(path,sizeof(path),"%s/%s",root,entry->d_name);struct stat metadata;assert(!lstat(path,&metadata));
+        if(S_ISDIR(metadata.st_mode))retire_library_directory(path);else{assert(S_ISREG(metadata.st_mode));assert(!unlink(path));}
+    }
+    closedir(dir);assert(!rmdir(root));
+}
 // Runs finite native frames without personal projects or audio device activation.
 int main(int argc,char** argv) {
     assert(argc==2); assert(!SDL_Init(SDL_INIT_VIDEO|SDL_INIT_EVENTS) && !TTF_Init());
@@ -70,11 +97,45 @@ int main(int argc,char** argv) {
     assert(vk_renderer_init(&renderer,window,&config)==VK_SUCCESS);
     assert(ui_font_set("include/fonts/Montserrat/Montserrat-Regular.ttf",9));
     AppState* state=calloc(1,sizeof(*state)); assert(state); EngineRuntimeConfig cfg; config_set_defaults(&cfg);
+    state->tempo=tempo_state_default(cfg.sample_rate);tempo_map_init(&state->tempo_map,cfg.sample_rate);time_signature_map_init(&state->time_signature_map);
     state->engine=engine_create(&cfg); assert(state->engine); state->runtime_cfg=cfg;
     undo_manager_init(&state->undo); input_manager_init(&state->input_manager);
     state->active_track_index=0; state->selected_track_index=-1; state->selected_clip_index=-1;
     ui_init_panes(state); state->layout_runtime.mixer_ratio=0.55f; ui_layout_panes(state,1600,1000); effects_panel_input_init(state);
     assert(undo_manager_add_effect(state,-1,1)); effects_panel_sync_from_engine(state);
+    char library[]="/tmp/daw-preset-native-XXXXXX";assert(mkdtemp(library));assert(!setenv("DAW_PRESET_LIBRARY",library,1));
+    activate_control(state,14,5);assert(state->fx_library_ui.open && !state->fx_library_ui.captured.track_id);
+    capture(&renderer,state,argv[1],"fx-chain-browser-empty");containment(&renderer,state,argv[1]);
+    DawFxLibraryLayout fx_library;daw_fx_library_panel_layout(state,&fx_library);
+    SDL_Event fx_click={.type=SDL_MOUSEBUTTONDOWN};fx_click.button.button=SDL_BUTTON_LEFT;fx_click.button.x=fx_library.buttons[0].x+5;fx_click.button.y=fx_library.buttons[0].y+5;
+    input_manager_handle_event(&state->input_manager,state,&fx_click);fx_click.type=SDL_MOUSEBUTTONUP;input_manager_handle_event(&state->input_manager,state,&fx_click);assert(state->fx_library_ui.saving);
+    SDL_Event fx_text={.type=SDL_TEXTINPUT};SDL_strlcpy(fx_text.text.text,"Native Warmth",sizeof(fx_text.text.text));input_manager_handle_event(&state->input_manager,state,&fx_text);
+    capture(&renderer,state,argv[1],"fx-chain-save-form");
+    SDL_Event fx_enter={.type=SDL_KEYDOWN};fx_enter.key.keysym.sym=SDLK_RETURN;input_manager_handle_event(&state->input_manager,state,&fx_enter);
+    assert(!state->fx_library_ui.saving && state->fx_library_ui.library->count==1);
+    capture(&renderer,state,argv[1],"fx-chain-browser-saved");containment(&renderer,state,argv[1]);
+    fx_enter.key.keysym.sym=SDLK_ESCAPE;input_manager_handle_event(&state->input_manager,state,&fx_enter);assert(!state->fx_library_ui.open);
+
+    activate_control(state,14,6); assert(state->routing_ui.open);
+    DawRoutingLayout routing; daw_routing_panel_layout(state,&routing); assert(routing.editable);
+    SDL_Event route_click={.type=SDL_MOUSEBUTTONDOWN}; route_click.button.button=SDL_BUTTON_LEFT;
+    route_click.button.x=routing.buttons[2].x+5; route_click.button.y=routing.buttons[2].y+5;
+    input_manager_handle_event(&state->input_manager,state,&route_click); route_click.type=SDL_MOUSEBUTTONUP; input_manager_handle_event(&state->input_manager,state,&route_click);
+    assert(state->routing_ui.staged_return); capture(&renderer,state,argv[1],"routing-return");
+    route_click.type=SDL_MOUSEBUTTONDOWN; route_click.button.x=routing.buttons[0].x+5; route_click.button.y=routing.buttons[0].y+5;
+    input_manager_handle_event(&state->input_manager,state,&route_click); route_click.type=SDL_MOUSEBUTTONUP; input_manager_handle_event(&state->input_manager,state,&route_click);
+    route_click.type=SDL_MOUSEBUTTONDOWN; route_click.button.x=routing.destinations[0].x+5; route_click.button.y=routing.destinations[0].y+5;
+    input_manager_handle_event(&state->input_manager,state,&route_click); route_click.type=SDL_MOUSEBUTTONUP; input_manager_handle_event(&state->input_manager,state,&route_click);
+    route_click.type=SDL_MOUSEBUTTONDOWN; route_click.button.x=routing.gains[0].x+5; route_click.button.y=routing.gains[0].y+5;
+    input_manager_handle_event(&state->input_manager,state,&route_click); route_click.type=SDL_MOUSEBUTTONUP; input_manager_handle_event(&state->input_manager,state,&route_click);
+    SDL_Event route_key={.type=SDL_KEYDOWN}; route_key.key.keysym.sym=SDLK_a; route_key.key.keysym.mod=KMOD_CTRL;
+    input_manager_handle_event(&state->input_manager,state,&route_key);
+    SDL_Event route_text={.type=SDL_TEXTINPUT}; SDL_strlcpy(route_text.text.text,"50",sizeof(route_text.text.text)); input_manager_handle_event(&state->input_manager,state,&route_text);
+    route_key.key.keysym.sym=SDLK_RETURN; route_key.key.keysym.mod=KMOD_NONE; input_manager_handle_event(&state->input_manager,state,&route_key);
+    assert(state->routing_ui.captured.tracks[state->routing_ui.selected].sends[0].gain==.5f);
+    capture(&renderer,state,argv[1],"routing-source-send"); containment(&renderer,state,argv[1]);
+    route_key.key.keysym.sym=SDLK_ESCAPE; input_manager_handle_event(&state->input_manager,state,&route_key); assert(!state->routing_ui.open);
+
     containment(&renderer,state,argv[1]);
     focus(state,11,4); capture(&renderer,state,argv[1],"effects-stack");
     state->effects_panel.view_mode=FX_PANEL_VIEW_LIST; focus(state,10,1); capture(&renderer,state,argv[1],"effects-list");
@@ -118,13 +179,152 @@ int main(int argc,char** argv) {
     assert(undo_manager_add_effect(state,0,105));effects_panel_sync_from_engine(state);
     state->effects_panel.view_mode=FX_PANEL_VIEW_STACK;state->effects_panel.spec_panel_enabled=true;
     capture(&renderer,state,argv[1],"delay-spectrogram-rack");
-    int clip=-1; assert(engine_add_midi_clip_to_track(state->engine,0,0,96000,&clip));
+    int clip=-1; assert(engine_add_midi_clip_to_track(state->engine,0,0,120000,&clip));
     assert(engine_clip_midi_add_note(state->engine,0,clip,(EngineMidiNote){0,12000,60,0.8f},NULL));
     timeline_selection_set_single(state,0,clip); state->inspector.visible=true;
     focus(state,12,7); capture(&renderer,state,argv[1],"midi-editor");
+    DawMidiPatternLayout patterns;daw_midi_pattern_layout(state,&patterns);
+    assert(daw_midi_pattern_activate(state,patterns.entry.x+1,patterns.entry.y+1));
+    capture(&renderer,state,argv[1],"midi-pattern-popup");containment(&renderer,state,argv[1]);
+    assert(daw_midi_pattern_activate(state,patterns.buttons[3].x+1,patterns.buttons[3].y+1));
+    assert(daw_midi_pattern_activate(state,patterns.buttons[0].x+1,patterns.buttons[0].y+1));
+    assert(engine_get_tracks(state->engine)[0].clips[clip].midi_notes.note_count==8);
+    capture(&renderer,state,argv[1],"midi-pattern-committed");
+    int expression_history=state->undo.undo_count;
+    assert(daw_midi_pattern_activate(state,patterns.buttons[6].x+1,patterns.buttons[6].y+1));
+    assert(state->undo.undo_count==expression_history+1);
+    capture(&renderer,state,argv[1],"midi-expression-swung");containment(&renderer,state,argv[1]);
+    assert(undo_manager_undo(&state->undo,state));
+    assert(daw_midi_pattern_activate(state,patterns.buttons[7].x+1,patterns.buttons[7].y+1));
+    assert(state->undo.undo_count==expression_history+1);
+    capture(&renderer,state,argv[1],"midi-expression-velocity");
+    assert(undo_manager_undo(&state->undo,state));
+
+    assert(undo_manager_undo(&state->undo,state));assert(engine_get_tracks(state->engine)[0].clips[clip].midi_notes.note_count==1);
+    assert(undo_manager_redo(&state->undo,state));assert(engine_get_tracks(state->engine)[0].clips[clip].midi_notes.note_count==8);
+    assert(daw_midi_pattern_activate(state,patterns.buttons[4].x+1,patterns.buttons[4].y+1));
+    capture(&renderer,state,argv[1],"midi-pattern-notes");
+    focus(state,12,41);
+    assert(daw_midi_arrangement_open(state));
+    DawMidiArrangementLayout arrangement;daw_midi_arrangement_layout(state,&arrangement);
+    capture(&renderer,state,argv[1],"midi-arrangement-fields");containment(&renderer,state,argv[1]);
+    SDL_strlcpy(state->midi_arrangement_ui.fields[0],"24000",sizeof(state->midi_arrangement_ui.fields[0]));
+    assert(daw_midi_arrangement_activate(state,arrangement.buttons[0].x+1,arrangement.buttons[0].y+1));
+    assert(engine_get_tracks(state->engine)[0].clips[clip].timeline_start_frames==24000);
+    capture(&renderer,state,argv[1],"midi-arrangement-moved");
+    assert(undo_manager_undo(&state->undo,state));
+    assert(daw_midi_arrangement_activate(state,arrangement.buttons[4].x+1,arrangement.buttons[4].y+1));
+    SDL_strlcpy(state->midi_arrangement_ui.fields[1],"108000",sizeof(state->midi_arrangement_ui.fields[1]));
+    assert(daw_midi_arrangement_activate(state,arrangement.buttons[2].x+1,arrangement.buttons[2].y+1));
+    assert(engine_get_tracks(state->engine)[0].clips[clip].duration_frames==108000);
+    capture(&renderer,state,argv[1],"midi-arrangement-trimmed");containment(&renderer,state,argv[1]);
+    assert(undo_manager_undo(&state->undo,state));
+    daw_midi_arrangement_release(state);
     state->midi_editor_ui.panel_mode=MIDI_REGION_PANEL_INSTRUMENT;
-    focus(state,13,11); capture(&renderer,state,argv[1],"instrument");
+    state->midi_editor_ui.instrument_active_group=ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE;
+    focus(state,13,13); capture(&renderer,state,argv[1],"instrument-sine-envelope");
+    assert(engine_clip_midi_set_instrument_preset(state->engine,0,clip,ENGINE_INSTRUMENT_PRESET_SYNTH_LAB));
+    focus(state,13,13); capture(&renderer,state,argv[1],"instrument-synth-envelope");
+    state->midi_editor_ui.instrument_active_group=ENGINE_INSTRUMENT_PARAM_GROUP_OSCILLATOR;
+    focus(state,13,11); capture(&renderer,state,argv[1],"instrument-synth-oscillator");
+    assert(engine_clip_midi_set_instrument_preset(state->engine,0,clip,ENGINE_INSTRUMENT_PRESET_SOFT_PAD));
+    state->midi_editor_ui.instrument_active_group=ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE;
+    focus(state,13,13); capture(&renderer,state,argv[1],"instrument-pad-envelope");
+    assert(engine_clip_midi_set_instrument_preset(state->engine,0,clip,ENGINE_INSTRUMENT_PRESET_ROUNDED_KEYS));
+    state->midi_editor_ui.instrument_active_group=ENGINE_INSTRUMENT_PARAM_GROUP_OSCILLATOR;
+    focus(state,13,11); capture(&renderer,state,argv[1],"rounded-keys-oscillator");
+    assert(engine_clip_midi_set_instrument_preset(state->engine,0,clip,ENGINE_INSTRUMENT_PRESET_ROUNDED_PLUCK));
+    state->midi_editor_ui.instrument_active_group=ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE;
+    focus(state,13,13); capture(&renderer,state,argv[1],"rounded-pluck-envelope");
+    assert(engine_clip_midi_set_instrument_preset(state->engine,0,clip,ENGINE_INSTRUMENT_PRESET_ROUNDED_PAD));
+    focus(state,13,13); capture(&renderer,state,argv[1],"rounded-pad-envelope");
+    assert(engine_clip_midi_set_instrument_preset(state->engine,0,clip,ENGINE_INSTRUMENT_PRESET_FILTERED_KEYS));
+    state->midi_editor_ui.instrument_active_group=ENGINE_INSTRUMENT_PARAM_GROUP_TONE;
+    focus(state,13,12); capture(&renderer,state,argv[1],"filtered-keys-tone");
+    assert(engine_clip_midi_set_instrument_preset(state->engine,0,clip,ENGINE_INSTRUMENT_PRESET_FILTERED_PAD));
+    state->midi_editor_ui.instrument_active_group=ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE;
+    focus(state,13,13); capture(&renderer,state,argv[1],"filtered-pad-envelope");
+
+    assert(engine_clip_midi_set_instrument_preset(state->engine,0,clip,ENGINE_INSTRUMENT_PRESET_MOVING_PAD));
+    state->midi_editor_ui.instrument_active_group=ENGINE_INSTRUMENT_PARAM_GROUP_MOD;
+    focus(state,13,14); capture(&renderer,state,argv[1],"moving-pad-modulation"); containment(&renderer,state,argv[1]);
+    assert(engine_clip_midi_set_instrument_preset(state->engine,0,clip,ENGINE_INSTRUMENT_PRESET_FILTER_PLUCK));
+    capture(&renderer,state,argv[1],"filter-pluck-modulation");
+    assert(engine_clip_midi_set_instrument_preset(state->engine,0,clip,ENGINE_INSTRUMENT_PRESET_FILTERED_PAD));
+    state->midi_editor_ui.instrument_active_group=ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE;
+    DawActionTarget preset_target; assert(daw_instrument_target_capture(state,0,clip,&preset_target)==DAW_ACTION_UNCHANGED);
+    DawInstrumentSnapshot preset_sound=daw_action_get_instrument(state,preset_target).snapshot;
+    assert(daw_action_save_preset(state,&preset_sound,"Evening Glass",NULL,NULL).status==DAW_PRESET_OK);
+    MidiInstrumentPanelLayout preset_panel; midi_instrument_panel_compute_layout(state,&preset_panel);
+    DawPresetPanelLayout preset_layout; daw_preset_panel_layout(state,preset_panel.panel_rect,preset_panel.header_rect,&preset_layout);
+    assert(daw_preset_panel_activate(state,preset_layout.library_button.x+1,preset_layout.library_button.y+1));
+    capture(&renderer,state,argv[1],"user-preset-browser"); containment(&renderer,state,argv[1]);
+    SDL_Event escape={.type=SDL_KEYDOWN}; escape.key.keysym.sym=SDLK_ESCAPE; assert(daw_preset_panel_event(state,&escape));
+    assert(daw_preset_panel_activate(state,preset_layout.save_button.x+1,preset_layout.save_button.y+1));
+    capture(&renderer,state,argv[1],"user-preset-save"); assert(daw_preset_panel_event(state,&escape));
+    DawSoundPanelLayout inspection;daw_sound_panel_layout(state,&inspection);
+    assert(daw_sound_panel_activate(state,inspection.buttons[12].x+1,inspection.buttons[12].y+1));
+    daw_sound_panel_layout(state,&inspection);
+    assert(inspection.plot.w>0 && inspection.plot.h>0);
+    assert(daw_sound_panel_activate(state,inspection.buttons[8].x+1,inspection.buttons[8].y+1));
+    DawInstrumentSnapshot compared=daw_action_get_instrument(state,preset_target).snapshot;
+    DawInstrumentRequest changed={.target=preset_target,.parameter_mask=1u<<ENGINE_INSTRUMENT_PARAM_CUTOFF_HZ,.params=compared.effective_params};
+    changed.params.cutoff_hz=6500;assert(daw_action_set_instrument(state,&changed).status==DAW_ACTION_APPLIED);
+    assert(daw_sound_panel_activate(state,inspection.buttons[7].x+1,inspection.buttons[7].y+1));
+    assert(daw_sound_panel_activate(state,inspection.buttons[2].x+1,inspection.buttons[2].y+1));
+    capture(&renderer,state,argv[1],"inspection-spectrum-reference");containment(&renderer,state,argv[1]);
+    assert(daw_sound_panel_activate(state,inspection.buttons[1].x+1,inspection.buttons[1].y+1));
+    capture(&renderer,state,argv[1],"inspection-envelope-reference");
+    assert(daw_sound_panel_activate(state,inspection.buttons[0].x+1,inspection.buttons[0].y+1));
+    capture(&renderer,state,argv[1],"inspection-waveform-reference");
+    state->layout_runtime.mixer_ratio=0.25f;ui_layout_panes(state,1600,1000);
+    capture(&renderer,state,argv[1],"inspection-compact");containment(&renderer,state,argv[1]);
+    daw_sound_panel_layout(state,&inspection);
+    assert(daw_sound_panel_activate(state,inspection.buttons[13].x+1,inspection.buttons[13].y+1));
+    assert(state->sound_ui.composition && state->sound_ui.has_current);
+    assert(daw_sound_panel_activate(state,inspection.buttons[8].x+1,inspection.buttons[8].y+1));
+    assert(daw_sound_panel_activate(state,inspection.buttons[6].x+1,inspection.buttons[6].y+1));
+    capture(&renderer,state,argv[1],"composition-dry-reference");containment(&renderer,state,argv[1]);
+    assert(daw_sound_panel_activate(state,inspection.buttons[2].x+1,inspection.buttons[2].y+1));
+    capture(&renderer,state,argv[1],"composition-spectrum-reference");
+    assert(!setenv("SDL_AUDIODRIVER","dummy",1));
+    assert(engine_start(state->engine));
+    daw_sound_panel_layout(state,&inspection);
+    SDL_Event listen={.type=SDL_MOUSEBUTTONDOWN};listen.button.button=SDL_BUTTON_LEFT;
+    listen.button.x=inspection.buttons[14].x+1;listen.button.y=inspection.buttons[14].y+1;
+    input_manager_handle_event(&state->input_manager,state,&listen);assert(!engine_preview_active(state->engine));
+    listen.type=SDL_MOUSEBUTTONUP;input_manager_handle_event(&state->input_manager,state,&listen);assert(engine_preview_active(state->engine));
+    capture(&renderer,state,argv[1],"captured-listening-active");containment(&renderer,state,argv[1]);
+    Uint64 deadline=SDL_GetTicks64()+10000;
+    while(engine_preview_active(state->engine) && SDL_GetTicks64()<deadline)SDL_Delay(10);
+    assert(!engine_preview_active(state->engine));
+    SDL_LockAudioDevice(state->engine->device.device_id);
+    assert(state->engine->device.preview_cursor==state->sound_ui.captured.audio.frame_count);
+    SDL_UnlockAudioDevice(state->engine->device.device_id);
+    capture(&renderer,state,argv[1],"captured-listening-finished");
+    listen.type=SDL_MOUSEBUTTONDOWN;listen.button.x=inspection.buttons[15].x+1;listen.button.y=inspection.buttons[15].y+1;
+    input_manager_handle_event(&state->input_manager,state,&listen);listen.type=SDL_MOUSEBUTTONUP;input_manager_handle_event(&state->input_manager,state,&listen);assert(engine_preview_active(state->engine));
+    capture(&renderer,state,argv[1],"captured-reference-listening");
+    listen.type=SDL_MOUSEBUTTONDOWN;listen.button.x=inspection.buttons[16].x+1;listen.button.y=inspection.buttons[16].y+1;
+    input_manager_handle_event(&state->input_manager,state,&listen);listen.type=SDL_MOUSEBUTTONUP;input_manager_handle_event(&state->input_manager,state,&listen);
+    assert(!engine_preview_active(state->engine) && !state->engine->device.preview_pcm);
+    listen.type=SDL_MOUSEBUTTONDOWN;listen.button.x=inspection.buttons[14].x+1;listen.button.y=inspection.buttons[14].y+1;
+    input_manager_handle_event(&state->input_manager,state,&listen);listen.type=SDL_MOUSEBUTTONUP;input_manager_handle_event(&state->input_manager,state,&listen);assert(engine_preview_active(state->engine));
+    SDL_Event lost={.type=SDL_WINDOWEVENT};lost.window.event=SDL_WINDOWEVENT_FOCUS_LOST;input_manager_handle_event(&state->input_manager,state,&lost);
+    assert(!state->sound_ui.open && !state->sound_ui.captured.audio.data && !state->engine->device.preview_pcm);
+    daw_sound_panel_layout(state,&inspection);
+    assert(daw_sound_panel_activate(state,inspection.buttons[12].x+1,inspection.buttons[12].y+1));
+    daw_sound_panel_layout(state,&inspection);
+    assert(state->sound_ui.composition && state->sound_ui.has_current);
+    assert(daw_sound_panel_activate(state,inspection.buttons[14].x+1,inspection.buttons[14].y+1) && engine_preview_active(state->engine));
+    SessionDocument replacement={0};session_document_reset(&replacement);
+    assert(session_document_capture(state,&replacement));
+    assert(session_apply_document(state,&replacement));session_document_free(&replacement);
+    assert(!state->sound_ui.open && !state->sound_ui.captured.audio.data && !engine_preview_active(state->engine));
+    engine_stop(state->engine);unsetenv("SDL_AUDIODRIVER");
+    daw_routing_panel_release(state); daw_fx_library_panel_release(state);retire_library_directory(library);unsetenv("DAW_PRESET_LIBRARY");
     ui_font_invalidate_cache((SDL_Renderer*)&renderer); ui_font_shutdown(); undo_manager_free(&state->undo);
+    tempo_map_free(&state->tempo_map);time_signature_map_free(&state->time_signature_map);
     engine_destroy(state->engine); free(state); vk_renderer_shutdown(&renderer);
     SDL_DestroyWindow(window); TTF_Quit(); SDL_Quit();
     puts("native_editor_controls_test: success (actual product painters, discrete exceptions, native focus and validation-clean frames)");

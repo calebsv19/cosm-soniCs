@@ -1,4 +1,5 @@
 #pragma once
+#include "engine/routing.h"
 #include "daw/save_file.h"
 
 #include "config.h"
@@ -134,6 +135,11 @@ typedef struct EngineBounceOptions {
     uint64_t preroll_frames; // At most 60 seconds; truncated at project frame zero.
     uint64_t tail_frames;    // At most 60 seconds; later authored input is excluded.
     bool normalize_if_clipping;
+    bool isolate_track;     // Select only the addressed track while retaining its authored gain/pan.
+    int track_index;        // Used only when isolate_track is true.
+    uint64_t clip_id;       // Nonzero selects one region on the isolated track.
+    bool bypass_track_fx;   // Excludes insert chains and dedicated track EQ from the private render.
+    bool bypass_master_fx;  // Excludes the master chain and dedicated master EQ from the private render.
 } EngineBounceOptions;
 
 // Selects the single requested WAV encoding; PCM16 uses a fixed reproducible TPDF seed.
@@ -172,6 +178,8 @@ struct EngineClip {
 
 // Owns editable track content and a runtime identity that survives array movement.
 struct EngineTrack {
+    bool is_return; // Distinguishes source lanes from shared return processing.
+    EngineSend sends[ENGINE_SEND_CAP]; // Owns bounded post-fader stable destination sends.
     uint64_t runtime_id;
     EngineClip* clips;
     int clip_count;
@@ -483,6 +491,8 @@ bool    engine_midi_audition_note_on(Engine* engine,
                                      EngineInstrumentParams params,
                                      uint8_t note,
                                      float velocity);
+// Queues a finite audition note that retires without UI timers or note-off delivery.
+bool engine_midi_audition_note_preview(Engine*, int, EngineInstrumentPresetId, EngineInstrumentParams, uint8_t, float, uint64_t);
 bool    engine_midi_audition_note_off(Engine* engine, uint8_t note);
 void    engine_midi_audition_all_notes_off(Engine* engine);
 bool    engine_track_apply_no_overlap(Engine* engine,
@@ -558,6 +568,14 @@ bool    engine_bounce_range(Engine* engine,
 
 // Identifies the only thread allowed to inspect or mutate editable project state.
 bool engine_is_control_thread(const Engine* engine);
+// Returns the process-local generation of this engine/project lifetime.
+uint64_t engine_instance_id(const Engine* engine);
+// Publishes a complete track instrument state in one rollback-capable revision.
+bool engine_track_midi_set_instrument_state(Engine* engine, int track_index,
+    EngineInstrumentPresetId preset, EngineInstrumentParams params, bool enabled);
+// Publishes a complete region instrument state in one rollback-capable revision.
+bool engine_clip_midi_set_instrument_state(Engine* engine, int track_index, int clip_index,
+    EngineInstrumentPresetId preset, EngineInstrumentParams params, bool inherits_track);
 // Reads accepted control EQ parameters, using a negative track index for the master.
 bool engine_get_eq_curve(const Engine* engine, int track_index, EngineEqCurve* out_curve);
 
@@ -625,6 +643,21 @@ bool engine_clip_content_drop(Engine* engine, const EngineClipBatchTransform* in
 bool engine_clip_content_edit(Engine* engine, const uint64_t* identities, int count, bool duplicate, uint64_t gap,
                               uint64_t* output_ids, EngineClipContentSnapshot** before, EngineClipContentSnapshot** after);
 
+// Selects one explicit region operation within an atomic existing-track arrangement batch.
+typedef enum EngineArrangementOp { ENGINE_ARRANGE_DUPLICATE, ENGINE_ARRANGE_MOVE, ENGINE_ARRANGE_TRIM, ENGINE_ARRANGE_DELETE } EngineArrangementOp;
+// Carries a stable source identity and prepared destination state without borrowing mutable engine arrays.
+typedef struct EngineArrangementEdit {
+    EngineArrangementOp op;
+    uint64_t clip_id;
+    int destination_track;
+    EngineClipTransform transform;
+} EngineArrangementEdit;
+// Compares all captured clip fields and overwritten track sound state without comparing render history.
+bool engine_clip_content_matches(const Engine*, const EngineClipContentSnapshot*);
+// Prepares every duplicate/move/trim/delete before a single nonoverlapping publication and retained history.
+bool engine_arrangement_transaction(Engine*, const EngineArrangementEdit*, int count, uint64_t* output_ids,
+                                    EngineClipContentSnapshot** before, EngineClipContentSnapshot** after);
+
 // Borrows authored clip fields while a complete insertion batch prepares its owned render sources.
 typedef struct {
     EngineClipKind kind;
@@ -639,3 +672,15 @@ typedef struct {
 // Inserts every prepared descriptor on one destination, including required tracks, with retained history.
 bool engine_clip_content_insert(Engine* engine, int destination, const EngineClipInsert* clips, int count,
                                 uint64_t* output_ids, EngineClipContentSnapshot** before, EngineClipContentSnapshot** after);
+
+// Publishes a staged MIDI addition with optional stable history identities for the new clip/track.
+bool engine_add_midi_clip_with_identity(Engine*, int, uint64_t, uint64_t, uint64_t, uint64_t, int*);
+// Removes one created region while restoring track instrument metadata in the same publication.
+bool engine_remove_midi_clip_restore_track(Engine*, int, int, bool, EngineInstrumentPresetId, EngineInstrumentParams);
+
+// Starts original-level immutable captured PCM on the existing stopped engine output endpoint.
+bool engine_preview_play(Engine*,const float*,uint64_t frames,int channels,int rate);
+// Cancels captured PCM listening and releases device-owned storage.
+void engine_preview_stop(Engine*);
+// Reports whether finite captured listening is still active.
+bool engine_preview_active(const Engine*);

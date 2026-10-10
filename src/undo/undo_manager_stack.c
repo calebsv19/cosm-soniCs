@@ -1,6 +1,7 @@
 #include "undo_manager_internal.h"
 #include "input/timeline_selection.h"
 #include "input/inspector_input.h"
+#include "daw/arrangement.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -195,6 +196,13 @@ static bool undo_manager_step(UndoManager* manager, AppState* state, bool redo) 
         if (selection->count < 0 || selection->count > TIMELINE_MAX_SELECTION) return false;
         selected_count = selection->count;
         memcpy(selected, redo ? selection->after : selection->before, (size_t)selected_count * sizeof(*selected));
+    }
+    if (command->type == UNDO_CMD_ARRANGEMENT) {
+        const DawArrangementHistory* arrangement = command->data.arrangement;
+        if (!arrangement || arrangement->count < 1 || arrangement->count > DAW_ARRANGEMENT_BATCH_CAP) return false;
+        selected_count = arrangement->count;
+        memcpy(selected, redo ? arrangement->output_ids : arrangement->input_ids,
+               (size_t)selected_count * sizeof(*selected));
     }
     if (!undo_apply(state, command, redo))
         return undo_manager_reject(manager, "Undo/redo not applied: target changed or preparation failed.");

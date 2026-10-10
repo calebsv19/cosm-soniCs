@@ -1,6 +1,7 @@
 #include "session_io_read_internal.h"
 
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 
 static SessionTrack* session_document_append_track(SessionDocument* doc) {
@@ -97,7 +98,33 @@ static bool parse_session_track_midi_instrument_params(JsonReader* r, SessionTra
     return true;
 }
 
+// Reads exactly four bounded send slots with complete fields and no unknown or duplicate keys.
+static bool parse_session_track_sends(JsonReader* r, SessionTrack* track) {
+    if (!json_expect(r, '[')) return false;
+    for (int send = 0; send < ENGINE_SEND_CAP; ++send) {
+        if (send && !json_expect(r, ',')) return false;
+        if (!json_expect(r, '{')) return false;
+        bool destination_seen = false, gain_seen = false;
+        for (int field = 0; field < 2; ++field) {
+            if (field && !json_expect(r, ',')) return false;
+            char key[32]; double value;
+            if (!json_parse_string(r, key, sizeof(key)) || !json_expect(r, ':') ||
+                !json_parse_number(r, &value) || !isfinite(value)) return false;
+            if (!strcmp(key, "destination_track") && !destination_seen) {
+                if (value < 0 || value > ENGINE_ROUTING_TRACK_CAP || floor(value) != value) return false;
+                track->sends[send].destination_track = (int)value; destination_seen = true;
+            } else if (!strcmp(key, "gain") && !gain_seen) {
+                if (value < 0 || value > 1) return false;
+                track->sends[send].gain = (float)value; gain_seen = true;
+            } else return false;
+        }
+        if (!destination_seen || !gain_seen || !json_expect(r, '}')) return false;
+    }
+    return json_expect(r, ']');
+}
+
 static bool parse_session_track(JsonReader* r, SessionTrack* track) {
+    bool role_seen = false, sends_seen = false;
     if (!json_expect(r, '{')) {
         return false;
     }
@@ -138,6 +165,12 @@ static bool parse_session_track(JsonReader* r, SessionTrack* track) {
             if (!json_parse_bool(r, &track->solo)) {
                 return false;
             }
+        } else if (strcmp(key, "is_return") == 0) {
+            if (role_seen || !json_parse_bool(r, &track->is_return)) return false;
+            role_seen = true;
+        } else if (strcmp(key, "sends") == 0) {
+            if (sends_seen || !parse_session_track_sends(r, track)) return false;
+            sends_seen = true;
         } else if (strcmp(key, "midi_instrument_enabled") == 0) {
             if (!json_parse_bool(r, &track->midi_instrument_enabled)) {
                 return false;

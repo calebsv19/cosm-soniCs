@@ -212,6 +212,8 @@ static bool midi_editor_handle_viewport_keydown(AppState* state, const SDL_Event
 
 // Executes an accepted control through the original product pointer owner.
 bool midi_editor_input_activate_at(AppState* state, int x, int y) {
+    if (daw_midi_arrangement_activate(state, x, y)) return true;
+    if (daw_midi_pattern_activate(state, x, y)) return true;
     MidiEditorSelection selection = {0};
     MidiEditorLayout layout = {0};
     if (!midi_editor_get_fresh_selection(state, &selection, &layout)) {

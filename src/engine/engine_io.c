@@ -44,7 +44,7 @@ bool engine_bounce_range_to_buffer_with_options(Engine* engine, uint64_t start_f
         return false;
     const uint64_t preroll = policy.preroll_frames < start_frame ? policy.preroll_frames : start_frame;
     const uint64_t origin = start_frame - preroll;
-    EngineSourcePlan* plan = engine_source_plan_prepare_export(engine, end_frame, policy.tail_frames);
+    EngineSourcePlan* plan = engine_source_plan_prepare_export_filtered(engine, end_frame, policy.tail_frames, &policy);
     if (!plan)
         return false;
     const uint64_t latency = engine_source_plan_export_latency(plan);
@@ -136,7 +136,7 @@ DawSaveResult engine_bounce_range_to_wav(Engine* engine, uint64_t start, uint64_
     uint64_t total = end - start + policy.tail_frames;
     unsigned width = format == ENGINE_BOUNCE_WAV_FLOAT32 ? 4 : 2;
     if (total > (UINT32_MAX - 36u) / ((uint64_t)channels * width)) return DAW_SAVE_FAILED;
-    EngineSourcePlan* plan = engine_source_plan_prepare_export(engine, end, policy.tail_frames);
+    EngineSourcePlan* plan = engine_source_plan_prepare_export_filtered(engine, end, policy.tail_frames, &policy);
     if (!plan) return DAW_SAVE_FAILED;
     FILE* spool = NULL;
     float* mixed = NULL;

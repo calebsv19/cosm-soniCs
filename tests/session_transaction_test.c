@@ -7,12 +7,13 @@
 #include "ui/effects_panel.h"
 #include "test_assert.h"
 #include <stdlib.h>
+#include <math.h>
 #include <string.h>
 #include <unistd.h>
 
 #define CHECK(v, m) daw_test_expect("session_transaction_test", (v), (m))
 static int allocation_count, allocation_failure;
-static bool fail_engine, fail_track, fail_fx;
+static bool fail_engine, fail_track, fail_fx, fail_routing;
 
 // Injects each allocation owned by capture/restore while leaving the previous project available.
 static void* transaction_calloc(size_t n, size_t size) {
@@ -39,13 +40,21 @@ static FxInstId transaction_master_fx_add(Engine* engine, FxTypeId type) {
     return fail_fx ? 0 : engine_fx_master_add(engine, type);
 }
 
+// Injects routing restoration failure before the private project can replace live ownership.
+static bool transaction_routing_set(Engine* engine, const EngineRoutingSnapshot* before,
+                                    const EngineRoutingSnapshot* next) {
+    return !fail_routing && engine_routing_set(engine, before, next);
+}
+
 #define calloc transaction_calloc
 #define malloc transaction_malloc
 #include "../src/session/session_document.c"
 #define engine_create transaction_engine_create
 #define engine_add_track transaction_add_track
 #define engine_fx_master_add transaction_master_fx_add
+#define engine_routing_set transaction_routing_set
 #include "../src/session/session_apply.c"
+#undef engine_routing_set
 #undef engine_fx_master_add
 #undef engine_add_track
 #undef engine_create
@@ -241,6 +250,62 @@ int main(void) {
     CHECK(state->selected_track_index == 0 && state->selected_clip_index == 1 &&
           state->selection[0].clip_index == 1 && state->inspector.clip_index == 1 && engine_get_tracks(state->engine)[0].clips[1].timeline_start_frames == 300,
           "sorting changed restored selection identity");
+    // Routing persists complete settings while bindings acquire fresh runtime identities on reopening.
+    CHECK(engine_add_track(state->engine) == 2, "routing return lane");
+    EngineRoutingSnapshot routing, next;
+    CHECK(engine_routing_capture(state->engine, &routing), "routing capture");
+    next = routing; next.tracks[2].is_return = true;
+    next.tracks[1].sends[3] = (EngineSend){next.tracks[2].track_id, nextafterf(.3f, 1.f)};
+    CHECK(engine_routing_set(state->engine, &routing, &next), "routing fixture");
+    FxInstId return_gain = engine_fx_track_add(state->engine, 2, 1);
+    CHECK(return_gain && engine_fx_track_set_param(state->engine, 2, return_gain, 0, -6.f), "return effect fixture");
+    SessionDocument routed, reopened;
+    session_document_init(&routed); session_document_init(&reopened);
+    CHECK(session_document_capture(state, &routed), "routed project capture");
+    CHECK(routed.tracks[2].is_return && routed.tracks[1].sends[3].destination_track == 3 &&
+          routed.tracks[1].sends[3].gain == nextafterf(.3f, 1.f), "portable routing capture");
+    char project_path[1024]; snprintf(project_path, sizeof(project_path), "%s/routed.json", directory);
+    CHECK(session_document_write_file(&routed, project_path) && session_document_read_file(project_path, &reopened), "routing write/read");
+    CHECK(reopened.tracks[1].sends[3].gain == routed.tracks[1].sends[3].gain, "exact saved send gain");
+    EngineBounceOptions options = engine_bounce_options_default(); options.normalize_if_clipping = false;
+    EngineBounceBuffer wet_before = {0}, wet_after = {0};
+    CHECK(engine_bounce_range_to_buffer_with_options(state->engine, 0, 2048, &options, NULL, NULL, &wet_before), "routed audio before");
+    Engine* routed_engine = state->engine;
+    fail_routing = true;
+    CHECK(!session_apply_document(state, &reopened) && state->engine == routed_engine, "routing failure preserves live project");
+    fail_routing = false;
+    int routing_failures = 0;
+    for (int point = 1; point < 32; ++point) {
+        allocation_count = 0; allocation_failure = point;
+        bool accepted = session_apply_document(state, &reopened);
+        allocation_failure = 0;
+        if (accepted) break;
+        ++routing_failures;
+        CHECK(state->engine == routed_engine, "routing allocation refusal retains current engine");
+        EngineRoutingSnapshot unchanged;
+        CHECK(engine_routing_capture(state->engine, &unchanged) &&
+              unchanged.tracks[1].sends[3].return_id == next.tracks[2].track_id &&
+              unchanged.tracks[1].sends[3].gain == next.tracks[1].sends[3].gain,
+              "routing allocation refusal retains exact sends");
+    }
+    CHECK(routing_failures >= 7 && state->engine != routed_engine, "complete routing restore allocation boundaries");
+    CHECK(engine_routing_capture(state->engine, &routing) && routing.tracks[2].is_return &&
+          routing.tracks[1].sends[3].return_id == routing.tracks[2].track_id &&
+          routing.tracks[2].track_id != next.tracks[2].track_id, "rebound destination after fresh engine");
+    CHECK(engine_bounce_range_to_buffer_with_options(state->engine, 0, 2048, &options, NULL, NULL, &wet_after), "routed audio after");
+    CHECK(wet_before.frame_count == wet_after.frame_count && wet_before.channels == wet_after.channels &&
+          !memcmp(wet_before.data, wet_after.data, wet_before.frame_count * wet_before.channels * sizeof(float)), "routing and effects exact reopened audio");
+    reopened.tracks[2].sends[0] = (SessionSend){3, .1f};
+    CHECK(!session_apply_document(state, &reopened), "saved feedback rejected");
+    reopened.tracks[2].sends[0] = (SessionSend){0};
+    reopened.tracks[1].sends[0] = reopened.tracks[1].sends[3];
+    CHECK(!session_apply_document(state, &reopened), "saved duplicate binding rejected");
+    reopened.tracks[1].sends[0] = (SessionSend){0};
+    reopened.tracks[1].sends[3].destination_track = 1;
+    CHECK(!session_apply_document(state, &reopened), "saved source destination rejected");
+    engine_bounce_buffer_free(&wet_before); engine_bounce_buffer_free(&wet_after);
+    session_document_free(&routed); session_document_free(&reopened);
+    CHECK(unlink(project_path) == 0, "routing project cleanup");
     session_document_free(&roundtrip);
     session_document_free(&captured);
     destroy_fixture(state);

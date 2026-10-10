@@ -1,4 +1,9 @@
+#include "daw/fx_actions.h"
+#include "daw/routing_actions.h"
+#include "daw/arrangement.h"
 #include "undo/undo_manager.h"
+#include "daw/midi_actions.h"
+#include "daw/midi_regions.h"
 #include "undo_manager_internal.h"
 
 #include "app_state.h"
@@ -429,6 +434,7 @@ static bool apply_midi_note_edit(AppState* state, const UndoMidiNoteEdit* edit, 
     if (!state || !edit || !state->engine) {
         return false;
     }
+    if (edit->target.project_generation) return daw_midi_history_restore(state, edit, apply_after);
     const EngineMidiNote* notes = apply_after ? edit->after_notes : edit->before_notes;
     int note_count = apply_after ? edit->after_note_count : edit->before_note_count;
     const EngineTrack* tracks = engine_get_tracks(state->engine);
@@ -590,6 +596,7 @@ bool undo_apply(AppState* state, UndoCommand* command, bool apply_after) {
         *track_index = resolved;
     }
     if (command->type == UNDO_CMD_TRACK_EDIT) return apply_track_edit(state, command, apply_after);
+    if(command->type==UNDO_CMD_ARRANGEMENT)return daw_arrangement_history_restore(state,command,apply_after);
     if (command->type == UNDO_CMD_CLIP_CONTENT && (command->clip_content_before || command->clip_content_after)) {
         UndoClipContentSelection* edit = &command->data.clip_content_selection;
         if (edit->created_count > 0) {
@@ -619,6 +626,12 @@ bool undo_apply(AppState* state, UndoCommand* command, bool apply_after) {
             const UndoClipState* target = apply_after ? &clip->after : &clip->before;
             return apply_clip_state(state, target);
         }
+        case UNDO_CMD_ROUTING:
+            return daw_routing_history_restore(state, command->data.routing, apply_after);
+        case UNDO_CMD_FX_CHAIN:
+            return daw_fx_history_restore(state, command->data.fx_chain, apply_after);
+        case UNDO_CMD_MIDI_REGION:
+            return daw_midi_region_history_restore(state, &command->data.midi_region, apply_after);
         case UNDO_CMD_CLIP_ADD_REMOVE:
             return apply_clip_add_remove(state, &command->data.clip_add_remove, apply_after);
         case UNDO_CMD_CLIP_RENAME:
@@ -694,6 +707,9 @@ bool undo_apply(AppState* state, UndoCommand* command, bool apply_after) {
             return apply_eq_curve(state, &command->data.eq_curve_edit, apply_after);
         case UNDO_CMD_TRACK_SNAPSHOT:
             return apply_track_snapshot(state, &command->data.track_snapshot_edit, apply_after);
+        case UNDO_CMD_INSTRUMENT_SETTINGS:
+            return daw_instrument_restore(state, command->data.instrument_settings.target,
+                apply_after ? &command->data.instrument_settings.after : &command->data.instrument_settings.before);
         case UNDO_CMD_FX_EDIT:
             return apply_fx_edit(state, &command->data.fx_edit, apply_after);
         case UNDO_CMD_TRACK_EDIT:

@@ -30,10 +30,15 @@ static void fake_pause(SDL_AudioDeviceID id, int paused) { assert(id == 17); (vo
 // Pretends the audio subsystem is initialized so no platform backend is touched.
 static Uint32 fake_was_init(Uint32 flags) { return flags; }
 
+// Excludes the fake endpoint callback without touching an operating-system device.
+static void fake_lock(SDL_AudioDeviceID id) { assert(id==17); }
+#define SDL_LockAudioDevice fake_lock
+#define SDL_UnlockAudioDevice fake_lock
 #define SDL_OpenAudioDevice fake_open
 #define SDL_CloseAudioDevice fake_close
 #define SDL_PauseAudioDevice fake_pause
 #define SDL_WasInit fake_was_init
+#include "../src/audio/device_preview.c"
 #include "../src/audio/device_sdl.c"
 
 // Verifies callback frame interpretation and writes a recognizable float sample.
@@ -69,6 +74,10 @@ int main(void) {
         requested.callback(requested.userdata, (Uint8*)output, sizeof(output));
         assert(callback_frames == 8 && callback_channels == 2);
         assert(output[0] == 0.25f && output[16] == 0.0f);
+        const float captured[]={.1f,-.1f,.2f,-.2f};
+        assert(audio_device_preview_play(&device,captured,2,2,48000));
+        requested.callback(requested.userdata,(Uint8*)output,sizeof(output));
+        assert(!memcmp(output,captured,sizeof(captured)) && output[4]==0 && !audio_device_preview_active(&device));
         assert(audio_device_start(&device));
         audio_device_close(&device);
         audio_device_close(&device);

@@ -55,8 +55,9 @@ static uint64_t engine_midi_audition_current_frame(const Engine* engine) {
     return engine->transport_frame + engine->midi_audition_idle_frame;
 }
 
-void engine_midi_audition_apply_note_on(Engine* engine, int track_index, EngineInstrumentPresetId preset,
-                                        EngineInstrumentParams params, uint8_t note, float velocity) {
+// Builds either an existing held audition voice or a sample-counted finite preview.
+static void apply_gated(Engine* engine, int track_index, EngineInstrumentPresetId preset,
+                                        EngineInstrumentParams params, uint8_t note, float velocity, uint64_t gate) {
     if (!engine || note > ENGINE_MIDI_NOTE_MAX) {
         return;
     }
@@ -96,7 +97,7 @@ void engine_midi_audition_apply_note_on(Engine* engine, int track_index, EngineI
     engine->midi_audition_tail_until = 0;
     uint64_t start_frame = engine_midi_audition_current_frame(engine);
     EngineMidiNote active = {.start_frame = start_frame,
-                             .duration_frames = UINT64_MAX - start_frame,
+                             .duration_frames = gate ? gate : UINT64_MAX - start_frame,
                              .note = note,
                              .velocity = velocity};
     if (engine->midi_audition_notes.note_count < engine->midi_audition_notes.note_capacity) {
@@ -116,6 +117,14 @@ void engine_midi_audition_apply_note_on(Engine* engine, int track_index, EngineI
     }
 }
 
+// Preserves the existing held-key audition contract.
+void engine_midi_audition_apply_note_on(Engine* e, int t, EngineInstrumentPresetId p, EngineInstrumentParams params, uint8_t note, float velocity) {
+    apply_gated(e, t, p, params, note, velocity, 0);
+}
+// Applies a validated finite gate on the owning render worker.
+void engine_midi_audition_apply_preview(Engine* e, int t, EngineInstrumentPresetId p, EngineInstrumentParams params, uint8_t note, float velocity, uint64_t gate) {
+    apply_gated(e, t, p, params, note, velocity, gate);
+}
 void engine_midi_audition_apply_note_off(Engine* engine, uint8_t note) {
     if (!engine) {
         return;
@@ -180,9 +189,10 @@ void engine_midi_audition_apply_all_off(Engine* engine) {
 bool engine_midi_audition_note_on(Engine* engine, int track_index, EngineInstrumentPresetId preset,
                                   EngineInstrumentParams params, uint8_t note, float velocity) {
     if (!engine || note > ENGINE_MIDI_NOTE_MAX || track_index < 0 || track_index >= engine->track_count ||
-        SDL_ThreadID() != engine->control_thread_id) {
+        engine->tracks[track_index].is_return || SDL_ThreadID() != engine->control_thread_id) {
         return false;
     }
+    engine_preview_stop(engine);
     if (engine_midi_audition_should_apply_direct(engine)) {
         engine_midi_audition_apply_note_on(engine, track_index, preset, params, note, velocity);
         return true;
@@ -221,4 +231,18 @@ void engine_midi_audition_all_notes_off(Engine* engine) {
     }
     EngineCommand cmd = {.type = ENGINE_CMD_MIDI_AUDITION_ALL_OFF};
     (void)engine_post_command(engine, &cmd);
+}
+
+// Uses the normal bounded command queue while retaining a finite sample-counted note duration.
+bool engine_midi_audition_note_preview(Engine* e, int t, EngineInstrumentPresetId p, EngineInstrumentParams params,
+    uint8_t note, float velocity, uint64_t gate) {
+    if (!e || !engine_is_control_thread(e) || t < 0 || t >= e->track_count || note > 127 ||
+        p < 0 || p >= ENGINE_INSTRUMENT_PRESET_COUNT || !isfinite(velocity) || velocity <= 0 || velocity > 1 ||
+        !gate || gate > (uint64_t)e->config.sample_rate * 2) return false;
+    engine_preview_stop(e);
+    if (engine_midi_audition_should_apply_direct(e)) { engine_midi_audition_apply_preview(e, t, p, params, note, velocity, gate); return true; }
+    EngineCommand cmd = {.type = ENGINE_CMD_MIDI_AUDITION_NOTE_ON, .payload.midi_audition = {
+        .track_index = t, .track_runtime_id = e->tracks[t].runtime_id, .preset = p,
+        .params = engine_instrument_params_sanitize(p, params), .note = note, .velocity = velocity, .gate_frames = gate}};
+    return engine_post_command(e, &cmd);
 }

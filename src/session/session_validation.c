@@ -3,6 +3,7 @@
 
 #include <stdarg.h>
 #include <stdio.h>
+#include <math.h>
 
 static void session_set_error(char* buffer, size_t buffer_len, const char* fmt, ...) {
     if (!buffer || buffer_len == 0 || !fmt) {
@@ -153,6 +154,37 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
     if (doc->track_count < 0) {
         session_set_error(error_message, error_message_len, "negative track count");
         return false;
+    }
+    int return_count = 0;
+    bool has_routing = false;
+    for (int t = 0; t < doc->track_count; ++t) {
+        const SessionTrack* track = &doc->tracks[t];
+        if (track->is_return) {
+            has_routing = true;
+            if (++return_count > ENGINE_RETURN_CAP || track->clip_count || track->midi_instrument_enabled) {
+                session_set_error(error_message, error_message_len, "invalid return lane %d", t); return false;
+            }
+        }
+        for (int send = 0; send < ENGINE_SEND_CAP; ++send) {
+            SessionSend slot = track->sends[send];
+            if (!isfinite(slot.gain) || slot.gain < 0 || slot.gain > 1 || slot.destination_track < 0 ||
+                slot.destination_track > doc->track_count || (!slot.destination_track && slot.gain) ||
+                (track->is_return && (slot.destination_track || slot.gain))) {
+                session_set_error(error_message, error_message_len, "invalid send %d:%d", t, send); return false;
+            }
+            if (!slot.destination_track) continue;
+            has_routing = true;
+            if (!doc->tracks[slot.destination_track - 1].is_return || slot.destination_track == t + 1) {
+                session_set_error(error_message, error_message_len, "invalid send destination %d:%d", t, send); return false;
+            }
+            for (int previous = 0; previous < send; ++previous)
+                if (track->sends[previous].destination_track == slot.destination_track) {
+                    session_set_error(error_message, error_message_len, "duplicate send %d:%d", t, send); return false;
+                }
+        }
+    }
+    if (has_routing && doc->track_count > ENGINE_ROUTING_TRACK_CAP) {
+        session_set_error(error_message, error_message_len, "routing track limit exceeded"); return false;
     }
     for (int t = 0; t < doc->track_count; ++t) {
         const SessionTrack* track = &doc->tracks[t];

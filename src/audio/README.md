@@ -39,3 +39,5 @@ The engine output consumer publishes delivered-frame counts and a monotonic call
 
 
 S4.7 adds `media_jobs.c`: one shared decoder worker, four owned request/result slots, cancellation and per-buffer admission limits. Metadata probing and registry content hashing run on workers; cache/registry adoption stays on control. Cache versions coexist while pinned, with zero inactive retention. See [the contracts and measured limits](../../docs/improvement/S4.7-MEDIA.md).
+
+`device_preview.c` owns finite immutable captured PCM for the existing SDL output endpoint. Control code validates/copies and publishes under callback exclusion; the callback emits exact samples with a zero-padded last block and atomic completion. Stop/close retires storage on the control path.

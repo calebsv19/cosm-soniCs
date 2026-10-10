@@ -201,7 +201,7 @@ float engine_automation_lane_eval(const EngineAutomationLane* lane, uint64_t fra
 
 bool engine_automation_target_is_instrument_param(EngineAutomationTarget target) {
     return target >= ENGINE_AUTOMATION_TARGET_INSTRUMENT_LEVEL &&
-           target <= ENGINE_AUTOMATION_TARGET_INSTRUMENT_VIBRATO_DEPTH;
+           target <= ENGINE_AUTOMATION_TARGET_INSTRUMENT_FILTER_LFO_OCTAVES;
 }
 
 const char* engine_automation_target_display_label(EngineAutomationTarget target) {
@@ -234,6 +234,14 @@ const char* engine_automation_target_display_label(EngineAutomationTarget target
         return "VRT";
     case ENGINE_AUTOMATION_TARGET_INSTRUMENT_VIBRATO_DEPTH:
         return "VDP";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_CUTOFF_HZ:
+        return "CUT";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_RESONANCE_Q:
+        return "RES";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_FILTER_ENV_OCTAVES: return "FEN";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_FILTER_DECAY_MS: return "FDC";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_FILTER_LFO_HZ: return "FLR";
+    case ENGINE_AUTOMATION_TARGET_INSTRUMENT_FILTER_LFO_OCTAVES: return "FLD";
     case ENGINE_AUTOMATION_TARGET_COUNT:
     default:
         return "";

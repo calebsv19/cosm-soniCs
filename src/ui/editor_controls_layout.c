@@ -59,6 +59,15 @@ static void collect(AppState* state, KitUiSurface* surface) {
         MidiInstrumentPanelLayout layout; midi_instrument_panel_compute_layout(state,&layout);
         daw_editor_control_add(surface,13,0,layout.notes_button_rect,layout.panel_rect,true);
         daw_editor_control_add(surface,13,1,layout.preset_button_rect,layout.panel_rect,true);
+        DawPresetPanelLayout user; daw_preset_panel_layout(state,layout.panel_rect,layout.header_rect,&user);
+        DawSoundPanelLayout analysis; daw_sound_panel_layout(state, &analysis);
+        if (!state->sound_ui.open) daw_editor_control_add(surface,13,40,analysis.buttons[12],layout.panel_rect,true);
+        SDL_Rect extras[] = {user.library_button,user.save_button,user.update_button,user.note_button,user.chord_button};
+        for (int i=0;i<5;++i) daw_editor_control_add(surface,13,30+i,extras[i],layout.panel_rect,true);
+        if (state->preset_ui.open) {
+            daw_editor_control_add(surface,13,35,user.refresh,user.overlay,true);
+            for(int i=0;i<user.row_count;++i) daw_editor_control_add(surface,13,3000+user.item_indices[i],user.rows[i],user.overlay,true);
+        }
         if (state->midi_editor_ui.instrument_menu_open) presets(surface,13,&layout.preset_browser);
         else for (int i=0;i<layout.group_tab_count;++i) daw_editor_control_add(surface,13,10+i,layout.group_tab_rects[i],layout.panel_rect,true);
     } else if (midi_editor_should_render(state)) {
@@ -66,6 +75,10 @@ static void collect(AppState* state, KitUiSurface* surface) {
         daw_editor_control_add(surface,12,0,layout.instrument_button_rect,layout.panel_rect,true);
         if (state->midi_editor_ui.instrument_menu_open) presets(surface,12,&layout.instrument_browser);
         else {
+            DawMidiArrangementLayout arrangement; daw_midi_arrangement_layout(state, &arrangement);
+            daw_editor_control_add(surface,12,41,arrangement.entry,layout.panel_rect,arrangement.panel.h>=160 && arrangement.panel.w>=380);
+            DawMidiPatternLayout patterns; daw_midi_pattern_layout(state, &patterns);
+            daw_editor_control_add(surface,12,40,patterns.entry,layout.panel_rect,patterns.panel.h>=140 && patterns.panel.w>=300);
             SDL_Rect buttons[]={layout.instrument_panel_button_rect,layout.test_button_rect,layout.quantize_button_rect,
                 layout.quantize_down_button_rect,layout.quantize_up_button_rect,layout.octave_down_button_rect,
                 layout.octave_up_button_rect,layout.velocity_down_button_rect,layout.velocity_up_button_rect};
@@ -76,6 +89,8 @@ static void collect(AppState* state, KitUiSurface* surface) {
         EffectsPanelState* panel=&state->effects_panel;
         SDL_Rect buttons[]={layout.view_toggle_rect,layout.spec_toggle_rect,layout.preview_toggle_rect,layout.dropdown_button_rect};
         for(unsigned i=0;i<4;++i) daw_editor_control_add(surface,14,i,buttons[i],layout.panel_rect,true);
+        if(!layout.overlay_visible)daw_editor_control_add(surface,14,5,layout.library_button_rect,layout.panel_rect,true);
+        if(!layout.overlay_visible)daw_editor_control_add(surface,14,6,layout.routing_button_rect,layout.panel_rect,true);
         if (layout.overlay_visible) {
             daw_editor_control_add(surface,14,4,layout.overlay_back_rect,layout.overlay_rect,true);
             for(int i=0;i<layout.overlay_item_count;++i) daw_editor_control_add(surface,14,1000+layout.overlay_item_order[i],layout.overlay_item_rects[i],layout.overlay_rect,true);
@@ -106,7 +121,7 @@ static void collect(AppState* state, KitUiSurface* surface) {
 void daw_editor_controls_sync(AppState* state) {
     if (!state) return;
     DawEditorControls* ui=&state->editor_controls;
-    bool unavailable=!state->engine || state->bounce_active || project_modal_input_active(state) ||
+    bool unavailable=state->fx_library_ui.open || state->midi_arrangement_ui.open || state->midi_pattern_ui.open || state->sound_ui.open || state->preset_ui.editing || state->preset_ui.save_open || !state->engine || state->bounce_active || project_modal_input_active(state) ||
         state->tempo_ui.editing || state->track_name_editor.editing || library_input_is_editing(state) ||
         inspector_input_has_text_focus(state) || state->undo.active_drag_valid || state->layout_runtime.drag.active ||
         daw_workspace_authoring_host_active(&state->workspace_authoring);
@@ -114,6 +129,7 @@ void daw_editor_controls_sync(AppState* state) {
     hash=mix(hash,unavailable); hash=mix(hash,state->window_width); hash=mix(hash,state->window_height);
     hash=mix(hash,state->active_track_index); hash=mix(hash,state->selected_track_index); hash=mix(hash,state->selected_clip_index);
     hash=mix(hash,state->midi_editor_ui.selected_clip_creation_index); hash=mix(hash,state->midi_editor_ui.panel_mode);
+    hash=mix(hash,state->midi_arrangement_ui.open); hash=mix(hash,state->midi_pattern_ui.open); hash=mix(hash,state->sound_ui.open); hash=mix(hash,state->preset_ui.library_generation); hash=mix(hash,state->preset_ui.open); hash=mix(hash,state->preset_ui.scroll); hash=mix(hash,state->preset_ui.library.count);
     hash=mix(hash,state->midi_editor_ui.instrument_menu_open); hash=mix(hash,state->midi_editor_ui.instrument_active_group);
     hash=mix(hash,state->effects_panel.target_track_index); hash=mix(hash,state->effects_panel.view_mode);
     hash=mix(hash,state->effects_panel.overlay_layer); hash=mix(hash,state->effects_panel.active_category_index);

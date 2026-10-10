@@ -198,7 +198,15 @@ static void validate_instrument_panel_layout(const AppState* state, const MidiIn
            "instrument preset overlaps notes");
     expect(!rects_overlap_strict(&layout->param_grid_rect, &layout->scope_rect),
            "instrument params overlap preview");
+    MidiEditorSelection instrument_selection;
+    expect(midi_editor_get_selection(state, &instrument_selection), "instrument selection");
+    EngineInstrumentPresetId displayed_preset = engine_clip_midi_effective_instrument_preset(state->engine,
+        instrument_selection.track_index, instrument_selection.clip_index);
     for (int i = 0; i < layout->group_tab_count; ++i) {
+        if (!engine_instrument_preset_group_active(displayed_preset, (EngineInstrumentParamGroupId)i)) {
+            expect(!rect_has_positive_size(&layout->group_tab_rects[i]), "dormant group must not be exposed");
+            continue;
+        }
         expect(rect_has_positive_size(&layout->group_tab_rects[i]), "instrument group tab invalid");
         expect(rect_contains_rect(&layout->panel_rect, &layout->group_tab_rects[i]),
                "instrument group tab outside panel");
@@ -2481,6 +2489,23 @@ static void test_midi_instrument_panel_grouped_preset_browser_sets_region_preset
     expect(engine_clip_midi_instrument_preset(clip) == ENGINE_INSTRUMENT_PRESET_PURE_SINE,
            "instrument panel preset browser undo should restore previous preset");
 
+    state.midi_editor_ui.instrument_menu_open = true;
+    state.midi_editor_ui.instrument_menu_expanded_category = ENGINE_INSTRUMENT_PRESET_CATEGORY_KEYS;
+    midi_instrument_panel_compute_layout(&state, &layout);
+    SDL_Rect rounded_item = layout.preset_menu_item_rects[ENGINE_INSTRUMENT_PRESET_ROUNDED_KEYS];
+    expect(rect_has_positive_size(&rounded_item), "rounded keys must be available in the existing browser");
+    dispatch_instrument_mouse_button(&manager, &state, SDL_MOUSEBUTTONDOWN,
+        rounded_item.x + rounded_item.w / 2, rounded_item.y + rounded_item.h / 2);
+    clip = &engine_get_tracks(state.engine)[0].clips[clip_index];
+    expect(engine_clip_midi_instrument_preset(clip) == ENGINE_INSTRUMENT_PRESET_ROUNDED_KEYS &&
+        fabsf(engine_clip_midi_instrument_params(clip).tone - .32f) < .0001f,
+        "rounded keys selection must apply factory defaults through common actions");
+    expect(undo_manager_undo(&state.undo, &state) && undo_manager_redo(&state.undo, &state),
+        "rounded keys browser selection must support undo and redo");
+    clip = &engine_get_tracks(state.engine)[0].clips[clip_index];
+    expect(engine_clip_midi_instrument_preset(clip) == ENGINE_INSTRUMENT_PRESET_ROUNDED_KEYS,
+        "rounded keys redo must restore selected preset");
+
     state_destroy(&state);
 }
 
@@ -2621,6 +2646,115 @@ static void test_midi_instrument_panel_group_tab_routes_param_drag(void) {
     state_destroy(&state);
 }
 
+// Verifies applicable groups, ADSR order and fine logarithmic time edits through actual pointer handlers.
+static void test_instrument_time_controls_and_applicability(void) {
+    AppState state;
+    EngineRuntimeConfig cfg;
+    state_init(&state, &cfg);
+    int clip;
+    expect(engine_add_midi_clip_to_track(state.engine, 0, 0, cfg.sample_rate * 2, &clip), "time-control fixture");
+    state.selected_track_index = 0; state.selected_clip_index = clip;
+    state.selection_count = 1;
+    state.selection[0] = (TimelineSelectionEntry){.track_index = 0, .clip_index = clip};
+    state.midi_editor_ui.panel_mode = MIDI_REGION_PANEL_INSTRUMENT;
+    state.midi_editor_ui.instrument_active_group = ENGINE_INSTRUMENT_PARAM_GROUP_MOD;
+    MidiInstrumentPanelLayout layout;
+    midi_instrument_panel_compute_layout(&state, &layout);
+    expect(layout.active_group == ENGINE_INSTRUMENT_PARAM_GROUP_OUTPUT &&
+        layout.group_tab_rects[ENGINE_INSTRUMENT_PARAM_GROUP_MOD].w == 0 &&
+        layout.group_tab_rects[ENGINE_INSTRUMENT_PARAM_GROUP_OSCILLATOR].w == 0,
+        "sine must hide dormant groups and fall back to output");
+    state.midi_editor_ui.instrument_active_group = ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE;
+    midi_instrument_panel_compute_layout(&state, &layout);
+    const EngineInstrumentParamId ordered[] = {ENGINE_INSTRUMENT_PARAM_ATTACK_MS, ENGINE_INSTRUMENT_PARAM_DECAY_MS,
+        ENGINE_INSTRUMENT_PARAM_SUSTAIN, ENGINE_INSTRUMENT_PARAM_RELEASE_MS};
+    expect(layout.instrument_param_count == 4 && memcmp(layout.param_ids, ordered, sizeof(ordered)) == 0,
+        "envelope controls must follow ADSR order");
+    int x = layout.param_knob_rects[0].x + layout.param_knob_rects[0].w / 2;
+    int y = layout.param_knob_rects[0].y + layout.param_knob_rects[0].h / 2;
+    float initial = engine_clip_midi_effective_instrument_params(state.engine, 0, clip).attack_ms;
+    InputManager manager = {0};
+    SDL_SetModState(KMOD_SHIFT);
+    dispatch_instrument_mouse_button(&manager, &state, SDL_MOUSEBUTTONDOWN, x, y);
+    SDL_SetModState(KMOD_NONE); // Fine scaling is latched; releasing Shift must not jump.
+    dispatch_instrument_mouse_motion(&manager, &state, x, y - 7);
+    dispatch_instrument_mouse_button(&manager, &state, SDL_MOUSEBUTTONUP, x, y - 7);
+    float changed = engine_clip_midi_effective_instrument_params(state.engine, 0, clip).attack_ms;
+    float expected_value = engine_instrument_param_from_normalized(ENGINE_INSTRUMENT_PARAM_ATTACK_MS,
+        engine_instrument_param_to_normalized(ENGINE_INSTRUMENT_PARAM_ATTACK_MS, initial) + .005f);
+    expect(fabsf(changed - expected_value) < 1e-5f && changed > initial && changed < initial + .5f,
+        "fine logarithmic attack edit must preserve short-time precision");
+    expect(state.undo.undo_count == 1 && undo_manager_undo(&state.undo, &state), "time control reserved undo");
+    expect(engine_clip_midi_effective_instrument_params(state.engine, 0, clip).attack_ms == initial,
+        "time control undo physical value");
+    state_destroy(&state);
+}
+
+// Exercises real knob handlers across selection changes, Escape and stale reservation ownership.
+static void test_instrument_gesture_target_and_cancel(void) {
+    AppState state;
+    EngineRuntimeConfig cfg;
+    state_init(&state, &cfg);
+    int first, second;
+    expect(engine_add_midi_clip_to_track(state.engine, 0, 0, cfg.sample_rate * 2u, &first), "first gesture region");
+    expect(engine_add_midi_clip_to_track(state.engine, 0, cfg.sample_rate * 3u, cfg.sample_rate * 2u, &second), "second gesture region");
+    state.selected_track_index = 0;
+    state.selected_clip_index = first;
+    state.selection_count = 1;
+    state.selection[0].track_index = 0;
+    state.selection[0].clip_index = first;
+    state.midi_editor_ui.panel_mode = MIDI_REGION_PANEL_INSTRUMENT;
+    MidiInstrumentPanelLayout layout = {0};
+    midi_instrument_panel_compute_layout(&state, &layout);
+    SDL_Rect knob = layout.param_knob_rects[ENGINE_INSTRUMENT_PARAM_LEVEL];
+    int x = knob.x + knob.w / 2, y = knob.y + knob.h / 2;
+    InputManager manager = {0};
+    dispatch_instrument_mouse_button(&manager, &state, SDL_MOUSEBUTTONDOWN, x, y);
+    state.selected_clip_index = second;
+    state.selection[0].clip_index = second;
+    midi_editor_input_set_selected_clip(&state, 0, second, engine_get_tracks(state.engine)[0].clips[second].creation_index);
+    dispatch_instrument_mouse_motion(&manager, &state, x, y + 180);
+    const EngineTrack* tracks = engine_get_tracks(state.engine);
+    expect(tracks[0].clips[first].instrument_params.level < .05f &&
+           tracks[0].clips[second].instrument_inherits_track, "selection change redirected knob mutation");
+    dispatch_instrument_mouse_button(&manager, &state, SDL_MOUSEBUTTONUP, x, y + 180);
+    expect(state.undo.undo_count == 1 && !state.undo.active_drag_valid, "changed selection lost knob history");
+    expect(undo_manager_undo(&state.undo, &state) &&
+           engine_get_tracks(state.engine)[0].clips[first].instrument_inherits_track, "captured knob undo failed");
+
+    state.selected_track_index = 0;
+    state.selected_clip_index = first;
+    state.selection_count = 1;
+    state.selection[0].track_index = 0;
+    state.selection[0].clip_index = first;
+    midi_editor_input_set_selected_clip(&state, 0, first, engine_get_tracks(state.engine)[0].clips[first].creation_index);
+    state.midi_editor_ui.panel_mode = MIDI_REGION_PANEL_INSTRUMENT;
+    midi_instrument_panel_compute_layout(&state, &layout);
+    knob = layout.param_knob_rects[ENGINE_INSTRUMENT_PARAM_LEVEL];
+    x = knob.x + knob.w / 2; y = knob.y + knob.h / 2;
+    dispatch_instrument_mouse_button(&manager, &state, SDL_MOUSEBUTTONDOWN, x, y);
+    dispatch_instrument_mouse_motion(&manager, &state, x, y + 180);
+    SDL_Event escape = {.type = SDL_KEYDOWN};
+    escape.key.keysym.sym = SDLK_ESCAPE;
+    expect(midi_instrument_panel_input_handle_event(&manager, &state, &escape), "Escape not consumed");
+    expect(!state.midi_editor_ui.instrument_gesture.active && !state.undo.active_drag_valid &&
+           engine_get_tracks(state.engine)[0].clips[first].instrument_inherits_track && state.undo.redo_count == 1,
+           "Escape failed to restore baseline and preserve redo");
+
+    dispatch_instrument_mouse_button(&manager, &state, SDL_MOUSEBUTTONDOWN, x, y);
+    DawInstrumentGesture stale = state.midi_editor_ui.instrument_gesture;
+    expect(daw_action_finish_instrument(&state, &state.midi_editor_ui.instrument_gesture, true).status == DAW_ACTION_UNCHANGED,
+           "stale owner setup");
+    DawInstrumentGesture newer = {0};
+    expect(daw_action_begin_instrument(&state, stale.target, &newer).has_snapshot, "newer reservation setup");
+    state.midi_editor_ui.instrument_gesture = stale;
+    dispatch_instrument_mouse_button(&manager, &state, SDL_MOUSEBUTTONUP, x, y);
+    expect(state.undo.active_drag_valid && state.undo.drag_serial == newer.history_serial,
+           "stale pointer release destroyed another reservation");
+    expect(daw_action_finish_instrument(&state, &newer, true).status == DAW_ACTION_UNCHANGED, "new owner release");
+    state_destroy(&state);
+}
+
 int main(void) {
     if (TTF_Init() != 0) {
         fail("TTF_Init failed");
@@ -2660,6 +2794,8 @@ int main(void) {
     test_midi_instrument_panel_grouped_preset_browser_sets_region_preset();
     test_midi_instrument_panel_param_knob_drag_sets_region_param();
     test_midi_instrument_panel_group_tab_routes_param_drag();
+    test_instrument_gesture_target_and_cancel();
+    test_instrument_time_controls_and_applicability();
     ui_font_shutdown();
     TTF_Quit();
     puts("midi_editor_shell_test: success");

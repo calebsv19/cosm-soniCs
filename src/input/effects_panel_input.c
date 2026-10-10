@@ -881,14 +881,17 @@ static void effects_panel_event(InputManager* manager, AppState* state, const SD
 }
 
 void effects_panel_input_update(InputManager* manager, AppState* state, bool left_was_down, bool left_is_down) {
+    if(state && (state->fx_library_ui.open || state->routing_ui.open))return;
     effects_panel_input_update_state(manager, state, left_was_down, left_is_down);
 }
 
 // Retains the original effects event API for continuous gestures and keyboard commands.
 void effects_panel_input_handle_event(InputManager* manager, AppState* state, const SDL_Event* event) {
+    if(state && (state->fx_library_ui.open || state->routing_ui.open))return;
     effects_panel_event(manager,state,event,SDL_GetModState());
 }
 // Executes only an accepted discrete control with the original press modifiers.
 void effects_panel_input_activate_control(InputManager* manager, AppState* state, const SDL_Event* event, SDL_Keymod mods) {
+    if(state && (state->fx_library_ui.open || state->routing_ui.open))return;
     effects_panel_event(manager,state,event,mods);
 }

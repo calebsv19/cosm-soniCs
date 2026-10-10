@@ -24,6 +24,42 @@ APP_SRCS := \
 	$(SRC_DIR)/core/loop/daw_mainthread_kernel.c \
 	$(SRC_DIR)/core/loop/daw_render_invalidation.c \
 	$(SRC_DIR)/app/daw_app_main.c \
+	$(SRC_DIR)/app/app_actions.c \
+	$(SRC_DIR)/app/midi_actions.c \
+	$(SRC_DIR)/app/midi_patterns.c \
+	$(SRC_DIR)/app/midi_expression.c \
+	$(SRC_DIR)/app/control_arrangement.c \
+	$(SRC_DIR)/app/control_routing.c \
+	$(SRC_DIR)/app/arrangement.c \
+	$(SRC_DIR)/app/midi_regions.c \
+	$(SRC_DIR)/app/fx_actions.c \
+	$(SRC_DIR)/app/routing_actions.c \
+	$(SRC_DIR)/app/fx_library.c \
+	$(SRC_DIR)/app/fx_preset_actions.c \
+	$(SRC_DIR)/ui/fx_library_panel.c \
+	$(SRC_DIR)/ui/routing_panel.c \
+	$(SRC_DIR)/app/composition.c \
+	$(SRC_DIR)/app/composition_preview.c \
+	$(SRC_DIR)/app/control_composition.c \
+	$(SRC_DIR)/app/control_fx.c \
+	$(SRC_DIR)/engine/engine_fx_chain.c \
+	$(SRC_DIR)/ui/midi_pattern_panel.c \
+	$(SRC_DIR)/ui/midi_arrangement_panel.c \
+	$(SRC_DIR)/app/preset_library.c \
+	$(SRC_DIR)/app/preset_actions.c \
+	$(SRC_DIR)/app/preset_preview.c \
+	$(SRC_DIR)/app/sound_render.c \
+	$(SRC_DIR)/app/sound_analysis.c \
+	$(SRC_DIR)/app/control_analysis.c \
+	$(SRC_DIR)/app/control_midi.c \
+	$(SRC_DIR)/app/control_regions.c \
+	$(SRC_DIR)/ui/sound_panel.c \
+	$(SRC_DIR)/ui/sound_panel_input.c \
+	$(SRC_DIR)/ui/preset_panel.c \
+	$(SRC_DIR)/ui/preset_panel_input.c \
+	$(SRC_DIR)/app/control_bridge.c \
+	$(SRC_DIR)/app/control_dispatch.c \
+	$(SRC_DIR)/app/control_presets.c \
 	$(SRC_DIR)/ui/transport_controls.c \
 	$(SRC_DIR)/ui/control_chrome.c \
 	$(SRC_DIR)/ui/editor_controls.c \
@@ -43,6 +79,7 @@ APP_SRCS := \
 	$(SRC_DIR)/config/config.c \
 	$(SRC_DIR)/config/data_paths.c \
 	$(SRC_DIR)/audio/device_sdl.c \
+	$(SRC_DIR)/audio/device_preview.c \
 	$(SRC_DIR)/audio/audio_capture_device_sdl.c \
 	$(SRC_DIR)/audio/audio_queue.c \
 	$(SRC_DIR)/audio/ringbuf.c \
@@ -69,14 +106,20 @@ APP_SRCS := \
 	$(SRC_DIR)/engine/engine_clips.c \
 	$(SRC_DIR)/engine/engine_clip_history.c \
 	$(SRC_DIR)/engine/engine_clips_midi.c \
+	$(SRC_DIR)/engine/engine_midi_regions.c \
 	$(SRC_DIR)/engine/engine_clips_automation.c \
 	$(SRC_DIR)/engine/engine_clips_no_overlap.c \
 	$(SRC_DIR)/engine/track_role.c \
 	$(SRC_DIR)/engine/midi.c \
 	$(SRC_DIR)/engine/engine_midi_audition.c \
 	$(SRC_DIR)/engine/instrument_osc.c \
+	$(SRC_DIR)/engine/instrument_catalog.c \
+	$(SRC_DIR)/engine/instrument_filter.c \
+	$(SRC_DIR)/engine/instrument_controls.c \
 	$(SRC_DIR)/engine/timeline_contract.c \
 	$(SRC_DIR)/engine/engine_audio.c \
+	$(SRC_DIR)/engine/engine_preview.c \
+	$(SRC_DIR)/engine/engine_routing.c \
 	$(SRC_DIR)/engine/engine_meter.c \
 	$(SRC_DIR)/engine/engine_scope_host.c \
 	$(SRC_DIR)/engine/engine_eq.c \

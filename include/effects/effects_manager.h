@@ -97,7 +97,13 @@ bool fxm_prepare_delay_compensation(EffectsManager* fm);
 void fxm_begin_render_block(EffectsManager* fm, int frames);
 // Applies the prepared compensation delay after track processing and before summing.
 void fxm_align_track(EffectsManager* fm, int track, float* io, int frames, int channels);
-// Returns latest render-block track-plus-master latency; read only from the owning render thread.
+// Marks an existing empty routing chain as a return stage; prepare/clone before rendering.
+bool fxm_set_track_return(EffectsManager* fm, int track, bool is_return);
+// Reads the routing stage assigned to one existing chain without exposing DSP state.
+bool fxm_track_is_return(const EffectsManager* fm, int track);
+// Delays the source-stage dry sum by the longest return stage before adding processed returns.
+void fxm_align_dry(EffectsManager* fm, float* io, int frames, int channels);
+// Returns source-stage plus return-stage plus master latency from the owning render thread.
 uint64_t fxm_processing_latency(const EffectsManager* fm);
 
 // ---------- Master chain (v1 minimal integration) ----------

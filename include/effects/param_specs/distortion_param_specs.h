@@ -50,43 +50,32 @@ static const EffectParamSpec kHardClipParamSpecs[] = {
 // SoftSatParamSpecs defines UI metadata for the SoftSaturation effect parameters.
 static const EffectParamSpec kSoftSatParamSpecs[] = {
     {
-        .id = "drive",
-        .display_name = "Drive",
-        .type = FX_PARAM_TYPE_FLOAT,
-        .unit = FX_PARAM_UNIT_DB,
-        .min_value = 0.0f,
-        .max_value = 24.0f,
-        .default_value = 6.0f,
-        .curve = FX_PARAM_CURVE_LINEAR,
-        .ui_hint = FX_PARAM_UI_KNOB,
-        .flags = FX_PARAM_FLAG_AUTOMATABLE,
-        .smoothing_ms = 20.0f
+        .id = "drive_db", .display_name = "Drive",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_DB,
+        .min_value = 0.0f, .max_value = 36.0f, .default_value = 12.0f,
+        .curve = FX_PARAM_CURVE_LINEAR, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
     },
     {
-        .id = "makeup_db",
-        .display_name = "Makeup",
-        .type = FX_PARAM_TYPE_FLOAT,
-        .unit = FX_PARAM_UNIT_DB,
-        .min_value = -12.0f,
-        .max_value = 12.0f,
-        .default_value = 0.0f,
-        .curve = FX_PARAM_CURVE_LINEAR,
-        .ui_hint = FX_PARAM_UI_KNOB,
-        .flags = FX_PARAM_FLAG_AUTOMATABLE,
-        .smoothing_ms = 20.0f
+        .id = "output_db", .display_name = "Output",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_DB,
+        .min_value = -24.0f, .max_value = 12.0f, .default_value = 0.0f,
+        .curve = FX_PARAM_CURVE_LINEAR, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
     },
     {
-        .id = "mix",
-        .display_name = "Mix",
-        .type = FX_PARAM_TYPE_FLOAT,
-        .unit = FX_PARAM_UNIT_PERCENT,
-        .min_value = 0.0f,
-        .max_value = 1.0f,
-        .default_value = 1.0f,
-        .curve = FX_PARAM_CURVE_LINEAR,
-        .ui_hint = FX_PARAM_UI_SLIDER,
-        .flags = FX_PARAM_FLAG_AUTOMATABLE,
-        .smoothing_ms = 20.0f
+        .id = "tone_lp_hz", .display_name = "Tone low-pass",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_HZ,
+        .min_value = 1000.0f, .max_value = 20000.0f, .default_value = 8000.0f,
+        .curve = FX_PARAM_CURVE_LOG, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
+    },
+    {
+        .id = "mix", .display_name = "Mix",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_PERCENT,
+        .min_value = 0.0f, .max_value = 1.0f, .default_value = 1.0f,
+        .curve = FX_PARAM_CURVE_LINEAR, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
     }
 };
 
@@ -140,43 +129,46 @@ static const EffectParamSpec kBitCrusherParamSpecs[] = {
 // OverdriveParamSpecs defines UI metadata for the Overdrive effect parameters.
 static const EffectParamSpec kOverdriveParamSpecs[] = {
     {
-        .id = "drive_db",
-        .display_name = "Drive",
-        .type = FX_PARAM_TYPE_FLOAT,
-        .unit = FX_PARAM_UNIT_DB,
-        .min_value = 0.0f,
-        .max_value = 36.0f,
-        .default_value = 12.0f,
-        .curve = FX_PARAM_CURVE_LINEAR,
-        .ui_hint = FX_PARAM_UI_KNOB,
-        .flags = FX_PARAM_FLAG_AUTOMATABLE,
-        .smoothing_ms = 20.0f
+        .id = "drive_db", .display_name = "Drive",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_DB,
+        .min_value = 0.0f, .max_value = 36.0f, .default_value = 18.0f,
+        .curve = FX_PARAM_CURVE_LINEAR, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
     },
     {
-        .id = "tone",
-        .display_name = "Tone",
-        .type = FX_PARAM_TYPE_FLOAT,
-        .unit = FX_PARAM_UNIT_PERCENT,
-        .min_value = 0.0f,
-        .max_value = 1.0f,
-        .default_value = 0.5f,
-        .curve = FX_PARAM_CURVE_LINEAR,
-        .ui_hint = FX_PARAM_UI_SLIDER,
-        .flags = FX_PARAM_FLAG_AUTOMATABLE,
-        .smoothing_ms = 20.0f
+        .id = "asymmetry", .display_name = "Asymmetry",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_PERCENT,
+        .min_value = 0.0f, .max_value = 1.0f, .default_value = 0.4f,
+        .curve = FX_PARAM_CURVE_LINEAR, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
     },
     {
-        .id = "mix",
-        .display_name = "Mix",
-        .type = FX_PARAM_TYPE_FLOAT,
-        .unit = FX_PARAM_UNIT_PERCENT,
-        .min_value = 0.0f,
-        .max_value = 1.0f,
-        .default_value = 1.0f,
-        .curve = FX_PARAM_CURVE_LINEAR,
-        .ui_hint = FX_PARAM_UI_SLIDER,
-        .flags = FX_PARAM_FLAG_AUTOMATABLE,
-        .smoothing_ms = 20.0f
+        .id = "pre_hp_hz", .display_name = "Pre high-pass",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_HZ,
+        .min_value = 20.0f, .max_value = 500.0f, .default_value = 80.0f,
+        .curve = FX_PARAM_CURVE_LOG, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
+    },
+    {
+        .id = "post_lp_hz", .display_name = "Post low-pass",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_HZ,
+        .min_value = 1000.0f, .max_value = 20000.0f, .default_value = 7000.0f,
+        .curve = FX_PARAM_CURVE_LOG, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
+    },
+    {
+        .id = "output_db", .display_name = "Output",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_DB,
+        .min_value = -24.0f, .max_value = 12.0f, .default_value = 0.0f,
+        .curve = FX_PARAM_CURVE_LINEAR, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
+    },
+    {
+        .id = "mix", .display_name = "Mix",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_PERCENT,
+        .min_value = 0.0f, .max_value = 1.0f, .default_value = 1.0f,
+        .curve = FX_PARAM_CURVE_LINEAR, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
     }
 };
 
@@ -185,70 +177,61 @@ static const EffectParamSpec kOverdriveParamSpecs[] = {
 // WaveshaperParamSpecs defines UI metadata for the Waveshaper effect parameters.
 static const EffectParamSpec kWaveshaperParamSpecs[] = {
     {
-        .id = "curve",
-        .display_name = "Curve",
-        .type = FX_PARAM_TYPE_ENUM,
-        .unit = FX_PARAM_UNIT_GENERIC,
-        .min_value = 0.0f,
-        .max_value = 4.0f,
-        .default_value = 0.0f,
-        .curve = FX_PARAM_CURVE_LINEAR,
-        .ui_hint = FX_PARAM_UI_DROPDOWN,
-        .flags = FX_PARAM_FLAG_AUTOMATABLE,
-        .enum_count = 5,
-        .enum_labels = {"Tanh", "Arctan", "SoftClip", "Foldback", "SineFold"}
+        .id = "curve", .display_name = "Curve",
+        .type = FX_PARAM_TYPE_ENUM, .unit = FX_PARAM_UNIT_GENERIC,
+        .min_value = 0.0f, .max_value = 3.0f, .default_value = 0.0f,
+        .curve = FX_PARAM_CURVE_LINEAR, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f, .step = 1.0f,
+        .enum_count = 4, .enum_labels = {"Tanh", "Arctan", "Cubic", "Foldback"}
     },
     {
-        .id = "drive_db",
-        .display_name = "Drive",
-        .type = FX_PARAM_TYPE_FLOAT,
-        .unit = FX_PARAM_UNIT_DB,
-        .min_value = 0.0f,
-        .max_value = 36.0f,
-        .default_value = 12.0f,
-        .curve = FX_PARAM_CURVE_LINEAR,
-        .ui_hint = FX_PARAM_UI_KNOB,
-        .flags = FX_PARAM_FLAG_AUTOMATABLE,
-        .smoothing_ms = 20.0f
+        .id = "drive_db", .display_name = "Drive",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_DB,
+        .min_value = 0.0f, .max_value = 40.0f, .default_value = 18.0f,
+        .curve = FX_PARAM_CURVE_LINEAR, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
     },
     {
-        .id = "bias",
-        .display_name = "Bias",
-        .type = FX_PARAM_TYPE_FLOAT,
-        .unit = FX_PARAM_UNIT_GENERIC,
-        .min_value = -1.0f,
-        .max_value = 1.0f,
-        .default_value = 0.0f,
-        .curve = FX_PARAM_CURVE_LINEAR,
-        .ui_hint = FX_PARAM_UI_SLIDER,
-        .flags = FX_PARAM_FLAG_AUTOMATABLE,
-        .smoothing_ms = 20.0f
+        .id = "bias", .display_name = "Bias",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_GENERIC,
+        .min_value = -1.0f, .max_value = 1.0f, .default_value = 0.0f,
+        .curve = FX_PARAM_CURVE_LINEAR, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
     },
     {
-        .id = "out_db",
-        .display_name = "Out",
-        .type = FX_PARAM_TYPE_FLOAT,
-        .unit = FX_PARAM_UNIT_DB,
-        .min_value = -12.0f,
-        .max_value = 12.0f,
-        .default_value = 0.0f,
-        .curve = FX_PARAM_CURVE_LINEAR,
-        .ui_hint = FX_PARAM_UI_KNOB,
-        .flags = FX_PARAM_FLAG_AUTOMATABLE,
-        .smoothing_ms = 20.0f
+        .id = "pre_tilt_db", .display_name = "Pre tilt",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_DB,
+        .min_value = -12.0f, .max_value = 12.0f, .default_value = 0.0f,
+        .curve = FX_PARAM_CURVE_LINEAR, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
     },
     {
-        .id = "mix",
-        .display_name = "Mix",
-        .type = FX_PARAM_TYPE_FLOAT,
-        .unit = FX_PARAM_UNIT_PERCENT,
-        .min_value = 0.0f,
-        .max_value = 1.0f,
-        .default_value = 1.0f,
-        .curve = FX_PARAM_CURVE_LINEAR,
-        .ui_hint = FX_PARAM_UI_SLIDER,
-        .flags = FX_PARAM_FLAG_AUTOMATABLE,
-        .smoothing_ms = 20.0f
+        .id = "post_tilt_db", .display_name = "Post tilt",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_DB,
+        .min_value = -12.0f, .max_value = 12.0f, .default_value = 0.0f,
+        .curve = FX_PARAM_CURVE_LINEAR, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
+    },
+    {
+        .id = "pivot_hz", .display_name = "Tilt pivot",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_HZ,
+        .min_value = 200.0f, .max_value = 2000.0f, .default_value = 650.0f,
+        .curve = FX_PARAM_CURVE_LOG, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
+    },
+    {
+        .id = "mix", .display_name = "Mix",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_PERCENT,
+        .min_value = 0.0f, .max_value = 1.0f, .default_value = 1.0f,
+        .curve = FX_PARAM_CURVE_LINEAR, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
+    },
+    {
+        .id = "output_db", .display_name = "Output",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_DB,
+        .min_value = -24.0f, .max_value = 24.0f, .default_value = 0.0f,
+        .curve = FX_PARAM_CURVE_LINEAR, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
     }
 };
 

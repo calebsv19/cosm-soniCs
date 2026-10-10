@@ -1,6 +1,9 @@
 # soniCs Docs Index
 
 Start here for soniCs public documentation.
+
+- [Instrument controls and musical loop](instrument_controls.md): preset applicability, physical-time knob mapping, engine-derived plots and rendered MCP acceptance.
+- [Application control foundation](application_control.md): common instrument actions, reserved history, generation-bound targeting and the initial local MCP instrument surface.
 Runtime improvement links updated: 2026-09-21; other lanes retain their own acceptance dates.
 
 Repository and source-level identifiers still use `daw`.
@@ -85,3 +88,30 @@ Repository and source-level identifiers still use `daw`.
 [S4 closeout](improvement/S4-CLOSEOUT.md) records the final bounded software disposition; [S5 functional slices](improvement/S5-FUNCTIONAL-SLICES.md) defines the next proposed behaviors.
 
 - [Shared UI rollout](shared_ui_rollout.md): accepted dependency, transport contract, proof boundaries and remaining adoption sequence.
+
+Local MCP setup and tested tool scope: [tools/mcp/README.md](../tools/mcp/README.md).
+
+- [Rounded synthesizer family](rounded_synth.md): additive sine/triangle voice, three starting presets, compatibility and listening evidence.
+
+- [Filtered synthesizer and next sequence](filtered_synth.md): resonant low-pass controls, native MCP qualification and custom-preset storage decision.
+
+- [User presets](user_presets.md): portable personal library, independent project settings, browser/auditions and guarded MCP WAV preview.
+
+- [Sound inspection and comparison](sound_inspection.md): common production renders, calibrated plots, immutable references and read-only MCP analysis.
+
+- [Transactional MIDI patterns](midi_authoring.md): copied state, validated one-step history, tempo-aware major-key phrases and native editor workflow.
+
+
+- [MIDI MCP control](midi_mcp.md): bounded exact-state reads, receipt-backed note/pattern writes and guarded history.
+
+- [Guarded MIDI regions](midi_regions.md): atomic creation from empty, right-edge extension and structural MCP/history contracts.
+
+- [Guarded effect chains](effect_chains.md): discovery, physical controls, full-chain history and common processed-preview contracts.
+
+- [MIDI expression](midi_expression.md): tempo-aware quantize/swing, velocity shape, deterministic variation and guarded native/MCP adoption.
+
+Guarded arrangement is documented in [arrangement](arrangement.md). The common action, MCP adapter and native MIDI duplicate/delete share exact content guards and one-step batch history; dedicated native move/trim controls and routing remain pending.
+
+- [Guarded shared returns](routing.md): complete routing storage, common creation/edit/history and five additive MCP tools; native routing controls remain pending.
+
+The five-stage creative-control development sequence is covered by [effects/composition/library](effect_chains.md), [MIDI expression](midi_expression.md), [arrangement](arrangement.md), [routing](routing.md) and [filtered modulation/presets](filtered_synth.md). Current native and MCP qualification remains separate from installed/client adoption.

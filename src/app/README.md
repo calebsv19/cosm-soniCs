@@ -3,6 +3,7 @@
 Purpose: Application bootstrap and SDL event loop integration.
 
 ## Files
+- `app_actions.c`: Validates generation-bound instrument targets, copies stored/effective settings, and applies batched track/region patches through reserved scalar undo history; continuous edits retain target and reservation ownership. See [application control](../../docs/application_control.md).
 - `bounce_region.c`
   - Allocates bounce filenames under the active library root and inserts successful bounces as normal audio clips on a newly appended `Bounce` track when track creation succeeds.
 - `main_bounce.c`
@@ -42,3 +43,44 @@ S4.6 moves actual timeline checkpoint I/O off the UI loop, joins the storage wor
 
 
 S4.7 `media_import.c` owns application-lifetime requests across project candidates. Library drops, interactive recording finish and bounce insertion publish asynchronously; saved WAVs survive failed/canceled insertion. Ctrl/Cmd+Escape cancels pending requests. Raw/headless recording without this owner and explicit offline APIs retain synchronous behavior. See [S4.7](../../docs/improvement/S4.7-MEDIA.md).
+
+
+`control_bridge.c` owns the opt-in same-user Unix endpoint and request mailbox;
+its transport thread never reads the engine. `control_dispatch.c` validates
+strict instrument requests, exact-state preconditions and retained request IDs
+on the application thread. `main.c` polls the bridge in the normal background
+slice and joins transport before teardown. The endpoint pointer survives project
+candidate replacement while targets remain engine-generation bound. See
+[the control contract](../../docs/application_control.md) and
+[MCP setup](../../tools/mcp/README.md).
+
+Custom preset storage is owned by `preset_library.c`; `preset_actions.c` reuses instrument target/state/history contracts, `preset_preview.c` renders bounded private PCM examples, and `control_presets.c` adapts those owners to the existing receipt dispatcher. No shared-library implementation or dependency minimum changed. See [user presets](../../docs/user_presets.md).
+
+`sound_render.c` shares isolated production rendering between WAV and inspection; `sound_analysis.c` owns calibrated fixed-window measurements/common actions; `control_analysis.c` adopts them through two read-only MCP tools. See [sound inspection](../../docs/sound_inspection.md).
+
+`midi_actions.c` owns copied MIDI/tempo snapshots, exact-state append/replace transactions and guarded history replay; `midi_patterns.c` generates bounded four-beat major-key phrases through the captured tempo map. `app_actions.c` provides their common identity resolver. See [transactional MIDI](../../docs/midi_authoring.md).
+
+
+`control_midi.c` adopts common MIDI snapshots, note/pattern actions and guarded history through exact retained-state tokens and bounded pages. The existing dispatcher reserves immutable receipts before MIDI writes. See [MIDI MCP](../../docs/midi_mcp.md).
+
+### Guarded MIDI region authoring
+
+Common MIDI layout/create/extend actions and structural control routing live in `midi_regions.c` and `control_regions.c`. They reserve history before one publication and reuse the existing mailbox and receipt ledger.
+
+### Effects authoring development
+
+`fx_actions.c` owns guarded complete-chain actions/history; `control_fx.c` adopts them into MCP. `composition.c` captures production range/track/region previews and calibrated analysis without modifying authored state.
+
+`control_composition.c` owns a four-render/64 MiB immutable audio cache and adapts production composition analysis and receipt-backed captured PCM publication.
+
+`composition_preview.c` publishes exact retained production audio for MCP and native inspection. `fx_library.c` stores strict versioned portable effect chains with revision-bound atomic updates; its MCP/editor adoption is implemented.
+
+`fx_preset_actions.c` owns guarded library save/recall and `control_fx.c` adopts list/get/save/apply. `midi_expression.c` owns tempo-aware quantize/swing, velocity scaling and seeded bounded variation through common MIDI history; `control_midi.c` exposes `transform_midi`.
+
+Project float serialization now preserves complete authored float values through decimal JSON; expression/library native restart qualification covers exact notes and processed WAV bytes.
+
+Guarded arrangement is documented in [arrangement](../../docs/arrangement.md). The common action, MCP adapter and native MIDI duplicate/delete share exact content guards and one-step batch history; native Arrange fields and actual-window acceptance now pass; advanced routing remains pending.
+
+`routing_actions.c` owns common exact-state routing edits and scoped history. It validates the complete routing graph, refuses busy/foreign/stale requests, reserves independent before/after metadata and publishes once. Routing restoration preserves unrelated mixer, regions and processors. The corresponding native/MCP routing adapters remain pending.
+
+Common routing now includes one-publication return creation from an empty project with stable-identity redo and created-lane later-edit guards. `control_routing.c` adopts reads, creation, atomic role/send batches and scoped history behind four copied tokens and the existing immutable receipt/write admission contract. Native routing controls remain pending.

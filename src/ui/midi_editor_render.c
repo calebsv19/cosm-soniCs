@@ -577,7 +577,9 @@ void midi_editor_render(SDL_Renderer* renderer, const AppState* state, const Mid
                              footer,
                              theme.text_muted,
                              0.9f,
-                             layout->footer_rect.w);
+                             layout->footer_rect.w - 90);
     }
     midi_editor_draw_instrument_menu(renderer, state, layout, &selection, &theme);
+    daw_midi_pattern_render(renderer, (AppState*)state);
+    daw_midi_arrangement_render(renderer, state);
 }

@@ -4,6 +4,8 @@
 #include "config.h"
 #include "daw/daw_app_main.h"
 #include "daw/data_paths.h"
+#include "daw/control_bridge.h"
+#include <stdlib.h>
 #include "app/audio_recording.h"
 #include "app/main_bounce.h"
 #include "app/main_loop_policy.h"
@@ -354,6 +356,12 @@ static void daw_loop_background_tick(AppContext* ctx, uint64_t now_ns) {
         if (daw_loop_handle_mainthread_message(state, &drained[i])) {
             producer_ui_changed = true;
         }
+    }
+
+    if (state && daw_control_bridge_poll(state->control_bridge, state)) {
+        producer_ui_changed = true;
+        effects_panel_sync_from_engine(state);
+        daw_invalidate_all(state->panes, state->pane_count, DAW_RENDER_INVALIDATION_CONTENT);
     }
 
     if (state && !state->bounce_active) {
@@ -941,7 +949,20 @@ int daw_app_main_legacy(void) {
         engine_transport_seek(state.engine, 0);
     }
 
+    const char* control_path = getenv("DAW_CONTROL_SOCKET");
+    if (control_path && control_path[0]) {
+        const char* write_flag = getenv("DAW_CONTROL_ALLOW_WRITE");
+        state.control_bridge = daw_control_bridge_start(control_path, write_flag && strcmp(write_flag, "1") == 0);
+        SDL_Log("DAW local control: %s", state.control_bridge ? "ready" : "endpoint refused");
+    }
+
     App_Run(&ctx, &callbacks);
+    daw_routing_panel_release(&state);
+    daw_midi_arrangement_release(&state);
+    daw_fx_library_panel_release(&state);
+    daw_sound_panel_release(&state);
+    daw_control_bridge_stop(state.control_bridge);
+    state.control_bridge = NULL;
 
     if (daw_workspace_authoring_host_active(&state.workspace_authoring)) {
         (void)daw_workspace_authoring_host_cancel(&state.workspace_authoring);

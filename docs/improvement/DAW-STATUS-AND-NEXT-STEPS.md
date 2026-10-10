@@ -37,26 +37,39 @@ Physical acceptance should then cover audible playback and tails, selected-track
 
 ## 4. MCP readiness
 
-A bounded source/tooling inventory found no DAW MCP server or JSON-RPC control surface. The current C APIs and headless C harnesses are useful building blocks; they are not an external automation interface. The existing main-thread message system handles wakeups/notifications and is not a validated general-purpose remote command dispatcher.
+The initial local MCP instrument adapter is implemented as of 2026-10-08.
+Common application actions validate runtime target identities and reserve scalar
+undo history before publishing instrument batches. The same actions serve the
+MIDI UI and the owner-thread local bridge; the transport thread never accesses
+mutable engine state. The official Python SDK stdio server exposes capability
+and instrument-target discovery, stored/effective instrument reads, guarded
+instrument writes, scoped undo/redo and request-status recovery.
 
-An MCP layer is best treated as a new adapter over explicit application operations. It should not invoke mutable engine APIs directly from arbitrary transport threads, bypass undo/project ownership, or expose the internal structs as an external contract.
+Writes require explicit endpoint write admission, an instance identity, an exact
+instrument-state precondition and an immutable request ID. Tests exercise the
+real bridge/engine with an official MCP client, including lost responses,
+replay, conflicting edits, project replacement, read-only mode and shutdown.
+The [control contract](../application_control.md) and
+[MCP setup](../../tools/mcp/README.md) define the implemented scope and limits.
 
-A focused implementation sequence would be:
-
-1. **Read-only project inspection:** project identity/revision, stable track/clip/FX IDs, transport state, runtime diagnostics and bounded meter/analyzer snapshots. Each snapshot should expose age/epoch and distinguish unavailable data from silence.
-2. **Controlled transport and file operations:** play/pause/stop/seek; save/open; asynchronous import/export with operation IDs and observable pending/applied/failed/cancelled states. Dispatch to the owning control thread and preserve project-generation checks.
-3. **Editing commands:** route through common application actions with validated parameters, stable target IDs, undo behavior and explicit rejection. Define transaction scope before adding multi-object tools.
-4. **Agent acceptance scenario:** create an isolated test project, import known sound, apply a supported edit/effect, inspect measurements, export and reopen. Verify the resulting audio/project, cancellation and stale-target behavior, rather than accepting successful protocol responses alone.
-
-That adapter can share domain actions with the UI; neither surface should become a second implementation of audio processing. Creating an MCP connection will improve testability and agent access, but it will not establish visual usability or physical audio quality.
+The precondition is not a whole-project revision, and receipts are bounded
+endpoint-lifetime memory. Before adding arrangement, MIDI-note or multi-object
+tools, establish broader revision/transaction semantics. Transport, mixer/effects,
+media import, project open/save, asynchronous render jobs and measured audio
+analysis are subsequent application-action slices. Instrument/preset quality
+and native listening acceptance remain separate from MCP protocol acceptance.
 
 ## 5. Practical order from here
 
 1. Preserve the completed S4 software closeout and its explicit stress/device limits; keep the default and optimized builds clearly identified.
 2. Run one visual/audio product-acceptance session on the actual app with the workflow above. Turn concrete failures into bounded S5 slices, starting with editing integrity and trustworthy state/feedback.
-3. Build the read-only MCP/application-action boundary, then add a small verified write workflow. Expand only after the operation lifetime, undo and project replacement rules hold.
+3. Exercise the implemented instrument MCP workflow, then improve instrument/preset quality and extend the adapter with each validated capability. Establish broader revision/transaction contracts before MIDI and arrangement authoring tools.
 4. Continue the coherent S5 surface improvements, then choose S6 creative capabilities based on real use.
 
 The subsequent [S4 closeout](S4-CLOSEOUT.md) adds best-effort render-worker priority, repeated-lifetime memory qualification and a silent CoreAudio callback check. The concrete proposed [S5 behavior slices](S5-FUNCTIONAL-SLICES.md) begin with editing integrity and common actions.
 
-The immediate transition is from backend implementation to proving and improving the user and automation workflows built on it. No new MCP server, broad UI rewrite, commit, package installation or release is implied by this status report.
+The immediate transition is from backend implementation to proving and improving the user and automation workflows built on it. The initial instrument MCP server is now source/software-tested. A broad UI rewrite, commit, package installation, native interaction or physical listening acceptance is not implied by this status report.
+
+## 2026-10-09 Focused creative sequence
+
+The actual native instrument MCP baseline and filtered Keys/Pad slice are now implemented in persistent Main Edit. The next decision is reusable user-library versus project-only preset storage; then implement preset actions, bounded production render/analysis and transactional MIDI authoring in that order. See [the numbered sequence and acceptance boundary](../filtered_synth.md).

@@ -8,10 +8,14 @@
 #include "engine/engine.h"
 #include "session.h"
 #include "time/tempo.h"
+#include "daw/app_actions.h"
 #include "ui/library_browser.h"
 
 struct EngineSamplerSource;
 struct AppState;
+struct DawFxHistory;
+struct DawRoutingHistory;
+struct DawArrangementHistory;
 
 typedef enum {
     UNDO_CMD_NONE = 0,
@@ -28,7 +32,12 @@ typedef enum {
     UNDO_CMD_TRACK_SNAPSHOT,
     UNDO_CMD_LIBRARY_RENAME,
     UNDO_CMD_MIDI_NOTE_EDIT,
-    UNDO_CMD_CLIP_CONTENT
+    UNDO_CMD_CLIP_CONTENT,
+    UNDO_CMD_INSTRUMENT_SETTINGS,
+    UNDO_CMD_MIDI_REGION,
+    UNDO_CMD_FX_CHAIN,
+    UNDO_CMD_ARRANGEMENT,
+    UNDO_CMD_ROUTING
 } UndoCommandType;
 
 // Stores clip parameters for undo/redo transforms.
@@ -195,7 +204,10 @@ typedef struct {
     char after_name[LIBRARY_NAME_MAX];
 } UndoLibraryRename;
 
-typedef struct {
+// Owns complete MIDI note history with optional generation-bound common-action replay guards.
+typedef struct UndoMidiNoteEdit {
+    DawActionTarget target;
+    uint64_t clip_start_frame, clip_duration_frames, clip_offset_frames;
     int track_index;
     uint64_t clip_creation_index;
     int before_note_count;
@@ -204,12 +216,30 @@ typedef struct {
     EngineMidiNote* after_notes;
 } UndoMidiNoteEdit;
 
+// Owns stable region identity, captured notes and structural creation/extension replay guards.
+typedef struct UndoMidiRegion {
+    DawActionTarget target;
+    bool created, new_track;
+    int created_track_index;
+    uint64_t start, before_duration, after_duration;
+    DawInstrumentState track_before, track_after;
+    UndoCreatedTrack created_track;
+    EngineEqCurve created_eq;
+    EngineMidiNote* notes;
+    int note_count;
+} UndoMidiRegion;
+
 // Owns one edit command and optional complete clip-content states for destructive overlap history.
-typedef struct {
+typedef struct UndoCommand {
     UndoCommandType type;
     EngineClipContentSnapshot* clip_content_before;
     EngineClipContentSnapshot* clip_content_after;
     union {
+        struct { // Retains scalar instrument states without cloning notes or unrelated clip content.
+            DawActionTarget target;
+            DawInstrumentState before;
+            DawInstrumentState after;
+        } instrument_settings;
         UndoClipTransform clip_transform;
         UndoClipAddRemove clip_add_remove;
         UndoClipRename clip_rename;
@@ -224,6 +254,10 @@ typedef struct {
         UndoTrackSnapshotEdit track_snapshot_edit;
         UndoLibraryRename library_rename;
         UndoMidiNoteEdit midi_note_edit;
+        UndoMidiRegion midi_region;
+        struct DawFxHistory* fx_chain;
+        struct DawRoutingHistory* routing;
+        struct DawArrangementHistory* arrangement;
     } data;
 } UndoCommand;
 

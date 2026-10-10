@@ -308,132 +308,38 @@ bool midi_editor_push_note_undo(AppState* state,
     return ok;
 }
 
-static bool midi_editor_instrument_params_equal(EngineInstrumentParams a,
-                                                EngineInstrumentParams b) {
-    for (int i = 0; i < ENGINE_INSTRUMENT_PARAM_COUNT; ++i) {
-        EngineInstrumentParamId param = (EngineInstrumentParamId)i;
-        if (fabsf(engine_instrument_params_get(a, param) -
-                  engine_instrument_params_get(b, param)) >= 0.0001f) {
-            return false;
-        }
-    }
-    return true;
-}
-
-static bool midi_editor_clip_state_equal(const UndoClipState* a, const UndoClipState* b) {
-    if (!a || !b) {
-        return true;
-    }
-    if (a->track_index != b->track_index ||
-        a->start_frame != b->start_frame ||
-        a->offset_frames != b->offset_frames ||
-        a->duration_frames != b->duration_frames ||
-        a->fade_in_frames != b->fade_in_frames ||
-        a->fade_out_frames != b->fade_out_frames ||
-        a->fade_in_curve != b->fade_in_curve ||
-        a->fade_out_curve != b->fade_out_curve ||
-        fabsf(a->gain - b->gain) >= 0.0001f ||
-        a->instrument_preset != b->instrument_preset ||
-        !midi_editor_instrument_params_equal(a->instrument_params, b->instrument_params) ||
-        a->instrument_inherits_track != b->instrument_inherits_track ||
-        a->midi_note_count != b->midi_note_count) {
-        return false;
-    }
-    if (a->midi_note_count <= 0) {
-        return true;
-    }
-    if (!a->midi_notes || !b->midi_notes) {
-        return false;
-    }
-    return memcmp(a->midi_notes,
-                  b->midi_notes,
-                  sizeof(EngineMidiNote) * (size_t)a->midi_note_count) == 0;
-}
-
+// Routes preset selection through the common, pre-reserved instrument action.
 bool midi_editor_apply_instrument_preset(AppState* state,
                                          const MidiEditorSelection* selection,
                                          EngineInstrumentPresetId preset) {
-    if (!state || !selection || !selection->clip) {
-        return false;
-    }
-    UndoCommand cmd = {0};
-    cmd.type = UNDO_CMD_CLIP_TRANSFORM;
-    if (!undo_clip_state_capture(state->engine, selection->clip,
-                                          selection->track_index,
-                                          &cmd.data.clip_transform.before)) {
-        return false;
-    }
-    bool ok = engine_clip_midi_set_instrument_preset(state->engine,
-                                                     selection->track_index,
-                                                     selection->clip_index,
-                                                     preset);
-    const EngineClip* clip = midi_editor_clip_from_indices(state,
-                                                           selection->track_index,
-                                                           selection->clip_index);
-    if (ok && clip) {
-        ok = undo_clip_state_capture(state->engine, clip,
-                                              selection->track_index,
-                                              &cmd.data.clip_transform.after);
-    } else {
-        ok = false;
-    }
-    if (ok && !midi_editor_clip_state_equal(&cmd.data.clip_transform.before,
-                                            &cmd.data.clip_transform.after)) {
-        ok = undo_manager_push(&state->undo, &cmd);
-    }
-    undo_clip_state_clear(&cmd.data.clip_transform.before);
-    undo_clip_state_clear(&cmd.data.clip_transform.after);
-    return ok;
+    DawActionTarget target;
+    if (!selection || !selection->clip || daw_instrument_target_capture(state, selection->track_index,
+            selection->clip_index, &target) != DAW_ACTION_UNCHANGED ||
+        target.clip_id != selection->clip->creation_index) return false;
+    DawInstrumentRequest request = {.target = target, .set_preset = true, .preset = preset};
+    DawActionResult result = daw_action_set_instrument(state, &request);
+    if (result.status != DAW_ACTION_APPLIED && result.status != DAW_ACTION_UNCHANGED)
+        undo_manager_reject(&state->undo, result.message);
+    return result.status == DAW_ACTION_APPLIED || result.status == DAW_ACTION_UNCHANGED;
 }
 
+// Captures the original region and reserves scalar history before a knob may move.
 bool midi_editor_begin_instrument_undo(AppState* state,
                                        const MidiEditorSelection* selection) {
-    if (!state || !selection || !selection->clip) {
-        return false;
-    }
-    UndoCommand cmd = {0};
-    cmd.type = UNDO_CMD_CLIP_TRANSFORM;
-    if (!undo_clip_state_capture(state->engine, selection->clip,
-                                          selection->track_index,
-                                          &cmd.data.clip_transform.before)) {
-        return false;
-    }
-    if (!undo_clip_state_clone(&cmd.data.clip_transform.after,
-                               &cmd.data.clip_transform.before)) {
-        undo_clip_state_clear(&cmd.data.clip_transform.before);
-        return false;
-    }
-    bool ok = undo_manager_begin_drag(&state->undo, &cmd);
-    undo_clip_state_clear(&cmd.data.clip_transform.before);
-    undo_clip_state_clear(&cmd.data.clip_transform.after);
-    return ok;
+    DawActionTarget target;
+    if (!state || !selection || !selection->clip || daw_instrument_target_capture(state,
+            selection->track_index, selection->clip_index, &target) != DAW_ACTION_UNCHANGED ||
+        target.clip_id != selection->clip->creation_index) return false;
+    DawActionResult result = daw_action_begin_instrument(state, target, &state->midi_editor_ui.instrument_gesture);
+    if (result.status != DAW_ACTION_UNCHANGED) undo_manager_reject(&state->undo, result.message);
+    return result.status == DAW_ACTION_UNCHANGED;
 }
 
+// Finalizes accepted knob values without consulting the current selection or cloning notes.
 bool midi_editor_commit_instrument_undo(AppState* state) {
-    if (!state || !state->undo.active_drag_valid ||
-        state->undo.active_drag.type != UNDO_CMD_CLIP_TRANSFORM) {
-        return false;
-    }
-    MidiEditorSelection selection = {0};
-    if (!midi_editor_get_selection(state, &selection) ||
-        selection.clip->creation_index != state->undo.active_drag.data.clip_transform.before.creation_index) {
-        undo_manager_cancel_drag(&state->undo);
-        return false;
-    }
-    UndoCommand* cmd = &state->undo.active_drag;
-    UndoClipState after = {0};
-    if (!undo_clip_state_capture(state->engine, selection.clip, selection.track_index, &after)) {
-        undo_manager_cancel_drag(&state->undo);
-        return false;
-    }
-    undo_clip_state_clear(&cmd->data.clip_transform.after);
-    cmd->data.clip_transform.after = after;
-    if (!midi_editor_clip_state_equal(&cmd->data.clip_transform.before,
-                                      &cmd->data.clip_transform.after)) {
-        return undo_manager_commit_drag(&state->undo, cmd);
-    }
-    undo_manager_cancel_drag(&state->undo);
-    return true;
+    if (!state) return false;
+    DawActionResult result = daw_action_finish_instrument(state, &state->midi_editor_ui.instrument_gesture, true);
+    return result.status == DAW_ACTION_APPLIED || result.status == DAW_ACTION_UNCHANGED;
 }
 
 uint64_t midi_editor_min_note_duration(uint64_t clip_frames) {

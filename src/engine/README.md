@@ -145,3 +145,37 @@ S5 adds `engine_transform_clips` for complete transforms including required appe
 
 
 Whole-track history captures retained media, MIDI/automation, EQ/instrument state and an independent effects chain. Insert prepares the complete row and chain before one publication; rejection rolls back content, ordering and arming. Effect instance restoration likewise configures a private candidate before publication, preserving the original instance ID and disabled state.
+
+
+`instrument_controls.c` defines preset-supported controls and reversible log-time
+knob mapping. `instrument_osc.c` shares its allocation-free isolated note/ADSR
+kernel with diagnostic plots while retaining the original polyphonic arithmetic.
+Existing saved values, presets and automation semantics are unchanged. The
+additive rounded family reuses the bounded triangle/sine helpers and existing
+ADSR, detune, sub and drive controls; see [rounded synth](../../docs/rounded_synth.md). See
+[instrument controls](../../docs/instrument_controls.md) and
+`make test-instrument-controls`.
+
+`instrument_filter.c` owns private per-note low-pass integrators and smoothed cutoff/Q coefficients for Filtered Keys/Pad. Existing voices retain their oscillator renderer. Prepared sources reset this state on note preparation and transport discontinuity; the bounded isolated waveform API streams a separate copy from note onset. See `docs/filtered_synth.md`.
+
+### Guarded MIDI region authoring
+
+Structural MIDI redo restores stable track/clip identities through staged additions; `engine_midi_regions.c` removes an existing-lane region and restores its prior instrument metadata in one publication.
+
+### Effects authoring development
+
+`engine_fx_chain.c` prepares complete chain candidates and readback before publication. Filtered export plans isolate tracks/regions and bypass cloned FX/EQ for dry previews without changing live state or legacy defaults.
+
+## Shared-return engine foundation
+
+`engine/routing.h` captures ordered stable track identities and complete send/return metadata. `engine_routing_set` compares the exact capture, validates the complete graph and publishes one prepared source revision. A preparation failure restores the authored fields. The initial graph supports four return lanes and four post-fader send slots per source. Return lanes contain no regions or enabled instruments; missing/duplicate bindings, feedback, return-to-return sends and nonfinite/out-of-range levels refuse publication. Incoming bindings protect return deletion, even at zero level.
+
+Live and private export plans own return sums and destination maps. Sources feed their sends after lane processing, fader, pan and source-stage compensation; each return processes its aggregated input once, applies its own effects/EQ/fader/pan and aligns with the delayed dry sum before master processing. Source solo retains its returns; return solo suppresses the dry sum while retaining source inputs. Project/source dry exports omit return duplication, while an isolated dry return exposes its source input sum. Stable render revision adoption preserves compatible DSP and smooths same-binding send-level changes during playback.
+
+`test-engine-routing` verifies production samples for independent parallel returns, sparse send slots, source/return isolation, dry rendering, solo/mute/fader behavior and exact serial source/return/master latency. Instrumentation covers source-plan allocation rollback and no new render heap calls. Routing now survives complete project capture/reopening; guarded common/native/MCP authoring remains pending; this engine API does not establish a usable bus workflow by itself. Stopped instrument audition still follows its existing two-second effect-tail policy.
+
+`engine_routing_snapshot_equal` and `engine_routing_validate` expose non-mutating complete-state comparison/validation for application actions. Common routing history uses these guards and the same prepared publication path; valid edits on existing lanes produce one shared undo command. Return-lane creation and native/MCP routing adoption remain separate work.
+
+`engine_append_return` shares ordinary track insertion's prepared topology/FX publication, setting the role before the candidate is visible. Fresh creation or retained-identity redo appends one independent empty return, refuses capacity/identity conflicts, and restores ownership on publication failure. Common creation history protects later lane edits before removing its return. See [routing](../../docs/routing.md) for agent adoption and remaining native controls.
+
+`instrument_catalog.c` owns stable instrument/preset identities and physical metadata separately from oscillator rendering. The filtered voice kernel adds signed octave decay and retriggered filter LFO movement; zero depths retain static filtering. Sweep Bass, Filter Pluck and Moving Pad use these shared controls, including diagnostic rendering and automation.

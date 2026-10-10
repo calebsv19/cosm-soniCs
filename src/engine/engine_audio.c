@@ -103,12 +103,69 @@ void engine_audio_callback(float* output, int frames, int channels, void* userda
     }
 }
 
+// Clears only prepared return sums and refuses oversized render blocks before writing buffers.
+static bool routing_begin(EngineMixState* mix, int frames, int channels) {
+    if (!mix->return_count) return true;
+    size_t samples = (size_t)frames * channels;
+    if (!mix->return_buffers || samples > mix->return_buffer_samples) return false;
+    for (int b = 0; b < mix->return_count; ++b)
+        memset(mix->return_buffers + b * mix->return_buffer_samples, 0, samples * sizeof(float));
+    return true;
+}
+// Accumulates post-fader/pan/insert signals into independently prepared shared return inputs.
+static void routing_send(EngineMixState* mix, int track, const float* source, int frames, int channels) {
+    if (!mix->return_count || mix->bypass_returns) return;
+    for (int send = 0; send < ENGINE_SEND_CAP; ++send) {
+        int destination = mix->send_destinations[track * ENGINE_SEND_CAP + send];
+        if (destination < 0) continue;
+        float* out = mix->return_buffers + destination * mix->return_buffer_samples;
+        FxSampleRamp* ramp = &mix->send_ramps[track * ENGINE_SEND_CAP + send];
+        for (int frame = 0; frame < frames; ++frame) {
+            float gain = fx_sample_ramp_next(ramp);
+            for (int ch = 0; ch < channels; ++ch) out[frame * channels + ch] += source[frame * channels + ch] * gain;
+        }
+    }
+}
+// Keeps return solo auditions audible through their source inputs while suppressing the dry sum.
+static bool routing_dry_enabled(const EngineMixState* mix) {
+    if (mix->isolated_return >= 0) return false;
+    for (int b = 0; b < mix->return_count; ++b) {
+        const EngineTrack* row = &mix->tracks[mix->return_tracks[b]];
+        if (row->solo && !row->muted) return false;
+    }
+    return true;
+}
+// Processes each shared return once and aligns the dry and wet paths before the master stage.
+static void routing_returns(Engine* engine, EngineMixState* mix, float* out, int frames, int channels, int hold_blocks) {
+    if (mix->bypass_returns || !mix->return_count) return;
+    if (mix->fxm) fxm_align_dry(mix->fxm, out, frames, channels);
+    for (int b = 0; b < mix->return_count; ++b) {
+        int track = mix->return_tracks[b]; float* buffer = mix->return_buffers + b * mix->return_buffer_samples;
+        if (mix->fxm) fxm_render_track(mix->fxm, track, buffer, frames, channels);
+        engine_eq_process(&mix->tracks[track].track_eq, buffer, frames, channels);
+        for (int frame = 0; frame < frames; ++frame) {
+            float gain = fx_sample_ramp_next(&mix->audition_gain_ramps[track]);
+            for (int ch = 0; ch < channels; ++ch) buffer[frame * channels + ch] *= gain;
+        }
+        apply_track_pan(&mix->track_pan_ramps[track], buffer, frames, channels);
+        if (mix->fxm) fxm_align_track(mix->fxm, track, buffer, frames, channels);
+        if (engine) {
+            engine_spectrum_update_track(engine, track, buffer, frames, channels);
+            if (mix->track_meters) { float peak, rms; compute_peak_rms(buffer, frames, channels, &peak, &rms); update_meter_state(&mix->track_meters[track], peak, rms, hold_blocks); }
+        }
+        if (mix->isolated_return >= 0 && mix->isolated_return != track) continue;
+        for (int sample = 0; sample < frames * channels; ++sample) out[sample] += buffer[sample];
+    }
+}
+
 // Shares the serial source/FX/EQ/pan/compensation path between live and independently owned export plans.
 bool engine_mix_prepared(Engine* engine, EngineGraph* graph, EngineMixState* mix,
                          uint64_t start_frame, int frames, float* out, float* track_buffer, int channels) {
     if (!graph || !mix || !out || !track_buffer || frames <= 0 || channels <= 0) return false;
     memset(out, 0, (size_t)frames * (size_t)channels * sizeof(float));
 
+    if (!routing_begin(mix, frames, channels)) return false;
+    bool dry_enabled = routing_dry_enabled(mix);
     if (mix->fxm) fxm_begin_render_block(mix->fxm, frames);
     if (engine) atomic_store(&engine->diag_processing_latency, fxm_processing_latency(mix->fxm));
     int tcount = mix->track_count;
@@ -117,6 +174,7 @@ bool engine_mix_prepared(Engine* engine, EngineGraph* graph, EngineMixState* mix
         hold_blocks = 1;
     }
     for (int t = 0; t < tcount; ++t) {
+        if (mix->tracks[t].is_return) continue;
         memset(track_buffer, 0, (size_t)frames * (size_t)channels * sizeof(float));
         engine_graph_render_track(graph,
                                   track_buffer,
@@ -137,11 +195,13 @@ bool engine_mix_prepared(Engine* engine, EngineGraph* graph, EngineMixState* mix
             update_meter_state(&mix->track_meters[t], peak, rms, hold_blocks);
 
         }
-        for (int s = 0; s < frames * channels; ++s) {
+        routing_send(mix, t, track_buffer, frames, channels);
+        if (dry_enabled) for (int s = 0; s < frames * channels; ++s) {
             out[s] += track_buffer[s];
         }
     }
 
+    routing_returns(engine, mix, out, frames, channels, hold_blocks);
     engine_eq_process(&mix->master_eq, out, frames, channels);
     if (mix->fxm) {
         fxm_render_master(mix->fxm, out, frames, channels);
@@ -181,14 +241,14 @@ void engine_mix_midi_audition_only(Engine* engine,
     memset(out, 0, (size_t)frames * (size_t)channels * sizeof(float));
 
     EngineMixState* mix = engine_render_mix_state(engine);
-    if (!mix) return;
+    if (!mix || !routing_begin(mix, frames, channels)) return;
     int track_index = engine->midi_audition_track_index;
     if (track_index < 0 || track_index >= mix->track_count) {
         track_index = 0;
     }
     if (!engine->midi_audition_source ||
         (engine->midi_audition_notes.note_count <= 0 && !engine->midi_audition_tail_until) ||
-        track_index < 0 || track_index >= mix->track_count) {
+        track_index < 0 || track_index >= mix->track_count || mix->tracks[track_index].is_return) {
         return;
     }
 
@@ -220,7 +280,9 @@ void engine_mix_midi_audition_only(Engine* engine,
         update_meter_state(&mix->track_meters[track_index], peak, rms, hold_blocks);
 
     }
-    memcpy(out, track_buffer, (size_t)frames * (size_t)channels * sizeof(float));
+    routing_send(mix, track_index, track_buffer, frames, channels);
+    if (routing_dry_enabled(mix)) memcpy(out, track_buffer, (size_t)frames * (size_t)channels * sizeof(float));
+    routing_returns(engine, mix, out, frames, channels, hold_blocks);
 
     engine_eq_process(&mix->master_eq, out, frames, channels);
     if (mix->fxm) {

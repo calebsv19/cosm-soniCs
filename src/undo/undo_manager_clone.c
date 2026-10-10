@@ -1,3 +1,6 @@
+#include "daw/fx_actions.h"
+#include "daw/routing_actions.h"
+#include "daw/arrangement.h"
 #include "undo/undo_manager.h"
 #include "undo_manager_internal.h"
 
@@ -330,6 +333,29 @@ static bool undo_command_clone_fields(UndoCommand* dst, const UndoCommand* src) 
     memset(dst, 0, sizeof(*dst));
     dst->type = src->type;
     switch (src->type) {
+        case UNDO_CMD_ARRANGEMENT:
+            dst->data.arrangement=malloc(sizeof(*dst->data.arrangement));
+            if(!dst->data.arrangement)return false;
+            *dst->data.arrangement=*src->data.arrangement;return true;
+        case UNDO_CMD_ROUTING:
+            if (!src->data.routing) return false;
+            dst->data.routing = malloc(sizeof(*dst->data.routing));
+            if (!dst->data.routing) return false;
+            *dst->data.routing = *src->data.routing;
+            return true;
+        case UNDO_CMD_FX_CHAIN:
+            dst->data.fx_chain = malloc(sizeof(*dst->data.fx_chain));
+            if (!dst->data.fx_chain) return false;
+            *dst->data.fx_chain = *src->data.fx_chain;
+            return true;
+        case UNDO_CMD_MIDI_REGION:
+            dst->data.midi_region = src->data.midi_region;
+            dst->data.midi_region.notes = NULL;
+            dst->data.midi_region.note_count = 0;
+            return midi_notes_clone(&dst->data.midi_region.notes, &dst->data.midi_region.note_count, src->data.midi_region.notes, src->data.midi_region.note_count);
+        case UNDO_CMD_INSTRUMENT_SETTINGS:
+            dst->data.instrument_settings = src->data.instrument_settings;
+            return true;
         case UNDO_CMD_CLIP_TRANSFORM:
             if (!undo_clip_state_clone(&dst->data.clip_transform.before,
                                        &src->data.clip_transform.before)) {
@@ -581,6 +607,16 @@ void undo_command_destroy(UndoCommand* cmd) {
             break;
         case UNDO_CMD_CLIP_ADD_REMOVE:
             session_clip_clear(&cmd->data.clip_add_remove.clip);
+            break;
+        case UNDO_CMD_ARRANGEMENT:
+            free(cmd->data.arrangement);break;
+        case UNDO_CMD_ROUTING:
+            free(cmd->data.routing); break;
+        case UNDO_CMD_FX_CHAIN:
+            free(cmd->data.fx_chain);
+            break;
+        case UNDO_CMD_MIDI_REGION:
+            free(cmd->data.midi_region.notes);
             break;
         case UNDO_CMD_MIDI_NOTE_EDIT:
             midi_notes_clear(&cmd->data.midi_note_edit.before_notes,

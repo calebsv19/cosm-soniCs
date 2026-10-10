@@ -16,7 +16,7 @@
 
 // Keeps text/modal/authoring and active continuous gestures ahead of discrete buttons.
 static bool blocked(const AppState* state) {
-    return !state->engine || state->bounce_active || project_modal_input_active(state) ||
+    return state->routing_ui.open || state->fx_library_ui.open || state->midi_pattern_ui.open || state->sound_ui.open || state->preset_ui.editing || state->preset_ui.save_open || !state->engine || state->bounce_active || project_modal_input_active(state) ||
         state->tempo_ui.editing || state->track_name_editor.editing ||
         library_input_is_editing(state) || inspector_input_has_text_focus(state) ||
         state->undo.active_drag_valid || state->layout_runtime.drag.active ||
@@ -33,6 +33,8 @@ static void activate(InputManager* manager, AppState* state, KitUiSurfaceKey key
     case 13: (void)midi_instrument_panel_input_activate_at(state, x, y); break;
     case 15: timeline_track_control_activate(state, key.value); break;
     case 14:
+        if(key.value==5){(void)daw_fx_library_panel_open(state);break;}
+        if(key.value==6){(void)daw_routing_panel_open(state);break;}
     case 16:
     case 17:
     case 18: {

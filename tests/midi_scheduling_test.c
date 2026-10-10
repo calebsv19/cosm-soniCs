@@ -69,11 +69,55 @@ static void parity(int rate, int channels, EngineInstrumentPresetId preset) {
     engine_instrument_source_destroy(s);
 }
 
+// Proves filtered rendering is partition invariant, isolated per source, resettable and free of render heap calls.
+static void filtered_partitions(void) {
+    int rates[] = {44100, 48000, 96000};
+    for (int r = 0; r < 3; ++r) for (int channels = 1; channels <= 2; ++channels)
+    for (int preset = ENGINE_INSTRUMENT_PRESET_FILTERED_KEYS; preset <= ENGINE_INSTRUMENT_PRESET_FILTERED_PAD; ++preset) {
+        EngineInstrumentSource* a = engine_instrument_source_create();
+        EngineInstrumentSource* b = engine_instrument_source_create();
+        EngineMidiNote notes[] = {{0, 10000, 60, .7f}, {100, 9000, 67, .6f}};
+        EngineInstrumentParams p = engine_instrument_default_params(preset);
+        EngineAutomationPoint points[] = {{0, -.5f}, {3000, .5f}, {6000, -.2f}};
+        EngineAutomationLane lane = {ENGINE_AUTOMATION_TARGET_INSTRUMENT_CUTOFF_HZ, points, 3, 3};
+        assert(a && b);
+        assert(engine_instrument_source_set_midi_clip(a, 0, 20000, preset, p, notes, 2, NULL, 0, &lane, 1));
+        assert(engine_instrument_source_set_midi_clip(b, 0, 20000, preset, p, notes, 2, NULL, 0, &lane, 1));
+        engine_instrument_source_reset(a, rates[r], channels);
+        engine_instrument_source_reset(b, rates[r], channels);
+        float whole[6000], pieces[6000];
+        guarded = 1;
+        engine_instrument_source_render(a, whole, 3000, 0);
+        for (int i = 0; i < 3000;) {
+            int size = i%3 ? 127 : 31; if (size > 3000-i) size = 3000-i;
+            engine_instrument_source_render(b, pieces + i*channels, size, i); i += size;
+        }
+        assert(!memcmp(whole, pieces, 3000*channels*sizeof(float)) && !heap_calls);
+        engine_instrument_source_reset(a, rates[r], channels);
+        engine_instrument_source_reset(b, rates[r], channels);
+        engine_instrument_source_render(a, whole, 256, 8000);
+        engine_instrument_source_render(b, pieces, 256, 8000);
+        assert(!memcmp(whole, pieces, 256*channels*sizeof(float)) && !heap_calls);
+        guarded = 0;
+        // Reusing note storage must retire the prior voice even at a contiguous frame.
+        assert(engine_instrument_source_set_midi_clip(a, 0, 20000, preset, p, notes, 2, NULL, 0, &lane, 1));
+        assert(engine_instrument_source_set_midi_clip(b, 0, 20000, preset, p, notes, 2, NULL, 0, &lane, 1));
+        engine_instrument_source_reset(b, rates[r], channels);
+        guarded = 1;
+        engine_instrument_source_render(a, whole, 256, 8256);
+        engine_instrument_source_render(b, pieces, 256, 8256);
+        assert(!memcmp(whole, pieces, 256*channels*sizeof(float)) && !heap_calls);
+        guarded = 0;
+        engine_instrument_source_destroy(a); engine_instrument_source_destroy(b);
+    }
+}
+
 // Verifies candidate scheduling across formats while leaving DSP formulas under existing tests.
 int main(void) {
     int rates[] = {44100, 48000, 96000};
     for (int r = 0; r < 3; ++r) for (int channels = 1; channels <= 2; ++channels)
-        for (int p = 0; p < ENGINE_INSTRUMENT_PRESET_COUNT; ++p) parity(rates[r], channels, p);
-    puts("midi_scheduling_test: success (all presets, exact prior-scan parity, automation/release growth, seeks, export, formats, wrap, reserve failure, zero render heap calls)");
+        for (int p = 0; p < ENGINE_INSTRUMENT_PRESET_FILTERED_KEYS; ++p) parity(rates[r], channels, p);
+    filtered_partitions();
+    puts("midi_scheduling_test: success (original voices exact prior-scan parity, filtered voices exact block partition parity, automation/release growth, seeks, export, formats, wrap, reserve failure, zero render heap calls)");
     return 0;
 }

@@ -11,6 +11,10 @@ MEMORY_CHECK_BIN := $(TARGET_BUILD_ROOT)/toolchains/fisics/bin/daw_memory_check_
 MEMORY_CHECK_SRCS := \
 	tests/session_serialization_test.c \
 	tests/test_session_engine_stubs.c \
+	src/engine/automation.c \
+	src/engine/instrument_catalog.c \
+	src/engine/instrument_controls.c \
+	src/engine/instrument_filter.c \
 	src/session/session_document.c \
 	src/session/session_validation.c \
 	src/session/session_io_write.c \

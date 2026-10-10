@@ -1,5 +1,6 @@
 #include "app/media_import.h"
 #include "session.h"
+#include "ui/sound_panel.h"
 #include "app_state.h"
 #include "daw/data_paths.h"
 #include "engine/engine.h"
@@ -90,6 +91,7 @@ static void session_apply_midi_editor_state(AppState* state, const SessionDocume
     state->midi_editor_ui.instrument_menu_scroll_row = 0;
     state->midi_editor_ui.instrument_menu_expanded_category = -1;
     state->midi_editor_ui.instrument_param_drag_active = false;
+    state->midi_editor_ui.instrument_gesture = (DawInstrumentGesture){0};
     state->midi_editor_ui.instrument_param_drag_index = -1;
     state->midi_editor_ui.instrument_param_drag_start_y = 0;
     state->midi_editor_ui.instrument_param_drag_start_value = 0.0f;
@@ -700,6 +702,31 @@ static bool session_prepare_document(AppState* state, const SessionDocument* doc
             }
         }
     }
+    bool has_routing = false;
+    for (int t = 0; t < doc->track_count; ++t) {
+        if (doc->tracks[t].is_return) has_routing = true;
+        for (int send = 0; send < ENGINE_SEND_CAP; ++send)
+            if (doc->tracks[t].sends[send].destination_track) has_routing = true;
+    }
+    if (has_routing) {
+        EngineRoutingSnapshot* before = calloc(1, sizeof(*before));
+        EngineRoutingSnapshot* next = calloc(1, sizeof(*next));
+        bool restored = before && next && engine_routing_capture(state->engine, before);
+        if (restored) {
+            *next = *before;
+            for (int t = 0; t < doc->track_count; ++t) {
+                next->tracks[t].is_return = doc->tracks[t].is_return;
+                for (int send = 0; send < ENGINE_SEND_CAP; ++send) {
+                    int destination = doc->tracks[t].sends[send].destination_track;
+                    next->tracks[t].sends[send] = (EngineSend){destination ? next->tracks[destination - 1].track_id : 0,
+                                                           doc->tracks[t].sends[send].gain};
+                }
+            }
+            restored = engine_routing_set(state->engine, before, next);
+        }
+        free(before); free(next);
+        if (!restored) return false;
+    }
     if (migrated_media_id_count > 0) {
         SDL_Log("session_apply_document: migrated %d clips to media_id", migrated_media_id_count);
     }
@@ -1077,6 +1104,9 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     }
     // No fallible project operation follows: retire old ownership, then publish the prepared state.
     daw_media_import_invalidate(state);
+    daw_sound_panel_release(state);
+    daw_routing_panel_release(state);
+    daw_midi_arrangement_release(state);
     engine_destroy(state->engine);
     tempo_map_free(&state->tempo_map);
     time_signature_map_free(&state->time_signature_map);
@@ -1092,6 +1122,10 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     SDL_free(state->timeline_drag.ripple_targets);
     candidate->timeline_drag = (TimelineDragState){0};
     candidate->timeline_drag.track_index = candidate->timeline_drag.clip_index = -1;
+    candidate->sound_ui = (DawSoundUI){0};
+    candidate->routing_ui = (DawRoutingUI){.selected=-1,.focused=-1,.pressed=-1};
+    candidate->midi_arrangement_ui = (DawMidiArrangementUI){.focused=-1,.pressed=-1};
+    candidate->midi_pattern_ui = (DawMidiPatternUI){0};
     candidate->midi_editor_ui.drag_active = false;
     candidate->midi_editor_ui.qwerty_record_armed = false;
     candidate->midi_editor_ui.qwerty_test_enabled = false;

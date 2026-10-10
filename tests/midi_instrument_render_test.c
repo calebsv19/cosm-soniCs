@@ -462,6 +462,11 @@ static void test_factory_preset_catalog_defaults_and_render(void) {
         ENGINE_INSTRUMENT_PRESET_BRIGHT_LEAD,
         ENGINE_INSTRUMENT_PRESET_WARM_KEYS,
         ENGINE_INSTRUMENT_PRESET_SUB_DRONE,
+        ENGINE_INSTRUMENT_PRESET_ROUNDED_KEYS,
+        ENGINE_INSTRUMENT_PRESET_ROUNDED_PLUCK,
+        ENGINE_INSTRUMENT_PRESET_ROUNDED_PAD,
+        ENGINE_INSTRUMENT_PRESET_FILTERED_KEYS,
+        ENGINE_INSTRUMENT_PRESET_FILTERED_PAD,
     };
     expect(engine_instrument_preset_count() >= 10, "factory preset catalog should include S19 presets");
     expect(strcmp(engine_instrument_preset_display_name(ENGINE_INSTRUMENT_PRESET_SYNTH_LAB),

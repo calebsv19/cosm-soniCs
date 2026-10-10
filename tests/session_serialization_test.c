@@ -1,4 +1,5 @@
 #include "session.h"
+#include "../src/session/session_io_read_internal.h"
 #include "daw/data_paths.h"
 #include "engine/engine.h"
 #include "ui/library_browser.h"
@@ -13,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <float.h>
 #include <sys/stat.h>
 
 static const char* kTestOutputPath = "build/tests/sample_session.json";
@@ -127,6 +129,10 @@ static int run_factory_preset_session_matrix_test(void) {
         clip->instrument_params.tone = 0.20f + 0.04f * (float)i;
         clip->instrument_params.attack_ms = 2.0f + (float)i;
         clip->instrument_params.release_ms = 40.0f + 3.0f * (float)i;
+        clip->instrument_params.filter_env_octaves = -.75f;
+        clip->instrument_params.filter_decay_ms = 321.123f;
+        clip->instrument_params.filter_lfo_hz = .73f;
+        clip->instrument_params.filter_lfo_octaves = .41f;
         clip->midi_note_count = 1;
         clip->midi_notes = (EngineMidiNote*)calloc(1, sizeof(EngineMidiNote));
         if (!clip->midi_notes) {
@@ -176,6 +182,10 @@ static int run_factory_preset_session_matrix_test(void) {
             fabsf(clip->instrument_params.tone - (0.20f + 0.04f * (float)i)) > 0.01f ||
             fabsf(clip->instrument_params.attack_ms - (2.0f + (float)i)) > 0.01f ||
             fabsf(clip->instrument_params.release_ms - (40.0f + 3.0f * (float)i)) > 0.01f ||
+            clip->instrument_params.filter_env_octaves != -.75f ||
+            clip->instrument_params.filter_decay_ms != 321.123f ||
+            clip->instrument_params.filter_lfo_hz != .73f ||
+            clip->instrument_params.filter_lfo_octaves != .41f ||
             clip->midi_note_count != 1 ||
             !clip->midi_notes ||
             clip->midi_notes[0].note != (uint8_t)(48 + i)) {
@@ -232,10 +242,11 @@ static int run_unknown_preset_fallback_test(void) {
 static int run_gain_defaults_test(void) {
     const char* path = "build/tests/sample_session_gain.json";
     const char* temp = "build/tests/sample_session_gain_temp.json";
+    char stored_gain[64];snprintf(stored_gain,sizeof(stored_gain),"\"gain\": %.*g",FLT_DECIMAL_DIG,(double)0.8f);
     for (int missing = 0; missing < 2; ++missing) {
-        if (!write_replaced_file(kTestOutputPath, temp, "\"gain\": 0.800000",
+        if (!write_replaced_file(kTestOutputPath, temp, stored_gain,
                                  missing ? "\"unused_gain\": 0.800000" : "\"gain\": 0.000000") ||
-            !write_replaced_file(temp, path, "\"gain\": 1.000000",
+            !write_replaced_file(temp, path, "\"gain\": 1",
                                  missing ? "\"unused_gain\": 1.000000" : "\"gain\": 0.000000")) return 40;
         SessionDocument doc;
         session_document_init(&doc);
@@ -253,6 +264,39 @@ static int run_gain_defaults_test(void) {
         valid = doc.tracks[0].gain == expected && doc.tracks[0].clips[0].gain == expected;
         session_document_free(&doc);
         if (!valid) return 44;
+    }
+    return 0;
+}
+
+// Exercises bounded routing parsing independently of file recovery and default document fields.
+static int run_routing_parser_test(void) {
+    const char* valid[] = {
+        "[{}]",
+        "[{\"is_return\":true,\"sends\":[{\"destination_track\":0,\"gain\":0},{\"gain\":0,\"destination_track\":0},{\"destination_track\":0,\"gain\":0},{\"destination_track\":0,\"gain\":0}]}]"
+    };
+    const char* invalid[] = {
+        "[{\"is_return\":true,\"is_return\":false}]",
+        "[{\"sends\":[]}]",
+        "[{\"sends\":[{\"destination_track\":1.5,\"gain\":0}]}]",
+        "[{\"sends\":[{\"destination_track\":-1,\"gain\":0}]}]",
+        "[{\"sends\":[{\"destination_track\":129,\"gain\":0}]}]",
+        "[{\"sends\":[{\"destination_track\":0,\"gain\":1.1}]}]",
+        "[{\"sends\":[{\"gain\":0,\"gain\":0}]}]",
+        "[{\"sends\":[{\"destination_track\":0,\"unknown\":0}]}]"
+    };
+    for (size_t pass = 0; pass < 2; ++pass) {
+        const char* const* cases = pass ? invalid : valid;
+        size_t count = pass ? sizeof(invalid)/sizeof(invalid[0]) : sizeof(valid)/sizeof(valid[0]);
+        for (size_t n = 0; n < count; ++n) {
+            SessionDocument doc; session_document_init(&doc);
+            JsonReader reader; json_reader_init(&reader, cases[n], strlen(cases[n]));
+            bool parsed = parse_session_tracks(&reader, &doc);
+            bool expected = !pass;
+            if (parsed != expected || (!pass && n == 0 && (doc.tracks[0].is_return || doc.tracks[0].sends[0].destination_track))) {
+                session_document_free(&doc); return 46;
+            }
+            session_document_free(&doc);
+        }
     }
     return 0;
 }
@@ -445,8 +489,8 @@ int main(void) {
         session_document_free(&doc);
         return 2;
     }
-    midi_clip->midi_notes[0] = (EngineMidiNote){0, 24000, 60, 0.9f};
-    midi_clip->midi_notes[1] = (EngineMidiNote){48000, 12000, 64, 0.6f};
+    midi_clip->midi_notes[0] = (EngineMidiNote){0, 24000, 60, nextafterf(0.9f,1.0f)};
+    midi_clip->midi_notes[1] = (EngineMidiNote){48000, 12000, 64, 1.0e-8f};
     midi_clip->automation_lane_count = 1;
     midi_clip->automation_lanes = (SessionAutomationLane*)calloc(1, sizeof(SessionAutomationLane));
     if (!midi_clip->automation_lanes) {
@@ -627,6 +671,10 @@ int main(void) {
         return 9;
     }
 
+    // Varied velocities and tiny authored values must survive actual disk serialization bit exactly.
+    if(lm->midi_notes[0].velocity!=midi_clip->midi_notes[0].velocity || lm->midi_notes[1].velocity!=midi_clip->midi_notes[1].velocity){
+        session_document_free(&doc);session_document_free(&loaded);SDL_Log("session_serialization_test: float precision lost");return 45;
+    }
     session_document_free(&doc);
     session_document_free(&loaded);
 
@@ -657,6 +705,8 @@ int main(void) {
     }
 
     SDL_Log("session_serialization_test: success (%ld bytes)", size);
+    int routing_result = run_routing_parser_test();
+    if (routing_result) return routing_result;
     int gain_result = run_gain_defaults_test();
     if (gain_result != 0) return gain_result;
     return 0;

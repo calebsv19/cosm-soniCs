@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <inttypes.h>
 #include <math.h>
+#include <float.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -142,9 +143,9 @@ static void session_write_param_id_fields(FILE* file, const SessionFxInstance* f
     fprintf(file, "},\n");
 }
 
+// Preserves each finite authored float exactly across decimal JSON and binary project recall.
 static void json_write_float(FILE* file, float value) {
-    float corrected = fabsf(value) < 1e-6f ? 0.0f : value;
-    fprintf(file, "%.6f", corrected);
+    fprintf(file, "%.*g", FLT_DECIMAL_DIG, (double)value);
 }
 
 static void session_write_automation_lanes(FILE* file,
@@ -609,6 +610,17 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
         fprintf(file, "\"muted\": %s,\n", track->muted ? "true" : "false");
         json_write_indent(file, 3);
         fprintf(file, "\"solo\": %s,\n", track->solo ? "true" : "false");
+        json_write_indent(file, 3);
+        fprintf(file, "\"is_return\": %s,\n", track->is_return ? "true" : "false");
+        json_write_indent(file, 3);
+        fprintf(file, "\"sends\": [");
+        for (int send = 0; send < ENGINE_SEND_CAP; ++send) {
+            if (send) fprintf(file, ", ");
+            fprintf(file, "{\"destination_track\": %d, \"gain\": ", track->sends[send].destination_track);
+            json_write_float(file, track->sends[send].gain);
+            fprintf(file, "}");
+        }
+        fprintf(file, "],\n");
         json_write_indent(file, 3);
         fprintf(file, "\"midi_instrument_enabled\": %s,\n", track->midi_instrument_enabled ? "true" : "false");
         json_write_indent(file, 3);

@@ -140,3 +140,11 @@ S4.5 adds the optional engine property `output_queue_blocks` (integer 2..32). Se
 
 
 S4.7 invalidates asynchronous import generations only at successful project replacement, before retiring the old engine. Failed candidate preparation preserves pending work. Restore stays atomic and synchronous; pending imports are not serialized as published clips. See [S4.7](../../docs/improvement/S4.7-MEDIA.md).
+
+### Shared return routing
+
+Track documents optionally contain `is_return` and exactly four `sends` entries. Each send stores `destination_track` (one-based position in the complete saved track array, zero for no binding) and a finite linear `gain` from zero to one. Missing legacy routing fields default to ordinary source lanes and disconnected sends. Runtime identities are not saved; capture resolves their current destinations into the owned document, and restoration binds them to fresh runtime identities only after every lane exists.
+
+Validation refuses occupied/instrument-enabled returns, more than four returns, missing/non-return destinations, duplicate bindings, return-to-return sends and invalid levels. Routed projects are bounded to 128 tracks. The parser also refuses duplicate routing keys, incomplete/extra slots, unknown send fields and fractional destinations. Routing is restored inside the private candidate project; allocation or publication failure preserves the current live project. Complete return effect settings use existing embedded track effect storage.
+
+`test-session-transaction` now verifies exact send gains, fresh destination rebinding, return effects and bit-identical production audio after disk serialization/reopening, seven routed restore allocation failures and explicit routing-publication refusal. Normal/ASan and stable regression checks pass. Actual native App_Run additionally verifies loaded routing, return-chain MCP parameter edits/undo, independent dry/wet ratios, normal save and real restart with exact metrics/plots/WAV. Route creation in that acceptance is fixture-authored; native/MCP route authoring remains pending.

@@ -30,3 +30,9 @@ Each successful gesture reservation receives a serial that survives clear/cancel
 
 
 Recovery continuation: whole-track add/remove uses retained complete snapshots and one engine publication, with stable identity and neighbor guards. Mixer/EQ/FX history resolves track runtime identity. Discrete effect and mixer operations reserve history before mutation, and rejected history operations expose a temporary status message. See S5 implementation section 24 for tested scope and remaining native acceptance.
+
+Common MIDI pattern transactions extend `UndoMidiNoteEdit` with generation-bound target and region bounds. Replay validates the opposing note list before restoring a complete phrase; refusal retains history. Entries without these guards retain the existing legacy path.
+
+### Guarded MIDI region authoring
+
+`UNDO_CMD_MIDI_REGION` owns copied extension notes and captured creation guards. Structural redo preserves identities for later note/instrument history; stale or modified creation state retains the command.

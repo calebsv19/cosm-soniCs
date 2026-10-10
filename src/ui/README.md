@@ -17,7 +17,7 @@
 - `midi_editor.c`: Bottom-pane MIDI editor for selected MIDI regions, including piano lanes with full-width sharp-note shading and C-row markers, tempo-map quantize timing grid, note geometry/hit-testing with small note hit slop, selected-region summary with selected-note count, an `Instrument` preset browser, compact QWERTY record/test, quantize, default-velocity, octave, and instrument-panel header controls, active-key lane highlighting, velocity-colored existing-note drawing, multi-note selected-set highlighting, marquee preview drawing, and hover/selected-note highlighting.
 - `midi_editor_pitch_view.c`: Editor-local pitch viewport state helpers for selected MIDI clips, including clip-identity matching, row-count clamping, top-note clamping, default range resolution, and visible-range note/row conversion.
 - `midi_preset_browser.c`: Shared grouped/scrollable factory preset browser renderer and hit-test helper used by both current MIDI instrument preset surfaces.
-- `midi_instrument_panel.c`: Bottom-pane instrument subview for the selected MIDI region, replacing the MIDI editor when opened from the editor header and owning the per-region preset browser, DAW-local parameter group tabs, compact knob-style controls routed by stable instrument parameter IDs, and a parameter-aware waveform/envelope preview for the selected preset.
+- `midi_instrument_panel.c`: Bottom-pane instrument subview for the selected MIDI region, replacing the MIDI editor when opened from the editor header and owning the per-region preset browser, DAW-local parameter group tabs, compact knob-style controls routed by stable instrument parameter IDs, and bounded plots of the actual isolated voice and gate-aware ADSR, preset-supported groups, ADSR control order, and logarithmic physical-time knobs with latched Shift fine adjustment. See [instrument controls](../../docs/instrument_controls.md).
 - `library_browser.c`: Asset browser panel for audio files.
 
 `ui_fade_curve_eval` delegates to the UI-independent engine curve helper so existing arrangement/inspector overlays and audio playback share the same shape definitions. Curve choices and overlay layout remain unchanged; see [S3.1](../../docs/improvement/S3-FADE-PARITY.md).
@@ -74,3 +74,19 @@ changes cancel pending presses. The pinned shared API remains unchanged. See
 `control_chrome.c` owns thin slider rails/markers and their independent input geometry. Rounded frames reuse the existing kit_ui-backed `daw_ui_button` painter with product colors. It is an adapter, not a second rendering layer. Rack/title/parameter and specialized EQ/meter controls use one replacement frame. Plots and continuous command/undo owners remain product-specific. The initial macOS rollout is source-qualified; human Main Edit comparison and OS IME/platform/physical acceptance remain separate. See `docs/shared_ui_rollout.md`.
 
 `daw_control_text` centralizes rounded-frame caption insets, measured alignment, vertical fitting and horizontal clipping. Parameter names/values use leading alignment and explicit vertical clearance; action/toggle captions use centered alignment. It paints once using the existing font facade and pane clips, without altering semantic hit or editing rectangles.
+
+Filtered Keys/Pad add logarithmic cutoff and physical resonance controls to the existing Tone group. Their waveform display caches independently streamed engine samples; it does not inspect worker filter state. See `docs/filtered_synth.md`.
+
+`preset_panel.c` and `preset_panel_input.c` own cached My Presets search, naming/update, loaded-sound feedback and finite audition controls. They reuse shared rounded buttons and UTF-8 editing; the instrument panel and discrete-control adapter provide small routing hooks.
+
+`sound_panel.c` and `sound_panel_input.c` own cached instrument inspection, fixed-scale plots, immutable references and finite comparison auditions. Rendering never synthesizes audio. See [sound inspection](../../docs/sound_inspection.md) for calibration and shortcuts.
+
+`midi_pattern_panel.c` owns the piano-roll Patterns entry and popup, explicit append/replace choice and fresh common-action dispatch. It shares geometry with input and reuses shared rounded button tokens; the actual piano-roll painter retains note rendering.
+
+The sound inspector now supports actual Region captures alongside isolated instrument analysis, explicit dry/processed processing, independent reference samples and exact captured WAV saving. Closing/shutdown releases the private buffers; analysis stays outside painters and project history.
+
+`fx_library_panel.c` owns the effects-panel Chains browser, shared UTF-8 name input, revision-bound Save As/Update, explicit Refresh and guarded recall. `midi_pattern_panel.c` adds whole-region expression shortcuts with matched pointer release and cancellation.
+
+`routing_panel.c` owns the Effects-header Routing form: copied complete guards, staged destinations/physical percentages/roles, return creation, explicit Refresh, shared text editing, matched releases and focus/project teardown. Common routing actions own publication and history; painters perform no engine writes.
+
+Region inspection includes direct captured/reference PCM listening, with matched pointer releases, finite completion feedback, stop/focus/project cancellation and immutable device ownership. Production output emits the exact capture without applying insert processing again.

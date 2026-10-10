@@ -4,6 +4,24 @@
 
 The repository and source-level program key remain `daw`.
 
+The [application control foundation](docs/application_control.md) provides
+generation-bound instrument snapshots and common reserved instrument actions
+for MIDI-region UI and automation. The [local MCP baseline](tools/mcp/README.md)
+adds opt-in private-socket access, capability/target discovery, guarded instrument
+edits, scoped undo/redo and request receipts through the official MCP SDK.
+Transport, MCP MIDI authoring, whole-project save/export and project signal-analysis tools follow separately.
+The [instrument-control refinement](docs/instrument_controls.md) now adds supported
+controls per preset, fine logarithmic envelope knobs and engine-derived note/ADSR
+plots, with an MCP edit/render/undo/redo musical exercise. The additive
+[rounded synthesizer family](docs/rounded_synth.md) supplies Keys, Pluck and Pad
+starting points with sine/triangle brightness, detuned blending, sub and drive.
+The [filtered synth slice](docs/filtered_synth.md) adds resonant low-pass Keys/Pad
+voices, logarithmic cutoff controls, exact filtered waveform previews and existing
+MCP adoption, qualified in the actual native Main Edit application.
+The [user preset library](docs/user_presets.md) adds portable reusable sounds,
+My Presets search/save/update, independent project recall, finite auditions and
+five MCP tools for listing, saving, applying and standardized WAV previews.
+
 The [initial audit](docs/audits/2026-09-19/AUDIT.md) and [S1–S6 improvement plan](docs/improvement/PLAN.md) describe the runtime-first improvement chain. The [S1 closeout ledger](docs/improvement/S1-CLOSEOUT.md) reconciles implemented command delivery, render ownership, individual edit transactions, and lifecycle behavior with their software acceptance evidence. Application-wide compound edits, remaining identity/feedback integration, and physical-device acceptance are explicitly deferred; the original broad S1 contract is not fully complete. [S2.1 atomic saves and previous-save recovery](docs/improvement/S2-SAVING.md) are now implemented and software-verified; [S2.2 coherent capture and restore](docs/improvement/S2-CAPTURE-RESTORE.md) now prepares a complete replacement before retiring the current project. [S2.3/S2.4 clocks and transport](docs/improvement/S2-CLOCKS-TRANSPORT.md) now separate render-ahead, callback-delivered, and estimated presentation positions, with defined pause/stop/seek/loop behavior. [S2.5 recording/durability](docs/improvement/S2-RECORDING-DURABILITY.md) and [S2.6 diagnostics](docs/improvement/S2-DIAGNOSTICS.md) now add timestamped take checkpoints, checked media publication, and software runtime telemetry. Device activation, physical timing acceptance, and recovery-browser UI remain separate work; [S4.6](docs/improvement/S4-STREAMING.md) now bounds recording/export pipeline memory.
 
 ## Current State
@@ -11,7 +29,7 @@ The [initial audit](docs/audits/2026-09-19/AUDIT.md) and [S1–S6 improvement pl
 - Stage: alpha, actively developed.
 - Build output: `build/targets/macOS-arm64/toolchains/clang/bin/daw_app`.
 - Platform focus: macOS-first local desktop workflows.
-- Public version: `0.2.0`.
+- Source version: `0.4.0` (see `VERSION`; installed and published packages retain their own receipts).
 - License: Apache-2.0.
 
 ## Implemented Today
@@ -52,8 +70,7 @@ The [initial audit](docs/audits/2026-09-19/AUDIT.md) and [S1–S6 improvement pl
 
 - Buses/sends are not implemented yet.
 - Effects are functional but still a basic subset.
-- Hard audio-vs-MIDI track typing, external MIDI input, and user instrument
-  preset storage remain future work.
+- Hard audio-vs-MIDI track typing and external MIDI input remain future work.
 - Durable record-arm controls, input-device picker UI, and hard
   audio-vs-MIDI track typing remain future fresh-slice work before any external
   MIDI input lane.
@@ -264,8 +281,29 @@ S3.4 adds sample-counted Gain and mixer transitions plus zero-latency bypass ble
 
 The [capture-clock follow-up](docs/improvement/S4-CAPTURE-CLOCK.md) corrects the input gaps found during S4.6 qualification: anchored capture now checks a separately published transport epoch when detailed clock observations are busy. Nine strict software captures passed with zero missing input/output; physical qualification remains separate. The [S4.7 implementation](docs/improvement/S4.7-MEDIA.md) covers metadata probing, prepared-cache adoption, bounded background jobs, project-generation rejection, and library/recording/bounce insertion. Ctrl/Cmd+Escape cancels pending imports while saved files remain intact.
 
-[S4.8 analyzer efficiency](docs/improvement/S4.8-ANALYSIS.md) now prepares worker-owned Hann/oscillator coefficients, preserving the logarithmic tonal calibration with approximately 4× lower optimized kernel CPU and about 3× lower unoptimized kernel CPU in matched local measurements. Consumer backlog and transform timing are observable. [S4.9 sustained assessment](docs/improvement/S4.9-ACCEPTANCE.md) now records 8/8 workflow passes, 7/8 continuity passes and retained strict timing failures. Real empty/populated GUI frames render, but physical-device, long-session memory and interactive qualification remain open. See [current functionality and next steps](docs/improvement/DAW-STATUS-AND-NEXT-STEPS.md) for S5 and the unimplemented MCP adapter.
+[S4.8 analyzer efficiency](docs/improvement/S4.8-ANALYSIS.md) now prepares worker-owned Hann/oscillator coefficients, preserving the logarithmic tonal calibration with approximately 4× lower optimized kernel CPU and about 3× lower unoptimized kernel CPU in matched local measurements. Consumer backlog and transform timing are observable. [S4.9 sustained assessment](docs/improvement/S4.9-ACCEPTANCE.md) now records 8/8 workflow passes, 7/8 continuity passes and retained strict timing failures. Real empty/populated GUI frames render, but physical-device, long-session memory and interactive qualification remain open. See [current functionality and next steps](docs/improvement/DAW-STATUS-AND-NEXT-STEPS.md) for S5; the [initial MCP instrument adapter](tools/mcp/README.md) is now implemented and software-tested.
 
 ## Runtime improvement checkpoint
 
 The local runtime work now has a [bounded S4 closeout](docs/improvement/S4-CLOSEOUT.md) and [proposed S5 functional slices](docs/improvement/S5-FUNCTIONAL-SLICES.md). Read the closeout for actual continuity, timing and hardware acceptance limits; this is not a release or universal real-time certification.
+
+The [sound inspector](docs/sound_inspection.md) adds original-level waveform, RMS envelope and calibrated tonal plots, transient reference comparisons and read-only instrument/preset MCP analysis.
+
+The [transactional MIDI pattern workflow](docs/midi_authoring.md) adds copied region snapshots, one-step append/replace actions and tempo-aware C-major melody/chord/arpeggio controls. MIDI MCP adoption follows separately.
+
+
+Main Edit now exposes 40 local MCP tools, including bounded MIDI reads and guarded note/pattern/undo/redo actions. See [MIDI MCP usage and limits](docs/midi_mcp.md).
+
+### Guarded MIDI region creation and extension
+
+Agents can create an empty MIDI region and optional new trailing track atomically, extend its right edge, and replay structural history with exact state guards. See [region workflow and limits](docs/midi_regions.md) and run `make test-midi-regions test-mcp-midi-regions`.
+
+### Effects authoring development
+
+Guarded track/master effects now expose catalog discovery, ordered chain reads, add/remove/reorder/bypass/physical and beat-synced parameters, plus exact chain history. Processed composition rendering/analysis and captured WAV previews are adopted into MCP; reusable chain storage and portable one-step recall are implemented; library MCP/editor adoption is implemented. See [effects control](docs/effect_chains.md).
+
+Processed composition analysis and captured PCM previews now have MCP adapters, bringing the surface to 40 tools with effects-library and MIDI expression adoption. Native Region inspection now provides dry/processed capture, immutable references and exact WAV saving. Reusable-chain storage passes all 54 effect types; chain save/recall now has native and MCP adoption; arrangement expansion and advanced routing/synthesis remain active work.
+
+[MIDI expression](docs/midi_expression.md) adds tempo-aware quantize strength/swing, velocity scaling and deterministic bounded humanization through common one-step actions, native Patterns shortcuts and guarded `transform_midi`.
+
+Guarded MIDI arrangement now supports common/MCP duplicate, move, right-edge trim and delete batches with full captured content guards and one undo step. Native MIDI duplicate/delete shares this action; dedicated native Arrange fields and actual-window painter/App_Run acceptance now pass. See [arrangement](docs/arrangement.md). Advanced routing and synthesis remain active goal work.

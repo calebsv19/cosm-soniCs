@@ -654,23 +654,11 @@ static bool history_instrument_equal(EngineInstrumentParams a, EngineInstrumentP
     return true;
 }
 
-// Rejects deletion when later unrecorded authored edits would otherwise be silently discarded.
-static bool history_track_equal(const EngineTrack* a, const EngineTrack* b) {
-    if (a->runtime_id != b->runtime_id || a->clip_count != b->clip_count || a->gain != b->gain ||
-        a->pan != b->pan || a->muted != b->muted || a->solo != b->solo || a->active != b->active ||
-        strcmp(a->name, b->name) || a->midi_instrument_enabled != b->midi_instrument_enabled ||
-        a->midi_instrument_preset != b->midi_instrument_preset ||
-        !history_instrument_equal(a->midi_instrument_params, b->midi_instrument_params) ||
-        !history_lanes_equal(a->midi_instrument_automation_lanes, a->midi_instrument_automation_lane_count,
-                             b->midi_instrument_automation_lanes, b->midi_instrument_automation_lane_count)) return false;
-    const EngineEqCurve* x = &a->track_eq.curve; const EngineEqCurve* y = &b->track_eq.curve;
-    if (x->low_cut.enabled != y->low_cut.enabled || x->low_cut.freq_hz != y->low_cut.freq_hz ||
-        x->high_cut.enabled != y->high_cut.enabled || x->high_cut.freq_hz != y->high_cut.freq_hz) return false;
-    for (int i = 0; i < ENGINE_EQ_BANDS; ++i)
-        if (x->bands[i].enabled != y->bands[i].enabled || x->bands[i].freq_hz != y->bands[i].freq_hz ||
-            x->bands[i].gain_db != y->bands[i].gain_db || x->bands[i].q_width != y->bands[i].q_width) return false;
-    for (int c = 0; c < a->clip_count; ++c) {
-        const EngineClip* x = &a->clips[c]; const EngineClip* y = &b->clips[c];
+// Compares authored clip content independently of runtime voices, selection and sampler cursors.
+static bool history_clips_equal(const EngineClip* a,int ac,const EngineClip* b,int bc) {
+    if(ac!=bc)return false;
+    for (int c = 0; c < ac; ++c) {
+        const EngineClip* x = &a[c]; const EngineClip* y = &b[c];
         if (x->creation_index != y->creation_index || x->kind != y->kind || x->media != y->media ||
             x->source != y->source || x->gain != y->gain || x->active != y->active || strcmp(x->name, y->name) ||
             x->timeline_start_frames != y->timeline_start_frames || x->duration_frames != y->duration_frames ||
@@ -690,6 +678,27 @@ static bool history_track_equal(const EngineTrack* a, const EngineTrack* b) {
     return true;
 }
 
+// Rejects deletion when later unrecorded authored edits would otherwise be silently discarded.
+static bool history_track_equal(const EngineTrack* a, const EngineTrack* b) {
+    if (a->is_return != b->is_return) return false;
+    for (int send = 0; send < ENGINE_SEND_CAP; ++send)
+        if (a->sends[send].return_id != b->sends[send].return_id || a->sends[send].gain != b->sends[send].gain) return false;
+    if (a->runtime_id != b->runtime_id || a->clip_count != b->clip_count || a->gain != b->gain ||
+        a->pan != b->pan || a->muted != b->muted || a->solo != b->solo || a->active != b->active ||
+        strcmp(a->name, b->name) || a->midi_instrument_enabled != b->midi_instrument_enabled ||
+        a->midi_instrument_preset != b->midi_instrument_preset ||
+        !history_instrument_equal(a->midi_instrument_params, b->midi_instrument_params) ||
+        !history_lanes_equal(a->midi_instrument_automation_lanes, a->midi_instrument_automation_lane_count,
+                             b->midi_instrument_automation_lanes, b->midi_instrument_automation_lane_count)) return false;
+    const EngineEqCurve* x = &a->track_eq.curve; const EngineEqCurve* y = &b->track_eq.curve;
+    if (x->low_cut.enabled != y->low_cut.enabled || x->low_cut.freq_hz != y->low_cut.freq_hz ||
+        x->high_cut.enabled != y->high_cut.enabled || x->high_cut.freq_hz != y->high_cut.freq_hz) return false;
+    for (int i = 0; i < ENGINE_EQ_BANDS; ++i)
+        if (x->bands[i].enabled != y->bands[i].enabled || x->bands[i].freq_hz != y->bands[i].freq_hz ||
+            x->bands[i].gain_db != y->bands[i].gain_db || x->bands[i].q_width != y->bands[i].q_width) return false;
+    return history_clips_equal(a->clips,a->clip_count,b->clips,b->clip_count);
+}
+
 // Resolves the captured track lifetime instead of deleting whichever row now occupies its old index.
 bool engine_track_history_remove(Engine* engine, const EngineClipContentSnapshot* snapshot) {
     if (!engine || !engine_is_control_thread(engine) || !snapshot || snapshot->owner != engine || !snapshot->whole_track) return false;
@@ -703,4 +712,77 @@ bool engine_track_history_remove(Engine* engine, const EngineClipContentSnapshot
             return engine_remove_track(engine, t);
         }
     return false;
+}
+
+// Compares only fields that complete clip-row restoration can replace, preserving unrelated mixer/FX edits.
+bool engine_clip_content_matches(const Engine* engine,const EngineClipContentSnapshot* snapshot) {
+    if(!engine || !engine_is_control_thread(engine) || !snapshot || snapshot->owner!=engine || snapshot->whole_track)return false;
+    for(int i=0;i<snapshot->count;++i){
+        const ClipHistoryTrack* row=&snapshot->tracks[i];const EngineTrack* track=NULL;
+        for(int t=0;t<engine->track_count;++t)if(engine->tracks[t].runtime_id==row->track_id)track=&engine->tracks[t];
+        if(!track || track->active!=row->active || track->midi_instrument_enabled!=row->instrument_enabled ||
+            track->midi_instrument_preset!=row->instrument_preset || !history_instrument_equal(track->midi_instrument_params,row->instrument_params) ||
+            !history_clips_equal(track->clips,track->clip_count,row->clips,row->count))return false;
+    }
+    return true;
+}
+// Finds a stable clip inside a private prepared snapshot without borrowing live array positions.
+static ClipHistoryTrack* arrangement_row(EngineClipContentSnapshot* snapshot,uint64_t id,int* index) {
+    for(int t=0;t<snapshot->count;++t)for(int c=0;c<snapshot->tracks[t].count;++c)
+        if(snapshot->tracks[t].clips[c].creation_index==id){*index=c;return &snapshot->tracks[t];}
+    return NULL;
+}
+// Rejects invalid and overlapping candidate placements while permitting touching region boundaries.
+static bool arrangement_fits(const ClipHistoryTrack* row) {
+    for(int i=0;i<row->count;++i){const EngineClip* a=&row->clips[i];
+        if(!a->duration_frames || a->timeline_start_frames>INT64_MAX || a->duration_frames>(uint64_t)INT64_MAX-a->timeline_start_frames)return false;
+        for(int j=0;j<i;++j){const EngineClip* b=&row->clips[j];
+            if(a->timeline_start_frames<b->timeline_start_frames+b->duration_frames && b->timeline_start_frames<a->timeline_start_frames+a->duration_frames)return false;}
+    }
+    return true;
+}
+// Publishes mixed arrangement edits together using the existing immutable clip-content transaction owner.
+bool engine_arrangement_transaction(Engine* engine,const EngineArrangementEdit* edits,int count,uint64_t* output_ids,
+                                    EngineClipContentSnapshot** out_before,EngineClipContentSnapshot** out_after) {
+    if(!engine || !engine_is_control_thread(engine) || !edits || count<=0 || !output_ids || !out_before || !out_after)return false;
+    int* tracks=calloc((size_t)engine->track_count,sizeof(*tracks));uint64_t* ids=calloc((size_t)count,sizeof(*ids));int used=0;
+    EngineClipContentSnapshot *before=NULL,*after=NULL;bool accepted=false;
+    if(!tracks || !ids)goto done;
+    for(int i=0;i<count;++i){
+        if(edits[i].op<ENGINE_ARRANGE_DUPLICATE || edits[i].op>ENGINE_ARRANGE_DELETE || !edits[i].clip_id ||
+            edits[i].destination_track<0 || edits[i].destination_track>=engine->track_count)goto done;
+        for(int j=0;j<i;++j)if(edits[j].clip_id==edits[i].clip_id)goto done;
+        int source=-1;
+        for(int t=0;t<engine->track_count;++t)for(int c=0;c<engine->tracks[t].clip_count;++c)
+            if(engine->tracks[t].clips[c].creation_index==edits[i].clip_id && engine->tracks[t].clips[c].kind==ENGINE_CLIP_KIND_MIDI)source=t;
+        if(source<0)goto done;
+        int affected[]={source,edits[i].destination_track};
+        for(int k=0;k<2;++k){bool present=false;for(int t=0;t<used;++t)if(tracks[t]==affected[k])present=true;if(!present)tracks[used++]=affected[k];}
+    }
+    before=engine_clip_content_capture(engine,tracks,used);after=engine_clip_content_capture(engine,tracks,used);
+    if(!before || !after)goto done;
+    before->inserted_ids=calloc((size_t)count,sizeof(*before->inserted_ids));if(!before->inserted_ids)goto done;
+    for(int i=0;i<count;++i){int index=-1;ClipHistoryTrack* source=arrangement_row(after,edits[i].clip_id,&index);if(!source)goto done;
+        if(edits[i].op==ENGINE_ARRANGE_DELETE){engine_clip_destroy(engine,&source->clips[index]);memmove(source->clips+index,source->clips+index+1,(size_t)(source->count-index-1)*sizeof(*source->clips));if(--source->count==0)source->active=false;continue;}
+        if(edits[i].op!=ENGINE_ARRANGE_DUPLICATE){EngineClipBatchTransform transform={edits[i].clip_id,edits[i].destination_track,edits[i].transform};if(!history_transform(engine,after,&transform,1))goto done;ids[i]=edits[i].clip_id;continue;}
+        ClipHistoryTrack* destination=NULL;
+        for(int t=0;t<after->count;++t)if(after->tracks[t].track_id==engine->tracks[edits[i].destination_track].runtime_id)destination=&after->tracks[t];
+        if(!destination || destination->count==INT_MAX || engine->next_clip_id==UINT64_MAX)goto done;
+        EngineClip copy;if(!history_clone_clip(engine,&source->clips[index],&copy))goto done;
+        EngineClip transformed=copy;
+        if(!engine_clip_prepare_transform(&copy,&edits[i].transform,&transformed)){engine_clip_destroy(engine,&copy);goto done;}
+        engine_midi_note_list_free(&copy.midi_notes);copy=transformed;copy.creation_index=engine->next_clip_id++;
+        snprintf(copy.name,sizeof(copy.name),"%s copy",source->clips[index].name[0]?source->clips[index].name:"MIDI Region");
+        EngineClip* next=calloc((size_t)destination->count+1,sizeof(*next));
+        if(!next){engine_clip_destroy(engine,&copy);goto done;}
+        if(destination->count)memcpy(next,destination->clips,(size_t)destination->count*sizeof(*next));next[destination->count++]=copy;
+        free(destination->clips);destination->clips=next;destination->active=true;
+        if(!destination->instrument_enabled){destination->instrument_enabled=true;destination->instrument_preset=ENGINE_INSTRUMENT_PRESET_PURE_SINE;destination->instrument_params=engine_instrument_default_params(destination->instrument_preset);}
+        ids[i]=copy.creation_index;before->inserted_ids[before->inserted_count++]=copy.creation_index;
+    }
+    for(int t=0;t<after->count;++t){if(!arrangement_fits(&after->tracks[t]))goto done;EngineTrack sorted={.clips=after->tracks[t].clips,.clip_count=after->tracks[t].count};engine_track_sort_clips(&sorted);}
+    if(!engine_clip_content_restore(engine,after))goto done;
+    memcpy(output_ids,ids,(size_t)count*sizeof(*ids));*out_before=before;*out_after=after;accepted=true;
+done:
+    if(!accepted){engine_clip_content_release(before);engine_clip_content_release(after);}free(tracks);free(ids);return accepted;
 }

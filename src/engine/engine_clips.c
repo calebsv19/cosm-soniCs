@@ -365,12 +365,16 @@ static EngineClip* engine_clip_create_with_source(Engine* engine,
 typedef struct ClipAddition {
     EngineTrack track;
     uint64_t first_new_id;
+    uint64_t restored_track_id;
+    uint64_t restored_clip_id;
 } ClipAddition;
 
 // Prepares descriptor capacity without moving any existing clip or creating project tracks.
 static bool clip_addition_begin(Engine* engine, int index, ClipAddition* addition) {
     if (!engine || SDL_ThreadID() != engine->control_thread_id || index < 0 || index == INT_MAX ||
         engine->next_clip_id == UINT64_MAX) return false;
+    addition->restored_track_id = 0;
+    addition->restored_clip_id = 0;
     if (index < engine->track_count) addition->track = engine->tracks[index];
     else engine_track_init(&addition->track);
     if (addition->track.clip_count == INT_MAX) return false;
@@ -398,6 +402,7 @@ static void clip_addition_discard(Engine* engine, ClipAddition* addition) {
 static bool clip_addition_commit(Engine* engine, int index, ClipAddition* addition, int* out_index) {
     int previous_count = engine->track_count;
     EngineTrack* track = engine_get_track_mutable(engine, index);
+    if (track && track->is_return) return false;
     if (!track) { clip_addition_discard(engine, addition); return false; }
     SDL_LockMutex(engine->fxm_mutex);
     EffectsManager* previous_fx = engine->fxm;
@@ -405,12 +410,14 @@ static bool clip_addition_commit(Engine* engine, int index, ClipAddition* additi
     bool growing = engine->track_count != previous_count;
     if (growing && previous_fx) candidate_fx = fxm_clone_for_render(previous_fx);
     EngineTrack previous = *track;
+    if (addition->restored_clip_id) addition->track.clips[addition->track.clip_count - 1].creation_index = addition->restored_clip_id;
     uint64_t id = addition->track.clips[addition->track.clip_count - 1].creation_index;
     engine_track_sort_clips(&addition->track);
     track->clips = addition->track.clips;
     track->clip_count = addition->track.clip_count;
     track->clip_capacity = addition->track.clip_capacity;
     track->active = true;
+    if (addition->restored_track_id) track->runtime_id = addition->restored_track_id;
     track->midi_instrument_enabled = addition->track.midi_instrument_enabled;
     track->midi_instrument_preset = addition->track.midi_instrument_preset;
     track->midi_instrument_params = addition->track.midi_instrument_params;
@@ -428,6 +435,10 @@ static bool clip_addition_commit(Engine* engine, int index, ClipAddition* additi
             fxm_destroy(candidate_fx);
         }
         SDL_UnlockMutex(engine->fxm_mutex);
+        if (addition->restored_clip_id) {
+            for (int c = 0; c < addition->track.clip_count; ++c)
+                if (addition->track.clips[c].creation_index == addition->restored_clip_id) addition->track.clips[c].creation_index = addition->first_new_id;
+        }
         clip_addition_discard(engine, addition);
         return false;
     }
@@ -493,13 +504,21 @@ static bool add_clip_with_media(Engine* engine,
 }
 
 // Stages a MIDI region and track instrument defaults before publishing them together.
-bool engine_add_midi_clip_to_track(Engine* engine,
-                                   int track_index,
-                                   uint64_t start_frame,
-                                   uint64_t duration_frames,
-                                   int* out_clip_index) {
-    if (!engine || duration_frames == 0) {
+bool engine_add_midi_clip_to_track(Engine* engine, int track_index, uint64_t start_frame, uint64_t duration_frames, int* out_clip_index) {
+    return engine_add_midi_clip_with_identity(engine, track_index, start_frame, duration_frames, 0, 0, out_clip_index);
+}
+
+// Restores optional stable history identities within the existing privately staged MIDI addition.
+bool engine_add_midi_clip_with_identity(Engine* engine, int track_index, uint64_t start_frame, uint64_t duration_frames,
+                                       uint64_t clip_id, uint64_t restored_track_id, int* out_clip_index) {
+    if (!engine || duration_frames == 0 || (track_index >= 0 && track_index < engine->track_count && engine->tracks[track_index].is_return)) {
         return false;
+    }
+    if (restored_track_id && track_index != engine->track_count) return false;
+    for (int t = 0; t < engine->track_count; ++t) {
+        if (restored_track_id && engine->tracks[t].runtime_id == restored_track_id) return false;
+        for (int c = 0; c < engine->tracks[t].clip_count; ++c)
+            if (clip_id && engine->tracks[t].clips[c].creation_index == clip_id) return false;
     }
     EngineInstrumentSource* instrument = engine_instrument_source_create();
     if (!instrument) {
@@ -535,6 +554,8 @@ bool engine_add_midi_clip_to_track(Engine* engine,
     clip->gain = 1.0f;
     clip->active = true;
     snprintf(clip->name, sizeof(clip->name), "MIDI Region");
+    addition.restored_clip_id = clip_id;
+    addition.restored_track_id = restored_track_id;
 
     return clip_addition_commit(engine, track_index, &addition, out_clip_index);
 }

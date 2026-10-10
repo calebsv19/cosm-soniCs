@@ -90,7 +90,7 @@ static bool input_manager_authoring_text_entry_active(AppState* state) {
     if (!state) {
         return false;
     }
-    return project_modal_input_active(state) ||
+    return state->preset_ui.editing || project_modal_input_active(state) ||
            state->tempo_ui.editing ||
            library_input_is_editing(state) ||
            state->track_name_editor.editing ||
@@ -392,6 +392,12 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
         return;
     }
     daw_project_modal_controls_sync(state);
+    if (!project_modal_input_active(state) && daw_routing_panel_event(state,event)) return;
+    if (!project_modal_input_active(state) && daw_fx_library_panel_event(state,event)) return;
+    if (!project_modal_input_active(state) && daw_preset_panel_event(state, event)) return;
+    if (!project_modal_input_active(state) && daw_sound_panel_event(state, event)) return;
+    if (!project_modal_input_active(state) && daw_midi_arrangement_event(state, event)) return;
+    if (!project_modal_input_active(state) && daw_midi_pattern_event(state, event)) return;
     if (daw_editor_controls_event(manager,state,event)) return;
     if (daw_transport_controls_event(state,event))return;
     if (event->type == SDL_DROPFILE) {

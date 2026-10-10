@@ -17,6 +17,7 @@ static void sdl_audio_trampoline(void* userdata, Uint8* stream, int len) {
     SDL_memset(stream, 0, len);
     if (device->callback) {
         device->callback(output, frames, channels, device->userdata);
+        audio_device_preview_render(device,output,frames,channels);
     }
 }
 
@@ -77,6 +78,7 @@ void audio_device_close(AudioDevice* device) {
         return;
     }
     audio_device_stop(device);
+    audio_device_preview_stop(device);
     SDL_CloseAudioDevice(device->device_id);
     device->device_id = 0;
     device->is_open = false;
@@ -97,4 +99,5 @@ void audio_device_stop(AudioDevice* device) {
         return;
     }
     SDL_PauseAudioDevice(device->device_id, 1);
+    audio_device_preview_stop(device);
 }

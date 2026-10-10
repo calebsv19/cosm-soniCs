@@ -107,30 +107,18 @@ static const EffectParamSpec kMuteParamSpecs[] = {
 // MonoMakerParamSpecs defines UI metadata for the MonoMakerLow effect parameters.
 static const EffectParamSpec kMonoMakerParamSpecs[] = {
     {
-        .id = "crossover_hz",
-        .display_name = "Crossover",
-        .type = FX_PARAM_TYPE_FLOAT,
-        .unit = FX_PARAM_UNIT_HZ,
-        .min_value = 60.0f,
-        .max_value = 500.0f,
-        .default_value = 150.0f,
-        .curve = FX_PARAM_CURVE_LOG,
-        .ui_hint = FX_PARAM_UI_SLIDER,
-        .flags = FX_PARAM_FLAG_AUTOMATABLE,
-        .smoothing_ms = 20.0f
+        .id = "crossover_hz", .display_name = "Crossover",
+        .type = FX_PARAM_TYPE_FLOAT, .unit = FX_PARAM_UNIT_HZ,
+        .min_value = 60.0f, .max_value = 500.0f, .default_value = 150.0f,
+        .curve = FX_PARAM_CURVE_LOG, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f
     },
     {
-        .id = "mix",
-        .display_name = "Mix",
-        .type = FX_PARAM_TYPE_FLOAT,
-        .unit = FX_PARAM_UNIT_PERCENT,
-        .min_value = 0.0f,
-        .max_value = 1.0f,
-        .default_value = 1.0f,
-        .curve = FX_PARAM_CURVE_LINEAR,
-        .ui_hint = FX_PARAM_UI_SLIDER,
-        .flags = FX_PARAM_FLAG_AUTOMATABLE,
-        .smoothing_ms = 20.0f
+        .id = "slope", .display_name = "Slope stages",
+        .type = FX_PARAM_TYPE_INT, .unit = FX_PARAM_UNIT_GENERIC,
+        .min_value = 1.0f, .max_value = 4.0f, .default_value = 2.0f,
+        .curve = FX_PARAM_CURVE_LINEAR, .ui_hint = FX_PARAM_UI_KNOB,
+        .flags = FX_PARAM_FLAG_AUTOMATABLE, .smoothing_ms = 20.0f, .step = 1.0f
     }
 };
 

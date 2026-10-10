@@ -30,7 +30,9 @@ static bool engine_transport_submit_playback(Engine* engine, EngineCommandType t
 
 // Requests playback and reports acceptance separately from worker application.
 bool engine_transport_play(Engine* engine) {
-    return engine_transport_submit_playback(engine, ENGINE_CMD_PLAY);
+    bool accepted=engine_transport_submit_playback(engine, ENGINE_CMD_PLAY);
+    if(accepted)engine_preview_stop(engine);
+    return accepted;
 }
 
 // Requests stop, including the overload safety lane, without pretending it is already applied.

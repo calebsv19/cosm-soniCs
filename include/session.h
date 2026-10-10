@@ -180,12 +180,18 @@ typedef struct SessionFxInstance {
     char name[SESSION_FX_NAME_MAX];
 } SessionFxInstance;
 
+// Stores one send using a one-based destination in the complete saved track array; zero is unbound.
+typedef struct { int destination_track; float gain; } SessionSend;
+
+// Owns complete lane content, processing and routing without borrowing runtime identities.
 typedef struct {
     char name[SESSION_NAME_MAX];
     float gain;
     float pan;
     bool muted;
     bool solo;
+    bool is_return;
+    SessionSend sends[ENGINE_SEND_CAP];
     bool midi_instrument_enabled;
     EngineInstrumentPresetId midi_instrument_preset;
     EngineInstrumentParams midi_instrument_params;

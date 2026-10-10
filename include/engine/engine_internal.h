@@ -144,6 +144,7 @@ typedef struct {
             EngineInstrumentParams params;
             uint8_t note;
             float velocity;
+            uint64_t gate_frames; // Zero retains the existing held-key lifecycle.
         } midi_audition;
     } payload;
 } EngineCommand;
@@ -225,6 +226,13 @@ struct EngineMixState {
     EngineTrack* tracks;
     int track_count;
     int* previous_tracks;
+    int return_count, return_tracks[ENGINE_RETURN_CAP];
+    int isolated_return; // Selects one return for an offline audition, or -1 for the normal mix.
+    bool bypass_returns; // Keeps dry source comparisons from duplicating bypassed return signals.
+    float* return_buffers; // Prepared independent input sums for the captured return lanes.
+    size_t return_buffer_samples;
+    int* send_destinations; // Resolves stable send identities once before rendering.
+    FxSampleRamp* send_ramps; // Smooths live send edits without per-block allocation.
     FxSampleRamp* audition_gain_ramps; // Prepared stopped-audition gain and mute transitions.
     FxSampleRamp* track_pan_ramps; // Worker-owned live pan transitions for surviving tracks.
     EffectsManager* fxm;
@@ -309,6 +317,7 @@ struct Engine {
     atomic_int record_armed_track_index;
     RingBuffer command_queue;
     SDL_threadID control_thread_id; // The creating thread is the sole command producer.
+    uint64_t instance_id; // Process-local project generation, never serialized or reused.
     atomic_uint command_safety_pending; // Overflow requests for stop and all audition notes off.
     atomic_uint_fast64_t commands_accepted;
     atomic_uint_fast64_t commands_rejected;
@@ -469,6 +478,8 @@ bool engine_mix_prepared(Engine* observer, EngineGraph* graph, EngineMixState* m
                          uint64_t start, int frames, float* out, float* scratch, int channels);
 // Prepares an export-only snapshot on the control thread; discard it with engine_source_plan_discard.
 EngineSourcePlan* engine_source_plan_prepare_export(Engine* engine, uint64_t end, uint64_t tail);
+// Captures a privately filtered export without changing authored routing, effects or selection.
+EngineSourcePlan* engine_source_plan_prepare_export_filtered(Engine*, uint64_t end, uint64_t tail, const EngineBounceOptions*);
 // Reads export-owned latency after preparing its first DSP block.
 uint64_t engine_source_plan_export_latency(EngineSourcePlan* plan);
 // Renders a captured export block without live publication or telemetry.
@@ -510,6 +521,8 @@ void engine_midi_audition_apply_note_on(Engine* engine,
                                         EngineInstrumentParams params,
                                         uint8_t note,
                                         float velocity);
+// Applies an optional finite preview gate on the worker-owned audition source.
+void engine_midi_audition_apply_preview(Engine*, int, EngineInstrumentPresetId, EngineInstrumentParams, uint8_t, float, uint64_t);
 void engine_midi_audition_apply_note_off(Engine* engine, uint8_t note);
 void engine_midi_audition_apply_all_off(Engine* engine);
 // Retires released audition voices and bounds stopped effect-tail processing.

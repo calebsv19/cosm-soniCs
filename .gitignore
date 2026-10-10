@@ -39,3 +39,6 @@
 *.swo
 tools/packaging/macos/local_app_icon/*
 !tools/packaging/macos/local_app_icon/AppIcon.icns
+
+# Local Python bytecode from the MCP adapter and integration tests
+__pycache__/

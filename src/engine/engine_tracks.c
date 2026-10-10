@@ -14,6 +14,8 @@ void engine_track_init(EngineTrack* track) {
     if (!track) {
         return;
     }
+    track->is_return = false;
+    memset(track->sends, 0, sizeof(track->sends));
     track->runtime_id = atomic_fetch_add_explicit(&next_track_runtime_id, 1, memory_order_relaxed);
     track->clips = NULL;
     track->clip_count = 0;
@@ -186,7 +188,7 @@ int engine_add_track(Engine* engine) {
 }
 
 // Publishes an inserted track and remapped effects together, restoring all editable ownership on failure.
-bool engine_insert_track(Engine* engine, int track_index) {
+static bool engine_insert_track_configured(Engine* engine, int track_index, bool is_return, uint64_t identity) {
     if (!engine || SDL_ThreadID() != engine->control_thread_id) return false;
     if (track_index < 0) track_index = 0;
     if (track_index > engine->track_count) track_index = engine->track_count;
@@ -207,7 +209,9 @@ bool engine_insert_track(Engine* engine, int track_index) {
     engine_track_init(added);
     engine_eq_init(&added->track_eq, (float)engine->config.sample_rate, engine_graph_get_channels(engine->graph));
     added->active = false;
-    snprintf(added->name, sizeof(added->name), "Track %d", track_index + 1);
+    added->is_return = is_return;
+    if (identity) added->runtime_id = identity;
+    snprintf(added->name, sizeof(added->name), is_return ? "Return %d" : "Track %d", track_index + 1);
     ++engine->track_count;
     engine->fxm = candidate_fx;
     int armed = atomic_load(&engine->record_armed_track_index);
@@ -229,9 +233,30 @@ bool engine_insert_track(Engine* engine, int track_index) {
     return true;
 }
 
+// Retains ordinary insertion behavior through the shared prepared topology publication path.
+bool engine_insert_track(Engine* engine, int track_index) {
+    return engine_insert_track_configured(engine, track_index, false, 0);
+}
+
+// Appends one empty return with independent DSP ownership and optionally restores a retained identity.
+bool engine_append_return(Engine* engine, uint64_t identity, uint64_t* out_id) {
+    if (!engine || !out_id || !engine_is_control_thread(engine) || engine->track_count >= ENGINE_ROUTING_TRACK_CAP) return false;
+    int returns = 0;
+    for (int t = 0; t < engine->track_count; ++t) {
+        if (engine->tracks[t].is_return) ++returns;
+        if (identity && engine->tracks[t].runtime_id == identity) return false;
+    }
+    if (returns >= ENGINE_RETURN_CAP) return false;
+    int index = engine->track_count;
+    if (!engine_insert_track_configured(engine, index, true, identity)) return false;
+    *out_id = engine->tracks[index].runtime_id;
+    return true;
+}
+
 // Keeps detached track and effect ownership until the replacement revision is ready, then reclaims it.
 bool engine_remove_track(Engine* engine, int track_index) {
     if (!engine || SDL_ThreadID() != engine->control_thread_id || track_index < 0 || track_index >= engine->track_count) return false;
+    if (engine_routing_track_referenced(engine, engine->tracks[track_index].runtime_id)) return false;
     SDL_LockMutex(engine->fxm_mutex);
     EffectsManager* previous_fx = engine->fxm;
     EffectsManager* candidate_fx = previous_fx ? fxm_clone_for_render(previous_fx) : NULL;
