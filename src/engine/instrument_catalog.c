@@ -651,4 +651,3 @@ EngineInstrumentParams engine_instrument_params_apply_automation_delta(EngineIns
     if (normalized > 1.0f) normalized = 1.0f;
     return engine_instrument_params_set(preset, params, param, spec.min_value + normalized * range);
 }
-
