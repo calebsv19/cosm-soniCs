@@ -309,6 +309,7 @@ struct Engine {
     atomic_int record_armed_track_index;
     RingBuffer command_queue;
     SDL_threadID control_thread_id; // The creating thread is the sole command producer.
+    uint64_t instance_id; // Process-local project generation, never serialized or reused.
     atomic_uint command_safety_pending; // Overflow requests for stop and all audition notes off.
     atomic_uint_fast64_t commands_accepted;
     atomic_uint_fast64_t commands_rejected;

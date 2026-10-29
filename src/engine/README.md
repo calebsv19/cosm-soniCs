@@ -145,3 +145,13 @@ S5 adds `engine_transform_clips` for complete transforms including required appe
 
 
 Whole-track history captures retained media, MIDI/automation, EQ/instrument state and an independent effects chain. Insert prepares the complete row and chain before one publication; rejection rolls back content, ordering and arming. Effect instance restoration likewise configures a private candidate before publication, preserving the original instance ID and disabled state.
+
+
+`instrument_controls.c` defines preset-supported controls and reversible log-time
+knob mapping. `instrument_osc.c` shares its allocation-free isolated note/ADSR
+kernel with diagnostic plots while retaining the original polyphonic arithmetic.
+Existing saved values, presets and automation semantics are unchanged. The
+additive rounded family reuses the bounded triangle/sine helpers and existing
+ADSR, detune, sub and drive controls; see [rounded synth](../../docs/rounded_synth.md). See
+[instrument controls](../../docs/instrument_controls.md) and
+`make test-instrument-controls`.

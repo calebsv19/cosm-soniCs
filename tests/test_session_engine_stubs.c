@@ -197,6 +197,12 @@ const char* engine_instrument_preset_id_string(EngineInstrumentPresetId preset) 
     switch (engine_instrument_preset_clamp(preset)) {
     case ENGINE_INSTRUMENT_PRESET_SYNTH_LAB:
         return "synth_lab";
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_KEYS:
+        return "rounded_keys";
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_PLUCK:
+        return "rounded_pluck";
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_PAD:
+        return "rounded_pad";
     case ENGINE_INSTRUMENT_PRESET_SOFT_PAD:
         return "soft_pad";
     case ENGINE_INSTRUMENT_PRESET_PLUCK:
@@ -223,6 +229,12 @@ const char* engine_instrument_preset_display_name(EngineInstrumentPresetId prese
     switch (engine_instrument_preset_clamp(preset)) {
     case ENGINE_INSTRUMENT_PRESET_SYNTH_LAB:
         return "Custom Synth";
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_KEYS:
+        return "Rounded Keys";
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_PLUCK:
+        return "Rounded Pluck";
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_PAD:
+        return "Rounded Pad";
     case ENGINE_INSTRUMENT_PRESET_SOFT_PAD:
         return "Soft Pad";
     case ENGINE_INSTRUMENT_PRESET_PLUCK:
@@ -253,10 +265,13 @@ EngineInstrumentPresetCategoryId engine_instrument_preset_category(EngineInstrum
     case ENGINE_INSTRUMENT_PRESET_SAW_LEAD:
     case ENGINE_INSTRUMENT_PRESET_BRIGHT_LEAD:
         return ENGINE_INSTRUMENT_PRESET_CATEGORY_LEAD;
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_KEYS:
     case ENGINE_INSTRUMENT_PRESET_WARM_KEYS:
         return ENGINE_INSTRUMENT_PRESET_CATEGORY_KEYS;
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_PAD:
     case ENGINE_INSTRUMENT_PRESET_SOFT_PAD:
         return ENGINE_INSTRUMENT_PRESET_CATEGORY_PADS;
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_PLUCK:
     case ENGINE_INSTRUMENT_PRESET_PLUCK:
         return ENGINE_INSTRUMENT_PRESET_CATEGORY_PLUCK;
     case ENGINE_INSTRUMENT_PRESET_SOFT_SQUARE:

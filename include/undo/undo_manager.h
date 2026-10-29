@@ -8,6 +8,7 @@
 #include "engine/engine.h"
 #include "session.h"
 #include "time/tempo.h"
+#include "daw/app_actions.h"
 #include "ui/library_browser.h"
 
 struct EngineSamplerSource;
@@ -28,7 +29,8 @@ typedef enum {
     UNDO_CMD_TRACK_SNAPSHOT,
     UNDO_CMD_LIBRARY_RENAME,
     UNDO_CMD_MIDI_NOTE_EDIT,
-    UNDO_CMD_CLIP_CONTENT
+    UNDO_CMD_CLIP_CONTENT,
+    UNDO_CMD_INSTRUMENT_SETTINGS
 } UndoCommandType;
 
 // Stores clip parameters for undo/redo transforms.
@@ -210,6 +212,11 @@ typedef struct {
     EngineClipContentSnapshot* clip_content_before;
     EngineClipContentSnapshot* clip_content_after;
     union {
+        struct { // Retains scalar instrument states without cloning notes or unrelated clip content.
+            DawActionTarget target;
+            DawInstrumentState before;
+            DawInstrumentState after;
+        } instrument_settings;
         UndoClipTransform clip_transform;
         UndoClipAddRemove clip_add_remove;
         UndoClipRename clip_rename;

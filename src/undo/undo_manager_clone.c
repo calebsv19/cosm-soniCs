@@ -330,6 +330,9 @@ static bool undo_command_clone_fields(UndoCommand* dst, const UndoCommand* src) 
     memset(dst, 0, sizeof(*dst));
     dst->type = src->type;
     switch (src->type) {
+        case UNDO_CMD_INSTRUMENT_SETTINGS:
+            dst->data.instrument_settings = src->data.instrument_settings;
+            return true;
         case UNDO_CMD_CLIP_TRANSFORM:
             if (!undo_clip_state_clone(&dst->data.clip_transform.before,
                                        &src->data.clip_transform.before)) {

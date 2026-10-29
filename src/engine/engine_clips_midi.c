@@ -224,6 +224,36 @@ static bool engine_instrument_params_equal(EngineInstrumentParams a, EngineInstr
     return true;
 }
 
+// Publishes all authored track instrument fields together, preserving disabled settings on rejection.
+bool engine_track_midi_set_instrument_state(Engine* engine, int track_index,
+    EngineInstrumentPresetId preset, EngineInstrumentParams params, bool enabled) {
+    EngineTrack* track = engine_midi_track_for_edit(engine, track_index);
+    if (!track || preset < 0 || preset >= ENGINE_INSTRUMENT_PRESET_COUNT || !engine_midi_params_finite(params)) return false;
+    EngineInstrumentParams clean = engine_instrument_params_sanitize(preset, params);
+    if (track->midi_instrument_enabled == enabled && track->midi_instrument_preset == preset &&
+        engine_instrument_params_equal(track->midi_instrument_params, clean)) return true;
+    EngineTrack previous = *track;
+    track->midi_instrument_enabled = enabled;
+    track->midi_instrument_preset = preset;
+    track->midi_instrument_params = clean;
+    return engine_midi_commit_track(engine, track, &previous);
+}
+
+// Publishes all region override fields together without changing notes, bounds or other clip content.
+bool engine_clip_midi_set_instrument_state(Engine* engine, int track_index, int clip_index,
+    EngineInstrumentPresetId preset, EngineInstrumentParams params, bool inherits_track) {
+    EngineClip* clip = engine_get_midi_clip_mutable(engine, track_index, clip_index);
+    if (!clip || preset < 0 || preset >= ENGINE_INSTRUMENT_PRESET_COUNT || !engine_midi_params_finite(params)) return false;
+    EngineInstrumentParams clean = engine_instrument_params_sanitize(preset, params);
+    if (clip->instrument_inherits_track == inherits_track && clip->instrument_preset == preset &&
+        engine_instrument_params_equal(clip->instrument_params, clean)) return true;
+    EngineClip previous = *clip;
+    clip->instrument_inherits_track = inherits_track;
+    clip->instrument_preset = preset;
+    clip->instrument_params = clean;
+    return engine_midi_commit_clip(engine, clip, &previous);
+}
+
 // Publishes finite track instrument parameters or restores the previous settings.
 bool engine_track_midi_set_instrument_params(Engine* engine,
                                              int track_index,

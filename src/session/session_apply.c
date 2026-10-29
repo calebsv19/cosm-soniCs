@@ -90,6 +90,7 @@ static void session_apply_midi_editor_state(AppState* state, const SessionDocume
     state->midi_editor_ui.instrument_menu_scroll_row = 0;
     state->midi_editor_ui.instrument_menu_expanded_category = -1;
     state->midi_editor_ui.instrument_param_drag_active = false;
+    state->midi_editor_ui.instrument_gesture = (DawInstrumentGesture){0};
     state->midi_editor_ui.instrument_param_drag_index = -1;
     state->midi_editor_ui.instrument_param_drag_start_y = 0;
     state->midi_editor_ui.instrument_param_drag_start_value = 0.0f;

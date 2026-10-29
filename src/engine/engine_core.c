@@ -177,6 +177,14 @@ static int engine_worker_main(void* userdata) {
     return 0;
 }
 
+// Supplies process-local engine generations independently of allocator address reuse.
+static atomic_uint_fast64_t next_engine_instance_id = 1;
+
+// Reads the immutable generation of an engine lifetime.
+uint64_t engine_instance_id(const Engine* engine) {
+    return engine ? engine->instance_id : 0;
+}
+
 Engine* engine_create(const EngineRuntimeConfig* cfg) {
     Engine* engine = (Engine*)calloc(1, sizeof(Engine));
     if (!engine) {
@@ -200,6 +208,7 @@ Engine* engine_create(const EngineRuntimeConfig* cfg) {
     engine->device_started = false;
     engine->worker_thread = NULL;
     engine->control_thread_id = SDL_ThreadID();
+    engine->instance_id = atomic_fetch_add_explicit(&next_engine_instance_id, 1, memory_order_relaxed);
     atomic_init(&engine->worker_thread_id, 0);
     atomic_init(&engine->runtime_engine_logs, engine->config.enable_engine_logs);
     atomic_init(&engine->runtime_timing_logs, engine->config.enable_timing_logs);

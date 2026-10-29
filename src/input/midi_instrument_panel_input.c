@@ -17,12 +17,6 @@ static bool instrument_panel_point_in_panel(const AppState* state, int x, int y)
     return SDL_PointInRect(&point, &layout.panel_rect);
 }
 
-static float instrument_panel_clamp_float(float value, float min_value, float max_value) {
-    if (value < min_value) return min_value;
-    if (value > max_value) return max_value;
-    return value;
-}
-
 static float instrument_panel_param_value_from_drag(AppState* state,
                                                    int param_index,
                                                    int y) {
@@ -33,10 +27,11 @@ static float instrument_panel_param_value_from_drag(AppState* state,
     if (!engine_instrument_param_spec((EngineInstrumentParamId)param_index, &spec)) {
         return 0.0f;
     }
-    float range = spec.max_value - spec.min_value;
     float delta = (float)(state->midi_editor_ui.instrument_param_drag_start_y - y);
-    float value = state->midi_editor_ui.instrument_param_drag_start_value + (delta / 140.0f) * range;
-    return instrument_panel_clamp_float(value, spec.min_value, spec.max_value);
+    float scale = state->midi_editor_ui.instrument_param_drag_scale > 0 ? state->midi_editor_ui.instrument_param_drag_scale : 1;
+    float initial = engine_instrument_param_to_normalized((EngineInstrumentParamId)param_index,
+        state->midi_editor_ui.instrument_param_drag_start_value);
+    return engine_instrument_param_from_normalized((EngineInstrumentParamId)param_index, initial + delta * scale / 140.0f);
 }
 
 static float instrument_panel_current_param_value(const AppState* state,
@@ -49,22 +44,6 @@ static float instrument_panel_current_param_value(const AppState* state,
                                                                                  selection->track_index,
                                                                                  selection->clip_index);
     return engine_instrument_params_get(params, (EngineInstrumentParamId)param_index);
-}
-
-static bool instrument_panel_apply_param(AppState* state,
-                                         const MidiEditorSelection* selection,
-                                         const MidiInstrumentPanelLayout* layout,
-                                         int param_index,
-                                         float value) {
-    if (!state || !selection || !selection->clip || !layout ||
-        param_index < 0 || param_index >= ENGINE_INSTRUMENT_PARAM_COUNT) {
-        return false;
-    }
-    return engine_clip_midi_set_instrument_param(state->engine,
-                                                selection->track_index,
-                                                selection->clip_index,
-                                                (EngineInstrumentParamId)param_index,
-                                                value);
 }
 
 static bool instrument_panel_handle_preset_menu_click(AppState* state,
@@ -124,6 +103,7 @@ static bool instrument_panel_handle_param_down(AppState* state,
             state->midi_editor_ui.instrument_param_drag_active = true;
             state->midi_editor_ui.instrument_param_drag_index = param;
             state->midi_editor_ui.instrument_param_drag_start_y = y;
+            state->midi_editor_ui.instrument_param_drag_scale = (SDL_GetModState() & KMOD_SHIFT) ? 0.1f : 1;
             state->midi_editor_ui.instrument_param_drag_start_value =
                 instrument_panel_current_param_value(state, selection, param);
             state->midi_editor_ui.instrument_menu_open = false;
@@ -135,29 +115,32 @@ static bool instrument_panel_handle_param_down(AppState* state,
     return false;
 }
 
+// Publishes only to the gesture's captured region, even if the UI selection changes.
 static bool instrument_panel_update_param_drag(AppState* state, int y) {
-    if (!state || !state->midi_editor_ui.instrument_param_drag_active) {
-        return false;
-    }
-    MidiEditorSelection selection = {0};
-    if (!midi_editor_get_selection(state, &selection)) {
-        return false;
-    }
-    MidiInstrumentPanelLayout layout = {0};
-    midi_instrument_panel_compute_layout(state, &layout);
-    int param_index = state->midi_editor_ui.instrument_param_drag_index;
-    float value = instrument_panel_param_value_from_drag(state, param_index, y);
-    return instrument_panel_apply_param(state,
-                                        &selection,
-                                        &layout,
-                                        param_index,
-                                        value);
+    if (!state || !state->midi_editor_ui.instrument_param_drag_active) return false;
+    int param = state->midi_editor_ui.instrument_param_drag_index;
+    if (param < 0 || param >= ENGINE_INSTRUMENT_PARAM_COUNT) return false;
+    DawInstrumentGesture* gesture = &state->midi_editor_ui.instrument_gesture;
+    DawInstrumentRequest request = {.target = gesture->target, .parameter_mask = UINT32_C(1) << param};
+    request.params = engine_instrument_params_set(ENGINE_INSTRUMENT_PRESET_PURE_SINE, request.params,
+        (EngineInstrumentParamId)param, instrument_panel_param_value_from_drag(state, param, y));
+    DawActionResult result = daw_action_update_instrument(state, gesture, &request);
+    if (result.status != DAW_ACTION_APPLIED && result.status != DAW_ACTION_UNCHANGED)
+        undo_manager_reject(&state->undo, result.message);
+    return result.status == DAW_ACTION_APPLIED || result.status == DAW_ACTION_UNCHANGED;
 }
+
+// Finishes or restores a preview before any panel transition can discard gesture flags.
+static bool instrument_panel_finish_param_drag(AppState* state, bool commit);
 
 // Executes an accepted control through the original product pointer owner.
 bool midi_instrument_panel_input_activate_at(AppState* state, int x, int y) {
     if (!midi_instrument_panel_should_render(state)) {
         return false;
+    }
+    if (state->midi_editor_ui.instrument_gesture.active) {
+        (void)instrument_panel_finish_param_drag(state, true);
+        if (state->midi_editor_ui.instrument_gesture.active) return true;
     }
     MidiEditorSelection selection = {0};
     if (!midi_editor_get_selection(state, &selection)) {
@@ -235,24 +218,17 @@ static bool instrument_panel_handle_scroll(AppState* state, const SDL_Event* eve
     return true;
 }
 
+// Releases only this gesture's reservation and retains a failed cancellation for retry.
 static bool instrument_panel_finish_param_drag(AppState* state, bool commit) {
-    if (!state) {
-        return false;
-    }
-    bool was_dragging_param = state->midi_editor_ui.instrument_param_drag_active;
+    if (!state || !state->midi_editor_ui.instrument_gesture.active) return false;
+    DawActionResult result = daw_action_finish_instrument(state, &state->midi_editor_ui.instrument_gesture, commit);
+    if (result.status != DAW_ACTION_APPLIED && result.status != DAW_ACTION_UNCHANGED)
+        undo_manager_reject(&state->undo, result.message);
+    if (state->midi_editor_ui.instrument_gesture.active) return true;
     state->midi_editor_ui.instrument_param_drag_active = false;
     state->midi_editor_ui.instrument_param_drag_index = -1;
     state->midi_editor_ui.instrument_param_drag_start_y = 0;
     state->midi_editor_ui.instrument_param_drag_start_value = 0.0f;
-    if (!was_dragging_param) {
-        return false;
-    }
-    if (commit) {
-        (void)midi_editor_commit_instrument_undo(state);
-    } else if (state->undo.active_drag_valid &&
-               state->undo.active_drag.type == UNDO_CMD_CLIP_TRANSFORM) {
-        undo_manager_cancel_drag(&state->undo);
-    }
     return true;
 }
 
@@ -284,6 +260,9 @@ bool midi_instrument_panel_input_handle_event(InputManager* manager, AppState* s
         return instrument_panel_handle_scroll(state, event);
     case SDL_KEYDOWN:
         if (event->key.keysym.sym == SDLK_ESCAPE) {
+            if (state->midi_editor_ui.instrument_gesture.active) {
+                return instrument_panel_finish_param_drag(state, false);
+            }
             if (state->midi_editor_ui.instrument_menu_open) {
                 state->midi_editor_ui.instrument_menu_open = false;
                 state->midi_editor_ui.instrument_menu_scroll_row = 0;
@@ -307,6 +286,9 @@ void midi_instrument_panel_input_update(InputManager* manager,
     (void)manager;
     if (!state) {
         return;
+    }
+    if (state->midi_editor_ui.instrument_gesture.active && !state->midi_editor_ui.instrument_param_drag_active) {
+        (void)instrument_panel_finish_param_drag(state, false);
     }
     if (!midi_instrument_panel_should_render(state)) {
         if (state->midi_editor_ui.panel_mode == MIDI_REGION_PANEL_INSTRUMENT &&

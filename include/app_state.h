@@ -146,6 +146,8 @@ typedef struct {
     int instrument_param_drag_index;
     int instrument_param_drag_start_y;
     float instrument_param_drag_start_value;
+    float instrument_param_drag_scale; // Latches fine adjustment at pointer-down without mid-drag jumps.
+    DawInstrumentGesture instrument_gesture; // Binds continuous edits to their reserved target and history.
     EngineInstrumentParamGroupId instrument_active_group;
     int quantize_division;
     float default_velocity;
@@ -629,6 +631,7 @@ struct AppState {
     EngineRuntimeConfig runtime_cfg;
     DawDataPaths data_paths;
     Engine* engine;
+    struct DawControlBridge* control_bridge; // Application-lifetime endpoint preserved across project candidates.
     struct DawMediaImport* media_import; // Application-lifetime owner shared by project candidates.
     TransportUI transport_ui;
     UILayoutRuntime layout_runtime;

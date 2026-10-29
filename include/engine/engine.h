@@ -558,6 +558,14 @@ bool    engine_bounce_range(Engine* engine,
 
 // Identifies the only thread allowed to inspect or mutate editable project state.
 bool engine_is_control_thread(const Engine* engine);
+// Returns the process-local generation of this engine/project lifetime.
+uint64_t engine_instance_id(const Engine* engine);
+// Publishes a complete track instrument state in one rollback-capable revision.
+bool engine_track_midi_set_instrument_state(Engine* engine, int track_index,
+    EngineInstrumentPresetId preset, EngineInstrumentParams params, bool enabled);
+// Publishes a complete region instrument state in one rollback-capable revision.
+bool engine_clip_midi_set_instrument_state(Engine* engine, int track_index, int clip_index,
+    EngineInstrumentPresetId preset, EngineInstrumentParams params, bool inherits_track);
 // Reads accepted control EQ parameters, using a negative track index for the master.
 bool engine_get_eq_curve(const Engine* engine, int track_index, EngineEqCurve* out_curve);
 

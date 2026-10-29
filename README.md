@@ -4,6 +4,18 @@
 
 The repository and source-level program key remain `daw`.
 
+The [application control foundation](docs/application_control.md) provides
+generation-bound instrument snapshots and common reserved instrument actions
+for MIDI-region UI and automation. The [local MCP baseline](tools/mcp/README.md)
+adds opt-in private-socket access, capability/target discovery, guarded instrument
+edits, scoped undo/redo and request receipts through the official MCP SDK.
+Transport, MIDI authoring, save/export and audio-analysis tools follow separately.
+The [instrument-control refinement](docs/instrument_controls.md) now adds supported
+controls per preset, fine logarithmic envelope knobs and engine-derived note/ADSR
+plots, with an MCP edit/render/undo/redo musical exercise. The additive
+[rounded synthesizer family](docs/rounded_synth.md) supplies Keys, Pluck and Pad
+starting points with sine/triangle brightness, detuned blending, sub and drive.
+
 The [initial audit](docs/audits/2026-09-19/AUDIT.md) and [S1–S6 improvement plan](docs/improvement/PLAN.md) describe the runtime-first improvement chain. The [S1 closeout ledger](docs/improvement/S1-CLOSEOUT.md) reconciles implemented command delivery, render ownership, individual edit transactions, and lifecycle behavior with their software acceptance evidence. Application-wide compound edits, remaining identity/feedback integration, and physical-device acceptance are explicitly deferred; the original broad S1 contract is not fully complete. [S2.1 atomic saves and previous-save recovery](docs/improvement/S2-SAVING.md) are now implemented and software-verified; [S2.2 coherent capture and restore](docs/improvement/S2-CAPTURE-RESTORE.md) now prepares a complete replacement before retiring the current project. [S2.3/S2.4 clocks and transport](docs/improvement/S2-CLOCKS-TRANSPORT.md) now separate render-ahead, callback-delivered, and estimated presentation positions, with defined pause/stop/seek/loop behavior. [S2.5 recording/durability](docs/improvement/S2-RECORDING-DURABILITY.md) and [S2.6 diagnostics](docs/improvement/S2-DIAGNOSTICS.md) now add timestamped take checkpoints, checked media publication, and software runtime telemetry. Device activation, physical timing acceptance, and recovery-browser UI remain separate work; [S4.6](docs/improvement/S4-STREAMING.md) now bounds recording/export pipeline memory.
 
 ## Current State
@@ -264,7 +276,7 @@ S3.4 adds sample-counted Gain and mixer transitions plus zero-latency bypass ble
 
 The [capture-clock follow-up](docs/improvement/S4-CAPTURE-CLOCK.md) corrects the input gaps found during S4.6 qualification: anchored capture now checks a separately published transport epoch when detailed clock observations are busy. Nine strict software captures passed with zero missing input/output; physical qualification remains separate. The [S4.7 implementation](docs/improvement/S4.7-MEDIA.md) covers metadata probing, prepared-cache adoption, bounded background jobs, project-generation rejection, and library/recording/bounce insertion. Ctrl/Cmd+Escape cancels pending imports while saved files remain intact.
 
-[S4.8 analyzer efficiency](docs/improvement/S4.8-ANALYSIS.md) now prepares worker-owned Hann/oscillator coefficients, preserving the logarithmic tonal calibration with approximately 4× lower optimized kernel CPU and about 3× lower unoptimized kernel CPU in matched local measurements. Consumer backlog and transform timing are observable. [S4.9 sustained assessment](docs/improvement/S4.9-ACCEPTANCE.md) now records 8/8 workflow passes, 7/8 continuity passes and retained strict timing failures. Real empty/populated GUI frames render, but physical-device, long-session memory and interactive qualification remain open. See [current functionality and next steps](docs/improvement/DAW-STATUS-AND-NEXT-STEPS.md) for S5 and the unimplemented MCP adapter.
+[S4.8 analyzer efficiency](docs/improvement/S4.8-ANALYSIS.md) now prepares worker-owned Hann/oscillator coefficients, preserving the logarithmic tonal calibration with approximately 4× lower optimized kernel CPU and about 3× lower unoptimized kernel CPU in matched local measurements. Consumer backlog and transform timing are observable. [S4.9 sustained assessment](docs/improvement/S4.9-ACCEPTANCE.md) now records 8/8 workflow passes, 7/8 continuity passes and retained strict timing failures. Real empty/populated GUI frames render, but physical-device, long-session memory and interactive qualification remain open. See [current functionality and next steps](docs/improvement/DAW-STATUS-AND-NEXT-STEPS.md) for S5; the [initial MCP instrument adapter](tools/mcp/README.md) is now implemented and software-tested.
 
 ## Runtime improvement checkpoint
 

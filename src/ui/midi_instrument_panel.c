@@ -305,6 +305,7 @@ void midi_instrument_panel_compute_layout(const AppState* state, MidiInstrumentP
     if (active_group < 0 || active_group >= ENGINE_INSTRUMENT_PARAM_GROUP_COUNT) {
         active_group = ENGINE_INSTRUMENT_PARAM_GROUP_OUTPUT;
     }
+    if (!engine_instrument_preset_group_active(preset, active_group)) active_group = ENGINE_INSTRUMENT_PARAM_GROUP_OUTPUT;
     layout->active_group = active_group;
 
     int group_y = content.y + header_h + 6;
@@ -315,6 +316,7 @@ void midi_instrument_panel_compute_layout(const AppState* state, MidiInstrumentP
     int group_gap = 6;
     int group_x = content.x;
     for (int i = 0; i < group_count; ++i) {
+        if (!engine_instrument_preset_group_active(preset, (EngineInstrumentParamGroupId)i)) continue;
         const char* group_name = engine_instrument_param_group_display_name((EngineInstrumentParamGroupId)i);
         int tab_w = ui_measure_text_width(group_name, 0.8f) + 18;
         if (tab_w < 56) {
@@ -467,208 +469,59 @@ static void instrument_panel_draw_knob(SDL_Renderer* renderer,
     instrument_panel_draw_disc(renderer, cx, cy, 2, theme->text_primary, true);
 }
 
-static float instrument_panel_preset_wave(EngineInstrumentPresetId preset, float phase, float tone) {
-    const float pi = 3.14159265358979323846f;
-    phase = phase - floorf(phase);
-    float sine = sinf(phase * pi * 2.0f);
-    float harmonic = sinf(phase * pi * 4.0f) * tone * 0.30f;
-    switch (engine_instrument_preset_clamp(preset)) {
-    case ENGINE_INSTRUMENT_PRESET_SYNTH_LAB: {
-        float saw = phase * 2.0f - 1.0f;
-        float detuned = sinf((phase * (1.0f + tone * 0.08f)) * pi * 2.0f);
-        float sub = sinf(phase * pi) * 0.55f;
-        return sine * (1.0f - tone * 0.38f) +
-               saw * tone * 0.50f +
-               detuned * tone * 0.24f +
-               sub * tone * 0.20f;
-    }
-    case ENGINE_INSTRUMENT_PRESET_SOFT_SQUARE: {
-        float square = sine >= 0.0f ? 1.0f : -1.0f;
-        return sine * (0.72f - tone * 0.28f) + square * (0.28f + tone * 0.28f);
-    }
-    case ENGINE_INSTRUMENT_PRESET_SAW_LEAD: {
-        float saw = phase * 2.0f - 1.0f;
-        return saw * (0.72f + tone * 0.22f) + sine * (0.18f - tone * 0.08f) + harmonic;
-    }
-    case ENGINE_INSTRUMENT_PRESET_SIMPLE_BASS: {
-        float folded = phase < 0.5f ? phase * 4.0f - 1.0f : 3.0f - phase * 4.0f;
-        return sine * 0.70f + folded * (0.22f + tone * 0.18f);
-    }
-    case ENGINE_INSTRUMENT_PRESET_SOFT_PAD: {
-        float detuned = sinf((phase * (1.0f + tone * 0.05f)) * pi * 2.0f);
-        float sub = sinf(phase * pi) * 0.22f;
-        return sine * 0.64f + detuned * (0.24f + tone * 0.12f) + sub * tone;
-    }
-    case ENGINE_INSTRUMENT_PRESET_PLUCK: {
-        float triangle = phase < 0.5f ? phase * 4.0f - 1.0f : 3.0f - phase * 4.0f;
-        return triangle * (0.54f + tone * 0.24f) + sine * (0.30f - tone * 0.08f);
-    }
-    case ENGINE_INSTRUMENT_PRESET_BRIGHT_LEAD: {
-        float saw = phase * 2.0f - 1.0f;
-        float square = sine >= 0.0f ? 1.0f : -1.0f;
-        return saw * (0.68f + tone * 0.20f) + square * tone * 0.22f + harmonic;
-    }
-    case ENGINE_INSTRUMENT_PRESET_WARM_KEYS: {
-        float rounded = tanhf(sine * (1.0f + tone * 1.8f));
-        return rounded * 0.72f + harmonic * 0.55f;
-    }
-    case ENGINE_INSTRUMENT_PRESET_SUB_DRONE: {
-        float sub = sinf(phase * pi) * 0.85f;
-        return sub + sine * (0.18f + tone * 0.18f);
-    }
-    case ENGINE_INSTRUMENT_PRESET_PURE_SINE:
-    case ENGINE_INSTRUMENT_PRESET_COUNT:
-    default:
-        return sine + harmonic;
-    }
-}
-
-static bool instrument_panel_preset_uses_synth_envelope(EngineInstrumentPresetId preset) {
-    switch (engine_instrument_preset_clamp(preset)) {
-    case ENGINE_INSTRUMENT_PRESET_SYNTH_LAB:
-    case ENGINE_INSTRUMENT_PRESET_SOFT_PAD:
-    case ENGINE_INSTRUMENT_PRESET_PLUCK:
-    case ENGINE_INSTRUMENT_PRESET_BRIGHT_LEAD:
-    case ENGINE_INSTRUMENT_PRESET_WARM_KEYS:
-    case ENGINE_INSTRUMENT_PRESET_SUB_DRONE:
-        return true;
-    case ENGINE_INSTRUMENT_PRESET_PURE_SINE:
-    case ENGINE_INSTRUMENT_PRESET_SOFT_SQUARE:
-    case ENGINE_INSTRUMENT_PRESET_SAW_LEAD:
-    case ENGINE_INSTRUMENT_PRESET_SIMPLE_BASS:
-    case ENGINE_INSTRUMENT_PRESET_COUNT:
-    default:
-        return false;
-    }
-}
-
-static float instrument_panel_envelope_at(float t, float attack_ms, float release_ms) {
-    float attack = instrument_panel_clamp_float(attack_ms / 250.0f, 0.0f, 1.0f);
-    float release = instrument_panel_clamp_float(release_ms / 500.0f, 0.0f, 1.0f);
-    float attack_w = 0.02f + attack * 0.32f;
-    float release_w = 0.03f + release * 0.36f;
-    if (t < attack_w) {
-        return attack_w > 0.0f ? t / attack_w : 1.0f;
-    }
-    if (t > 1.0f - release_w) {
-        return release_w > 0.0f ? (1.0f - t) / release_w : 0.0f;
-    }
-    return 1.0f;
-}
-
-static float instrument_panel_adsr_envelope_at(float t, const EngineInstrumentParams* params) {
-    if (!params) {
-        return 1.0f;
-    }
-    float attack = 0.02f + instrument_panel_clamp_float(params->attack_ms / 250.0f, 0.0f, 1.0f) * 0.24f;
-    float decay = 0.04f + instrument_panel_clamp_float(params->decay_ms / 800.0f, 0.0f, 1.0f) * 0.22f;
-    float release = 0.03f + instrument_panel_clamp_float(params->release_ms / 500.0f, 0.0f, 1.0f) * 0.28f;
-    float sustain = instrument_panel_clamp_float(params->sustain, 0.0f, 1.0f);
-    if (t < attack) {
-        return attack > 0.0f ? t / attack : 1.0f;
-    }
-    if (t < attack + decay) {
-        float dt = decay > 0.0f ? (t - attack) / decay : 1.0f;
-        return 1.0f + (sustain - 1.0f) * dt;
-    }
-    if (t > 1.0f - release) {
-        float rt = release > 0.0f ? (1.0f - t) / release : 0.0f;
-        return sustain * instrument_panel_clamp_float(rt, 0.0f, 1.0f);
-    }
-    return sustain;
-}
-
+// Draws an isolated diagnostic plot using the engine's actual ADSR and voice evaluation.
 static void instrument_panel_draw_preview(SDL_Renderer* renderer,
                                           SDL_Rect rect,
                                           EngineInstrumentPresetId preset,
                                           EngineInstrumentParams params,
+                                          int rate,
                                           const DawThemePalette* theme) {
-    if (!renderer || !theme || !instrument_panel_rect_valid(&rect)) {
-        return;
-    }
-    instrument_panel_draw_rect(renderer,
-                               rect,
-                               instrument_panel_color_mix(theme->control_fill, theme->inspector_fill, 1, 3),
-                               true);
+    if (!renderer || !theme || !instrument_panel_rect_valid(&rect) || rate <= 0) return;
+    instrument_panel_draw_rect(renderer, rect,
+        instrument_panel_color_mix(theme->control_fill, theme->inspector_fill, 1, 3), true);
     instrument_panel_draw_rect(renderer, rect, theme->control_border, false);
-
-    SDL_Rect plot = instrument_panel_inset_rect(rect, 14, 12);
-    if (!instrument_panel_rect_valid(&plot)) {
-        return;
-    }
-    int mid_y = plot.y + plot.h / 2;
-    SDL_Color guide = instrument_panel_color_mix(theme->grid_minor, theme->inspector_fill, 2, 1);
+    int caption_h = ui_font_line_height(0.7f) + 4;
+    SDL_Rect inner = instrument_panel_inset_rect(rect, 8, 4);
+    if (inner.h <= caption_h + 4 || inner.w < 80) return;
+    int width = (inner.w - 12) / 2;
+    SDL_Rect envelope = {inner.x, inner.y + caption_h, width, inner.h - caption_h};
+    SDL_Rect wave = {inner.x + width + 12, envelope.y, width, envelope.h};
+    ui_draw_text_clipped(renderer, envelope.x, inner.y, "ADSR | gate 500 ms", theme->text_muted, 0.7f, width);
+    ui_draw_text_clipped(renderer, wave.x, inner.y, "C4 held | 20 ms | +/-1", theme->text_muted, 0.7f, width);
+    uint64_t gate = (uint64_t)rate / 2;
+    uint64_t end = gate + (uint64_t)llround((double)params.release_ms * rate / 1000.0) + (uint64_t)rate / 20;
+    uint64_t wave_start = (uint64_t)llround((double)(params.attack_ms + params.decay_ms + 50) * rate / 1000.0);
+    uint64_t wave_length = (uint64_t)rate / 50;
+    SDL_Color guide = instrument_panel_color_mix(theme->grid_minor, theme->text_muted, 3, 1);
     SDL_SetRenderDrawColor(renderer, guide.r, guide.g, guide.b, guide.a);
-    SDL_RenderDrawLine(renderer, plot.x, mid_y, plot.x + plot.w, mid_y);
-
-    float level = instrument_panel_clamp_float(params.level / 1.5f, 0.0f, 1.0f);
-    float tone = instrument_panel_clamp_float(params.tone, 0.0f, 1.0f);
-    float cycles = 2.5f + tone * 5.5f;
-    int amp_px = (int)((float)(plot.h / 2 - 6) * level + 0.5f);
-    if (amp_px < 0) {
-        amp_px = 0;
-    }
-
-    SDL_Color envelope_color = instrument_panel_color_mix(theme->text_muted, theme->grid_minor, 1, 2);
-    SDL_SetRenderDrawColor(renderer, envelope_color.r, envelope_color.g, envelope_color.b, envelope_color.a);
-    int last_top_x = plot.x;
-    int last_top_y = mid_y;
-    int last_bottom_y = mid_y;
-    for (int i = 0; i <= plot.w; ++i) {
-        float t = plot.w > 0 ? (float)i / (float)plot.w : 0.0f;
-        float env = instrument_panel_preset_uses_synth_envelope(preset)
-            ? instrument_panel_adsr_envelope_at(t, &params)
-            : instrument_panel_envelope_at(t, params.attack_ms, params.release_ms);
-        int x = plot.x + i;
-        int top_y = mid_y - (int)((float)amp_px * env + 0.5f);
-        int bottom_y = mid_y + (int)((float)amp_px * env + 0.5f);
-        if (i > 0) {
-            SDL_RenderDrawLine(renderer, last_top_x, last_top_y, x, top_y);
-            SDL_RenderDrawLine(renderer, last_top_x, last_bottom_y, x, bottom_y);
+    SDL_RenderDrawLine(renderer, envelope.x, envelope.y + envelope.h - 1,
+        envelope.x + width - 1, envelope.y + envelope.h - 1);
+    int gate_x = envelope.x + (int)((double)gate / end * (width - 1));
+    SDL_RenderDrawLine(renderer, gate_x, envelope.y, gate_x, envelope.y + envelope.h - 1);
+    int middle = wave.y + wave.h / 2;
+    SDL_RenderDrawLine(renderer, wave.x, middle, wave.x + width - 1, middle);
+    int points = instrument_panel_min_int(width, 512);
+    int previous_x = envelope.x, previous_y = envelope.y + envelope.h - 1;
+    int previous_wave_x = wave.x, previous_wave_y = middle;
+    for (int i = 0; i < points; ++i) {
+        double position = points > 1 ? (double)i / (points - 1) : 0;
+        uint64_t frame = (uint64_t)llround(position * end);
+        float level = engine_instrument_envelope_level(params, rate, frame, gate);
+        int x = envelope.x + (int)llround(position * (width - 1));
+        int y = envelope.y + envelope.h - 1 - (int)lroundf(level * (envelope.h - 1));
+        uint64_t oscillator_frame = wave_start + (uint64_t)llround(position * wave_length);
+        float sample = engine_instrument_note_sample(preset, params, 60, 1, rate,
+            oscillator_frame, wave_start + wave_length + 1);
+        int wave_x = wave.x + x - envelope.x;
+        int wave_y = middle - (int)lroundf(instrument_panel_clamp_float(sample, -1, 1) * (wave.h - 1) / 2);
+        if (i) {
+            SDL_SetRenderDrawColor(renderer, theme->text_muted.r, theme->text_muted.g, theme->text_muted.b, theme->text_muted.a);
+            SDL_RenderDrawLine(renderer, previous_x, previous_y, x, y);
+            SDL_SetRenderDrawColor(renderer, theme->accent_primary.r, theme->accent_primary.g, theme->accent_primary.b, theme->accent_primary.a);
+            SDL_RenderDrawLine(renderer, previous_wave_x, previous_wave_y, wave_x, wave_y);
         }
-        last_top_x = x;
-        last_top_y = top_y;
-        last_bottom_y = bottom_y;
-    }
-
-    SDL_Color wave = instrument_panel_color_mix(theme->accent_primary, theme->text_primary, 3, 1);
-    SDL_SetRenderDrawColor(renderer, wave.r, wave.g, wave.b, wave.a);
-    int last_x = plot.x;
-    int last_y = mid_y;
-    for (int i = 0; i <= plot.w; ++i) {
-        float t = plot.w > 0 ? (float)i / (float)plot.w : 0.0f;
-        float env = instrument_panel_preset_uses_synth_envelope(preset)
-            ? instrument_panel_adsr_envelope_at(t, &params)
-            : instrument_panel_envelope_at(t, params.attack_ms, params.release_ms);
-        float preview_phase = t * cycles;
-        if (instrument_panel_preset_uses_synth_envelope(preset)) {
-            preview_phase += sinf(t * params.vibrato_rate * 6.28318530718f) *
-                             (params.vibrato_depth / 1200.0f);
-        }
-        float sample = instrument_panel_preset_wave(preset, preview_phase, tone);
-        if (instrument_panel_preset_uses_synth_envelope(preset)) {
-            sample += sinf(t * cycles * 3.14159265358979323846f) * params.sub_mix * 0.30f;
-            sample = tanhf(sample * (1.0f + params.drive * 2.0f));
-        }
-        sample = instrument_panel_clamp_float(sample, -1.15f, 1.15f);
-        int x = plot.x + i;
-        int y = mid_y - (int)(sample * env * (float)amp_px);
-        if (i > 0) {
-            SDL_RenderDrawLine(renderer, last_x, last_y, x, y);
-        }
-        last_x = x;
-        last_y = y;
-    }
-
-    if (tone > 0.05f && amp_px > 2) {
-        SDL_Color accent = instrument_panel_color_mix(theme->accent_primary, theme->grid_major, 1, 1);
-        SDL_SetRenderDrawColor(renderer, accent.r, accent.g, accent.b, accent.a);
-        int tick_count = 8 + (int)(tone * 18.0f);
-        for (int i = 1; i < tick_count; ++i) {
-            int x = plot.x + (plot.w * i) / tick_count;
-            int h = 3 + (int)(tone * 9.0f);
-            SDL_RenderDrawLine(renderer, x, mid_y - h, x, mid_y + h);
-        }
+        previous_x = x; previous_y = y;
+        previous_wave_x = wave_x; previous_wave_y = wave_y;
     }
 }
 
@@ -719,7 +572,7 @@ void midi_instrument_panel_render(SDL_Renderer* renderer,
     char summary[160];
     snprintf(summary,
              sizeof(summary),
-             "%s  Track %d  Length %.2fs",
+             "%s  Track %d  Length %.2fs | Shift-drag: fine",
              selection.clip->name[0] ? selection.clip->name : "MIDI Region",
              selection.track_index + 1,
              duration_seconds);
@@ -781,8 +634,7 @@ void midi_instrument_panel_render(SDL_Renderer* renderer,
             continue;
         }
         float value = engine_instrument_params_get(params, param);
-        float denom = spec.max_value - spec.min_value;
-        float t = denom > 0.0f ? (value - spec.min_value) / denom : 0.0f;
+        float t = engine_instrument_param_to_normalized(param, value);
         if (t < 0.0f) t = 0.0f;
         if (t > 1.0f) t = 1.0f;
 
@@ -793,9 +645,10 @@ void midi_instrument_panel_render(SDL_Renderer* renderer,
 
         char value_text[32];
         if (spec.unit && strcmp(spec.unit, "ms") == 0) {
-            snprintf(value_text, sizeof(value_text), "%.0f ms", value);
+            snprintf(value_text, sizeof(value_text), value < 10 ? "%.1f ms" : "%.0f ms", value);
         } else {
-            snprintf(value_text, sizeof(value_text), "%.2f", value);
+            snprintf(value_text, sizeof(value_text), "%.2f%s%s", value,
+                spec.unit && spec.unit[0] ? " " : "", spec.unit ? spec.unit : "");
         }
         ui_draw_text_clipped(renderer, value_rect.x, value_rect.y, value_text, theme.text_primary, 0.8f, value_rect.w);
     }
@@ -805,6 +658,7 @@ void midi_instrument_panel_render(SDL_Renderer* renderer,
                                   layout->scope_rect,
                                   preset,
                                   params,
+                                  sample_rate,
                                   &theme);
 
     if (state->midi_editor_ui.instrument_menu_open) {

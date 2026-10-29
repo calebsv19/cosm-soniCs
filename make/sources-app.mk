@@ -24,6 +24,9 @@ APP_SRCS := \
 	$(SRC_DIR)/core/loop/daw_mainthread_kernel.c \
 	$(SRC_DIR)/core/loop/daw_render_invalidation.c \
 	$(SRC_DIR)/app/daw_app_main.c \
+	$(SRC_DIR)/app/app_actions.c \
+	$(SRC_DIR)/app/control_bridge.c \
+	$(SRC_DIR)/app/control_dispatch.c \
 	$(SRC_DIR)/ui/transport_controls.c \
 	$(SRC_DIR)/ui/control_chrome.c \
 	$(SRC_DIR)/ui/editor_controls.c \
@@ -75,6 +78,7 @@ APP_SRCS := \
 	$(SRC_DIR)/engine/midi.c \
 	$(SRC_DIR)/engine/engine_midi_audition.c \
 	$(SRC_DIR)/engine/instrument_osc.c \
+	$(SRC_DIR)/engine/instrument_controls.c \
 	$(SRC_DIR)/engine/timeline_contract.c \
 	$(SRC_DIR)/engine/engine_audio.c \
 	$(SRC_DIR)/engine/engine_meter.c \

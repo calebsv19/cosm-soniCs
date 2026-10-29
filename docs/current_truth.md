@@ -1,6 +1,39 @@
 # soniCs Current Truth
 
-Last updated: 2026-10-06 (initial macOS Main Edit shared UI rollout source-qualified; historical release claims retain their original scope)
+The 2026-10-08 [application-control baseline](application_control.md) adds common
+reserved instrument actions plus an opt-in same-user Unix bridge and official
+SDK stdio MCP adapter. Its seven tools inspect capabilities/targets/instruments,
+apply guarded instrument batches, perform scoped undo/redo and recover retained
+request results. The official-client acceptance uses the real bridge/engine in
+an isolated fixture; native GUI, physical audio and installation remain separate.
+See [MCP setup and limits](../tools/mcp/README.md). Arrangement/MIDI authoring,
+transport/mixer/effect tools, media import, project save and export jobs are not
+part of this initial MCP surface.
+
+
+Last updated: 2026-10-08 (local instrument MCP source/software acceptance; installed Main Edit and historical release claims retain their original scope)
+
+## 2026-10-08 Rounded oscillator family
+
+Three additive presets (Rounded Keys, Rounded Pluck, Rounded Pad) share a
+phase-aligned sine/triangle oscillator with brightness, detuned second-voice
+blend, sub and continuous drive. Existing preset IDs/defaults/DSP are preserved.
+All ten advertised parameters use existing UI actions and MCP operations;
+modulation stays hidden because this family does not consume vibrato controls.
+See [rounded synth design and evidence](rounded_synth.md). This is an oscillator
+slice; it does not change the legacy vibrato calculation or add a filter.
+
+## 2026-10-08 Instrument control refinement
+
+Preset-specific supported controls, ADSR control order, log-time envelope knobs
+and latched Shift fine dragging now share engine metadata. Instrument preview
+plots use the actual isolated voice/ADSR kernel rather than illustrative formulas.
+Original preset defaults, physical ranges, serialized values and automation
+semantics are unchanged. The existing MCP tools expose supported controls and
+additive control-scale metadata. The musical fixture proves actual distinct
+rendered output and byte-identical undo/redo restoration. See
+[instrument control contract](instrument_controls.md). Human listening, installed
+package delivery and new synth models remain separate.
 
 ## 2026-10-06 Main Edit UI adoption
 

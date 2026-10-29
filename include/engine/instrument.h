@@ -20,6 +20,10 @@ typedef enum {
     ENGINE_INSTRUMENT_PRESET_BRIGHT_LEAD,
     ENGINE_INSTRUMENT_PRESET_WARM_KEYS,
     ENGINE_INSTRUMENT_PRESET_SUB_DRONE,
+    // Adds rounded oscillator voices without renumbering existing saved preset IDs.
+    ENGINE_INSTRUMENT_PRESET_ROUNDED_KEYS,
+    ENGINE_INSTRUMENT_PRESET_ROUNDED_PLUCK,
+    ENGINE_INSTRUMENT_PRESET_ROUNDED_PAD,
     ENGINE_INSTRUMENT_PRESET_COUNT
 } EngineInstrumentPresetId;
 
@@ -58,6 +62,13 @@ typedef enum {
     ENGINE_INSTRUMENT_PARAM_GROUP_COUNT
 } EngineInstrumentParamGroupId;
 
+// Describes the control-space mapping without changing stored physical parameter values.
+typedef enum EngineInstrumentParamScale {
+    ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR = 0,
+    ENGINE_INSTRUMENT_PARAM_SCALE_LOG_TIME
+} EngineInstrumentParamScale;
+
+// Describes one stable instrument parameter and its presentation mapping.
 typedef struct {
     const char* id;
     const char* display_name;
@@ -67,6 +78,7 @@ typedef struct {
     float default_value;
     EngineInstrumentParamGroupId group;
     int display_order;
+    EngineInstrumentParamScale scale;
 } EngineInstrumentParamSpec;
 
 typedef struct {
@@ -138,3 +150,18 @@ bool engine_instrument_source_reserve_notes(EngineInstrumentSource* instrument, 
 
 // Closes captured note gates and permits a bounded release tail without changing authored lane endpoints.
 void engine_instrument_source_set_export_end(EngineInstrumentSource* instrument, uint64_t end, uint64_t tail);
+
+// Reports whether a parameter participates in the selected preset's DSP.
+bool engine_instrument_preset_param_active(EngineInstrumentPresetId preset, EngineInstrumentParamId param);
+// Reports whether a preset has any controls in the requested group.
+bool engine_instrument_preset_group_active(EngineInstrumentPresetId preset, EngineInstrumentParamGroupId group);
+// Maps physical values to bounded control positions using the parameter's declared scale.
+float engine_instrument_param_to_normalized(EngineInstrumentParamId param, float value);
+// Maps bounded control positions back to physical values without changing automation semantics.
+float engine_instrument_param_from_normalized(EngineInstrumentParamId param, float position);
+// Evaluates an isolated note with the same oscillator, envelope and modulation as the audio source.
+float engine_instrument_note_sample(EngineInstrumentPresetId preset, EngineInstrumentParams params,
+    uint8_t note, float velocity, int sample_rate, uint64_t relative_frame, uint64_t gate_frames);
+// Evaluates the real gate-aware ADSR, including early note-off, for diagnostic plots.
+float engine_instrument_envelope_level(EngineInstrumentParams params, int sample_rate,
+    uint64_t relative_frame, uint64_t gate_frames);

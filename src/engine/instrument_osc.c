@@ -58,6 +58,12 @@ EngineInstrumentPresetId engine_instrument_preset_clamp(EngineInstrumentPresetId
 
 const char* engine_instrument_preset_id_string(EngineInstrumentPresetId preset) {
     switch (engine_instrument_preset_clamp(preset)) {
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_KEYS:
+        return "rounded_keys";
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_PLUCK:
+        return "rounded_pluck";
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_PAD:
+        return "rounded_pad";
     case ENGINE_INSTRUMENT_PRESET_SYNTH_LAB:
         return "synth_lab";
     case ENGINE_INSTRUMENT_PRESET_SOFT_PAD:
@@ -84,6 +90,12 @@ const char* engine_instrument_preset_id_string(EngineInstrumentPresetId preset) 
 
 const char* engine_instrument_preset_display_name(EngineInstrumentPresetId preset) {
     switch (engine_instrument_preset_clamp(preset)) {
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_KEYS:
+        return "Rounded Keys";
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_PLUCK:
+        return "Rounded Pluck";
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_PAD:
+        return "Rounded Pad";
     case ENGINE_INSTRUMENT_PRESET_SYNTH_LAB:
         return "Custom Synth";
     case ENGINE_INSTRUMENT_PRESET_SOFT_PAD:
@@ -116,10 +128,13 @@ EngineInstrumentPresetCategoryId engine_instrument_preset_category(EngineInstrum
     case ENGINE_INSTRUMENT_PRESET_SAW_LEAD:
     case ENGINE_INSTRUMENT_PRESET_BRIGHT_LEAD:
         return ENGINE_INSTRUMENT_PRESET_CATEGORY_LEAD;
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_KEYS:
     case ENGINE_INSTRUMENT_PRESET_WARM_KEYS:
         return ENGINE_INSTRUMENT_PRESET_CATEGORY_KEYS;
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_PAD:
     case ENGINE_INSTRUMENT_PRESET_SOFT_PAD:
         return ENGINE_INSTRUMENT_PRESET_CATEGORY_PADS;
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_PLUCK:
     case ENGINE_INSTRUMENT_PRESET_PLUCK:
         return ENGINE_INSTRUMENT_PRESET_CATEGORY_PLUCK;
     case ENGINE_INSTRUMENT_PRESET_SOFT_SQUARE:
@@ -205,51 +220,51 @@ bool engine_instrument_param_spec(EngineInstrumentParamId param, EngineInstrumen
     switch (param) {
     case ENGINE_INSTRUMENT_PARAM_LEVEL:
         *out_spec = (EngineInstrumentParamSpec){"level", "Level", "", 0.0f, 1.5f, 1.0f,
-                                                ENGINE_INSTRUMENT_PARAM_GROUP_OUTPUT, 0};
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_OUTPUT, 0, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
         return true;
     case ENGINE_INSTRUMENT_PARAM_TONE:
         *out_spec = (EngineInstrumentParamSpec){"tone", "Tone", "", 0.0f, 1.0f, 0.5f,
-                                                ENGINE_INSTRUMENT_PARAM_GROUP_TONE, 0};
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_TONE, 0, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
         return true;
     case ENGINE_INSTRUMENT_PARAM_ATTACK_MS:
         *out_spec = (EngineInstrumentParamSpec){"attack_ms", "Attack", "ms", 0.0f, 250.0f, 4.0f,
-                                                ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE, 0};
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE, 0, ENGINE_INSTRUMENT_PARAM_SCALE_LOG_TIME};
         return true;
     case ENGINE_INSTRUMENT_PARAM_RELEASE_MS:
         *out_spec = (EngineInstrumentParamSpec){"release_ms", "Release", "ms", 0.0f, 500.0f, 18.0f,
-                                                ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE, 3};
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE, 3, ENGINE_INSTRUMENT_PARAM_SCALE_LOG_TIME};
         return true;
     case ENGINE_INSTRUMENT_PARAM_DECAY_MS:
         *out_spec = (EngineInstrumentParamSpec){"decay_ms", "Decay", "ms", 0.0f, 800.0f, 120.0f,
-                                                ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE, 1};
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE, 1, ENGINE_INSTRUMENT_PARAM_SCALE_LOG_TIME};
         return true;
     case ENGINE_INSTRUMENT_PARAM_SUSTAIN:
         *out_spec = (EngineInstrumentParamSpec){"sustain", "Sustain", "", 0.0f, 1.0f, 0.78f,
-                                                ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE, 2};
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE, 2, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
         return true;
     case ENGINE_INSTRUMENT_PARAM_OSC_MIX:
         *out_spec = (EngineInstrumentParamSpec){"osc_mix", "Osc Mix", "", 0.0f, 1.0f, 0.45f,
-                                                ENGINE_INSTRUMENT_PARAM_GROUP_OSCILLATOR, 0};
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_OSCILLATOR, 0, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
         return true;
     case ENGINE_INSTRUMENT_PARAM_OSC2_DETUNE:
         *out_spec = (EngineInstrumentParamSpec){"osc2_detune", "Detune", "ct", -24.0f, 24.0f, 7.0f,
-                                                ENGINE_INSTRUMENT_PARAM_GROUP_OSCILLATOR, 1};
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_OSCILLATOR, 1, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
         return true;
     case ENGINE_INSTRUMENT_PARAM_SUB_MIX:
         *out_spec = (EngineInstrumentParamSpec){"sub_mix", "Sub", "", 0.0f, 1.0f, 0.22f,
-                                                ENGINE_INSTRUMENT_PARAM_GROUP_OSCILLATOR, 2};
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_OSCILLATOR, 2, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
         return true;
     case ENGINE_INSTRUMENT_PARAM_DRIVE:
         *out_spec = (EngineInstrumentParamSpec){"drive", "Drive", "", 0.0f, 1.0f, 0.18f,
-                                                ENGINE_INSTRUMENT_PARAM_GROUP_TONE, 1};
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_TONE, 1, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
         return true;
     case ENGINE_INSTRUMENT_PARAM_VIBRATO_RATE:
         *out_spec = (EngineInstrumentParamSpec){"vibrato_rate", "Rate", "Hz", 0.0f, 12.0f, 5.2f,
-                                                ENGINE_INSTRUMENT_PARAM_GROUP_MOD, 0};
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_MOD, 0, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
         return true;
     case ENGINE_INSTRUMENT_PARAM_VIBRATO_DEPTH:
         *out_spec = (EngineInstrumentParamSpec){"vibrato_depth", "Depth", "ct", 0.0f, 60.0f, 0.0f,
-                                                ENGINE_INSTRUMENT_PARAM_GROUP_MOD, 1};
+                                                ENGINE_INSTRUMENT_PARAM_GROUP_MOD, 1, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
         return true;
     case ENGINE_INSTRUMENT_PARAM_COUNT:
     default:
@@ -270,22 +285,6 @@ bool engine_instrument_param_from_id_string(const char* id, EngineInstrumentPara
         }
     }
     return false;
-}
-
-int engine_instrument_preset_param_count(EngineInstrumentPresetId preset) {
-    (void)preset;
-    return ENGINE_INSTRUMENT_PARAM_COUNT;
-}
-
-bool engine_instrument_preset_param_id_at(EngineInstrumentPresetId preset,
-                                          int index,
-                                          EngineInstrumentParamId* out_param) {
-    (void)preset;
-    if (!out_param || index < 0 || index >= ENGINE_INSTRUMENT_PARAM_COUNT) {
-        return false;
-    }
-    *out_param = (EngineInstrumentParamId)index;
-    return true;
 }
 
 static float instrument_clamp_float(float value, float min_value, float max_value) {
@@ -414,6 +413,21 @@ EngineInstrumentParams engine_instrument_default_params(EngineInstrumentPresetId
         params.drive = 0.06f;
         params.vibrato_rate = 2.2f;
         params.vibrato_depth = 2.0f;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_KEYS:
+        params = (EngineInstrumentParams){.level = .85f, .tone = .32f, .attack_ms = 6,
+            .decay_ms = 260, .sustain = .32f, .release_ms = 180, .osc_mix = .18f,
+            .osc2_detune = 3, .sub_mix = .06f, .drive = .08f, .vibrato_rate = 5.2f};
+        break;
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_PLUCK:
+        params = (EngineInstrumentParams){.level = .9f, .tone = .8f, .attack_ms = 2,
+            .decay_ms = 150, .sustain = .08f, .release_ms = 90, .osc_mix = .08f,
+            .osc2_detune = -2, .sub_mix = 0, .drive = .12f, .vibrato_rate = 5.2f};
+        break;
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_PAD:
+        params = (EngineInstrumentParams){.level = .7f, .tone = .45f, .attack_ms = 180,
+            .decay_ms = 420, .sustain = .8f, .release_ms = 450, .osc_mix = .45f,
+            .osc2_detune = 6, .sub_mix = .12f, .drive = .04f, .vibrato_rate = 5.2f};
         break;
     case ENGINE_INSTRUMENT_PRESET_PURE_SINE:
     default:
@@ -793,6 +807,19 @@ static float preset_sample(EngineInstrumentPresetId preset, EngineInstrumentPara
         (void)freq;
         return (float)(instrument_sine(sub_phase, freq*.5, sample_rate) * 0.22 + second * (0.02 + tone * 0.08));
     }
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_KEYS:
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_PLUCK:
+    case ENGINE_INSTRUMENT_PRESET_ROUNDED_PAD: {
+        // Aligns triangle and sine zero crossings so brightness blends retain a coherent fundamental.
+        double triangle = instrument_triangle(phase + M_PI * .5, freq, sample_rate);
+        double primary = sine * (1.0 - tone) + triangle * tone;
+        double ratio = pow(2.0, (double)params.osc2_detune / 1200.0);
+        double secondary = instrument_sine(phase * ratio, freq * ratio, sample_rate) * (1.0 - tone) +
+            instrument_triangle(phase * ratio + M_PI * .5, freq * ratio, sample_rate) * tone;
+        double blend = primary * (1.0 - params.osc_mix) + secondary * params.osc_mix +
+            instrument_sine(phase * .5, freq * .5, sample_rate) * params.sub_mix * .5;
+        return (float)(.18 * (blend + params.drive * (tanh(3.0 * blend) / tanh(3.0) - blend)));
+    }
     case ENGINE_INSTRUMENT_PRESET_SYNTH_LAB: {
         double detune_ratio = pow(2.0, (double)params.osc2_detune / 1200.0);
         double phase2 = phase * detune_ratio;
@@ -850,6 +877,39 @@ static float preset_sample(EngineInstrumentPresetId preset, EngineInstrumentPara
         (void)freq;
         return (float)(sine * (0.16 + tone * 0.08));
     }
+}
+
+// Evaluates one voice using a precomputed base frequency and the existing synthesis arithmetic.
+static float instrument_voice_sample(EngineInstrumentPresetId preset, EngineInstrumentParams params,
+    double frequency, float velocity, int rate, uint64_t relative_frame, uint64_t duration, float accumulated) {
+    double freq = frequency;
+    if (preset == ENGINE_INSTRUMENT_PRESET_SYNTH_LAB && params.vibrato_depth > 0.0f && params.vibrato_rate > 0.0f) {
+        double seconds = (double)relative_frame / (double)rate;
+        double cents = sin(2.0 * M_PI * (double)params.vibrato_rate * seconds) * (double)params.vibrato_depth;
+        freq *= pow(2.0, cents / 1200.0);
+    }
+    double phase = (2.0 * M_PI * freq * (double)relative_frame) / (double)rate;
+    float env = note_envelope(relative_frame, duration, &params, rate);
+    return accumulated + preset_sample(preset, params, phase, freq, rate) * params.level * velocity * env;
+}
+
+// Samples one sanitized isolated voice without allocation, automation, mixing or engine mutation.
+float engine_instrument_note_sample(EngineInstrumentPresetId preset, EngineInstrumentParams params,
+    uint8_t note, float velocity, int rate, uint64_t relative_frame, uint64_t gate_frames) {
+    if (rate <= 0 || note > 127 || !isfinite(velocity) || velocity < 0 || velocity > 1 ||
+        preset < 0 || preset >= ENGINE_INSTRUMENT_PRESET_COUNT) return 0;
+    for (int i = 0; i < ENGINE_INSTRUMENT_PARAM_COUNT; ++i)
+        if (!isfinite(engine_instrument_params_get(params, (EngineInstrumentParamId)i))) return 0;
+    params = engine_instrument_params_sanitize(preset, params);
+    return instrument_voice_sample(preset, params, midi_note_frequency(note), velocity, rate, relative_frame, gate_frames, 0);
+}
+
+// Samples the source's actual ADSR with physical millisecond timing and note-off release level.
+float engine_instrument_envelope_level(EngineInstrumentParams params, int rate, uint64_t relative_frame, uint64_t gate_frames) {
+    if (rate <= 0 || !isfinite(params.attack_ms) || !isfinite(params.decay_ms) ||
+        !isfinite(params.sustain) || !isfinite(params.release_ms)) return 0;
+    params = engine_instrument_params_sanitize(ENGINE_INSTRUMENT_PRESET_PURE_SINE, params);
+    return note_envelope(relative_frame, gate_frames, &params, rate);
 }
 
 static EngineInstrumentParams instrument_params_at_frame(const EngineInstrumentSource* instrument,
@@ -945,21 +1005,8 @@ void engine_instrument_source_render(void* userdata, float* interleaved, int fra
             uint64_t rel = clip_frame - note->start_frame;
             uint64_t release = instrument_ms_to_frames(frame_params.release_ms, instrument->sample_rate);
             if (rel >= note->duration_frames && rel - note->duration_frames >= release) continue;
-            double freq = instrument->notes[n].frequency;
-            if (instrument->preset == ENGINE_INSTRUMENT_PRESET_SYNTH_LAB &&
-                frame_params.vibrato_depth > 0.0f &&
-                frame_params.vibrato_rate > 0.0f) {
-                double seconds = (double)rel / (double)instrument->sample_rate;
-                double cents = sin(2.0 * M_PI * (double)frame_params.vibrato_rate * seconds) *
-                               (double)frame_params.vibrato_depth;
-                freq *= pow(2.0, cents / 1200.0);
-            }
-            double phase = (2.0 * M_PI * freq * (double)rel) / (double)instrument->sample_rate;
-            float env = note_envelope(rel, note->duration_frames, &frame_params, instrument->sample_rate);
-            sample += preset_sample(instrument->preset, frame_params, phase, freq, instrument->sample_rate) *
-                      frame_params.level *
-                      note->velocity *
-                      env;
+            sample = instrument_voice_sample(instrument->preset, frame_params, instrument->notes[n].frequency,
+                note->velocity, instrument->sample_rate, rel, note->duration_frames, sample);
         }
 
         if (sample > 1.0f) {

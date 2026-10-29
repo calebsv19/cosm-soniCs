@@ -36,3 +36,30 @@ adapter lanes, plus parser diagnostics.
   existing default, clamp, and partial-parse behavior. Run via
   `make test-config-diagnostics`.
 - `engine_smoke_test.c`: Headless engine exercise that loads a clip, applies fades, toggles loop/playback, and verifies transport state transitions. Run via `make test-smoke`.
+- `application_instrument_action_test.c`: Exercises common actions with publication/history failure injection, exact undo/redo, gesture ownership, generation/identity targeting and control-thread rejection. Run via `make test-application-instrument-action`; included in `test-stable`.
+
+- `mcp_control_fixture.c` and `mcp_control_test.py`: Run the production bridge and
+  real engine in an isolated owner-thread fixture, then initialize the official
+  MCP SDK client and verify all seven tools, strict input, guarded writes,
+  inheritance, scoped undo/redo, replay/lost responses, UI/project conflicts,
+  read-only admission, receipt limits and shutdown. Install the isolated SDK
+  environment using [MCP setup](../tools/mcp/README.md), then run
+  `make test-mcp-control`. Local Unix-socket binding permission is required;
+  this optional lane is separate from Python-free `test-stable`.
+
+Invoke `run-headless-smoke` and `test-legacy` sequentially; their recursive shared
+build lanes clean shared intermediate directories and can interfere when run
+concurrently as top-level make targets.
+
+- `instrument_controls_test.c`: Checks control mapping/roundtrips, supported DSP
+  parameter sets, exact diagnostic/source sample parity and gate-aware ADSR timing.
+  Rounded oscillator tests check independent Fourier amplitudes, upper-note
+  harmonic limits, and real-sample influence of every advertised control.
+  Run `make test-instrument-controls`; included in `test-stable`.
+- `mcp_instrument_loop_test.py`: Uses official MCP calls to edit a real C-major
+  phrase, export finite non-silent WAVs, and prove exact baseline/edited WAV
+  restoration after undo/redo, rounded factory-default selection and history,
+  plus a held pad chord. Run `make test-mcp-instrument-loop` after MCP SDK
+  setup with local socket permission. Artifacts are retained under the selected
+  build's `receipts/instrument-loop-*` directory. No user project or audio device
+  is opened and no production render tool is added.

@@ -1,6 +1,9 @@
 # soniCs Docs Index
 
 Start here for soniCs public documentation.
+
+- [Instrument controls and musical loop](instrument_controls.md): preset applicability, physical-time knob mapping, engine-derived plots and rendered MCP acceptance.
+- [Application control foundation](application_control.md): common instrument actions, reserved history, generation-bound targeting and the initial local MCP instrument surface.
 Runtime improvement links updated: 2026-09-21; other lanes retain their own acceptance dates.
 
 Repository and source-level identifiers still use `daw`.
@@ -85,3 +88,7 @@ Repository and source-level identifiers still use `daw`.
 [S4 closeout](improvement/S4-CLOSEOUT.md) records the final bounded software disposition; [S5 functional slices](improvement/S5-FUNCTIONAL-SLICES.md) defines the next proposed behaviors.
 
 - [Shared UI rollout](shared_ui_rollout.md): accepted dependency, transport contract, proof boundaries and remaining adoption sequence.
+
+Local MCP setup and tested tool scope: [tools/mcp/README.md](../tools/mcp/README.md).
+
+- [Rounded synthesizer family](rounded_synth.md): additive sine/triangle voice, three starting presets, compatibility and listening evidence.

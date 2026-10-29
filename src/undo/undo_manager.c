@@ -694,6 +694,9 @@ bool undo_apply(AppState* state, UndoCommand* command, bool apply_after) {
             return apply_eq_curve(state, &command->data.eq_curve_edit, apply_after);
         case UNDO_CMD_TRACK_SNAPSHOT:
             return apply_track_snapshot(state, &command->data.track_snapshot_edit, apply_after);
+        case UNDO_CMD_INSTRUMENT_SETTINGS:
+            return daw_instrument_restore(state, command->data.instrument_settings.target,
+                apply_after ? &command->data.instrument_settings.after : &command->data.instrument_settings.before);
         case UNDO_CMD_FX_EDIT:
             return apply_fx_edit(state, &command->data.fx_edit, apply_after);
         case UNDO_CMD_TRACK_EDIT:

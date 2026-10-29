@@ -3,6 +3,7 @@
 Purpose: Application bootstrap and SDL event loop integration.
 
 ## Files
+- `app_actions.c`: Validates generation-bound instrument targets, copies stored/effective settings, and applies batched track/region patches through reserved scalar undo history; continuous edits retain target and reservation ownership. See [application control](../../docs/application_control.md).
 - `bounce_region.c`
   - Allocates bounce filenames under the active library root and inserts successful bounces as normal audio clips on a newly appended `Bounce` track when track creation succeeds.
 - `main_bounce.c`
@@ -42,3 +43,13 @@ S4.6 moves actual timeline checkpoint I/O off the UI loop, joins the storage wor
 
 
 S4.7 `media_import.c` owns application-lifetime requests across project candidates. Library drops, interactive recording finish and bounce insertion publish asynchronously; saved WAVs survive failed/canceled insertion. Ctrl/Cmd+Escape cancels pending requests. Raw/headless recording without this owner and explicit offline APIs retain synchronous behavior. See [S4.7](../../docs/improvement/S4.7-MEDIA.md).
+
+
+`control_bridge.c` owns the opt-in same-user Unix endpoint and request mailbox;
+its transport thread never reads the engine. `control_dispatch.c` validates
+strict instrument requests, exact-state preconditions and retained request IDs
+on the application thread. `main.c` polls the bridge in the normal background
+slice and joins transport before teardown. The endpoint pointer survives project
+candidate replacement while targets remain engine-generation bound. See
+[the control contract](../../docs/application_control.md) and
+[MCP setup](../../tools/mcp/README.md).

@@ -6,6 +6,14 @@ test-stable:
 	@$(MAKE) $(STABLE_TEST_TARGETS)
 	@echo "daw stable test lane passed"
 
+.PHONY: test-application-instrument-action
+test-application-instrument-action: $(TEST_BUILD_ROOT)/application_instrument_action_test
+	$(TEST_BUILD_ROOT)/application_instrument_action_test
+
+$(TEST_BUILD_ROOT)/application_instrument_action_test: tests/application_instrument_action_test.c src/app/app_actions.c src/engine/engine_clips_midi.c src/undo/undo_manager_stack.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(filter-out $(APP_OBJ_DIR)/src/app/app_actions.o $(APP_OBJ_DIR)/src/engine/engine_clips_midi.o $(APP_OBJ_DIR)/src/undo/undo_manager_stack.o,$(ENGINE_TEST_SUPPORT_OBJS)),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
 .PHONY: test-audio-output-device
 test-audio-output-device: $(TEST_BUILD_ROOT)/audio_output_device_test
 	$(TEST_BUILD_ROOT)/audio_output_device_test
@@ -416,3 +424,26 @@ test-shared-control-chrome: $(TEST_BUILD_ROOT)/shared_control_chrome_test
 $(TEST_BUILD_ROOT)/shared_control_chrome_test: tests/shared_control_chrome_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
 	@mkdir -p "$(dir $@)"
 	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: build-mcp-control-fixture test-mcp-control
+build-mcp-control-fixture: $(TEST_BUILD_ROOT)/mcp_control_fixture
+
+$(TEST_BUILD_ROOT)/mcp_control_fixture: tests/mcp_control_fixture.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+MCP_PYTHON ?= build/mcp-venv/bin/python
+test-mcp-control: $(TEST_BUILD_ROOT)/mcp_control_fixture
+	$(MCP_PYTHON) tests/mcp_control_test.py --fixture $(TEST_BUILD_ROOT)/mcp_control_fixture
+
+.PHONY: test-instrument-controls
+test-instrument-controls: $(TEST_BUILD_ROOT)/instrument_controls_test
+	$(TEST_BUILD_ROOT)/instrument_controls_test
+
+$(TEST_BUILD_ROOT)/instrument_controls_test: tests/instrument_controls_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-mcp-instrument-loop
+test-mcp-instrument-loop: $(TEST_BUILD_ROOT)/mcp_control_fixture
+	$(MCP_PYTHON) tests/mcp_instrument_loop_test.py --fixture $(TEST_BUILD_ROOT)/mcp_control_fixture --output-root $(BUILD_DIR)/receipts
