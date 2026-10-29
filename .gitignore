@@ -42,3 +42,7 @@ tools/packaging/macos/local_app_icon/*
 
 # Local Python bytecode from the MCP adapter and integration tests
 __pycache__/
+
+# Private local music, engineering evidence, and review outputs
+/artifacts/
+/music_projects/
