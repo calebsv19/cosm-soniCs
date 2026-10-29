@@ -1,5 +1,6 @@
 #define _DARWIN_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "daw/fx_library.h"
 #include "daw/save_file.h"
@@ -25,7 +26,7 @@ static char* bytes(const char* path) {
 }
 // Exercises versioned storage, explicit revision updates, portable identity and tempo-aware application.
 int main(void) {
-    CHECK(!SDL_Init(SDL_INIT_EVENTS|SDL_INIT_TIMER),"SDL");char temporary[]="/tmp/daw-fx-library-XXXXXX";CHECK(mkdtemp(temporary)!=NULL,"private root");char root[1024];snprintf(root,sizeof(root),"%s/library",temporary);CHECK(!setenv("DAW_PRESET_LIBRARY",root,1),"private library");
+    CHECK(!SDL_Init(SDL_INIT_EVENTS|SDL_INIT_TIMER),"SDL");DAW_TEST_TEMP_PATH(temporary, "daw-fx-library-XXXXXX");CHECK(mkdtemp(temporary)!=NULL,"private root");char root[1024];snprintf(root,sizeof(root),"%s/library",temporary);CHECK(!setenv("DAW_PRESET_LIBRARY",root,1),"private library");
     AppState* state=calloc(1,sizeof(*state));EngineRuntimeConfig config;config_set_defaults(&config);state->engine=engine_create(&config);CHECK(state->engine!=NULL,"engine");undo_manager_init(&state->undo);state->tempo=tempo_state_default(config.sample_rate);
     DawFxPresetList* list=calloc(1,sizeof(*list));CHECK(list && daw_fx_library_list(state->engine,list)==DAW_PRESET_OK && list->count==0 && access(root,F_OK)!=0,"read does not create storage");
     uint64_t track=engine_get_tracks(state->engine)[0].runtime_id;DawFxSnapshot before,after;CHECK(daw_action_get_fx(state,engine_instance_id(state->engine),track,&before)==DAW_ACTION_UNCHANGED,"source chain");

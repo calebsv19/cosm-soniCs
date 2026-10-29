@@ -242,6 +242,10 @@ first-frame image artifact, and exits.
 
 ## Public Release Hygiene
 
+The maintained release workflow runs fixed gates from frozen inputs in an owned
+attempt, then authenticates the retained public package through the Registry
+owner. See [producer containment and native phases](tools/packaging/README.md).
+
 - This repo intentionally ships without bundled user audio content in `assets/audio`.
 - Runtime-generated caches and local session/project state are excluded from public commits.
 - Fallback serialization behavior is documented in `docs/SERIALIZATION_FALLBACK.md`.

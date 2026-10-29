@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include "test_temp_path.h"
 #include "audio/wav_writer.h"
 #include "effects/effects_manager.h"
 #include "effects/sample_ramp.h"
@@ -157,7 +158,7 @@ static void bypass_transition(void) {
 
 // Exercises deterministic worker-boundary adoption separately from the live-thread stress suite.
 static void mixer_transitions(void) {
-    char path[] = "/tmp/daw-transitions-XXXXXX";
+    DAW_TEST_TEMP_PATH(path, "daw-transitions-XXXXXX");
     int fd = mkstemp(path);
     assert(fd >= 0);
     close(fd);

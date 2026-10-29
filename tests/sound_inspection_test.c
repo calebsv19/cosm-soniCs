@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "daw/sound_inspection.h"
 #include "ui/sound_panel.h"
@@ -109,7 +110,7 @@ static void composition_ui(void) {
     r=layout.buttons[6];CHECK(daw_sound_panel_activate(state,r.x+1,r.y+1) && state->sound_ui.dry && fabs(state->sound_ui.current.rms-original)<1e-8,"dry comparison retains mixer");
     CHECK(state->undo.undo_count==history,"inspection read-only history");
     state->bounce_active=true;r=layout.buttons[8];CHECK(daw_sound_panel_activate(state,r.x+1,r.y+1) && state->sound_ui.captured_reference.audio.data==previous,"busy capture preserves reference");state->bounce_active=false;
-    char library[]="/tmp/daw-composition-ui-XXXXXX";CHECK(mkdtemp(library)!=NULL && !setenv("DAW_PRESET_LIBRARY",library,1),"private WAV library");
+    DAW_TEST_TEMP_PATH(library, "daw-composition-ui-XXXXXX");CHECK(mkdtemp(library)!=NULL && !setenv("DAW_PRESET_LIBRARY",library,1),"private WAV library");
     r=layout.buttons[9];CHECK(daw_sound_panel_activate(state,r.x+1,r.y+1) && state->sound_ui.published_path[0],"save captured current WAV");
     char expected[1024];snprintf(expected,sizeof(expected),"%s/expected.wav",library);const EngineBounceBuffer* audio=&state->sound_ui.captured.audio;
     CHECK(wav_write_pcm16_dithered_result(expected,audio->data,audio->frame_count,audio->channels,audio->sample_rate,UINT32_C(0x534f4e49))==DAW_SAVE_SYNCED,"expected original-level PCM");

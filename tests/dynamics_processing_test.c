@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include "test_temp_path.h"
 #include "audio/wav_writer.h"
 #include "effects/param_specs/dynamics_param_specs.h"
 #include "engine/engine_internal.h"
@@ -457,7 +458,7 @@ static void positive_history_transfer(void) {
 // Proves real mixer alignment, exact-range repeated bounce, diagnostics, and
 // live revision changes.
 static void engine_integration(void) {
-    char path[] = "/tmp/daw-dynamics-XXXXXX";
+    DAW_TEST_TEMP_PATH(path, "daw-dynamics-XXXXXX");
     int fd = mkstemp(path);
     assert(fd >= 0);
     close(fd);

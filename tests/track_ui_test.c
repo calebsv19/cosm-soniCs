@@ -1,4 +1,5 @@
 #define _XOPEN_SOURCE 700
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "engine/engine_internal.h"
 #include "engine/groups.h"
@@ -64,7 +65,7 @@ int main(int argc,char** argv) {
     int midi=-1;assert(engine_add_midi_clip_to_track(s->engine,0,0,48000,&midi));
     for(int i=0;i<6;++i){EngineMidiNote n={.note=60+i*2,.velocity=.7f,.start_frame=i*6000,.duration_frames=4800};assert(engine_clip_midi_add_note(s->engine,0,midi,n,NULL));}
     int other;assert(engine_add_midi_clip_to_track(s->engine,0,96000,48000,&other));EngineMidiNote n={.note=48,.velocity=.6f,.duration_frames=36000};assert(engine_clip_midi_add_note(s->engine,0,other,n,NULL));
-    char dir[]="/tmp/sonics-track-ui-fixture-XXXXXX";assert(mkdtemp(dir));char wav[1024];snprintf(wav,sizeof(wav),"%s/room.wav",dir);
+    DAW_TEST_TEMP_PATH(dir, "sonics-track-ui-fixture-XXXXXX");assert(mkdtemp(dir));char wav[1024];snprintf(wav,sizeof(wav),"%s/room.wav",dir);
     float* samples=calloc(48000*2,sizeof(float));assert(samples);for(int i=0;i<48000;++i)samples[i*2]=samples[i*2+1]=.15f*sinf((float)i*.031f);
     EngineBounceBuffer source={.data=samples,.frame_count=48000,.channels=2,.sample_rate=48000};assert(engine_bounce_write_wav(&source,wav,ENGINE_BOUNCE_WAV_PCM16));free(samples);
     assert(engine_add_clip_to_track(s->engine,1,wav,24000,NULL));

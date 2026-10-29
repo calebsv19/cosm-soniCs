@@ -1,4 +1,5 @@
 #define _XOPEN_SOURCE 700
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "engine/engine_internal.h"
 #include "engine/routing.h"
@@ -25,7 +26,7 @@ int main(void) {
     s->runtime_cfg.default_fade_in_ms = s->runtime_cfg.default_fade_out_ms = 0;
     s->engine = engine_create(&s->runtime_cfg);assert(s->engine);undo_manager_init(&s->undo);
     input_manager_init(&s->input_manager);ui_init_panes(s);ui_layout_panes(s, 1600, 1000);
-    char path[] = "/tmp/sonics-dynamics-feedback-XXXXXX";int fd=mkstemp(path);assert(fd>=0);close(fd);
+    DAW_TEST_TEMP_PATH(path, "sonics-dynamics-feedback-XXXXXX");int fd=mkstemp(path);assert(fd>=0);close(fd);
     float* pcm=malloc(64000*2*sizeof(float));assert(pcm);
     for (int n=0;n<64000;++n) {pcm[n*2]=1;pcm[n*2+1]=.01f;}
     EngineBounceBuffer input={pcm,64000,2,48000};assert(engine_bounce_write_wav(&input,path,ENGINE_BOUNCE_WAV_FLOAT32));

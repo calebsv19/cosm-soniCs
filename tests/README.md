@@ -177,3 +177,7 @@ calibration, window coverage and remaining loudness/true-peak limits.
 Immutable mix captures now include prepared note-ending controls/fences and
 threshold-qualified aggregate MIDI source tails. `get_mix_capture` independently
 pages eight note rows with `note_offset`; see `docs/mix_diagnostics.md` section 7.
+
+## Contained release fixtures
+
+C fixture paths use `test_temp_path.h` to honor the caller's `TMPDIR`; ordinary local runs retain `/tmp` as their fallback. Release preparation supplies an attempt-owned temporary root. Assertions, signal cases and synthetic audio inputs are unchanged. Relative `tmp/` fixtures run in the producer's owned working copy, never the frozen input tree.

@@ -4,7 +4,8 @@ run: $(APP_BIN)
 run-ide-theme: $(APP_BIN)
 	DAW_USE_SHARED_THEME_FONT=1 DAW_USE_SHARED_THEME=1 DAW_USE_SHARED_FONT=1 DAW_THEME_PRESET=ide_gray DAW_FONT_PRESET=ide $(APP_BIN)
 
-run-headless-smoke: all test-stable
+run-headless-smoke: all
+	@$(MAKE) -o FORCE test-stable
 	@echo "daw headless smoke passed (non-interactive)"
 	@echo "demo-proof: build=all tests=test-stable ui=not-launched package=separate manual=separate"
 	@echo "demo-proof: package lane -> make -C daw package-desktop-self-test"

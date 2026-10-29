@@ -1,3 +1,4 @@
+#include "test_temp_path.h"
 #include "test_midi_editor_harness.h"
 #include "session_automation.h"
 #include "engine/automation.h"
@@ -62,7 +63,7 @@ static void persistence(void) {
           restored->automation_lanes[0].points[0].curve == ENGINE_AUTOMATION_CURVE_SMOOTH, "history dropped metadata");
     SessionDocument doc = {0}, read = {0};
     CHECK(session_document_capture(&state, &doc), "capture");
-    char path[128]; snprintf(path,sizeof(path),"/tmp/sonics-automation-model-%ld.json",(long)getpid());
+    char path[4096]; snprintf(path,sizeof(path),"%s/sonics-automation-model-%ld.json",daw_test_temp_root(),(long)getpid());
     CHECK(session_document_write_file(&doc, path), "write");
     CHECK(session_document_read_file(path, &read), "read");
     SessionAutomationLane* saved = &read.tracks[0].clips[clip].automation_lanes[0];

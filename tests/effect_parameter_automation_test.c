@@ -1,4 +1,5 @@
 #define _XOPEN_SOURCE 700
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "engine/engine_internal.h"
 #include "daw/fx_actions.h"
@@ -144,7 +145,7 @@ int main(void) {
     tempo_map_init(&s->tempo_map, 48000);
     time_signature_map_init(&s->time_signature_map);
     input_manager_init(&s->input_manager);
-    char dir[] = "/tmp/sonics-fx-auto-XXXXXX";
+    DAW_TEST_TEMP_PATH(dir, "sonics-fx-auto-XXXXXX");
     assert(mkdtemp(dir));
     char audio[512], project[512];
     snprintf(audio, sizeof(audio), "%s/input.wav", dir);

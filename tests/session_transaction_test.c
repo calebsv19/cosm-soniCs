@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "session.h"
 #include "engine/engine_internal.h"
@@ -131,7 +132,7 @@ static int wrong_thread(void* context) {
 
 // Verifies failure rollback, immutable input, deep ownership, successful retry, and live capture.
 int main(void) {
-    char directory[] = "/tmp/daw-session-transaction-XXXXXX";
+    DAW_TEST_TEMP_PATH(directory, "daw-session-transaction-XXXXXX");
     CHECK(mkdtemp(directory) != NULL, "temporary directory");
     char audio_path[1024];
     snprintf(audio_path, sizeof(audio_path), "%s/tone.wav", directory);

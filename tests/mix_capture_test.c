@@ -1,4 +1,5 @@
 #define _XOPEN_SOURCE 700
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "daw/mix_capture.h"
 #include "daw/routing_actions.h"
@@ -123,7 +124,7 @@ static void whole_song_loudness(void) {
 }
 // Qualifies known amplitudes, nested buses/returns, latency, mute/solo, state guards and real samples.
 int main(void) {
-    SDL_setenv("SDL_AUDIODRIVER","dummy",1);CHECK(!SDL_Init(SDL_INIT_EVENTS|SDL_INIT_TIMER|SDL_INIT_AUDIO),"SDL");whole_song_loudness();AppState* s=state();char dir[]="/tmp/sonics-mix-fixture-XXXXXX";CHECK(mkdtemp(dir),"private fixture");char path[1024];snprintf(path,sizeof(path),"%s/sine.wav",dir);
+    SDL_setenv("SDL_AUDIODRIVER","dummy",1);CHECK(!SDL_Init(SDL_INIT_EVENTS|SDL_INIT_TIMER|SDL_INIT_AUDIO),"SDL");whole_song_loudness();AppState* s=state();DAW_TEST_TEMP_PATH(dir, "sonics-mix-fixture-XXXXXX");CHECK(mkdtemp(dir),"private fixture");char path[1024];snprintf(path,sizeof(path),"%s/sine.wav",dir);
     float* samples=calloc(48000*2,sizeof(float));for(int f=0;f<48000;++f){samples[f*2]=.5f*sinf(2*M_PI*1000*f/48000);samples[f*2+1]=.25f*sinf(2*M_PI*1000*f/48000);}EngineBounceBuffer b={samples,48000,2,48000};CHECK(engine_bounce_write_wav(&b,path,ENGINE_BOUNCE_WAV_FLOAT32),"known sine WAV");free(samples);
     CHECK(engine_add_clip_to_track(s->engine,0,path,0,NULL),"source");DawMixCapture* c=capture(s,0,48000);level(c,0,ENGINE_MIX_INPUT,.5,.25);level(c,1,ENGINE_MIX_SANITIZED,.5,.25);master_parity(s,c);
     CHECK(c->loudness[0].available && c->loudness[0].frames==48000 && fabs(c->loudness[0].integrated-c->loudness[1].integrated)<1e-9 && fabs(c->loudness[0].true_peak[0]-.5)<.01,"production child/master LUFS and true peak parity");

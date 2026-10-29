@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "audio/wav_writer.h"
 #include "engine/engine_internal.h"
@@ -39,7 +40,7 @@ static void check_audio(const float* audio, int length, int fade, int curve) {
 
 // Exercises publication, sampler clones, block partitioning, export, trim, and serialized curve identity.
 int main(void) {
-    char path[] = "/tmp/daw-fade-audio-XXXXXX";
+    DAW_TEST_TEMP_PATH(path, "daw-fade-audio-XXXXXX");
     int fd = mkstemp(path);
     CHECK(fd >= 0, "fixture");
     close(fd);

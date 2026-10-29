@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "ui/fx_library_panel.h"
 #include "ui/effects_panel.h"
@@ -19,7 +20,7 @@ static void click(AppState* state,SDL_Rect rect) {
 }
 // Exercises shared text input, exact chain guards, revision updates and cancelled pointer activation.
 int main(void) {
-    CHECK(!SDL_Init(SDL_INIT_EVENTS|SDL_INIT_TIMER) && !TTF_Init(),"runtime");char root[]="/tmp/daw-fx-library-ui-XXXXXX";CHECK(mkdtemp(root)!=NULL && !setenv("DAW_PRESET_LIBRARY",root,1),"private library");
+    CHECK(!SDL_Init(SDL_INIT_EVENTS|SDL_INIT_TIMER) && !TTF_Init(),"runtime");DAW_TEST_TEMP_PATH(root, "daw-fx-library-ui-XXXXXX");CHECK(mkdtemp(root)!=NULL && !setenv("DAW_PRESET_LIBRARY",root,1),"private library");
     AppState* state=calloc(1,sizeof(*state));EngineRuntimeConfig config;config_set_defaults(&config);state->engine=engine_create(&config);CHECK(state->engine!=NULL,"engine");undo_manager_init(&state->undo);state->tempo=tempo_state_default(config.sample_rate);state->selected_track_index=state->active_track_index=0;state->selected_clip_index=-1;
     effects_panel_input_init(state);ui_init_panes(state);ui_layout_panes(state,1440,900);DawFxSnapshot before,after;uint64_t track=engine_get_tracks(state->engine)[0].runtime_id;
     CHECK(daw_action_get_fx(state,engine_instance_id(state->engine),track,&before)==DAW_ACTION_UNCHANGED,"chain");EngineFxChainRequest edit={.op=ENGINE_FX_CHAIN_ADD,.type=1};CHECK(daw_action_edit_fx(state,&before,&edit,&after)==DAW_ACTION_APPLIED,"gain");before=after;

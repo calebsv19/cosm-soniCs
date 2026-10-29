@@ -1,3 +1,4 @@
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "app/media_import.h"
 #include "engine/engine_internal.h"
@@ -31,7 +32,7 @@ static void ready(AppState* state) {
 // Exercises real asynchronous insertion, project transactions, destination identity and saved recording outcomes.
 int main(void) {
     SDL_setenv("SDL_AUDIODRIVER","dummy",1); assert(SDL_Init(SDL_INIT_AUDIO|SDL_INIT_TIMER)==0);
-    char directory[]="/tmp/daw_import_XXXXXX";assert(mkdtemp(directory));char path[512];snprintf(path,sizeof(path),"%s/source.wav",directory);fixture(path,44100,16384);
+    DAW_TEST_TEMP_PATH(directory, "daw_import_XXXXXX");assert(mkdtemp(directory));char path[512];snprintf(path,sizeof(path),"%s/source.wav",directory);fixture(path,44100,16384);
     AppState* state=calloc(1,sizeof(*state));assert(state);config_set_defaults(&state->runtime_cfg);
     state->runtime_cfg.sample_rate=48000;state->runtime_cfg.block_size=128;
     state->engine=engine_create(&state->runtime_cfg);assert(state->engine);

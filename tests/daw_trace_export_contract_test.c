@@ -1,3 +1,4 @@
+#include "test_temp_path.h"
 #include "export/daw_trace_export.h"
 
 #include "core_trace.h"
@@ -49,7 +50,7 @@ static bool marker_present(const CoreTraceSession* session, const char* lane, co
 }
 
 int main(void) {
-    const char* path = "/tmp/daw_trace_export_contract_test.pack";
+    DAW_TEST_TEMP_PATH(path, "daw_trace_export_contract_test.pack");
     DawTraceDiagnostics diagnostics = {0};
     CoreTraceSession loaded = {0};
     CoreResult r;

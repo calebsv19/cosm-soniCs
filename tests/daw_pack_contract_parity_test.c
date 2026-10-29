@@ -1,3 +1,4 @@
+#include "test_temp_path.h"
 #include "export/daw_pack_export.h"
 #include "app_state.h"
 #include "config.h"
@@ -46,7 +47,7 @@ static void expect_json_contains(const char* json, const char* needle) {
 }
 
 int main(void) {
-    const char* pack_path = "/tmp/daw_pack_contract_parity_test.pack";
+    DAW_TEST_TEMP_PATH(pack_path, "daw_pack_contract_parity_test.pack");
 
     AppState state;
     memset(&state, 0, sizeof(state));
@@ -133,7 +134,7 @@ int main(void) {
     daw_pack_envelope_append(&envelope, samples, 0, 1, 2);
     daw_pack_envelope_append(&envelope, samples + 2, 1, 3, 2);
     expect(!daw_pack_export_envelope("/dev/null/missing.pack", &state, &envelope, 0, 4, 4), "pack open failure accepted");
-    const char* streamed_path = "/tmp/daw_pack_stream_contract.pack";
+    DAW_TEST_TEMP_PATH(streamed_path, "daw_pack_stream_contract.pack");
     expect(daw_pack_export_envelope(streamed_path, &state, &envelope, 0, 4, 4), "stream pack export");
     FILE* expected = fopen(pack_path, "rb");
     FILE* actual = fopen(streamed_path, "rb");

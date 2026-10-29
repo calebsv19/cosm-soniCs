@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include "test_temp_path.h"
 #include "engine/engine_internal.h"
 #include "audio/wav_writer.h"
 #include "core_time.h"
@@ -161,7 +162,7 @@ static void consume(Engine* engine, float* output, int frames) {
 
 // Proves actual worker loop samples and transport barriers with a paused dummy endpoint.
 static void test_worker_transitions(int queue_blocks) {
-    char path[] = "/tmp/daw-clock-audio-XXXXXX";
+    DAW_TEST_TEMP_PATH(path, "daw-clock-audio-XXXXXX");
     int fd = mkstemp(path);
     CHECK(fd >= 0, "media fixture");
     close(fd);

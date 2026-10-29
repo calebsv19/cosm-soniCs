@@ -1,4 +1,5 @@
 #define _XOPEN_SOURCE 700
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "engine/engine_internal.h"
 #include "engine/groups.h"
@@ -106,7 +107,7 @@ int main(int argc,char** argv) {assert(argc==1 || argc==2);bool native=argc==2;
     s->timeline_vertical_scale=.5f;assert(timeline_compute_geometry(s,&s->panes[1],&g) && g.track_height==36);
     TimelineTrackHeaderLayout h=header(s,1);assert(h.gain_rect.x+h.gain_rect.w<=h.pan_rect.x && h.pan_rect.x+h.pan_rect.w<=h.header_rect.x+h.header_rect.w);
     assert(h.pan_rect.y+h.pan_rect.h<=h.header_rect.y+h.header_rect.h);if(native)frame(&renderer,s,argv[1],"compact-levels");
-    engine_transport_stop(s->engine);engine_stop(s->engine);char dir[]="/tmp/sonics-header-mixer-test-XXXXXX";assert(mkdtemp(dir));char path[1024];snprintf(path,sizeof(path),"%s/project.json",dir);
+    engine_transport_stop(s->engine);engine_stop(s->engine);DAW_TEST_TEMP_PATH(dir, "sonics-header-mixer-test-XXXXXX");assert(mkdtemp(dir));char path[1024];snprintf(path,sizeof(path),"%s/project.json",dir);
     assert(session_save_to_file(s,path) && session_load_from_file(s,path));assert(fabsf(engine_get_tracks(s->engine)[0].gain-half)<1e-6f && fabsf(engine_get_tracks(s->engine)[1].pan-.5f)<1e-6f);
     EngineBounceBuffer reopened=bounce(s);verify_signal(&base,&reopened,half*half*.5f,half*half);engine_bounce_buffer_free(&reopened);engine_bounce_buffer_free(&base);
     // Releasing an already-held audition key must reach its owner while a header drag is active.

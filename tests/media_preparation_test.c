@@ -1,3 +1,4 @@
+#include "test_temp_path.h"
 #include <assert.h>
 #include <limits.h>
 #include <stdio.h>
@@ -25,7 +26,7 @@ static void fixture(const char* path) {
 }
 // Proves metadata validation, parity, prepared ownership, deduplication and retained-byte retirement.
 int main(void) {
-    char path[] = "/tmp/daw_prepare_XXXXXX"; int fd=mkstemp(path); assert(fd>=0); close(fd); fixture(path);
+    DAW_TEST_TEMP_PATH(path, "daw_prepare_XXXXXX"); int fd=mkstemp(path); assert(fd>=0); close(fd); fixture(path);
     AudioMediaInfo info={0}; assert(audio_media_probe(path,&info));
     assert(info.frame_count==2 && info.channels==1 && info.sample_rate==48000);
     AudioMediaClip prepared={0}; assert(audio_media_clip_load_wav(path,48000,&prepared));

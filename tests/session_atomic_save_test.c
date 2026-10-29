@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include "test_temp_path.h"
 #include "session.h"
 #include "app_state.h"
 #include "session/project_manager.h"
@@ -153,7 +154,7 @@ static void test_project_ordering(void) {
 
 // Exercises actual session serialization and recovery through syscall failures and child interruption.
 int main(void) {
-    char directory[] = "/tmp/daw-atomic-save-XXXXXX";
+    DAW_TEST_TEMP_PATH(directory, "daw-atomic-save-XXXXXX");
     CHECK(mkdtemp(directory) != NULL, "create test directory");
     char previous_directory[4096];
     CHECK(getcwd(previous_directory, sizeof(previous_directory)) && chdir(directory) == 0, "isolate project paths");

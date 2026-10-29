@@ -1,3 +1,4 @@
+#include "test_temp_path.h"
 #include "app/main_loop_policy.h"
 #include "config.h"
 
@@ -52,7 +53,7 @@ static void test_config_diagnostics(void) {
     CapturedLogs logs = {0};
     SDL_LogOutputFunction old_fn = NULL;
     void* old_userdata = NULL;
-    char template_path[] = "/tmp/daw_config_diag_XXXXXX";
+    DAW_TEST_TEMP_PATH(template_path, "daw_config_diag_XXXXXX");
     int fd = mkstemp(template_path);
     EngineRuntimeConfig cfg;
 

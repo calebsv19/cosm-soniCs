@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include "test_temp_path.h"
 #include "audio/wav_writer.h"
 #include "engine/engine_internal.h"
 #include "engine/instrument.h"
@@ -229,7 +230,7 @@ static void live_isolation(const char* path) {
     assert(atomic_load(&engine->clock_epoch) == epoch &&
            atomic_load(&engine->diag_callback_count) > callbacks);
     assert(!memcmp(expected.data, actual.data, 8192 * 2 * sizeof(float)));
-    char streamed_path[] = "/tmp/daw-live-stream-XXXXXX";
+    DAW_TEST_TEMP_PATH(streamed_path, "daw-live-stream-XXXXXX");
     int fd = mkstemp(streamed_path);
     assert(fd >= 0); close(fd);
     state = (Progress){.engine = engine, .wait = true};
@@ -302,7 +303,7 @@ static void files_and_gain(const char* path) {
     assert(raw.data[0] == 2);
     assert(engine_bounce_range_to_buffer(engine, 0, 128, NULL, NULL, &normalized));
     assert(fabsf(normalized.data[0] - 1.0f / 3) < 1e-6f); // Peak .75 * 8 = 6.
-    char dest[] = "/tmp/daw-export-output-XXXXXX";
+    DAW_TEST_TEMP_PATH(dest, "daw-export-output-XXXXXX");
     int fd = mkstemp(dest);
     assert(fd >= 0);
     close(fd);
@@ -385,7 +386,7 @@ static void streaming(const char* source) {
     add_delay(engine);
     FxInstId limiter = engine_fx_master_add(engine, 21);
     assert(limiter && engine_fx_master_set_param(engine, limiter, 1, 2));
-    char path[] = "/tmp/daw-stream-parity-XXXXXX";
+    DAW_TEST_TEMP_PATH(path, "daw-stream-parity-XXXXXX");
     int fd = mkstemp(path);
     assert(fd >= 0); close(fd);
     EngineBounceOptions options = {.preroll_frames = 32, .tail_frames = 97, .normalize_if_clipping = true};
@@ -447,7 +448,7 @@ static void streaming(const char* source) {
 
 // Runs export contracts against production sources, DSP, ownership, live playback, and WAV publication.
 int main(void) {
-    char path[] = "/tmp/daw-export-input-XXXXXX";
+    DAW_TEST_TEMP_PATH(path, "daw-export-input-XXXXXX");
     int fd = mkstemp(path);
     assert(fd >= 0);
     close(fd);

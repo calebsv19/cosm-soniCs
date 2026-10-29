@@ -1,4 +1,5 @@
 #define _XOPEN_SOURCE 700
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "engine/engine_internal.h"
 #include "daw/routing_actions.h"
@@ -85,7 +86,7 @@ int main(void) {
     ui_layout_panes(s, 1600, 1000);
     s->timeline_visible_seconds = 10;
     s->timeline_vertical_scale = 1;
-    char directory[] = "/tmp/sonics-mixer-auto-XXXXXX";
+    DAW_TEST_TEMP_PATH(directory, "sonics-mixer-auto-XXXXXX");
     assert(mkdtemp(directory));
     char audio[512], project[512];
     snprintf(audio, sizeof(audio), "%s/input.wav", directory);

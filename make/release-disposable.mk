@@ -42,6 +42,6 @@ release-artifact-disposable:
 .PHONY: release-package-self-test
 release-package-self-test: package-desktop-smoke
 	@set -eu; \
-	runtime="$$(mktemp -d "$(CURDIR)/build/sonics-package-self-test.XXXXXX")"; \
+	runtime="$$(mktemp -d "$(BUILD_DIR)/sonics-package-self-test.XXXXXX")"; \
 	trap 'rm -rf "$$runtime"' EXIT HUP INT TERM; \
 	DAW_RUNTIME_DIR="$$runtime" "$(PACKAGE_MACOS_DIR)/daw-launcher" --self-test

@@ -1,3 +1,4 @@
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "ui/text_edit.h"
 #include "ui/transport_controls.h"
@@ -128,7 +129,7 @@ int main(void) {
     key(state,SDLK_RETURN,0); assert(!strcmp(engine_get_tracks(state->engine)[0].name,"Track é"));
     track_name_editor_start(state,0); key(state,SDLK_a,KMOD_CTRL); text(state,"Canceled",false);
     key(state,SDLK_ESCAPE,0); assert(!strcmp(engine_get_tracks(state->engine)[0].name,"Track é"));
-    char directory[]="/tmp/sonics-shared-text-XXXXXX"; assert(mkdtemp(directory));
+    DAW_TEST_TEMP_PATH(directory, "sonics-shared-text-XXXXXX"); assert(mkdtemp(directory));
     char old_path[512],new_path[512]; snprintf(old_path,sizeof(old_path),"%s/old.wav",directory);
     snprintf(new_path,sizeof(new_path),"%s/renamed-é.wav",directory);
     float silence[32]={0}; assert(wav_write_pcm16(old_path,silence,32,1,48000));

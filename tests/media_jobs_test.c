@@ -1,3 +1,4 @@
+#include "test_temp_path.h"
 #include "audio/media_jobs.h"
 #include "audio/wav_writer.h"
 #include "core_time.h"
@@ -24,7 +25,7 @@ static void fixture(const char* path, unsigned frames) {
 }
 // Proves fixed admission, ready ownership, source changes, cancellation phases and shutdown cleanup.
 int main(int argc, char** argv) {
-    char path[]="/tmp/daw_jobs_XXXXXX"; int fd=mkstemp(path); assert(fd>=0); close(fd); fixture(path,44100);
+    DAW_TEST_TEMP_PATH(path, "daw_jobs_XXXXXX"); int fd=mkstemp(path); assert(fd>=0); close(fd); fixture(path,44100);
     AudioMediaJobs* jobs=audio_media_jobs_create(1024*1024); assert(jobs);
     AudioMediaRequest request={.generation=1,.sample_rate=48000,.kind=AUDIO_MEDIA_JOB_LIBRARY}; strcpy(request.path,path);
     for (int i=0;i<4;++i) assert(audio_media_jobs_submit(jobs,&request));

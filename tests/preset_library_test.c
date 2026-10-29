@@ -1,6 +1,7 @@
 #define _DARWIN_C_SOURCE
 #define _DEFAULT_SOURCE
 #define _POSIX_C_SOURCE 200809L
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "cJSON.h"
 #include "daw/preset_actions.h"
@@ -68,7 +69,7 @@ static void ui_workflow(AppState* state) {
 // Exercises portable storage, optimistic updates, project isolation, finite audition, recall and UI ownership.
 int main(void) {
     CHECK(!SDL_Init(SDL_INIT_EVENTS) && !TTF_Init(),"SDL events and font library");
-    char directory[]="/tmp/daw-preset-library-XXXXXX"; CHECK(mkdtemp(directory)!=NULL,"private fixture");
+    DAW_TEST_TEMP_PATH(directory, "daw-preset-library-XXXXXX"); CHECK(mkdtemp(directory)!=NULL,"private fixture");
     char root[1024]; snprintf(root,sizeof(root),"%s/library",directory); CHECK(!setenv("DAW_PRESET_LIBRARY",root,1),"library override");
     DawPresetList list; CHECK(daw_preset_library_list(&list)==DAW_PRESET_OK && list.count==0 && access(root,F_OK),"read must not create library");
     EngineInstrumentPresetId base=ENGINE_INSTRUMENT_PRESET_FILTERED_PAD;

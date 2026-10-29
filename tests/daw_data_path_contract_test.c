@@ -1,3 +1,4 @@
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "daw/data_paths.h"
 #include "session/project_manager.h"
@@ -93,7 +94,7 @@ static bool read_file_contains(const char* path, const char* needle) {
 }
 
 static void test_roundtrip_and_recovery(void) {
-    char template_path[] = "/tmp/daw_data_path_contract_XXXXXX";
+    DAW_TEST_TEMP_PATH(template_path, "daw_data_path_contract_XXXXXX");
     char* root = mkdtemp(template_path);
     char input_root[SESSION_PATH_MAX];
     char output_root[SESSION_PATH_MAX];
@@ -241,7 +242,7 @@ static void test_output_root_last_project_resolution(void) {
 }
 
 static void test_write_root_guardrails(void) {
-    char template_path[] = "/tmp/daw_write_root_guard_XXXXXX";
+    DAW_TEST_TEMP_PATH(template_path, "daw_write_root_guard_XXXXXX");
     char* root = mkdtemp(template_path);
     char input_root[SESSION_PATH_MAX];
     char output_root[SESSION_PATH_MAX];

@@ -1,3 +1,4 @@
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "app/audio_recording.h"
 #include "input/input_manager.h"
@@ -131,7 +132,7 @@ int main(void) {
     key_press(state, SDLK_ESCAPE, KMOD_NONE);
     assert(!state->project_load.active);
     char cwd[4096]; assert(getcwd(cwd, sizeof(cwd)));
-    char root[] = "/tmp/daw-s5-modal-XXXXXX"; assert(mkdtemp(root)); assert(chdir(root) == 0);
+    DAW_TEST_TEMP_PATH(root, "daw-s5-modal-XXXXXX"); assert(mkdtemp(root)); assert(chdir(root) == 0);
     assert(mkdir("config", 0700) == 0);
     assert(mkdir("config/projects", 0700) == 0);
     FILE* file = fopen("config/projects/fixture.json", "w"); assert(file); fputs("{}", file); fclose(file);

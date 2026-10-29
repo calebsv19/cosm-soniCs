@@ -1,4 +1,7 @@
 include make/config.mk
+ifneq ($(strip $(RELEASE_PREPARATION_ROOT)),)
+include make/release-contained.mk
+else
 include make/target.mk
 include make/shared.mk
 include make/paths.mk
@@ -23,3 +26,4 @@ include make/rules-loop.mk
 include make/rules-vulkan-runtime.mk
 
 -include $(ALL_DEPS)
+endif

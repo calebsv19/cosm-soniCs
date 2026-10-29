@@ -1,4 +1,5 @@
 #define _XOPEN_SOURCE 700
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "engine/engine_internal.h"
 #include "engine/routing.h"
@@ -151,7 +152,7 @@ int main(void) {
     ui_init_panes(s);
     s->layout_runtime.mixer_ratio = .6;
     ui_layout_panes(s, 1600, 1000);
-    char root[] = "/tmp/sonics-live-fixture-XXXXXX";
+    DAW_TEST_TEMP_PATH(root, "sonics-live-fixture-XXXXXX");
     assert(mkdtemp(root));
     char path[512];
     snprintf(path, 512, "%s/source.wav", root);

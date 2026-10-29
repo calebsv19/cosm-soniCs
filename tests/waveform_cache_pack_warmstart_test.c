@@ -1,3 +1,4 @@
+#include "test_temp_path.h"
 #include "ui/timeline_waveform.h"
 #include "core_pack.h"
 
@@ -26,8 +27,8 @@ static void expect(int cond, const char* msg) {
 }
 
 int main(void) {
-    const char* media_path = "/tmp/waveform_cache_pack_warmstart.wav";
-    const char* pack_path = "/tmp/waveform_cache_pack_warmstart.pack";
+    DAW_TEST_TEMP_PATH(media_path, "waveform_cache_pack_warmstart.wav");
+    DAW_TEST_TEMP_PATH(pack_path, "waveform_cache_pack_warmstart.pack");
 
     DawPackHeaderCanonical h = {0};
     h.version = 1;

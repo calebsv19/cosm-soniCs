@@ -1,4 +1,5 @@
 #define _XOPEN_SOURCE 700
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "engine/engine_internal.h"
 #include "engine/export_stream.h"
@@ -67,7 +68,7 @@ int main(void) {
     assert(s->engine);
     undo_manager_init(&s->undo);
     daw_data_paths_set_defaults(&s->data_paths);
-    char root[] = "/tmp/sonics-export-fixture-XXXXXX";
+    DAW_TEST_TEMP_PATH(root, "sonics-export-fixture-XXXXXX");
     assert(mkdtemp(root));
     strcpy(s->data_paths.output_root, root);
     char input[512];

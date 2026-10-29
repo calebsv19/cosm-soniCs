@@ -1,3 +1,4 @@
+#include "test_temp_path.h"
 #include "daw/automation_actions.h"
 #include "ui/automation_menu.h"
 #define _POSIX_C_SOURCE 200809L
@@ -106,7 +107,7 @@ int main(int argc,char** argv) {
     state->active_track_index=0; state->selected_track_index=-1; state->selected_clip_index=-1;
     ui_init_panes(state); state->layout_runtime.mixer_ratio=0.55f; ui_layout_panes(state,1600,1000); effects_panel_input_init(state);
     assert(undo_manager_add_effect(state,-1,1)); effects_panel_sync_from_engine(state);
-    char library[]="/tmp/daw-preset-native-XXXXXX";assert(mkdtemp(library));assert(!setenv("DAW_PRESET_LIBRARY",library,1));
+    DAW_TEST_TEMP_PATH(library, "daw-preset-native-XXXXXX");assert(mkdtemp(library));assert(!setenv("DAW_PRESET_LIBRARY",library,1));
     activate_control(state,14,5);assert(state->fx_library_ui.open && !state->fx_library_ui.captured.track_id);
     capture(&renderer,state,argv[1],"fx-chain-browser-empty");containment(&renderer,state,argv[1]);
     DawFxLibraryLayout fx_library;daw_fx_library_panel_layout(state,&fx_library);

@@ -13,8 +13,8 @@ GREP_BIN="/usr/bin/grep"
 CP_BIN="/bin/cp"
 CHMOD_BIN="/bin/chmod"
 BASENAME_BIN="/usr/bin/basename"
-OTOOL_BIN="/usr/bin/otool"
-INSTALL_NAME_TOOL_BIN="/usr/bin/install_name_tool"
+OTOOL_BIN="${OTOOL_BIN:-/usr/bin/otool}"
+INSTALL_NAME_TOOL_BIN="${INSTALL_NAME_TOOL_BIN:-/usr/bin/install_name_tool}"
 MKDIR_BIN="/bin/mkdir"
 SEARCH_ROOTS_LIST="${PACKAGE_DEP_SEARCH_ROOTS:-/opt/homebrew:/usr/local}"
 
@@ -76,7 +76,8 @@ while IFS= read -r current_file; do
     fi
     echo "$current_file" >>"$SEEN_FILE"
 
-    deps="$("$OTOOL_BIN" -L "$current_file" | "$AWK_BIN" 'NR>1 {print $1}' | "$GREP_BIN" -E '^/opt/homebrew|^/usr/local|^@rpath/' || true)"
+    "$OTOOL_BIN" -L "$current_file" > "$WORK_TMP_DIR/dependencies.txt"
+    deps="$("$AWK_BIN" 'NR>1 {print $1}' "$WORK_TMP_DIR/dependencies.txt" | "$GREP_BIN" -E '^/opt/homebrew|^/usr/local|^@rpath/' || true)"
     if [ -z "$deps" ]; then
         continue
     fi
@@ -103,7 +104,7 @@ while IFS= read -r current_file; do
         if [ ! -f "$dep_dst" ]; then
             "$CP_BIN" -fL "$dep_src" "$dep_dst"
             "$CHMOD_BIN" u+w "$dep_dst"
-            "$INSTALL_NAME_TOOL_BIN" -id "@loader_path/$dep_base" "$dep_dst" || true
+            "$INSTALL_NAME_TOOL_BIN" -id "@loader_path/$dep_base" "$dep_dst"
             echo "$dep_dst" >>"$QUEUE_FILE"
         fi
 
@@ -119,7 +120,7 @@ if [ -n "$MOLTENVK_SRC" ]; then
         "$CP_BIN" -fL "$MOLTENVK_SRC" "$MOLTENVK_DST"
         "$CHMOD_BIN" u+w "$MOLTENVK_DST"
     fi
-    "$INSTALL_NAME_TOOL_BIN" -id "@loader_path/libMoltenVK.dylib" "$MOLTENVK_DST" || true
+    "$INSTALL_NAME_TOOL_BIN" -id "@loader_path/libMoltenVK.dylib" "$MOLTENVK_DST"
 fi
 
 VULKAN_SRC="$(resolve_search_root_dep libvulkan.1.dylib || true)"
@@ -129,7 +130,7 @@ if [ -n "$VULKAN_SRC" ]; then
         "$CP_BIN" -fL "$VULKAN_SRC" "$VULKAN_DST"
         "$CHMOD_BIN" u+w "$VULKAN_DST"
     fi
-    "$INSTALL_NAME_TOOL_BIN" -id "@loader_path/libvulkan.1.dylib" "$VULKAN_DST" || true
+    "$INSTALL_NAME_TOOL_BIN" -id "@loader_path/libvulkan.1.dylib" "$VULKAN_DST"
 fi
 
 exit 0

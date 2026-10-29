@@ -1,3 +1,4 @@
+#include "test_temp_path.h"
 #include "input/effects_panel_input.h"
 #include "ui/layout.h"
 #include "ui/effects_panel_meter_detail.h"
@@ -175,7 +176,7 @@ static void test_overlap_transaction(void) {
     Engine* engine = engine_create(&config);
     float samples[1024];
     for (int i = 0; i < 1024; ++i) samples[i] = 0.25f;
-    char path[] = "/tmp/daw-overlap-transaction-XXXXXX";
+    DAW_TEST_TEMP_PATH(path, "daw-overlap-transaction-XXXXXX");
     int fd = mkstemp(path);
     CHECK(fd >= 0, "overlap fixture path");
     close(fd);
@@ -303,7 +304,7 @@ static void test_complete_clip_transform(void) {
     CHECK(engine_clip_midi_add_note(engine, 0, 0, note, NULL), "complete transform note");
     float samples[128];
     for (int i = 0; i < 128; ++i) samples[i] = 0.25f;
-    char path[] = "/tmp/daw-complete-transform-XXXXXX";
+    DAW_TEST_TEMP_PATH(path, "daw-complete-transform-XXXXXX");
     int fd = mkstemp(path);
     CHECK(fd >= 0, "complete transform fixture path");
     close(fd);
@@ -516,7 +517,7 @@ static void test_automation_transactions(void) {
     CHECK(engine_clip_midi_add_note(engine, 0, 0, note, NULL), "automation MIDI note");
     float samples[128];
     for (int i = 0; i < 128; ++i) samples[i] = 0.25f;
-    char path[] = "/tmp/daw-automation-transaction-XXXXXX";
+    DAW_TEST_TEMP_PATH(path, "daw-automation-transaction-XXXXXX");
     int fd = mkstemp(path);
     CHECK(fd >= 0, "automation fixture path");
     close(fd);
@@ -641,7 +642,7 @@ static void test_delete_transactions(void) {
     CHECK(engine_add_midi_clip_to_track(engine, 1, 0, 4096, NULL), "surviving MIDI clip");
     float samples[128];
     for (int i = 0; i < 128; ++i) samples[i] = 0.25f;
-    char path[] = "/tmp/daw-delete-transaction-XXXXXX";
+    DAW_TEST_TEMP_PATH(path, "daw-delete-transaction-XXXXXX");
     int fd = mkstemp(path);
     CHECK(fd >= 0, "delete media path");
     close(fd);
@@ -965,7 +966,7 @@ static void test_midi_content_history(void) {
 static void test_content_drop_transaction(bool growth) {
     EngineRuntimeConfig cfg; config_set_defaults(&cfg); Engine* engine = engine_create(&cfg);
     float samples[1024]; for (int i = 0; i < 1024; ++i) samples[i] = 0.25f;
-    char path[] = "/tmp/daw-content-drop-XXXXXX"; int fd = mkstemp(path); CHECK(fd >= 0, "content drop path"); close(fd);
+    DAW_TEST_TEMP_PATH(path, "daw-content-drop-XXXXXX"); int fd = mkstemp(path); CHECK(fd >= 0, "content drop path"); close(fd);
     CHECK(engine && wav_write_f32(path, samples, 1024, 1, cfg.sample_rate), "content drop media");
     CHECK(engine_add_clip_to_track(engine, 0, path, 0, NULL) && engine_clip_set_region(engine, 0, 0, 0, 512), "content older neighbor");
     int c; CHECK(engine_add_clip_to_track(engine, 0, path, 600, &c) && engine_clip_set_region(engine, 0, c, 0, 128), "content drop anchor");
@@ -1026,7 +1027,7 @@ static void test_audio_trim_action(void) {
     EngineRuntimeConfig cfg; config_set_defaults(&cfg);
     AppState* state = calloc(1, sizeof(*state)); CHECK(state != NULL, "trim state");
     state->engine = engine_create(&cfg); CHECK(state->engine != NULL, "trim engine");
-    char path[] = "/tmp/daw-trim-action-XXXXXX"; int fd = mkstemp(path); CHECK(fd >= 0, "trim path"); close(fd);
+    DAW_TEST_TEMP_PATH(path, "daw-trim-action-XXXXXX"); int fd = mkstemp(path); CHECK(fd >= 0, "trim path"); close(fd);
     float samples[1024] = {0}; CHECK(wav_write_f32(path, samples, 1024, 1, cfg.sample_rate), "trim media");
     CHECK(engine_add_clip_to_track(state->engine, 0, path, 100, NULL) &&
         engine_clip_set_region(state->engine, 0, 0, 0, 512) &&
@@ -1154,7 +1155,7 @@ static void test_inspector_audio_numeric_fields(void) {
     AppState* state = calloc(1, sizeof(*state)); CHECK(state != NULL, "audio numeric state");
     state->engine = engine_create(&cfg); CHECK(state->engine != NULL, "audio numeric engine");
     undo_manager_init(&state->undo);
-    char path[] = "/tmp/daw-numeric-audio-XXXXXX"; int fd = mkstemp(path); CHECK(fd >= 0, "numeric media path"); close(fd);
+    DAW_TEST_TEMP_PATH(path, "daw-numeric-audio-XXXXXX"); int fd = mkstemp(path); CHECK(fd >= 0, "numeric media path"); close(fd);
     float samples[2048] = {0}; CHECK(wav_write_f32(path, samples, 2048, 1, cfg.sample_rate), "numeric media");
     CHECK(engine_add_clip_to_track(state->engine, 0, path, 1000, NULL), "numeric audio clip");
     bool* flags[] = {&state->inspector.edit.editing_timeline_start, &state->inspector.edit.editing_timeline_end,
@@ -1190,7 +1191,7 @@ static void test_inspector_rename_identity(bool audio) {
     AppState* state = calloc(1, sizeof(*state)); CHECK(state != NULL, "rename state");
     state->engine = engine_create(&cfg); CHECK(state->engine != NULL, "rename engine");
     undo_manager_init(&state->undo);
-    char path[] = "/tmp/daw-rename-XXXXXX"; int fd = mkstemp(path); CHECK(fd >= 0, "rename path"); close(fd);
+    DAW_TEST_TEMP_PATH(path, "daw-rename-XXXXXX"); int fd = mkstemp(path); CHECK(fd >= 0, "rename path"); close(fd);
     float samples[1024] = {0}; CHECK(wav_write_f32(path, samples, 1024, 1, cfg.sample_rate), "rename media");
     CHECK(audio ? engine_add_clip_to_track(state->engine, 0, path, 100, NULL)
                 : engine_add_midi_clip_to_track(state->engine, 0, 100, 512, NULL), "rename target");
@@ -1304,7 +1305,7 @@ static void test_history_gesture_exclusion(void) {
 // Sweeps duplicate/delete preparation failures and verifies complete mixed-media retained history.
 static void test_content_selection_edit(bool duplicate) {
     EngineRuntimeConfig cfg; config_set_defaults(&cfg); Engine* engine = engine_create(&cfg);
-    char path[] = "/tmp/daw-selection-edit-XXXXXX"; int fd = mkstemp(path); CHECK(fd >= 0, "selection path"); close(fd);
+    DAW_TEST_TEMP_PATH(path, "daw-selection-edit-XXXXXX"); int fd = mkstemp(path); CHECK(fd >= 0, "selection path"); close(fd);
     float samples[1024] = {0}; CHECK(wav_write_f32(path, samples, 1024, 1, cfg.sample_rate), "selection media");
     CHECK(engine && engine_add_clip_to_track(engine, 0, path, 100, NULL) &&
         engine_clip_set_region(engine, 0, 0, 0, 512) && engine_add_midi_clip_to_track(engine, 1, 200, 256, NULL), "selection fixture");
@@ -1428,7 +1429,7 @@ static void test_content_insert_transaction(bool growth, bool empty) {
     EngineRuntimeConfig cfg; config_set_defaults(&cfg); Engine* engine = engine_create(&cfg);
     CHECK(engine != NULL, "insert engine");
     if (empty) CHECK(engine_remove_track(engine, 0), "empty insertion project");
-    char path[] = "/tmp/daw-content-insert-XXXXXX"; int fd = mkstemp(path); CHECK(fd >= 0, "insert media path"); close(fd);
+    DAW_TEST_TEMP_PATH(path, "daw-content-insert-XXXXXX"); int fd = mkstemp(path); CHECK(fd >= 0, "insert media path"); close(fd);
     float samples[1024]; for (int i = 0; i < 1024; ++i) samples[i] = 0.25f;
     CHECK(wav_write_f32(path, samples, 1024, 1, cfg.sample_rate), "insert media");
     EngineMidiNote note = {.start_frame = 20, .duration_frames = 100, .note = 64, .velocity = 0.7f};
@@ -1647,7 +1648,7 @@ static void test_whole_track_history(void) {
           ENGINE_AUTOMATION_TARGET_INSTRUMENT_LEVEL, points, 2) &&
           engine_clip_add_automation_point(engine, 0, 0, ENGINE_AUTOMATION_TARGET_VOLUME, 0, 0.5f, NULL),
           "track history automation");
-    char path[] = "/tmp/daw-track-history-XXXXXX"; int fd = mkstemp(path); CHECK(fd >= 0, "track media"); close(fd);
+    DAW_TEST_TEMP_PATH(path, "daw-track-history-XXXXXX"); int fd = mkstemp(path); CHECK(fd >= 0, "track media"); close(fd);
     float samples[128]; for (int i = 0; i < 128; ++i) samples[i] = 0.25f;
     CHECK(wav_write_f32(path, samples, 128, 1, cfg.sample_rate) &&
           engine_add_clip_to_track(engine, 0, path, 8192, NULL), "track audio");

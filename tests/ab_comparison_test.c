@@ -1,4 +1,5 @@
 #define _XOPEN_SOURCE 700
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "engine/engine_internal.h"
 #include "daw/ab_comparison.h"
@@ -123,7 +124,7 @@ int main(void) {
         samples[f * 2] = .25;
         samples[f * 2 + 1] = -.25;
     }
-    char dir[] = "/tmp/sonics-ab-fixture-XXXXXX";
+    DAW_TEST_TEMP_PATH(dir, "sonics-ab-fixture-XXXXXX");
     assert(mkdtemp(dir));
     char audio[512], project[512];
     snprintf(audio, sizeof(audio), "%s/input.wav", dir);

@@ -1,4 +1,5 @@
 #define _XOPEN_SOURCE 700
+#include "test_temp_path.h"
 #include "app_state.h"
 #include "session/project_collections.h"
 #include "input/project_modal_input.h"
@@ -21,7 +22,7 @@ static void choose(AppState* s,const char* label) {for(int i=0;i<s->project_coll
 static void click(AppState* s,int button) {DawProjectModalLayout l;daw_project_modal_layout(s,&l);SDL_Event e={.type=SDL_MOUSEBUTTONDOWN};e.button.button=SDL_BUTTON_LEFT;e.button.x=l.buttons[button].x+5;e.button.y=l.buttons[button].y+5;project_modal_input_handle_event(s,&e);e.type=SDL_MOUSEBUTTONUP;project_modal_input_handle_event(s,&e);}
 // Qualifies scoped lists, safe browsing, monotonic checkpoints, no-replace races and exact current saves.
 int main(void) {
-    char oldcwd[4096];assert(getcwd(oldcwd,sizeof(oldcwd)));char root[]="/tmp/sonics-collection-test-XXXXXX";assert(mkdtemp(root));assert(!chdir(root));
+    char oldcwd[4096];assert(getcwd(oldcwd,sizeof(oldcwd)));DAW_TEST_TEMP_PATH(root, "sonics-collection-test-XXXXXX");assert(mkdtemp(root));assert(!chdir(root));
     mkdir_ok("config");mkdir_ok("config/projects");mkdir_ok("out");mkdir_ok("out/projects");mkdir_ok("music_projects");
     mkdir_ok("music_projects/classical_conversations");mkdir_ok("music_projects/classical_conversations/projects");
     mkdir_ok("music_projects/night_pocket");mkdir_ok("music_projects/night_pocket/projects");

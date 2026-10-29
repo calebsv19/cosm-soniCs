@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include "test_temp_path.h"
 #include "audio/media_clip.h"
 #include "audio/resample.h"
 #include <assert.h>
@@ -80,7 +81,7 @@ static void fixture(const char* path, int bits, bool floating, bool extensible, 
 }
 // Verifies native PCM, float, extensible formats, chunk padding, and malformed frame rejection.
 static void formats(void) {
-    char path[] = "/tmp/daw-media-formats-XXXXXX";
+    DAW_TEST_TEMP_PATH(path, "daw-media-formats-XXXXXX");
     int fd = mkstemp(path);
     assert(fd >= 0);
     close(fd);

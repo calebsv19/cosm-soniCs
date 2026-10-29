@@ -1,4 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
+#include "test_temp_path.h"
 #include "audio/wav_writer.h"
 #include "audio/take_journal.h"
 #include "audio/media_clip.h"
@@ -51,7 +52,7 @@ static void expect_audio(const char* path, uint64_t frames, float expected) {
 
 // Verifies atomic media failures and recovery of an ordered checksummed prefix with a torn tail.
 int main(void) {
-    char root[] = "/tmp/daw-media-durable-XXXXXX";
+    DAW_TEST_TEMP_PATH(root, "daw-media-durable-XXXXXX");
     CHECK(mkdtemp(root) != NULL, "fixture directory");
     char wav[1024], recovered[1024];
     snprintf(wav, sizeof(wav), "%s/audio.wav", root);
