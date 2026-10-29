@@ -1,3 +1,4 @@
+#include "input/timeline/timeline_geometry.h"
 #include "ui/control_chrome.h"
 #include "ui/text_edit.h"
 #include "ui/timeline_view_clip_pass.h"
@@ -11,6 +12,9 @@
 #include "ui/timeline_midi_clip_preview.h"
 #include "ui/timeline_view.h"
 #include "ui/timeline_waveform.h"
+#include "ui/timeline_track_header.h"
+#include "ui/timeline_group_overview.h"
+#include "engine/groups.h"
 #include "ui/waveform_render.h"
 
 #include <math.h>
@@ -112,76 +116,6 @@ static void timeline_draw_text_in_rect_clipped(SDL_Renderer* renderer,
                          color,
                          scale,
                          max_w);
-}
-
-static void fit_label_ellipsis(const char* src, int max_px, float scale, char* out, size_t out_size) {
-    if (!out || out_size == 0) return;
-    out[0] = '\0';
-    if (!src) return;
-    int full_w = ui_measure_text_width(src, scale);
-    if (full_w <= max_px) {
-        strncpy(out, src, out_size - 1);
-        out[out_size - 1] = '\0';
-        return;
-    }
-    const char* ell = "...";
-    int ell_w = ui_measure_text_width(ell, scale);
-    int target_px = max_px - ell_w;
-    if (target_px <= 0) {
-        strncpy(out, ell, out_size - 1);
-        out[out_size - 1] = '\0';
-        return;
-    }
-    size_t len = strlen(src);
-    for (size_t i = len; i > 0; --i) {
-        char tmp[ENGINE_CLIP_NAME_MAX];
-        snprintf(tmp, sizeof(tmp), "%.*s", (int)i, src);
-        if (ui_measure_text_width(tmp, scale) <= target_px) {
-            snprintf(out, out_size, "%s%s", tmp, ell);
-            out[out_size - 1] = '\0';
-            return;
-        }
-    }
-    strncpy(out, ell, out_size - 1);
-    out[out_size - 1] = '\0';
-}
-
-static void draw_toggle_button(SDL_Renderer* renderer,
-                               const SDL_Rect* rect,
-                               const char* label,
-                               bool active,
-                               bool hovered,
-                               SDL_Color active_col,
-                               const TimelineTheme* theme) {
-    if (!renderer || !rect || !label) {
-        return;
-    }
-    SDL_Color base = theme ? theme->button_fill : (SDL_Color){58, 62, 70, 255};
-    SDL_Color active_color = active_col;
-    SDL_Color text = theme ? theme->text : (SDL_Color){220, 220, 230, 255};
-    SDL_Color border = theme ? theme->button_border : (SDL_Color){90, 95, 110, 255};
-
-    SDL_Color fill = base;
-    SDL_Color border_color = border;
-    if (active) {
-        fill = active_color;
-        if (theme) {
-            border_color = theme->clip_border_selected;
-        }
-    } else if (hovered) {
-        if (theme) {
-            border_color = theme->clip_border_selected;
-        }
-    }
-    daw_control_frame(renderer,rect,fill,border_color);
-
-    int scale = 1;
-    int text_w = ui_measure_text_width(label, 1.0f);
-    int text_h = ui_font_line_height(scale);
-    int text_x = rect->x + (rect->w - text_w) / 2;
-    if (text_x < rect->x + 2) text_x = rect->x + 2;
-    int text_y = rect->y + (rect->h - text_h) / 2;
-    ui_draw_text(renderer, text_x, text_y, label, text, scale);
 }
 
 static SDL_Color timeline_midi_grid_color(SDL_Color a, SDL_Color b, int a_weight, int b_weight, Uint8 alpha) {
@@ -431,102 +365,24 @@ void timeline_view_render_track_clip_pass(SDL_Renderer* renderer,
                                           float window_end,
                                           float pixels_per_second,
                                           int sample_rate) {
-    SDL_Color header_bg;
-    SDL_Color header_border;
-    SDL_Color header_text;
-    int active_track;
-    const TrackNameEditor* editor;
-    SDL_Point mouse_point;
-
     if (!renderer || !timeline_rect || !state || !theme || !tracks ||
         track_count <= 0 || content_width <= 0 || sample_rate <= 0) {
         return;
     }
 
-    header_bg = theme->lane_header_fill;
-    header_border = theme->lane_header_border;
-    header_text = theme->text;
-    active_track = (state->selected_track_index >= 0 && state->selected_track_index < track_count)
-                       ? state->selected_track_index
-                       : -1;
-    editor = &state->track_name_editor;
-    mouse_point = (SDL_Point){state->mouse_x, state->mouse_y};
-
     for (int t = 0; t < track_count; ++t) {
         const EngineTrack* track = &tracks[t];
-        int lane_top = track_y + t * (track_height + track_spacing);
+        int lane_top = timeline_track_lane_y(state, t, track_y, track_height, track_spacing);
 
         TimelineTrackHeaderLayout header_layout = {0};
-        timeline_view_compute_track_header_layout(timeline_rect,
+        timeline_track_header_layout(state,t,timeline_rect,
                                                   lane_top,
                                                   track_height,
                                                   header_width,
                                                   &header_layout);
-        SDL_Rect header_rect = header_layout.header_rect;
-        SDL_Color header_fill = header_bg;
-        SDL_Color label_color = header_text;
-        if (active_track == t) {
-            header_fill = theme->lane_header_fill_active;
-        }
-        if (track && track->muted) {
-            header_fill.r = (Uint8)((int)header_fill.r * 3 / 5);
-            header_fill.g = (Uint8)((int)header_fill.g * 3 / 5);
-            header_fill.b = (Uint8)((int)header_fill.b * 3 / 5);
-            label_color = theme->text_muted;
-        }
-        SDL_SetRenderDrawColor(renderer, header_fill.r, header_fill.g, header_fill.b, header_fill.a);
-        SDL_RenderFillRect(renderer, &header_rect);
-        SDL_SetRenderDrawColor(renderer, header_border.r, header_border.g, header_border.b, header_border.a);
-        SDL_RenderDrawRect(renderer, &header_rect);
-        char default_label[32];
-        const char* label = NULL;
-        if (editor && editor->editing && editor->track_index == t) {
-            label = editor->buffer;
-        } else if (track && track->name[0]) {
-            label = track->name;
-        }
-        if (!label || label[0] == '\0') {
-            snprintf(default_label, sizeof(default_label), "Track %d", t + 1);
-            label = default_label;
-        }
-
-        SDL_Rect mute_rect = header_layout.mute_rect;
-        SDL_Rect solo_rect = header_layout.solo_rect;
-
-        bool mute_hover = SDL_PointInRect(&mouse_point, &mute_rect);
-        bool solo_hover = SDL_PointInRect(&mouse_point, &solo_rect);
-        SDL_Color mute_active = {
-            (Uint8)lroundf((float)theme->lane_header_fill.r * 0.82f + (float)theme->toggle_active_loop.r * 0.18f),
-            (Uint8)lroundf((float)theme->lane_header_fill.g * 0.82f + (float)theme->toggle_active_loop.g * 0.18f),
-            (Uint8)lroundf((float)theme->lane_header_fill.b * 0.82f + (float)theme->toggle_active_loop.b * 0.18f),
-            242
-        };
-        SDL_Color solo_active = {
-            (Uint8)lroundf((float)theme->lane_header_fill.r * 0.82f + (float)theme->toggle_active_snap.r * 0.18f),
-            (Uint8)lroundf((float)theme->lane_header_fill.g * 0.82f + (float)theme->toggle_active_snap.g * 0.18f),
-            (Uint8)lroundf((float)theme->lane_header_fill.b * 0.82f + (float)theme->toggle_active_snap.b * 0.18f),
-            242
-        };
-        draw_toggle_button(renderer, &mute_rect, "M", track ? track->muted : false, mute_hover, mute_active, theme);
-        draw_toggle_button(renderer, &solo_rect, "S", track ? track->solo : false, solo_hover, solo_active, theme);
-
-        int text_x = header_layout.text_x;
-        int text_max_x = header_layout.text_max_x;
-        int available_px = text_max_x - text_x;
-        char text_buf[ENGINE_CLIP_NAME_MAX];
-        const char* display = label;
-        if (available_px > 0 && !(editor->editing && editor->track_index == t)) {
-            fit_label_ellipsis(label, available_px, 1.0f, text_buf, sizeof(text_buf));
-            display = text_buf;
-        }
-        int label_text_y = header_layout.text_y;
-        if (editor && editor->editing && editor->track_index == t) {
-            SDL_Rect view = {text_x, label_text_y, available_px, ui_font_line_height(1)};
-            daw_text_edit_draw(renderer, &editor->text_edit, (char*)editor->buffer,
-                sizeof(editor->buffer), editor->cursor, view, label_color, theme->text, 1);
-        } else {
-            ui_draw_text(renderer, text_x, label_text_y, display, label_color, 1);
-        }
+        if(engine_group_visible_row(tracks,track_count,t)<0)continue;
+        timeline_track_header_render(renderer,state,t,&header_layout,theme);
+        if(track->is_group)timeline_group_overview_render(renderer,state,t,theme);
 
         if (!track || track->clip_count <= 0) {
             continue;

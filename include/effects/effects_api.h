@@ -6,10 +6,10 @@ extern "C" {
 #endif
 
 // v1 targets your current design: float32, INTERLEAVED, in-place by default.
-// Built-in source API; v2 adds optional latency and applied-reduction queries.
+// Built-in source API; v4 adds exact authored-curve targets beside v3 reduction traces.
 // Existing effects keep working unchanged (process_sc may be NULL).
 
-#define FX_API_VERSION 2
+#define FX_API_VERSION 4
 #define FX_MAX_PARAMS  32
 
 // Flags
@@ -59,6 +59,8 @@ typedef struct {
     // Called during preparation AND render-owned parameter updates.
     // Implementations used with render smoothing must not allocate, lock, or log.
     void (*set_param)(FxHandle*, uint32_t param_idx, float value);
+    // OPTIONAL RT exact target for qualified authored curves; static edits retain their ramp.
+    void (*set_param_automated)(FxHandle*, uint32_t, float);
     void (*reset)(FxHandle*);     // clear histories, z-states
     void (*destroy)(FxHandle*);   // free heap owned by the instance
     // OPTIONAL RT queries; latency is the active delay and max_latency is its prepared bound.
@@ -66,6 +68,8 @@ typedef struct {
     uint32_t (*max_latency)(FxHandle*);
     // OPTIONAL RT query: minimum applied gain in dB over the last block, before makeup.
     float (*gain_reduction_db)(FxHandle*);
+    // Borrows an optional interleaved per-sample pre-makeup reduction trace for one private render call.
+    void (*set_reduction_trace)(FxHandle*, float*);
 } FxVTable;
 
 // Factory symbols each effect translation unit exposes.

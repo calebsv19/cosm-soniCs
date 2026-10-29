@@ -1,3 +1,7 @@
+#include "ui/automation_view.h"
+#include "ui/track_group_panel.h"
+#include "ui/automation_menu.h"
+#include "daw/automation_actions.h"
 #include "ui/text_edit.h"
 #include "ui/editor_controls.h"
 #include "input/timeline/timeline_input_mouse_click.h"
@@ -15,6 +19,7 @@
 #include "input/timeline/timeline_input_mouse_drag.h"
 #include "input/timeline/timeline_input_mouse_tempo_overlay.h"
 #include "input/timeline/timeline_midi_region.h"
+#include "input/midi_editor_input_internal.h"
 #include "input/timeline_snap.h"
 #include "input/timeline_selection.h"
 #include "input/timeline_input.h"
@@ -36,36 +41,6 @@ static SDL_Rect timeline_lane_clip_rect(const TimelineGeometry* geom, int lane_t
     }
     timeline_view_compute_lane_clip_rect(lane_top, geom->track_height, clip_x, clip_w, &rect);
     return rect;
-}
-
-static bool timeline_selected_clip_is_midi(const AppState* state) {
-    if (!state || !state->engine || state->selected_track_index < 0 || state->selected_clip_index < 0) {
-        return false;
-    }
-    const EngineTrack* tracks = engine_get_tracks(state->engine);
-    int track_count = engine_get_track_count(state->engine);
-    if (!tracks || state->selected_track_index >= track_count) {
-        return false;
-    }
-    const EngineTrack* track = &tracks[state->selected_track_index];
-    if (state->selected_clip_index >= track->clip_count) {
-        return false;
-    }
-    return track->clips[state->selected_clip_index].kind == ENGINE_CLIP_KIND_MIDI;
-}
-
-static EngineAutomationTarget timeline_next_automation_target(const AppState* state) {
-    int next = (int)(state ? state->automation_ui.target : ENGINE_AUTOMATION_TARGET_VOLUME) + 1;
-    bool midi_selected = timeline_selected_clip_is_midi(state);
-    int count = midi_selected ? (int)ENGINE_AUTOMATION_TARGET_COUNT
-                              : (int)ENGINE_AUTOMATION_TARGET_INSTRUMENT_LEVEL;
-    if (count <= 0) {
-        return ENGINE_AUTOMATION_TARGET_VOLUME;
-    }
-    if (next >= count) {
-        next = 0;
-    }
-    return (EngineAutomationTarget)next;
 }
 
 #define TIMELINE_HANDLE_HIT_WIDTH 10
@@ -91,7 +66,7 @@ static void timeline_clear_selection(AppState* state) {
 }
 
 // Converts a mouse y position into an automation value in -1..1.
-static float timeline_automation_value_from_y(const SDL_Rect* rect, int y) {
+static float timeline_automation_value_from_y(const SDL_Rect* rect, const EngineAutomationLane* lane, int y) {
     if (!rect || rect->h <= 0) {
         return 0.0f;
     }
@@ -103,7 +78,7 @@ static float timeline_automation_value_from_y(const SDL_Rect* rect, int y) {
     float value = (float)(baseline - y) / (float)range;
     if (value < -1.0f) value = -1.0f;
     if (value > 1.0f) value = 1.0f;
-    return value;
+    return ui_automation_authored(lane, value);
 }
 
 // Locates a nearby automation point by pixel distance.
@@ -114,7 +89,7 @@ static int timeline_automation_hit_point(const EngineAutomationLane* lane,
                                          const TimelineGeometry* geom,
                                          const SDL_Rect* rect,
                                          int x,
-                                         int y) {
+                                         int y, int* grab_x, int* grab_y) {
     if (!lane || !rect || !geom || rect->w <= 0 || rect->h <= 0 || clip_frames == 0 || sample_rate <= 0) {
         return -1;
     }
@@ -128,8 +103,10 @@ static int timeline_automation_hit_point(const EngineAutomationLane* lane,
         uint64_t frame = lane->points[i].frame > clip_frames ? clip_frames : lane->points[i].frame;
         double point_seconds = clip_start_seconds + (double)frame / (double)sample_rate;
         int px = timeline_seconds_to_x(geom, (float)point_seconds);
-        int py = baseline - (int)llround((double)lane->points[i].value * (double)range);
+        int py = baseline - (int)llround((double)ui_automation_normalized(lane, lane->points[i].value) * (double)range);
         if (abs(px - x) <= radius && abs(py - y) <= radius) {
+            *grab_x = x - px;
+            *grab_y = y - py;
             return i;
         }
     }
@@ -150,6 +127,9 @@ static void timeline_controls_update_hover(AppState* state) {
     controls->add_hovered = SDL_PointInRect(&p, &controls->add_rect);
     controls->remove_hovered = SDL_PointInRect(&p, &controls->remove_rect);
     controls->midi_region_hovered = SDL_PointInRect(&p, &controls->midi_region_rect);
+    controls->height_down_hovered = SDL_PointInRect(&p, &controls->height_down_rect);
+    controls->groups_hovered=SDL_PointInRect(&p,&controls->groups_rect);
+    controls->height_up_hovered = SDL_PointInRect(&p, &controls->height_up_rect);
     controls->loop_toggle_hovered = SDL_PointInRect(&p, &controls->loop_toggle_rect);
     controls->snap_toggle_hovered = SDL_PointInRect(&p, &controls->snap_toggle_rect);
     controls->automation_toggle_hovered = SDL_PointInRect(&p, &controls->automation_toggle_rect);
@@ -170,6 +150,16 @@ static bool timeline_controls_handle_click(AppState* state, const SDL_Point* poi
         return false;
     }
     TimelineControlsUI* controls = &state->timeline_controls;
+    if(SDL_PointInRect(point,&controls->groups_rect)){daw_group_panel_open(state);return true;}
+    if (SDL_PointInRect(point, &controls->height_down_rect) || SDL_PointInRect(point, &controls->height_up_rect)) {
+        const Pane* pane = ui_layout_get_pane(state, 1);
+        TimelineGeometry geom;
+        if (pane && timeline_compute_geometry(state, pane, &geom)) {
+            float step = SDL_PointInRect(point, &controls->height_up_rect) ? 0.25f : -0.25f;
+            timeline_zoom_rows(state, state->timeline_vertical_scale + step, geom.viewport.y + geom.viewport.h / 2);
+        }
+        return true;
+    }
     if (SDL_PointInRect(point, &controls->add_rect)) {
         track_name_editor_stop(state, true);
         int new_track = engine_get_track_count(state->engine);
@@ -275,7 +265,7 @@ static bool timeline_controls_handle_click(AppState* state, const SDL_Point* poi
     }
     if (SDL_PointInRect(point, &controls->automation_target_rect)) {
         track_name_editor_stop(state, true);
-        state->automation_ui.target = timeline_next_automation_target(state);
+        automation_menu_open(state);
         return true;
     }
     if (SDL_PointInRect(point, &controls->tempo_toggle_rect)) {
@@ -390,6 +380,10 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
         return;
     }
 
+    // The MIDI surface owns sampled presses as well as dispatched events.
+    if (is_down && (state->layout_runtime.drag.active || midi_editor_point_in_panel(state, state->mouse_x, state->mouse_y) ||
+        state->midi_editor_ui.drag_active || state->midi_editor_ui.note_press_pending ||
+        state->midi_editor_ui.shift_note_pending || state->midi_editor_ui.marquee_active)) return;
     // Shared discrete captures must not become sampled clip/header gestures.
     if (is_down && daw_editor_controls_at(state, state->mouse_x, state->mouse_y)) return;
     timeline_controls_update_hover(state);
@@ -466,7 +460,7 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
                 for (int t = 0; t < track_count_all; ++t) {
                     const EngineTrack* track = &tracks_all[t];
                     if (!track || track->clip_count <= 0) continue;
-                    int lane_top = geom.track_top + t * (geom.track_height + geom.track_spacing);
+                    int lane_top = timeline_track_lane_y(state, t, geom.track_top, geom.track_height, geom.track_spacing);
                     for (int i = 0; i < track->clip_count; ++i) {
                         const EngineClip* clip = &track->clips[i];
                         if (!timeline_clip_is_timeline_region(clip)) continue;
@@ -494,7 +488,7 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
     }
 
     SDL_Point mouse_point = {state->mouse_x, state->mouse_y};
-    bool over_timeline = SDL_PointInRect(&mouse_point, &timeline->rect);
+    bool over_timeline = SDL_PointInRect(&mouse_point, &geom.viewport);
     TimelineControlsUI* controls = &state->timeline_controls;
     if (controls->adjusting_loop_start || controls->adjusting_loop_end) {
         if (!is_down) {
@@ -557,7 +551,7 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
         if (!track) {
             continue;
         }
-        int lane_top = geom.track_top + t * (geom.track_height + geom.track_spacing);
+        int lane_top = timeline_track_lane_y(state, t, geom.track_top, geom.track_height, geom.track_spacing);
 
         for (int i = 0; i < track->clip_count; ++i) {
             const EngineClip* clip = &track->clips[i];
@@ -578,7 +572,7 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
 
             SDL_Rect rect = timeline_lane_clip_rect(&geom, lane_top, clip_x, clip_w);
 
-            if (SDL_PointInRect(&mouse_point, &rect)) {
+            if (over_timeline && SDL_PointInRect(&mouse_point, &rect)) {
                 hit_track = t;
                 hit_clip = i;
                 int local_x = state->mouse_x - rect.x;
@@ -618,6 +612,9 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
             state->automation_ui.dragging = false;
             automation_commit_edit(state);
         } else {
+            if (!state->automation_ui.point_moved && abs(state->mouse_x - state->automation_ui.press_x) < 3 &&
+                abs(state->mouse_y - state->automation_ui.press_y) < 3) return;
+            state->automation_ui.point_moved = true;
             int track_index = state->automation_ui.track_index;
             int clip_index = state->automation_ui.clip_index;
             if (track_index >= 0 && track_index < track_count) {
@@ -632,18 +629,20 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
                         int clip_x = geom.content_left + (int)round(clip_offset * geom.pixels_per_second);
                         int clip_w = (int)round(clip_sec * geom.pixels_per_second);
                         if (clip_w < 4) clip_w = 4;
-                        int lane_top = geom.track_top + track_index * (geom.track_height + geom.track_spacing);
+                        int lane_top = timeline_track_lane_y(state, track_index, geom.track_top, geom.track_height, geom.track_spacing);
                         SDL_Rect clip_rect = timeline_lane_clip_rect(&geom, lane_top, clip_x, clip_w);
 
-                        float seconds = timeline_x_to_seconds(&geom, state->mouse_x);
-                        seconds = timeline_snap_seconds_to_grid(state, seconds, geom.visible_seconds);
+                        float seconds = timeline_x_to_seconds(&geom, state->mouse_x - state->automation_ui.point_grab_x);
+                        if (!alt_held) seconds = timeline_snap_seconds_to_grid(state, seconds, geom.visible_seconds);
                         float local = seconds - (float)start_sec;
                         if (local < 0.0f) local = 0.0f;
                         if (local > (float)clip_sec) local = (float)clip_sec;
                         uint64_t frame = (uint64_t)llroundf(local * (float)sample_rate);
-                        float value = timeline_automation_value_from_y(&clip_rect, state->mouse_y);
+                        const EngineAutomationLane* lane = NULL;
+                        engine_clip_get_automation_lane(state->engine, track_index, clip_index, state->automation_ui.target, &lane);
+                        float value = timeline_automation_value_from_y(&clip_rect, lane, state->mouse_y - state->automation_ui.point_grab_y);
                         int new_index = state->automation_ui.point_index;
-                        engine_clip_update_automation_point(state->engine,
+                        daw_automation_update_point(state,
                                                             track_index,
                                                             clip_index,
                                                             state->automation_ui.target,
@@ -697,10 +696,14 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
                 int clip_x = geom.content_left + (int)round(clip_offset * geom.pixels_per_second);
                 int clip_w = (int)round(clip_sec * geom.pixels_per_second);
                 if (clip_w < 4) clip_w = 4;
-                int lane_top = geom.track_top + hit_track * (geom.track_height + geom.track_spacing);
+                int lane_top = timeline_track_lane_y(state, hit_track, geom.track_top, geom.track_height, geom.track_spacing);
                 SDL_Rect clip_rect = timeline_lane_clip_rect(&geom, lane_top, clip_x, clip_w);
 
-                automation_begin_edit(state, hit_track, hit_clip);
+                if (!automation_begin_edit(state, hit_track, hit_clip)) return;
+                state->automation_ui.point_grab_x = state->automation_ui.point_grab_y = 0;
+                state->automation_ui.press_x = state->mouse_x;
+                state->automation_ui.press_y = state->mouse_y;
+                state->automation_ui.point_moved = false;
                 const EngineAutomationLane* lane = NULL;
                 engine_clip_get_automation_lane(state->engine,
                                                 hit_track,
@@ -714,14 +717,14 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
                                                               &geom,
                                                               &clip_rect,
                                                               state->mouse_x,
-                                                              state->mouse_y);
+                                                              state->mouse_y, &state->automation_ui.point_grab_x, &state->automation_ui.point_grab_y);
                 float seconds = timeline_x_to_seconds(&geom, state->mouse_x);
-                seconds = timeline_snap_seconds_to_grid(state, seconds, geom.visible_seconds);
+                if (!alt_held) seconds = timeline_snap_seconds_to_grid(state, seconds, geom.visible_seconds);
                 float local = seconds - (float)start_sec;
                 if (local < 0.0f) local = 0.0f;
                 if (local > (float)clip_sec) local = (float)clip_sec;
                 uint64_t frame = (uint64_t)llroundf(local * (float)sample_rate);
-                float value = timeline_automation_value_from_y(&clip_rect, state->mouse_y);
+                float value = timeline_automation_value_from_y(&clip_rect, lane, state->mouse_y);
 
                 if (hit_point >= 0) {
                     state->automation_ui.track_index = hit_track;
@@ -729,7 +732,7 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
                     state->automation_ui.point_index = hit_point;
                 } else {
                     int new_index = -1;
-                    engine_clip_add_automation_point(state->engine,
+                    daw_automation_add_point(state,
                                                      hit_track,
                                                      hit_clip,
                                                      state->automation_ui.target,
@@ -740,6 +743,7 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
                     state->automation_ui.clip_index = hit_clip;
                     state->automation_ui.point_index = new_index;
                 }
+                if (state->automation_ui.point_index < 0) { automation_cancel_edit(state); return; }
                 state->automation_ui.dragging = true;
                 state->automation_ui.dragging_from_inspector = false;
                 return;
@@ -749,15 +753,15 @@ void timeline_input_mouse_click_update(InputManager* manager, AppState* state, b
             state->automation_ui.point_index = -1;
         }
         for (int t = 0; t < track_count; ++t) {
-            int lane_top = geom.track_top + t * (geom.track_height + geom.track_spacing);
+            int lane_top = timeline_track_lane_y(state, t, geom.track_top, geom.track_height, geom.track_spacing);
             TimelineTrackHeaderLayout header_layout = {0};
-            timeline_view_compute_track_header_layout(&timeline->rect,
+            timeline_track_header_layout(state,t,&timeline->rect,
                                                       lane_top,
                                                       geom.track_height,
                                                       geom.header_width,
                                                       &header_layout);
             SDL_Rect header_rect = header_layout.header_rect;
-            if (SDL_PointInRect(&mouse_point, &header_rect)) {
+            if (over_timeline && SDL_PointInRect(&mouse_point, &header_rect)) {
                 TrackNameEditor* editor = &state->track_name_editor;
                 if (editor->editing && editor->track_index == t) {
                     daw_text_edit_click(&editor->text_edit, editor->buffer, sizeof(editor->buffer),

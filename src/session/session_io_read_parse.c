@@ -67,6 +67,8 @@ static bool parse_session_track_midi_instrument_params(JsonReader* r, SessionTra
         return false;
     }
     EngineInstrumentParams params = track->midi_instrument_params;
+    // Missing appended fields preserve older authored piano sounds; explicit values override below.
+    params.sustain_pedal = params.string_resonance = params.release_noise = 0;
     while (true) {
         json_skip_whitespace(r);
         if (r->pos < r->length && r->data[r->pos] == '}') {
@@ -100,31 +102,21 @@ static bool parse_session_track_midi_instrument_params(JsonReader* r, SessionTra
 
 // Reads exactly four bounded send slots with complete fields and no unknown or duplicate keys.
 static bool parse_session_track_sends(JsonReader* r, SessionTrack* track) {
-    if (!json_expect(r, '[')) return false;
-    for (int send = 0; send < ENGINE_SEND_CAP; ++send) {
-        if (send && !json_expect(r, ',')) return false;
-        if (!json_expect(r, '{')) return false;
-        bool destination_seen = false, gain_seen = false;
-        for (int field = 0; field < 2; ++field) {
-            if (field && !json_expect(r, ',')) return false;
-            char key[32]; double value;
-            if (!json_parse_string(r, key, sizeof(key)) || !json_expect(r, ':') ||
-                !json_parse_number(r, &value) || !isfinite(value)) return false;
-            if (!strcmp(key, "destination_track") && !destination_seen) {
-                if (value < 0 || value > ENGINE_ROUTING_TRACK_CAP || floor(value) != value) return false;
-                track->sends[send].destination_track = (int)value; destination_seen = true;
-            } else if (!strcmp(key, "gain") && !gain_seen) {
-                if (value < 0 || value > 1) return false;
-                track->sends[send].gain = (float)value; gain_seen = true;
-            } else return false;
-        }
-        if (!destination_seen || !gain_seen || !json_expect(r, '}')) return false;
-    }
-    return json_expect(r, ']');
+    if(!json_expect(r,'['))return false;
+    for(int slot=0;slot<ENGINE_SEND_CAP;++slot){if(slot && !json_expect(r,','))return false;if(!json_expect(r,'{'))return false;unsigned seen=0;
+        for(int field=0;;++field){if(field && !json_expect(r,','))return false;char key[32];if(!json_parse_string(r,key,sizeof(key)) || !json_expect(r,':'))return false;
+            if(!strcmp(key,"automation")){if(seen&4 || !session_parse_mixer_automation(r,&track->sends[slot].automation,1))return false;seen|=4;}
+            else {double v;if(!json_parse_number(r,&v) || !isfinite(v))return false;
+                if(!strcmp(key,"destination_track")){if(seen&1 || v<0 || v>ENGINE_ROUTING_TRACK_CAP || floor(v)!=v)return false;track->sends[slot].destination_track=(int)v;seen|=1;}
+                else if(!strcmp(key,"gain")){if(seen&2 || v<0 || v>1)return false;track->sends[slot].gain=(float)v;seen|=2;}else return false;}
+            json_skip_whitespace(r);if(r->pos<r->length && r->data[r->pos]=='}'){++r->pos;break;}}
+        if((seen&3)!=3)return false;
+    }return json_expect(r,']');
 }
 
 static bool parse_session_track(JsonReader* r, SessionTrack* track) {
-    bool role_seen = false, sends_seen = false;
+    bool role_seen = false, sends_seen = false, volume_seen=false;
+    bool group_seen=false, parent_seen=false, order_seen=false, fold_seen=false, identity_seen=false;
     if (!json_expect(r, '{')) {
         return false;
     }
@@ -168,6 +160,19 @@ static bool parse_session_track(JsonReader* r, SessionTrack* track) {
         } else if (strcmp(key, "is_return") == 0) {
             if (role_seen || !json_parse_bool(r, &track->is_return)) return false;
             role_seen = true;
+        } else if (strcmp(key, "is_group") == 0) {
+            if (group_seen || !json_parse_bool(r, &track->is_group)) return false; group_seen=true;
+        } else if (strcmp(key, "folded") == 0) {
+            if (fold_seen || !json_parse_bool(r, &track->folded)) return false; fold_seen=true;
+        } else if (strcmp(key, "persistent_id") == 0) {
+            char value[32]; if(identity_seen || !json_parse_string(r,value,sizeof(value)) || !value[0])return false;
+            uint64_t id=0; for(int i=0;value[i];++i) { if(value[i]<'0' || value[i]>'9' || id>(UINT64_MAX-(value[i]-'0'))/10)return false; id=id*10+(value[i]-'0'); }
+            track->persistent_id=id; identity_seen=true;
+        } else if (strcmp(key, "parent_track") == 0 || strcmp(key, "sibling_order") == 0) {
+            double value; if (!json_parse_number(r,&value) || value<0 || value>1000000 || floor(value)!=value) return false;
+            if (!strcmp(key,"parent_track")) { if(parent_seen)return false; track->parent_track=(int)value; parent_seen=true; }
+            else { if(order_seen)return false; track->sibling_order=(int)value; order_seen=true; }
+        } else if(!strcmp(key,"volume_automation")){if(volume_seen || !session_parse_mixer_automation(r,&track->volume_automation,10))return false;volume_seen=true;
         } else if (strcmp(key, "sends") == 0) {
             if (sends_seen || !parse_session_track_sends(r, track)) return false;
             sends_seen = true;

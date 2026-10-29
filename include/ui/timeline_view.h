@@ -8,12 +8,12 @@ struct AppState;
 #define TIMELINE_DEFAULT_VISIBLE_SECONDS 10.0f
 #define TIMELINE_MIN_VISIBLE_SECONDS 2.0f
 #define TIMELINE_MAX_VISIBLE_SECONDS 120.0f
-#define TIMELINE_BORDER_MARGIN   24
+#define TIMELINE_BORDER_MARGIN   2
 #define TIMELINE_SNAP_SECONDS    0.25f
-#define TIMELINE_BASE_TRACK_HEIGHT 80
+#define TIMELINE_BASE_TRACK_HEIGHT 48
 #define TIMELINE_MIN_VERTICAL_SCALE 0.5f
 #define TIMELINE_MAX_VERTICAL_SCALE 2.5f
-#define TIMELINE_TRACK_HEADER_WIDTH 120
+#define TIMELINE_TRACK_HEADER_WIDTH 200
 #define TIMELINE_CONTROLS_HEIGHT 24
 #define TIMELINE_RULER_HEIGHT 18
 
@@ -26,7 +26,9 @@ typedef enum {
 typedef struct TimelineTrackHeaderLayout {
     SDL_Rect header_rect;
     SDL_Rect mute_rect;
+    SDL_Rect fold_rect;
     SDL_Rect solo_rect;
+    SDL_Rect effects_rect, meter_rect, gain_rect, pan_rect;
     int text_x;
     int text_max_x;
     int text_y;

@@ -119,7 +119,7 @@ bool engine_clip_midi_set_notes(Engine* engine, int track_index, int clip_index,
 // Looks up a control-owned track without implicit structural changes.
 static EngineTrack* engine_midi_track_for_edit(Engine* engine, int index) {
     if (!engine || SDL_ThreadID() != engine->control_thread_id || index < 0 || index >= engine->track_count) return NULL;
-    return engine->tracks[index].is_return ? NULL : &engine->tracks[index];
+    return (engine->tracks[index].is_return || engine->tracks[index].is_group) ? NULL : &engine->tracks[index];
 }
 
 // Restores track instrument metadata when a complete render revision cannot be prepared.
@@ -228,7 +228,7 @@ static bool engine_instrument_params_equal(EngineInstrumentParams a, EngineInstr
 bool engine_track_midi_set_instrument_state(Engine* engine, int track_index,
     EngineInstrumentPresetId preset, EngineInstrumentParams params, bool enabled) {
     EngineTrack* track = engine_midi_track_for_edit(engine, track_index);
-    if (!track || (enabled && track->is_return) || preset < 0 || preset >= ENGINE_INSTRUMENT_PRESET_COUNT || !engine_midi_params_finite(params)) return false;
+    if (!track || (enabled && (track->is_return || track->is_group)) || preset < 0 || preset >= ENGINE_INSTRUMENT_PRESET_COUNT || !engine_midi_params_finite(params)) return false;
     EngineInstrumentParams clean = engine_instrument_params_sanitize(preset, params);
     if (track->midi_instrument_enabled == enabled && track->midi_instrument_preset == preset &&
         engine_instrument_params_equal(track->midi_instrument_params, clean)) return true;

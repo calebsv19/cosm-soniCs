@@ -1,0 +1,5 @@
+# Salamander Acoustic Piano Foundation
+
+Derived from Salamander Grand Piano v3 by Alexander Holm, with source SFZ mapping by sfzinstruments/kinwie. Original source: https://github.com/sfzinstruments/SalamanderGrandPiano at commit 3382bf9496bba2486f5ab0de55a264d1dfc38404. Licensed CC BY 3.0: https://creativecommons.org/licenses/by/3.0/ . Original FLACs, LICENSE.txt and UPSTREAM_README.md are retained. This soniCs adaptation selects velocity layers 1, 8 and 16, converts recordings to centered mono WAV, trims leading silence with attack preroll, fades finite endpoints and applies one bank gain. Those modifications are recorded in prepared/provenance.json. Piano uses finite strikes without looping, not the upstream ARIA/SFZ extension engine. See docs/sampled_piano_strings.md for supported controls and pedal/articulation limits.
+
+The expression sub-bank adds 88 chromatic key-release recordings and four pedal actions from the same pinned Alexander Holm CC BY 3.0 source. Derived files and original source hashes are retained separately; original strike files are unchanged. `tools/prepare_piano_expression.py` reproduces these layers.

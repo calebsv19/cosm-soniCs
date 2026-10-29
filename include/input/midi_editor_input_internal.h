@@ -104,6 +104,11 @@ void midi_editor_complete_all_qwerty_notes(struct AppState* state);
 bool midi_editor_toggle_qwerty_test(struct AppState* state);
 bool midi_editor_adjust_octave(struct AppState* state, int delta);
 bool midi_editor_adjust_default_velocity(struct AppState* state, float delta);
+// Adjusts selected-note velocities together, or the insertion velocity when no notes are selected.
+bool midi_editor_adjust_velocity(struct AppState* state, float delta);
+// Applies grid snapping unless Alt/Option currently requests continuous pointer placement.
+uint64_t midi_editor_snap_gesture_frame(const struct AppState* state,
+                                       const struct EngineClip* clip, uint64_t frame);
 bool midi_editor_handle_qwerty_event(struct AppState* state, const SDL_Event* event);
 
 void midi_editor_select_matching_notes_after_set(struct AppState* state,

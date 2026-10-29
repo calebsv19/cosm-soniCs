@@ -23,7 +23,7 @@ async def check(fixture, output):
                 async with ClientSession(r,w) as session:
                     await session.initialize()
                     tools = {t.name:t for t in (await session.list_tools()).tools}
-                    assert len(tools) == 45
+                    assert len(tools) == 70
                     assert tools['get_midi_region'].annotations.readOnlyHint
                     for name in ('set_midi_notes','create_midi_pattern','transform_midi','undo_midi','redo_midi'):
                         assert not tools[name].annotations.readOnlyHint and tools[name].annotations.idempotentHint

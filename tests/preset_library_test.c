@@ -77,10 +77,49 @@ int main(void) {
     CHECK(daw_preset_library_save("Evening / Glass é",base,params,NULL,NULL,&a,&durable)==DAW_PRESET_OK,"portable name");
     CHECK(daw_preset_library_get(a.id,a.revision,&read)==DAW_PRESET_OK && daw_preset_sound_equal(&read,base,params),"all settings exact roundtrip");
     CHECK(daw_preset_library_save(a.name,base,params,NULL,NULL,&b,&durable)==DAW_PRESET_OK && strcmp(a.id,b.id),"duplicate label stable IDs");
+    // A v5 sound has 29 stable values; v6 appends piano controls without losing earlier settings.
+    {
+        char path[2048]; snprintf(path,sizeof(path),"%s/%s.sonics-preset.json",root,b.id);
+        size_t size; unsigned char* bytes=read_bytes(path,&size);cJSON* old=cJSON_Parse((char*)bytes);
+        cJSON_SetNumberValue(cJSON_GetObjectItemCaseSensitive(old,"version"),5);
+        cJSON* values=cJSON_GetObjectItemCaseSensitive(old,"parameters");
+        for(int id=29;id<ENGINE_INSTRUMENT_PARAM_COUNT;++id){EngineInstrumentParamSpec spec;engine_instrument_param_spec(id,&spec);cJSON_DeleteItemFromObjectCaseSensitive(values,spec.id);}
+        char* encoded=cJSON_PrintUnformatted(old);write_bytes(path,encoded,strlen(encoded));
+        CHECK(daw_preset_library_get(b.id,b.revision,&read)==DAW_PRESET_OK && read.params.cutoff_hz==params.cutoff_hz,"v5 migration preserves physical sound");
+        write_bytes(path,bytes,size);free(bytes);cJSON_free(encoded);cJSON_Delete(old);
+    }
+    // A saved v5 piano must stay dry rather than acquire new factory resonance or mechanics.
+    {
+        DawUserPreset piano;bool saved;EngineInstrumentParams settings=engine_instrument_default_params(ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO);
+        CHECK(daw_preset_library_save("Legacy Piano",ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO,settings,NULL,NULL,&piano,&saved)==DAW_PRESET_OK,"piano migration fixture");
+        char path[2048];snprintf(path,sizeof(path),"%s/%s.sonics-preset.json",root,piano.id);size_t size;unsigned char* bytes=read_bytes(path,&size);cJSON* old=cJSON_Parse((char*)bytes);
+        cJSON_SetNumberValue(cJSON_GetObjectItemCaseSensitive(old,"version"),5);cJSON* values=cJSON_GetObjectItemCaseSensitive(old,"parameters");
+        for(int id=29;id<ENGINE_INSTRUMENT_PARAM_COUNT;++id){EngineInstrumentParamSpec spec;engine_instrument_param_spec(id,&spec);cJSON_DeleteItemFromObjectCaseSensitive(values,spec.id);}
+        char* encoded=cJSON_PrintUnformatted(old);write_bytes(path,encoded,strlen(encoded));
+        CHECK(daw_preset_library_get(piano.id,piano.revision,&read)==DAW_PRESET_OK && read.params.string_resonance==0 && read.params.release_noise==0 && read.params.sustain_pedal==0,"v5 piano stays dry");
+        CHECK(!unlink(path),"migration fixture removed");free(bytes);cJSON_free(encoded);cJSON_Delete(old);
+    }
     // Simulates an existing version-one library document with its complete fourteen-parameter sound.
     char legacy_path[2048]; snprintf(legacy_path,sizeof(legacy_path),"%s/%s.sonics-preset.json",root,a.id);
     size_t legacy_size; unsigned char* original=read_bytes(legacy_path,&legacy_size);
     cJSON* legacy=cJSON_Parse((char*)original); CHECK(legacy!=NULL,"legacy JSON");
+    cJSON_SetNumberValue(cJSON_GetObjectItemCaseSensitive(legacy,"version"),3);
+    cJSON* v3settings=cJSON_GetObjectItemCaseSensitive(legacy,"parameters");
+    cJSON* v4json=cJSON_Parse((char*)original); cJSON_SetNumberValue(cJSON_GetObjectItemCaseSensitive(v4json,"version"),4);
+    cJSON* v4params=cJSON_GetObjectItemCaseSensitive(v4json,"parameters");
+    for(int id=29;id<ENGINE_INSTRUMENT_PARAM_COUNT;++id){EngineInstrumentParamSpec spec;engine_instrument_param_spec(id,&spec);cJSON_DeleteItemFromObjectCaseSensitive(v4params,spec.id);}
+    cJSON_DeleteItemFromObjectCaseSensitive(v4params,"dynamics"); cJSON_DeleteItemFromObjectCaseSensitive(v4params,"velocity_depth");
+    char* v4bytes=cJSON_PrintUnformatted(v4json); write_bytes(legacy_path,v4bytes,strlen(v4bytes));
+    CHECK(daw_preset_library_get(a.id,NULL,&read)==DAW_PRESET_OK,"legacy v4 27-value sound preserved");
+    cJSON_free(v4bytes); cJSON_Delete(v4json); write_bytes(legacy_path,original,legacy_size);
+    for(int id=24;id<ENGINE_INSTRUMENT_PARAM_COUNT;++id){EngineInstrumentParamSpec spec;engine_instrument_param_spec(id,&spec);cJSON_DeleteItemFromObjectCaseSensitive(v3settings,spec.id);}
+    char* v3encoded=cJSON_PrintUnformatted(legacy);write_bytes(legacy_path,v3encoded,strlen(v3encoded));cJSON_free(v3encoded);
+    CHECK(daw_preset_library_get(a.id,NULL,&read)==DAW_PRESET_OK && read.params.mono==0 && read.params.hat_choke==0,"v3 compatibility preserves earlier articulation");
+    cJSON_SetNumberValue(cJSON_GetObjectItemCaseSensitive(legacy,"version"),2);
+    cJSON* v2settings=cJSON_GetObjectItemCaseSensitive(legacy,"parameters");
+    for(int id=18;id<ENGINE_INSTRUMENT_PARAM_COUNT;++id){EngineInstrumentParamSpec spec;engine_instrument_param_spec(id,&spec);cJSON_DeleteItemFromObjectCaseSensitive(v2settings,spec.id);}
+    char* v2encoded=cJSON_PrintUnformatted(legacy);write_bytes(legacy_path,v2encoded,strlen(v2encoded));cJSON_free(v2encoded);
+    CHECK(daw_preset_library_get(a.id,NULL,&read)==DAW_PRESET_OK,"v2 preset compatibility");
     cJSON_SetNumberValue(cJSON_GetObjectItemCaseSensitive(legacy,"version"),1);
     cJSON* settings=cJSON_GetObjectItemCaseSensitive(legacy,"parameters");
     for(int id=14;id<ENGINE_INSTRUMENT_PARAM_COUNT;++id){EngineInstrumentParamSpec spec;engine_instrument_param_spec(id,&spec);cJSON_DeleteItemFromObjectCaseSensitive(settings,spec.id);}

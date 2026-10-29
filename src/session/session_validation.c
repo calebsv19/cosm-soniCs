@@ -1,3 +1,4 @@
+#include "session_automation.h"
 #include "session.h"
 #include "ui/library_browser.h"
 
@@ -30,6 +31,13 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
         session_set_error(error_message, error_message_len, "document is null");
         return false;
     }
+    if(doc->track_count<0 || (doc->track_count && !doc->tracks))return false;
+    int effect_points=0;
+    for(int t=-1;t<doc->track_count;++t){int count=t<0?doc->master_fx_count:doc->tracks[t].fx_count;const SessionFxInstance* effects=t<0?doc->master_fx:doc->tracks[t].fx;
+        if(count<0 || count>FX_MASTER_MAX || (count && !effects))return false;
+        for(int i=0;i<count;++i){if(!fx_parameter_automation_valid(effects[i].type,&effects[i].automation))return false;effect_points+=effects[i].automation.count;}
+    }
+    if(effect_points>FX_AUTOMATION_TOTAL_POINTS)return false;
     if (doc->version == 0) {
         session_set_error(error_message, error_message_len, "version is 0");
         return false;
@@ -155,19 +163,40 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
         session_set_error(error_message, error_message_len, "negative track count");
         return false;
     }
-    int return_count = 0;
+    int return_count = 0,mixer_points=0;
     bool has_routing = false;
     for (int t = 0; t < doc->track_count; ++t) {
         const SessionTrack* track = &doc->tracks[t];
+        if ((track->is_group && track->is_return) || (!track->is_group && track->folded) || track->parent_track < 0 ||
+            track->parent_track > doc->track_count || track->sibling_order < 0 || track->sibling_order > 1000000 ||
+            (track->is_return && track->parent_track) || (track->is_group && (track->clip_count || track->midi_instrument_enabled))) {
+            session_set_error(error_message,error_message_len,"invalid group lane %d",t); return false;
+        }
+        int parent=track->parent_track;
+        for (int depth=0; parent; ++depth) {
+            if(depth>=doc->track_count || parent==t+1 || !doc->tracks[parent-1].is_group) {
+                session_set_error(error_message,error_message_len,"invalid group cycle %d",t); return false;
+            }
+            parent=doc->tracks[parent-1].parent_track;
+            if(parent<0 || parent>doc->track_count)return false;
+        }
+        if(track->persistent_id>INT64_MAX)return false;
+        for(int prior=0;track->persistent_id && prior<t;++prior) if(doc->tracks[prior].persistent_id==track->persistent_id) {
+            session_set_error(error_message,error_message_len,"duplicate persistent track identity");return false;
+        }
+        if (track->is_group || track->parent_track) has_routing=true;
         if (track->is_return) {
             has_routing = true;
             if (++return_count > ENGINE_RETURN_CAP || track->clip_count || track->midi_instrument_enabled) {
                 session_set_error(error_message, error_message_len, "invalid return lane %d", t); return false;
             }
         }
+        if(!engine_mixer_automation_valid(&track->volume_automation,10) || (!track->is_group && track->volume_automation.count)){session_set_error(error_message,error_message_len,"invalid group automation %d",t);return false;}
+        mixer_points+=track->volume_automation.count;
         for (int send = 0; send < ENGINE_SEND_CAP; ++send) {
-            SessionSend slot = track->sends[send];
-            if (!isfinite(slot.gain) || slot.gain < 0 || slot.gain > 1 || slot.destination_track < 0 ||
+            SessionSend slot = track->sends[send];mixer_points+=slot.automation.count;
+            if(mixer_points>ENGINE_MIX_AUTOMATION_TOTAL){session_set_error(error_message,error_message_len,"mixer automation point limit exceeded");return false;}
+            if (!engine_mixer_automation_valid(&slot.automation,1) || (!slot.destination_track && slot.automation.count) || !isfinite(slot.gain) || slot.gain < 0 || slot.gain > 1 || slot.destination_track < 0 ||
                 slot.destination_track > doc->track_count || (!slot.destination_track && slot.gain) ||
                 (track->is_return && (slot.destination_track || slot.gain))) {
                 session_set_error(error_message, error_message_len, "invalid send %d:%d", t, send); return false;
@@ -240,8 +269,8 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
         }
         for (int l = 0; l < track->midi_instrument_automation_lane_count; ++l) {
             const SessionAutomationLane* lane = &track->midi_instrument_automation_lanes[l];
-            if (lane->target < ENGINE_AUTOMATION_TARGET_INSTRUMENT_LEVEL ||
-                lane->target > ENGINE_AUTOMATION_TARGET_INSTRUMENT_VIBRATO_DEPTH) {
+            if (!engine_automation_target_is_instrument_param(lane->target) ||
+                !session_automation_lane_validate(lane, UINT64_MAX)) {
                 session_set_error(error_message, error_message_len, "track %d midi automation target invalid", t);
                 return false;
             }
@@ -347,7 +376,7 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
             }
             for (int l = 0; l < clip->automation_lane_count; ++l) {
                 const SessionAutomationLane* lane = &clip->automation_lanes[l];
-                if (lane->target < 0 || lane->target >= ENGINE_AUTOMATION_TARGET_COUNT) {
+                if (!session_automation_lane_validate(lane, clip->duration_frames)) {
                     session_set_error(error_message, error_message_len, "track %d clip %d automation lane invalid", t, c);
                     return false;
                 }

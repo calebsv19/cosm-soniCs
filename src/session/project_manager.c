@@ -260,6 +260,11 @@ bool project_manager_save(AppState* state, const char* name_override, bool overw
     snprintf(path, sizeof(path), "%s/%s", projects_dir, name_buf);
     append_extension(path, sizeof(path));
 
+    if (state->project.has_name && state->project.path[0] &&
+        (!name_override || !strcmp(name_override,state->project.name))) {
+        SDL_strlcpy(path,state->project.path,sizeof(path));
+    }
+
     if (!overwrite_current && state->project.has_name && strcmp(state->project.path, path) != 0) {
         // If we are not overwriting current but the name differs, use current path.
         strncpy(path, state->project.path, sizeof(path) - 1);

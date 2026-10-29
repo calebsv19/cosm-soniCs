@@ -99,6 +99,7 @@ typedef enum {
     ENGINE_CMD_MIDI_AUDITION_NOTE_OFF = 11,
     ENGINE_CMD_MIDI_AUDITION_ALL_OFF = 12,
     ENGINE_CMD_PAUSE = 13,
+    ENGINE_CMD_MIDI_AUDITION_PEDAL = 14,
 } EngineCommandType;
 
 typedef struct {
@@ -190,6 +191,7 @@ typedef struct {
     float peak;
     float rms;
     int clip_hold;
+    EngineLiveMeterState live; // Worker-only calibrated window sums and latest result.
 } EngineMeterState;
 
 // Stores the latest FX meter snapshot keyed by instance id.
@@ -222,6 +224,9 @@ typedef struct {
 
 // Owns track metadata, DSP histories, and meter accumulation for one rendering revision.
 struct EngineMixState {
+    uint64_t automation_frame; // Shares the current project render clock with prepared routing edges.
+    struct EngineMixProbe* probe; // Borrowed observer only on a private offline plan.
+    struct EngineGroupMix* group_mix; // Owns prepared nested bus sums and per-edge compensation.
     Engine* owner;
     EngineTrack* tracks;
     int track_count;
@@ -247,6 +252,7 @@ struct EngineMixState {
 typedef struct {
     FxInstId id;
     EngineScopeStreamKind kind;
+    EngineGainReductionSnapshot latest;
     RingBuffer buffer;
 } EngineFxScopeTap;
 
@@ -344,6 +350,7 @@ struct Engine {
     uint64_t midi_audition_idle_frame;
     uint64_t midi_audition_tail_until;
     int midi_audition_track_index;
+    bool midi_audition_pedal_down, midi_audition_piano_configured;
     EngineEqState master_eq;
     EngineTrack* tracks;
     int track_count;
@@ -446,6 +453,8 @@ EngineMixState* engine_render_mix_state(const Engine* engine);
 void engine_bind_fx_meter_tap(EngineMixState* mix);
 // Publishes a coherent meter frame without waiting for the UI or reading editable tracks.
 void engine_publish_mix_meters(EngineMixState* mix);
+// Observes a post-fader live node or sanitized master with its own processing latency.
+void engine_live_meter_observe(Engine*,EngineMixState*,int,uint64_t,const float*,int,int);
 // Binds existing scope delivery to a separately owned render effect manager.
 void engine_bind_fx_scope_tap(Engine* engine, EffectsManager* fxm);
 // Queues a source rebuild on the worker thread when running, otherwise rebuilds immediately.
@@ -482,6 +491,8 @@ EngineSourcePlan* engine_source_plan_prepare_export(Engine* engine, uint64_t end
 EngineSourcePlan* engine_source_plan_prepare_export_filtered(Engine*, uint64_t end, uint64_t tail, const EngineBounceOptions*);
 // Reads export-owned latency after preparing its first DSP block.
 uint64_t engine_source_plan_export_latency(EngineSourcePlan* plan);
+// Attaches a borrowed synchronous observer only to a private export plan.
+bool engine_source_plan_set_probe(EngineSourcePlan*, struct EngineMixProbe*);
 // Renders a captured export block without live publication or telemetry.
 bool engine_source_plan_render_export(EngineSourcePlan* plan, uint64_t start, int frames,
                                      float* output, float* scratch, int channels);
@@ -525,6 +536,8 @@ void engine_midi_audition_apply_note_on(Engine* engine,
 void engine_midi_audition_apply_preview(Engine*, int, EngineInstrumentPresetId, EngineInstrumentParams, uint8_t, float, uint64_t);
 void engine_midi_audition_apply_note_off(Engine* engine, uint8_t note);
 void engine_midi_audition_apply_all_off(Engine* engine);
+// Applies a live sustain transition on the worker render clock.
+void engine_midi_audition_apply_pedal(Engine*, bool);
 // Retires released audition voices and bounds stopped effect-tail processing.
 void engine_midi_audition_retire(Engine* engine);
 // Clears prepared DSP histories and snaps controls at explicit transport or idle-audition resets.

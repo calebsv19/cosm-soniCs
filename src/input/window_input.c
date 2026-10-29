@@ -1,4 +1,5 @@
 #include "app_state.h"
+#include "input/track_header_mixer.h"
 #include "input/input_manager.h"
 #include "input/timeline_input.h"
 #include "input/transport_input.h"
@@ -17,6 +18,9 @@ static void cancel_surface(KitUiSurface* surface) {
 // End accepted continuous edits through their existing release/undo owners.
 // Discrete controls cancel first, so a native transition cannot activate a button.
 void input_manager_cancel_window_gestures(AppState* state) {
+    if (state) state->timeline_scrollbar_dragging = false;
+    daw_track_header_mixer_finish(state,false);
+    if(state)state->header_mixer.focus_id=0;
     if(!state)return;
     cancel_surface(&state->editor_controls.surface);
     cancel_surface(&state->transport_ui.controls);

@@ -26,7 +26,7 @@ typedef struct WavStreamWriter {
     uint64_t frames;
     int channels, rate;
     uint32_t rng;
-    bool floating, dither, active, failed;
+    bool floating, dither, active, failed, no_replace; // Selects atomic no-overwrite publication for owned export jobs.
 } WavStreamWriter;
 
 // Starts a candidate whose final frame count is determined by successful appends.

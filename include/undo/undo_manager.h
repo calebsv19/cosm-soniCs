@@ -9,6 +9,7 @@
 #include "session.h"
 #include "time/tempo.h"
 #include "daw/app_actions.h"
+#include "daw/track_mix.h"
 #include "ui/library_browser.h"
 
 struct EngineSamplerSource;
@@ -37,7 +38,8 @@ typedef enum {
     UNDO_CMD_MIDI_REGION,
     UNDO_CMD_FX_CHAIN,
     UNDO_CMD_ARRANGEMENT,
-    UNDO_CMD_ROUTING
+    UNDO_CMD_ROUTING,
+    UNDO_CMD_TRACK_MIX
 } UndoCommandType;
 
 // Stores clip parameters for undo/redo transforms.
@@ -84,6 +86,7 @@ typedef struct {
 // Captures authored settings of a gesture-created track without borrowing runtime-owned storage.
 typedef struct {
     uint64_t runtime_id;
+    uint64_t persistent_id;
     EngineTrackSettings settings;
     EngineEqCurve eq;
     char name[ENGINE_CLIP_NAME_MAX];
@@ -123,6 +126,8 @@ typedef struct {
 typedef struct {
     int track_index;
     int clip_index;
+    uint64_t track_runtime_id;
+    uint64_t clip_creation_id;
     int before_lane_count;
     SessionAutomationLane* before_lanes;
     int after_lane_count;
@@ -137,8 +142,9 @@ typedef struct {
     TempoEvent* after_events;
 } UndoTempoMapEdit;
 
+// Stores one exact label transition bound to the project and stable track lifetime.
 typedef struct {
-    int track_index;
+    DawActionTarget target;
     char before_name[ENGINE_CLIP_NAME_MAX];
     char after_name[ENGINE_CLIP_NAME_MAX];
 } UndoTrackRename;
@@ -169,10 +175,12 @@ typedef struct {
     SessionFxInstance after_state;
 } UndoFxEdit;
 
-typedef struct {
+// Stores dedicated EQ history bound to accepted curve values and the engine/track lifetime.
+typedef struct UndoEqCurveEdit {
     bool is_master;
     int track_index;
     uint64_t track_runtime_id;
+    uint64_t generation;
     SessionEqCurve before;
     SessionEqCurve after;
 } UndoEqCurveEdit;
@@ -252,6 +260,7 @@ typedef struct UndoCommand {
         UndoFxEdit fx_edit;
         UndoEqCurveEdit eq_curve_edit;
         UndoTrackSnapshotEdit track_snapshot_edit;
+        DawTrackMixEdit track_mix;
         UndoLibraryRename library_rename;
         UndoMidiNoteEdit midi_note_edit;
         UndoMidiRegion midi_region;

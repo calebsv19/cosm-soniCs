@@ -42,6 +42,7 @@ bool parse_session_track_fx(JsonReader* r, SessionTrack* track) {
         memset(fx, 0, sizeof(*fx));
         fx->enabled = true;
         track->fx_count = new_count;
+        bool automation_seen = false;
 
         if (!json_expect(r, '{')) {
             return false;
@@ -65,6 +66,9 @@ bool parse_session_track_fx(JsonReader* r, SessionTrack* track) {
                     return false;
                 }
                 fx->type = (FxTypeId)(val < 0 ? 0 : val);
+            } else if (strcmp(fx_key, "automation") == 0) {
+                if(automation_seen || !session_parse_parameter_automation(r,&fx->automation,-96,24))return false;
+                automation_seen=true;
             } else if (strcmp(fx_key, "name") == 0) {
                 json_parse_string(r, fx->name, sizeof(fx->name));
             } else if (strcmp(fx_key, "enabled") == 0) {

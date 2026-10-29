@@ -1,3 +1,5 @@
+#include "daw/automation_actions.h"
+#include "ui/automation_menu.h"
 #define _POSIX_C_SOURCE 200809L
 #include "app_state.h"
 #include "engine/engine_internal.h"
@@ -13,6 +15,7 @@
 #include "ui/render_utils.h"
 #include "ui/font.h"
 #include "ui/midi_editor.h"
+#include "input/midi_editor_input_internal.h"
 #include "ui/midi_instrument_panel.h"
 #include "ui/effects_panel.h"
 #include "input/effects_panel_input.h"
@@ -183,6 +186,21 @@ int main(int argc,char** argv) {
     assert(engine_clip_midi_add_note(state->engine,0,clip,(EngineMidiNote){0,12000,60,0.8f},NULL));
     timeline_selection_set_single(state,0,clip); state->inspector.visible=true;
     focus(state,12,7); capture(&renderer,state,argv[1],"midi-editor");
+    MidiEditorSelection note_selection = {0}; MidiEditorLayout note_layout = {0}; SDL_Rect note_rect = {0};
+    assert(midi_editor_get_selection(state, &note_selection));
+    midi_editor_select_note(state, &note_selection, 0);
+    midi_editor_compute_layout(state, &note_layout);
+    assert(midi_editor_note_rect(&note_layout, &engine_clip_midi_notes(note_selection.clip)[0],
+                                 note_selection.clip->duration_frames, &note_rect));
+    midi_editor_update_hover_note(state, &note_selection, &note_layout, note_rect.x, note_rect.y + note_rect.h / 2);
+    assert(state->midi_editor_ui.hover_note_part == MIDI_EDITOR_NOTE_HIT_LEFT_EDGE);
+    capture(&renderer,state,argv[1],"midi-resize-start");
+    midi_editor_update_hover_note(state, &note_selection, &note_layout,
+                                  note_rect.x + note_rect.w - 1, note_rect.y + note_rect.h / 2);
+    assert(state->midi_editor_ui.hover_note_part == MIDI_EDITOR_NOTE_HIT_RIGHT_EDGE);
+    capture(&renderer,state,argv[1],"midi-resize-end");
+    midi_editor_clear_hover_note(state);
+
     DawMidiPatternLayout patterns;daw_midi_pattern_layout(state,&patterns);
     assert(daw_midi_pattern_activate(state,patterns.entry.x+1,patterns.entry.y+1));
     capture(&renderer,state,argv[1],"midi-pattern-popup");containment(&renderer,state,argv[1]);
@@ -321,6 +339,120 @@ int main(int argc,char** argv) {
     assert(session_document_capture(state,&replacement));
     assert(session_apply_document(state,&replacement));session_document_free(&replacement);
     assert(!state->sound_ui.open && !state->sound_ui.captured.audio.data && !engine_preview_active(state->engine));
+    // Command-Q must remain an application shortcut even after global modifiers are released.
+    SDL_Event quit_shortcut = {.type=SDL_KEYDOWN}; quit_shortcut.key.keysym.sym=SDLK_q;
+    quit_shortcut.key.keysym.mod=KMOD_GUI; SDL_SetModState(KMOD_NONE);
+    assert(!midi_editor_handle_qwerty_event(state,&quit_shortcut));
+    // Verify complete toolbar hitboxes activate once and mouse focus never imitates selection.
+    daw_editor_controls_sync(state);
+    SDL_Rect auto_button = state->timeline_controls.automation_toggle_rect;
+    bool old_auto = state->timeline_automation_mode;
+    SDL_Event toolbar = {.type = SDL_MOUSEBUTTONDOWN}; toolbar.button.button = SDL_BUTTON_LEFT;
+    toolbar.button.x = auto_button.x + 2; toolbar.button.y = auto_button.y + auto_button.h / 2;
+    input_manager_handle_event(&state->input_manager,state,&toolbar);
+    toolbar.type = SDL_MOUSEBUTTONUP; input_manager_handle_event(&state->input_manager,state,&toolbar);
+    assert(state->timeline_automation_mode != old_auto && !state->editor_controls.focus_from_keyboard);
+    toolbar.type = SDL_MOUSEBUTTONDOWN; toolbar.button.x = auto_button.x + auto_button.w - 3;
+    input_manager_handle_event(&state->input_manager,state,&toolbar);
+    toolbar.type = SDL_MOUSEBUTTONUP; input_manager_handle_event(&state->input_manager,state,&toolbar);
+    assert(state->timeline_automation_mode == old_auto);
+    activate_control(state,11,6);
+    assert(state->automation_ui.menu_open);
+    capture(&renderer,state,argv[1],"automation-target-dropdown");
+    SDL_Rect pan_row = automation_menu_target_rect(state,1);
+    toolbar.type = SDL_MOUSEBUTTONDOWN; toolbar.button.x = pan_row.x + 5; toolbar.button.y = pan_row.y + pan_row.h / 2;
+    input_manager_handle_event(&state->input_manager,state,&toolbar);
+    toolbar.type = SDL_MOUSEBUTTONUP; input_manager_handle_event(&state->input_manager,state,&toolbar);
+    assert(!state->automation_ui.menu_open && !state->automation_ui.menu_release &&
+        state->automation_ui.target == ENGINE_AUTOMATION_TARGET_PAN && state->timeline_automation_mode);
+    activate_control(state,11,6); assert(state->automation_ui.menu_open);
+    toolbar.type = SDL_MOUSEBUTTONDOWN; toolbar.button.x = 10; toolbar.button.y = 10;
+    input_manager_handle_event(&state->input_manager,state,&toolbar);
+    toolbar.type = SDL_MOUSEBUTTONUP; input_manager_handle_event(&state->input_manager,state,&toolbar);
+    assert(!state->automation_ui.menu_open && state->automation_ui.target == ENGINE_AUTOMATION_TARGET_PAN);
+    activate_control(state,11,6);
+    SDL_Event menu_key = {.type=SDL_KEYDOWN}; menu_key.key.keysym.sym=SDLK_ESCAPE;
+    input_manager_handle_event(&state->input_manager,state,&menu_key);
+    assert(!state->automation_ui.menu_open);
+    // A melodic voice keeps percussion rows visible but refuses dormant pointer and keyboard choices.
+    activate_control(state,11,6);
+    SDL_Rect dormant_row = automation_menu_target_rect(state,25);
+    toolbar.type = SDL_MOUSEBUTTONDOWN; toolbar.button.x = dormant_row.x + 5;
+    toolbar.button.y = dormant_row.y + dormant_row.h / 2;
+    input_manager_handle_event(&state->input_manager,state,&toolbar);
+    toolbar.type = SDL_MOUSEBUTTONUP; input_manager_handle_event(&state->input_manager,state,&toolbar);
+    assert(state->automation_ui.menu_open && state->automation_ui.target == ENGINE_AUTOMATION_TARGET_PAN);
+    menu_key.key.keysym.sym = SDLK_RETURN;
+    input_manager_handle_event(&state->input_manager,state,&menu_key);
+    assert(state->automation_ui.menu_open && state->automation_ui.target == ENGINE_AUTOMATION_TARGET_PAN);
+    capture(&renderer,state,argv[1],"automation-target-instrument-support");
+    menu_key.key.keysym.sym = SDLK_ESCAPE;
+    input_manager_handle_event(&state->input_manager,state,&menu_key);
+    // Deselecting a region preserves every menu row and disables instrument choices.
+    SDL_Rect full_menu_last = automation_menu_target_rect(state,ENGINE_AUTOMATION_TARGET_COUNT-1);
+    int saved_track = state->selected_track_index, saved_clip = state->selected_clip_index;
+    state->selected_track_index = -1; state->selected_clip_index = -1;
+    activate_control(state,11,6);
+    SDL_Rect deselected_last = automation_menu_target_rect(state,ENGINE_AUTOMATION_TARGET_COUNT-1);
+    assert(full_menu_last.w > 0 && memcmp(&full_menu_last,&deselected_last,sizeof(SDL_Rect)) == 0);
+    capture(&renderer,state,argv[1],"automation-target-dropdown-disabled");
+    SDL_Rect instrument_row = automation_menu_target_rect(state,2);
+    toolbar.type = SDL_MOUSEBUTTONDOWN;
+    toolbar.button.x = instrument_row.x + 5; toolbar.button.y = instrument_row.y + instrument_row.h / 2;
+    uint64_t menu_history = state->automation_ui.history_serial;
+    input_manager_handle_event(&state->input_manager,state,&toolbar);
+    toolbar.type = SDL_MOUSEBUTTONUP; input_manager_handle_event(&state->input_manager,state,&toolbar);
+    assert(state->automation_ui.menu_open && !state->automation_ui.menu_release &&
+        state->automation_ui.target == ENGINE_AUTOMATION_TARGET_PAN &&
+        state->selected_track_index == -1 && state->selected_clip_index == -1 &&
+        state->automation_ui.history_serial == menu_history);
+    menu_key.key.keysym.sym = SDLK_RETURN;
+    input_manager_handle_event(&state->input_manager,state,&menu_key);
+    assert(state->automation_ui.menu_open && state->automation_ui.target == ENGINE_AUTOMATION_TARGET_PAN);
+    state->selected_track_index = saved_track; state->selected_clip_index = saved_clip;
+    input_manager_handle_event(&state->input_manager,state,&menu_key);
+    assert(!state->automation_ui.menu_open && (int)state->automation_ui.target == 2);
+    state->automation_ui.target = ENGINE_AUTOMATION_TARGET_PAN;
+    const EngineClip* automation_region = &engine_get_tracks(state->engine)[0].clips[0];
+    uint64_t automation_duration = automation_region->duration_frames;
+    EngineAutomationPoint automation_points[] = {{0, -12, ENGINE_AUTOMATION_CURVE_SMOOTH},
+        {automation_duration, 0, ENGINE_AUTOMATION_CURVE_LINEAR}};
+    EngineAutomationLane automation_lane = {.target = ENGINE_AUTOMATION_TARGET_VOLUME,
+        .points = automation_points, .point_count = 2, .domain = ENGINE_AUTOMATION_DOMAIN_PHYSICAL,
+        .before = ENGINE_AUTOMATION_BOUNDARY_HOLD, .after = ENGINE_AUTOMATION_BOUNDARY_HOLD};
+    assert(daw_automation_replace_lanes(state, 0, 0, &automation_lane, 1));
+    state->timeline_automation_mode = true;
+    state->automation_ui.target = ENGINE_AUTOMATION_TARGET_VOLUME;
+    state->automation_ui.track_index = 0; state->automation_ui.clip_index = 0; state->automation_ui.point_index = 0;
+    SDL_Event automation_key = {.type = SDL_KEYDOWN}; automation_key.key.keysym.sym = SDLK_2;
+    input_manager_handle_event(&state->input_manager, state, &automation_key);
+    const EngineAutomationLane* native_lane = NULL;
+    assert(engine_clip_get_automation_lane(state->engine, 0, 0, ENGINE_AUTOMATION_TARGET_VOLUME, &native_lane));
+    assert(native_lane->points[0].curve == ENGINE_AUTOMATION_CURVE_HOLD);
+    capture(&renderer, state, argv[1], "automation-hold-and-units");
+    automation_key.key.keysym.sym = SDLK_3;
+    input_manager_handle_event(&state->input_manager, state, &automation_key);
+    capture(&renderer, state, argv[1], "automation-smooth-and-units");
+    state->timeline_automation_mode = false;
+    state->automation_ui.menu_open=false;
+    assert(engine_clip_midi_set_instrument_preset(state->engine,0,0,ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLIN));
+    timeline_selection_set_single(state,0,0);
+    state->inspector.visible=true;
+    state->midi_editor_ui.panel_mode=MIDI_REGION_PANEL_INSTRUMENT;
+    state->midi_editor_ui.instrument_active_group=ENGINE_INSTRUMENT_PARAM_GROUP_MOD;
+    capture(&renderer,state,argv[1],"sampled-violin-expression"); containment(&renderer,state,argv[1]);
+    state->automation_ui.target=ENGINE_AUTOMATION_TARGET_INSTRUMENT_DYNAMICS;
+    automation_menu_open(state);
+    capture(&renderer,state,argv[1],"sampled-violin-automation");
+    state->automation_ui.menu_open=false;
+    const EngineInstrumentPresetId winds[]={ENGINE_INSTRUMENT_PRESET_SAMPLED_TRUMPET,ENGINE_INSTRUMENT_PRESET_SAMPLED_CLARINET,ENGINE_INSTRUMENT_PRESET_SAMPLED_SAXOPHONE,ENGINE_INSTRUMENT_PRESET_SAMPLED_FLUTE,ENGINE_INSTRUMENT_PRESET_SAMPLED_CELLO_SECTION,ENGINE_INSTRUMENT_PRESET_SAMPLED_OBOE,ENGINE_INSTRUMENT_PRESET_SAMPLED_FRENCH_HORN,ENGINE_INSTRUMENT_PRESET_SAMPLED_BASSOON,ENGINE_INSTRUMENT_PRESET_SAMPLED_TENOR_TROMBONE,ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO,ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLA_SECTION,ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLIN_SECTION,ENGINE_INSTRUMENT_PRESET_SAMPLED_DOUBLE_BASS};
+    for (int i=0;i<13;++i) {
+        assert(engine_clip_midi_set_instrument_preset(state->engine,0,0,winds[i]));
+        state->midi_editor_ui.instrument_active_group=ENGINE_INSTRUMENT_PARAM_GROUP_MOD;
+        const char* names[]={"sampled-trumpet","sampled-clarinet","sampled-saxophone","sampled-flute","sampled-cello-section","sampled-oboe","sampled-french-horn","sampled-bassoon","sampled-tenor-trombone","sampled-acoustic-piano","sampled-viola-section","sampled-violin-section","sampled-double-bass"};
+        capture(&renderer,state,argv[1],names[i]);
+        containment(&renderer,state,argv[1]);
+    }
     engine_stop(state->engine);unsetenv("SDL_AUDIODRIVER");
     daw_routing_panel_release(state); daw_fx_library_panel_release(state);retire_library_directory(library);unsetenv("DAW_PRESET_LIBRARY");
     ui_font_invalidate_cache((SDL_Renderer*)&renderer); ui_font_shutdown(); undo_manager_free(&state->undo);

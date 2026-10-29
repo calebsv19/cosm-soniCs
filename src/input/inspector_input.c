@@ -1,3 +1,5 @@
+#include "ui/automation_view.h"
+#include "daw/automation_actions.h"
 #include "input/inspector_input.h"
 
 #include "app_state.h"
@@ -134,7 +136,7 @@ static void inspector_stop_text_input(AppState* state) {
 }
 
 // Converts a mouse y position into an automation value in -1..1.
-static float inspector_automation_value_from_y(const SDL_Rect* rect, int y) {
+static float inspector_automation_value_from_y(const SDL_Rect* rect, const EngineAutomationLane* lane, int y) {
     if (!rect || rect->h <= 0) {
         return 0.0f;
     }
@@ -146,7 +148,7 @@ static float inspector_automation_value_from_y(const SDL_Rect* rect, int y) {
     float value = (float)(baseline - y) / (float)range;
     if (value < -1.0f) value = -1.0f;
     if (value > 1.0f) value = 1.0f;
-    return value;
+    return ui_automation_authored(lane, value);
 }
 
 // Finds an automation point under the cursor in inspector coordinates.
@@ -157,7 +159,7 @@ static int inspector_automation_hit_point(const EngineAutomationLane* lane,
                                           uint64_t clip_start,
                                           uint64_t clip_frames,
                                           int x,
-                                          int y) {
+                                          int y, int* grab_x, int* grab_y) {
     if (!lane || !rect || rect->w <= 0 || rect->h <= 0 || view_frames == 0 || clip_frames == 0) {
         return -1;
     }
@@ -177,8 +179,10 @@ static int inspector_automation_hit_point(const EngineAutomationLane* lane,
         }
         double t = (double)(abs_frame - view_start) / (double)view_frames;
         int px = rect->x + (int)llround(t * (double)rect->w);
-        int py = baseline - (int)llround((double)lane->points[i].value * (double)range);
+        int py = baseline - (int)llround((double)ui_automation_normalized(lane, lane->points[i].value) * (double)range);
         if (abs(px - x) <= radius && abs(py - y) <= radius) {
+            *grab_x = x - px;
+            *grab_y = y - py;
             return i;
         }
     }
@@ -416,7 +420,7 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                             uint64_t frame_at = view_start + (uint64_t)llround(t * (double)view_frames);
                             double sr = inspector_numeric_clip_sample_rate(state, clip);
                             float seconds = (float)((double)frame_at / sr);
-                            seconds = timeline_snap_seconds_to_grid(state, seconds, state->timeline_visible_seconds);
+                            if (!alt_held) seconds = timeline_snap_seconds_to_grid(state, seconds, state->timeline_visible_seconds);
                             frame_at = (uint64_t)llround((double)seconds * sr);
                             uint64_t clip_start = clip->offset_frames;
                             uint64_t rel_frame = frame_at > clip_start ? frame_at - clip_start : 0;
@@ -424,12 +428,16 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                                 rel_frame = clip_frames;
                             }
                             const EngineAutomationLane* lane = NULL;
-                            automation_begin_edit(state, state->inspector.track_index, state->inspector.clip_index);
+                            if (!automation_begin_edit(state, state->inspector.track_index, state->inspector.clip_index)) break;
                             engine_clip_get_automation_lane(state->engine,
                                                             state->inspector.track_index,
                                                             state->inspector.clip_index,
                                                             state->automation_ui.target,
                                                             &lane);
+                            state->automation_ui.point_grab_x = state->automation_ui.point_grab_y = 0;
+                            state->automation_ui.press_x = p.x;
+                            state->automation_ui.press_y = p.y;
+                            state->automation_ui.point_moved = false;
                             int hit_point = inspector_automation_hit_point(lane,
                                                                            &rect,
                                                                            view_start,
@@ -437,15 +445,15 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                                                                            clip_start,
                                                                            clip_frames,
                                                                            p.x,
-                                                                           p.y);
-                            float value = inspector_automation_value_from_y(&rect, p.y);
+                                                                           p.y, &state->automation_ui.point_grab_x, &state->automation_ui.point_grab_y);
+                            float value = inspector_automation_value_from_y(&rect, lane, p.y);
                             if (hit_point >= 0) {
                                 state->automation_ui.track_index = state->inspector.track_index;
                                 state->automation_ui.clip_index = state->inspector.clip_index;
                                 state->automation_ui.point_index = hit_point;
                             } else {
                                 int new_index = -1;
-                                engine_clip_add_automation_point(state->engine,
+                                daw_automation_add_point(state,
                                                                  state->inspector.track_index,
                                                                  state->inspector.clip_index,
                                                                  state->automation_ui.target,
@@ -456,6 +464,7 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                                 state->automation_ui.clip_index = state->inspector.clip_index;
                                 state->automation_ui.point_index = new_index;
                             }
+                            if (state->automation_ui.point_index < 0) { automation_cancel_edit(state); break; }
                             state->automation_ui.dragging = true;
                             state->automation_ui.dragging_from_inspector = true;
                             inspector_input_commit_if_editing(state);
@@ -584,6 +593,9 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
         break;
     case SDL_MOUSEMOTION:
         if (state->automation_ui.dragging && state->automation_ui.dragging_from_inspector) {
+            if (!state->automation_ui.point_moved && abs(event->motion.x - state->automation_ui.press_x) < 3 &&
+                abs(event->motion.y - state->automation_ui.press_y) < 3) break;
+            state->automation_ui.point_moved = true;
             const EngineClip* clip = inspector_get_clip_const(state);
             if (clip) {
                 uint64_t clip_frames = inspector_numeric_clip_duration_frames(state, clip);
@@ -596,7 +608,7 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                     ClipInspectorLayout layout;
                     clip_inspector_compute_layout(state, &layout);
                     SDL_Rect rect = layout.right_waveform_rect;
-                    int clamped_x = event->motion.x;
+                    int clamped_x = event->motion.x - state->automation_ui.point_grab_x;
                     if (clamped_x < rect.x) clamped_x = rect.x;
                     if (clamped_x > rect.x + rect.w) clamped_x = rect.x + rect.w;
                     double t = (double)(clamped_x - rect.x) / (double)rect.w;
@@ -605,16 +617,18 @@ void inspector_input_handle_event(InputManager* manager, AppState* state, const 
                     uint64_t frame_at = view_start + (uint64_t)llround(t * (double)view_frames);
                     double sr = inspector_numeric_clip_sample_rate(state, clip);
                     float seconds = (float)((double)frame_at / sr);
-                    seconds = timeline_snap_seconds_to_grid(state, seconds, state->timeline_visible_seconds);
+                    if (!(SDL_GetModState() & KMOD_ALT)) seconds = timeline_snap_seconds_to_grid(state, seconds, state->timeline_visible_seconds);
                     frame_at = (uint64_t)llround((double)seconds * sr);
                     uint64_t clip_start = clip->offset_frames;
                     uint64_t rel_frame = frame_at > clip_start ? frame_at - clip_start : 0;
                     if (rel_frame > clip_frames) {
                         rel_frame = clip_frames;
                     }
-                    float value = inspector_automation_value_from_y(&rect, event->motion.y);
+                    const EngineAutomationLane* lane = NULL;
+                    engine_clip_get_automation_lane(state->engine, state->inspector.track_index, state->inspector.clip_index, state->automation_ui.target, &lane);
+                    float value = inspector_automation_value_from_y(&rect, lane, event->motion.y - state->automation_ui.point_grab_y);
                     int new_index = state->automation_ui.point_index;
-                    engine_clip_update_automation_point(state->engine,
+                    daw_automation_update_point(state,
                                                         state->inspector.track_index,
                                                         state->inspector.clip_index,
                                                         state->automation_ui.target,

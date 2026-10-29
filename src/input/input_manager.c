@@ -1,10 +1,14 @@
+#include "input/automation_keyboard.h"
+#include "ui/automation_menu.h"
 #include "ui/pane_composition.h"
 #include "kit_ui_window_sdl.h"
+#include "ui/track_group_panel.h"
 #include "app/media_import.h"
 #include "input/input_manager.h"
 
 #include "app/audio_recording.h"
 #include "app_state.h"
+#include "ui/ab_panel.h"
 #include "ui/text_edit.h"
 #include "app/workspace_authoring/daw_workspace_authoring_host.h"
 #include "engine/engine.h"
@@ -17,6 +21,7 @@
 #include "input/midi_editor_input.h"
 #include "input/midi_instrument_panel_input.h"
 #include "input/project_modal_input.h"
+#include "input/track_header_mixer.h"
 #include "input/timeline_selection.h"
 #include "session.h"
 #include "ui/layout.h"
@@ -384,20 +389,47 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
         return;
     }
     if (event->type == SDL_WINDOWEVENT && (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST ||
-        event->window.event == SDL_WINDOWEVENT_HIDDEN)) daw_text_cancel_composition(state);
+        event->window.event == SDL_WINDOWEVENT_HIDDEN)) {
+        daw_text_cancel_composition(state);
+        // Release the new audition pedal when its keyboard owner loses focus.
+        if (state->engine) (void)engine_midi_audition_pedal(state->engine, false);
+    }
     if(kit_ui_window_event_invalidates_sdl(event)) input_manager_cancel_window_gestures(state);
     daw_pane_lifecycle_event(state,event);
+    // A fresh SDL press is a new gesture; stale held motion still waits for release.
+    if (manager->window_wait_release && event->type == SDL_MOUSEBUTTONDOWN &&
+        event->button.button == SDL_BUTTON_LEFT) manager->window_wait_release = false;
     if(manager->window_wait_release && (event->type==SDL_MOUSEBUTTONDOWN || event->type==SDL_MOUSEBUTTONUP || event->type==SDL_MOUSEMOTION)) {
         if(event->type==SDL_MOUSEBUTTONUP && event->button.button==SDL_BUTTON_LEFT)manager->window_wait_release=false;
         return;
     }
+    if(daw_track_header_mixer_event(state,event))return;
     daw_project_modal_controls_sync(state);
+    if(daw_group_panel_event(state,event))return;
+    if (!project_modal_input_active(state) && automation_menu_event(state,event)) return;
+    if (!project_modal_input_active(state) && daw_live_meter_panel_event(state,event)) return;
+    if (!project_modal_input_active(state) && daw_song_export_panel_event(state,event)) return;
+    if (!project_modal_input_active(state) && daw_ab_panel_event(state,event)) return;
     if (!project_modal_input_active(state) && daw_routing_panel_event(state,event)) return;
     if (!project_modal_input_active(state) && daw_fx_library_panel_event(state,event)) return;
     if (!project_modal_input_active(state) && daw_preset_panel_event(state, event)) return;
     if (!project_modal_input_active(state) && daw_sound_panel_event(state, event)) return;
     if (!project_modal_input_active(state) && daw_midi_arrangement_event(state, event)) return;
     if (!project_modal_input_active(state) && daw_midi_pattern_event(state, event)) return;
+    // A divider owns its complete press-motion-release sequence before content dispatch.
+    if (!project_modal_input_active(state) && !state->undo.active_drag_valid &&
+        !state->editor_controls.surface.interaction.pointer_owned) {
+        if (event->type == SDL_MOUSEBUTTONDOWN && event->button.button == SDL_BUTTON_LEFT) {
+            ui_layout_handle_pointer(state, 0, SDL_BUTTON(SDL_BUTTON_LEFT), event->button.x, event->button.y);
+            if (state->layout_runtime.drag.active) return;
+        } else if (state->layout_runtime.drag.active && event->type == SDL_MOUSEMOTION) {
+            ui_layout_handle_pointer(state, SDL_BUTTON(SDL_BUTTON_LEFT), SDL_BUTTON(SDL_BUTTON_LEFT), event->motion.x, event->motion.y);
+            return;
+        } else if (state->layout_runtime.drag.active && event->type == SDL_MOUSEBUTTONUP && event->button.button == SDL_BUTTON_LEFT) {
+            ui_layout_handle_pointer(state, SDL_BUTTON(SDL_BUTTON_LEFT), 0, event->button.x, event->button.y);
+            return;
+        }
+    }
     if (daw_editor_controls_event(manager,state,event)) return;
     if (daw_transport_controls_event(state,event))return;
     if (event->type == SDL_DROPFILE) {
@@ -432,7 +464,8 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
     }
 
     if (state->tempo_ui.editing) {
-        transport_input_handle_event(manager, state, event);
+        if (automation_keyboard_handle(state, event)) return;
+    transport_input_handle_event(manager, state, event);
         return;
     }
 
@@ -510,9 +543,11 @@ void input_manager_update(InputManager* manager, AppState* state) {
     if (!manager || !state) {
         return;
     }
+    daw_track_header_mixer_sync(state);
+    if(state->header_mixer.dragging || state->header_mixer.wait_release)return;
     daw_editor_controls_sync(state);
     daw_transport_controls_sync(&state->transport_ui,state);
-    if (project_modal_input_active(state)) {
+    if (project_modal_input_active(state) || state->group_panel.open) {
         daw_pane_resize_cancel(state);
         // Block normal updates while prompt is active.
         return;

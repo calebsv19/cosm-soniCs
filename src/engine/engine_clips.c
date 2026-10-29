@@ -402,7 +402,7 @@ static void clip_addition_discard(Engine* engine, ClipAddition* addition) {
 static bool clip_addition_commit(Engine* engine, int index, ClipAddition* addition, int* out_index) {
     int previous_count = engine->track_count;
     EngineTrack* track = engine_get_track_mutable(engine, index);
-    if (track && track->is_return) return false;
+    if (track && (track->is_return || track->is_group)) return false;
     if (!track) { clip_addition_discard(engine, addition); return false; }
     SDL_LockMutex(engine->fxm_mutex);
     EffectsManager* previous_fx = engine->fxm;
@@ -511,7 +511,7 @@ bool engine_add_midi_clip_to_track(Engine* engine, int track_index, uint64_t sta
 // Restores optional stable history identities within the existing privately staged MIDI addition.
 bool engine_add_midi_clip_with_identity(Engine* engine, int track_index, uint64_t start_frame, uint64_t duration_frames,
                                        uint64_t clip_id, uint64_t restored_track_id, int* out_clip_index) {
-    if (!engine || duration_frames == 0 || (track_index >= 0 && track_index < engine->track_count && engine->tracks[track_index].is_return)) {
+    if (!engine || duration_frames == 0 || (track_index >= 0 && track_index < engine->track_count && (engine->tracks[track_index].is_return || engine->tracks[track_index].is_group))) {
         return false;
     }
     if (restored_track_id && track_index != engine->track_count) return false;

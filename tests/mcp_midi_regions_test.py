@@ -16,7 +16,7 @@ async def check(fixture,output):
             assert process.stdout.readline().strip()=='READY'
             async with stdio_client(StdioServerParameters(command=str(ROOT/'tools/mcp/run.sh'),env=env)) as (r,w):
                 async with ClientSession(r,w) as session:
-                    await session.initialize();tools={t.name:t for t in (await session.list_tools()).tools};assert len(tools)==45
+                    await session.initialize();tools={t.name:t for t in (await session.list_tools()).tools};assert len(tools)==70
                     assert tools['get_midi_layout'].annotations.readOnlyHint
                     async def call(name,**args):
                         """Decode domain refusals separately from SDK transport success."""

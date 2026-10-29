@@ -16,7 +16,7 @@ static SDL_Rect bounds(const TransportUI* ui, DawTransportAction action) {
 
 // Text/modal/authoring owners keep their existing priority over background commands.
 static bool blocked(const AppState* state) {
-    return state->bounce_active || project_modal_input_active(state) ||
+    return state->bounce_active || (project_modal_input_active(state) || state->group_panel.open) ||
         state->tempo_ui.editing || state->track_name_editor.editing ||
         library_input_is_editing(state) || inspector_input_has_text_focus(state) ||
         daw_workspace_authoring_host_active(&state->workspace_authoring);

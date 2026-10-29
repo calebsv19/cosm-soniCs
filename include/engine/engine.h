@@ -1,4 +1,5 @@
 #pragma once
+#include "engine/live_meter.h"
 #include "engine/routing.h"
 #include "daw/save_file.h"
 
@@ -100,6 +101,7 @@ typedef struct {
     float rms;
     bool clipped;
     uint64_t runtime_id; // Identifies the track lifetime represented by this snapshot.
+    EngineLiveMeter live; // Owns the exact qualified stereo/channel measurement window.
 } EngineMeterSnapshot;
 
 // Snapshot of per-FX metering values for analysis modules.
@@ -178,7 +180,13 @@ struct EngineClip {
 
 // Owns editable track content and a runtime identity that survives array movement.
 struct EngineTrack {
+    bool is_group; // Marks an empty serial parent bus with its own processing chain.
+    uint64_t parent_id; // Binds the exclusive main output to a stable parent bus lifetime.
+    uint64_t persistent_id; // Preserves authored lane identity across project reopening.
+    int sibling_order; // Orders siblings without moving engine/FX array indices.
+    bool folded; // Hides descendants in the timeline without changing audio.
     bool is_return; // Distinguishes source lanes from shared return processing.
+    EngineMixerAutomation volume_automation; // Owns group fader curves on absolute project frames.
     EngineSend sends[ENGINE_SEND_CAP]; // Owns bounded post-fader stable destination sends.
     uint64_t runtime_id;
     EngineClip* clips;
@@ -207,6 +215,8 @@ const EngineRuntimeConfig* engine_get_config(const Engine* engine);
 // Borrows registry entries on the control thread until the next structural track/effect edit or destruction.
 bool    engine_fx_get_registry(const Engine* engine, const FxRegistryEntry** out_entries, int* out_count);
 bool    engine_fx_registry_get_desc(const Engine* engine, FxTypeId type, FxDesc* out_desc);
+// Reads non-consuming compressor/limiter feedback after validating the current insert identity.
+bool engine_get_gain_reduction(const Engine*, bool master, int track, FxInstId, EngineGainReductionSnapshot*);
 // Reads pending samples for a scope stream tied to an FX instance.
 int     engine_get_fx_scope_samples(const Engine* engine,
                                     bool is_master,
@@ -494,6 +504,8 @@ bool    engine_midi_audition_note_on(Engine* engine,
 // Queues a finite audition note that retires without UI timers or note-off delivery.
 bool engine_midi_audition_note_preview(Engine*, int, EngineInstrumentPresetId, EngineInstrumentParams, uint8_t, float, uint64_t);
 bool    engine_midi_audition_note_off(Engine* engine, uint8_t note);
+// Queues piano sustain transitions for computer-keyboard audition.
+bool engine_midi_audition_pedal(Engine*, bool);
 void    engine_midi_audition_all_notes_off(Engine* engine);
 bool    engine_track_apply_no_overlap(Engine* engine,
                                       int track_index,
@@ -680,6 +692,13 @@ bool engine_remove_midi_clip_restore_track(Engine*, int, int, bool, EngineInstru
 
 // Starts original-level immutable captured PCM on the existing stopped engine output endpoint.
 bool engine_preview_play(Engine*,const float*,uint64_t frames,int channels,int rate);
+// Prepares a synchronized A/B pair with listening-only attenuation and no authored mutation.
+bool engine_comparison_play(Engine*,const EngineBounceBuffer*,const EngineBounceBuffer*,const double gains[4],uint64_t id,int selection);
+// Selects an owned comparison at its current cursor or retires its buffers.
+bool engine_comparison_select(Engine*,uint64_t id,int selection);
+bool engine_comparison_stop(Engine*,uint64_t id);
+// Reads callback-consumed comparison position and ownership atomically.
+bool engine_comparison_status(const Engine*,uint64_t id,uint64_t* position);
 // Cancels captured PCM listening and releases device-owned storage.
 void engine_preview_stop(Engine*);
 // Reports whether finite captured listening is still active.

@@ -60,6 +60,10 @@ typedef struct {
     SDL_Rect preview_toggle_rect;
     SDL_Rect library_button_rect;
     SDL_Rect routing_button_rect;
+    SDL_Rect automation_button_rect;
+    SDL_Rect comparison_button_rect;
+    SDL_Rect export_button_rect;
+    SDL_Rect live_meter_button_rect;
     SDL_Rect view_toggle_rect;
     SDL_Rect spec_toggle_rect;
     SDL_Rect target_label_rect;

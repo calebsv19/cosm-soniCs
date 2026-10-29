@@ -93,6 +93,17 @@ static EngineAutomationLane* automation_candidate_lane(EngineClip* clip, EngineA
 // Publishes complete replacement automation and sources, retaining old ownership on every failure.
 static bool automation_candidate_commit(Engine* engine, int track_index, int clip_index,
                                         EngineClip* clip, EngineClip* candidate) {
+    for (int i = 0; i < candidate->automation_lane_count; ++i) {
+        if (!automation_target_valid(candidate, candidate->automation_lanes[i].target) ||
+            !engine_automation_lane_validate(&candidate->automation_lanes[i], candidate->duration_frames)) {
+            clip_automation_release(candidate);
+            return false;
+        }
+        for (int j = 0; j < i; ++j) if (candidate->automation_lanes[i].target == candidate->automation_lanes[j].target) {
+            clip_automation_release(candidate);
+            return false;
+        }
+    }
     candidate->sampler = NULL;
     candidate->instrument = NULL;
     if (clip->sampler) {

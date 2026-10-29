@@ -1,5 +1,7 @@
+#include "session_automation.h"
 #include "app/media_import.h"
 #include "session.h"
+#include "engine/fx_chain.h"
 #include "ui/sound_panel.h"
 #include "app_state.h"
 #include "daw/data_paths.h"
@@ -347,6 +349,8 @@ static bool session_prepare_document(AppState* state, const SessionDocument* doc
     state->timeline_visible_seconds = doc->timeline.visible_seconds;
     state->timeline_window_start_seconds = doc->timeline.window_start_seconds;
     state->timeline_vertical_scale = doc->timeline.vertical_scale;
+    state->timeline_vertical_scroll = 0.0f;
+    state->timeline_scrollbar_dragging = false;
     state->timeline_show_all_grid_lines = doc->timeline.show_all_grid_lines;
     state->timeline_view_in_beats = doc->timeline.view_in_beats;
     state->timeline_snap_enabled = doc->timeline.snap_enabled;
@@ -567,19 +571,9 @@ static bool session_prepare_document(AppState* state, const SessionDocument* doc
                                                     track_index,
                                                     track_doc->midi_instrument_params), "engine_track_midi_set_instrument_params")) return false;
         }
-        if (track_doc->midi_instrument_automation_lanes &&
-            track_doc->midi_instrument_automation_lane_count > 0) {
-            for (int l = 0; l < track_doc->midi_instrument_automation_lane_count; ++l) {
-                const SessionAutomationLane* lane = &track_doc->midi_instrument_automation_lanes[l];
-                if (!session_require_operation(engine_track_midi_set_instrument_automation_lane_points(state->engine,
-                                                                        track_index,
-                                                                        lane->target,
-                                                                        (const EngineAutomationPoint*)lane->points,
-                                                                        lane->point_count), "engine_track_midi_set_instrument_automation_lane_points")) return false;
-            }
-        } else {
-            if (!session_require_operation(engine_track_midi_set_instrument_automation_lanes(state->engine, track_index, NULL, 0), "engine_track_midi_set_instrument_automation_lanes")) return false;
-        }
+        if (!session_require_operation(session_apply_track_automation(state->engine, track_index,
+                track_doc->midi_instrument_automation_lanes, track_doc->midi_instrument_automation_lane_count),
+                "track automation restore")) return false;
         if (state->effects_panel.eq_curve_tracks && t < state->effects_panel.eq_curve_tracks_count) {
             eq_curve_from_session(&state->effects_panel.eq_curve_tracks[t], &track_doc->eq);
             if (state->engine) {
@@ -613,17 +607,8 @@ static bool session_prepare_document(AppState* state, const SessionDocument* doc
                 if (!session_require_operation(engine_transform_clip(state->engine, track_index, clip_index,
                         track_index, &transform, &clip_index), "MIDI clip contents")) return false;
                 if (!engine_clip_set_name(state->engine, track_index, clip_index, clip_doc->name)) return false;
-                if (clip_doc->automation_lanes && clip_doc->automation_lane_count > 0) {
-                    for (int l = 0; l < clip_doc->automation_lane_count; ++l) {
-                        const SessionAutomationLane* lane = &clip_doc->automation_lanes[l];
-                        if (!session_require_operation(engine_clip_set_automation_lane_points(state->engine,
-                                                               track_index,
-                                                               clip_index,
-                                                               lane->target,
-                                                               (const EngineAutomationPoint*)lane->points,
-                                                               lane->point_count), "engine_clip_set_automation_lane_points")) return false;
-                    }
-                }
+                if (!session_require_operation(session_apply_clip_automation(state->engine, track_index, clip_index,
+                        clip_doc->automation_lanes, clip_doc->automation_lane_count), "region automation restore")) return false;
                 if (clip_doc->selected && state->selected_track_index == -1) {
                     timeline_selection_restore_primary(state, track_index, session_restored_clip_index(doc, t, c), track_index);
                     selected_from_clip = true;
@@ -668,17 +653,8 @@ static bool session_prepare_document(AppState* state, const SessionDocument* doc
                                         clip_index,
                                         clip_doc->fade_in_curve,
                                         clip_doc->fade_out_curve), "engine_clip_set_fade_curves")) return false;
-            if (clip_doc->automation_lanes && clip_doc->automation_lane_count > 0) {
-                for (int l = 0; l < clip_doc->automation_lane_count; ++l) {
-                    const SessionAutomationLane* lane = &clip_doc->automation_lanes[l];
-                    if (!session_require_operation(engine_clip_set_automation_lane_points(state->engine,
-                                                           track_index,
-                                                           clip_index,
-                                                           lane->target,
-                                                           (const EngineAutomationPoint*)lane->points,
-                                                           lane->point_count), "engine_clip_set_automation_lane_points")) return false;
-                }
-            }
+            if (!session_require_operation(session_apply_clip_automation(state->engine, track_index, clip_index,
+                    clip_doc->automation_lanes, clip_doc->automation_lane_count), "region automation restore")) return false;
             if (clip_doc->selected && state->selected_track_index == -1) {
                 timeline_selection_restore_primary(state, track_index, session_restored_clip_index(doc, t, c), track_index);
                 selected_from_clip = true;
@@ -702,9 +678,14 @@ static bool session_prepare_document(AppState* state, const SessionDocument* doc
             }
         }
     }
+    uint64_t* identities=calloc(doc->track_count ? (size_t)doc->track_count : 1,sizeof(*identities));
+    if(!identities)return false;
+    for(int t=0;t<doc->track_count;++t)identities[t]=doc->tracks[t].persistent_id;
+    bool identities_ok=engine_restore_persistent_ids(state->engine,identities,doc->track_count);free(identities);
+    if(!identities_ok)return false;
     bool has_routing = false;
     for (int t = 0; t < doc->track_count; ++t) {
-        if (doc->tracks[t].is_return) has_routing = true;
+        if (doc->tracks[t].is_return || doc->tracks[t].is_group || doc->tracks[t].parent_track || doc->tracks[t].sibling_order) has_routing = true;
         for (int send = 0; send < ENGINE_SEND_CAP; ++send)
             if (doc->tracks[t].sends[send].destination_track) has_routing = true;
     }
@@ -716,10 +697,14 @@ static bool session_prepare_document(AppState* state, const SessionDocument* doc
             *next = *before;
             for (int t = 0; t < doc->track_count; ++t) {
                 next->tracks[t].is_return = doc->tracks[t].is_return;
+                next->tracks[t].volume_automation=doc->tracks[t].volume_automation;
+                next->tracks[t].is_group=doc->tracks[t].is_group; next->tracks[t].folded=doc->tracks[t].folded;
+                next->tracks[t].sibling_order=doc->tracks[t].sibling_order;
+                next->tracks[t].parent_id=doc->tracks[t].parent_track ? next->tracks[doc->tracks[t].parent_track-1].track_id : 0;
                 for (int send = 0; send < ENGINE_SEND_CAP; ++send) {
                     int destination = doc->tracks[t].sends[send].destination_track;
                     next->tracks[t].sends[send] = (EngineSend){destination ? next->tracks[destination - 1].track_id : 0,
-                                                           doc->tracks[t].sends[send].gain};
+                                                           doc->tracks[t].sends[send].gain,doc->tracks[t].sends[send].automation};
                 }
             }
             restored = engine_routing_set(state->engine, before, next);
@@ -784,6 +769,7 @@ static bool session_prepare_document(AppState* state, const SessionDocument* doc
             const SessionFxInstance* src = &doc->master_fx[i];
             dst->type_id = src->type;
             dst->enabled = src->enabled;
+            dst->automation = src->automation;
             dst->param_count = src->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : src->param_count;
             for (uint32_t p = 0; p < dst->param_count; ++p) {
                 dst->param_values[p] = src->params[p];
@@ -967,6 +953,7 @@ bool session_apply_pending_master_fx(AppState* state) {
                 if (!engine_fx_master_set_param(state->engine, id, p, native_value)) return false;
             }
         }
+        if(fx->automation.count){EngineFxChainRequest request={.op=ENGINE_FX_CHAIN_AUTOMATION,.id=id,.automation=fx->automation};FxMasterSnapshot snapshot; if(!engine_fx_chain_transaction(state->engine,-1,&request,&snapshot))return false;}
         if (!fx->enabled) {
             if (!engine_fx_master_set_enabled(state->engine, id, false)) return false;
         }
@@ -1022,6 +1009,7 @@ bool session_apply_pending_track_fx(AppState* state) {
                     if (!engine_fx_track_set_param(state->engine, t, id, p, native_value)) return false;
                 }
             }
+            if(fx->automation.count){EngineFxChainRequest request={.op=ENGINE_FX_CHAIN_AUTOMATION,.id=id,.automation=fx->automation};FxMasterSnapshot snapshot; if(!engine_fx_chain_transaction(state->engine,t,&request,&snapshot))return false;}
             if (!fx->enabled) {
                 if (!engine_fx_track_set_enabled(state->engine, t, id, false)) return false;
             }
@@ -1104,6 +1092,8 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     }
     // No fallible project operation follows: retire old ownership, then publish the prepared state.
     daw_media_import_invalidate(state);
+    daw_song_export_shutdown(state);
+    daw_ab_release(state);
     daw_sound_panel_release(state);
     daw_routing_panel_release(state);
     daw_midi_arrangement_release(state);
@@ -1122,6 +1112,9 @@ bool session_apply_document(AppState* state, const SessionDocument* doc) {
     SDL_free(state->timeline_drag.ripple_targets);
     candidate->timeline_drag = (TimelineDragState){0};
     candidate->timeline_drag.track_index = candidate->timeline_drag.clip_index = -1;
+    candidate->monitor_revision=state->monitor_revision+1;candidate->live_meter_ui=(DawLiveMeterUI){.pressed=-1};
+    candidate->exports=NULL;candidate->export_ui=(DawSongExportUI){.pressed=-1};
+    candidate->ab=NULL;candidate->ab_revision=state->ab_revision;candidate->ab_ui=(DawAbUI){.focused=-1,.pressed=-1};
     candidate->sound_ui = (DawSoundUI){0};
     candidate->routing_ui = (DawRoutingUI){.selected=-1,.focused=-1,.pressed=-1};
     candidate->midi_arrangement_ui = (DawMidiArrangementUI){.focused=-1,.pressed=-1};

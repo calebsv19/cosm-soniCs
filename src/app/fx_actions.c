@@ -31,6 +31,7 @@ bool daw_fx_snapshot_equal(const DawFxSnapshot* a, const DawFxSnapshot* b) {
     for (int i = 0; i < a->chain.count; ++i) {
         const FxMasterInstanceInfo* x = &a->chain.items[i];
         const FxMasterInstanceInfo* y = &b->chain.items[i];
+        if(!engine_mixer_automation_equal(&x->automation,&y->automation))return false;
         if (x->id != y->id || x->type != y->type || x->enabled != y->enabled || x->param_count != y->param_count) return false;
         for (uint32_t p = 0; p < x->param_count; ++p)
             if (x->params[p] != y->params[p] || x->param_mode[p] != y->param_mode[p] || x->param_beats[p] != y->param_beats[p]) return false;
@@ -76,6 +77,7 @@ DawActionStatus daw_action_edit_fx(AppState* state, const DawFxSnapshot* expecte
         for(int i=0;i<portable.count;++i){
             FxMasterInstanceInfo* value=&portable.items[i];FxDesc desc;uint32_t count=0;const EffectParamSpec* specs=NULL;
             if(!engine_fx_registry_get_desc(state->engine,value->type,&desc) || !engine_fx_registry_get_param_specs(state->engine,value->type,&specs,&count) || count!=value->param_count || count>FX_MAX_PARAMS)return DAW_ACTION_INVALID;
+            if(!fx_parameter_automation_valid(value->type,&value->automation))return DAW_ACTION_INVALID;
             value->id=i<current.chain.count?current.chain.items[i].id:0;
             for(uint32_t p=0;p<count;++p){
                 if(specs[p].flags & FX_PARAM_FLAG_READ_ONLY_METER){
@@ -104,7 +106,8 @@ DawActionStatus daw_action_edit_fx(AppState* state, const DawFxSnapshot* expecte
             }
             if (!valid_parameter(state, item, request)) return DAW_ACTION_INVALID;
         }
-        bool same = (request->op == ENGINE_FX_CHAIN_REORDER && position == request->position) ||
+        if(request->op==ENGINE_FX_CHAIN_AUTOMATION && (request->parameter!=0 || (item->type!=1 && item->type!=3) || !fx_parameter_automation_valid(item->type,&request->automation)))return DAW_ACTION_INVALID;
+        bool same = (request->op==ENGINE_FX_CHAIN_AUTOMATION && engine_mixer_automation_equal(&item->automation,&request->automation)) || (request->op == ENGINE_FX_CHAIN_REORDER && position == request->position) ||
                     (request->op == ENGINE_FX_CHAIN_ENABLE && item->enabled == request->enabled) ||
                     (request->op == ENGINE_FX_CHAIN_PARAM && item->params[request->parameter] == request->value && item->param_mode[request->parameter] == request->mode && item->param_beats[request->parameter] == request->beats);
         if (same) { *out = current; return DAW_ACTION_UNCHANGED; }

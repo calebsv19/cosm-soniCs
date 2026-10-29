@@ -1,4 +1,8 @@
 #include "ui/editor_controls.h"
+#include "ui/ab_panel.h"
+#include "ui/mixer_automation_panel.h"
+#include "ui/track_group_panel.h"
+#include "ui/timeline_group_overview.h"
 #include "app_state.h"
 #include "input/input_manager.h"
 #include "input/library_input.h"
@@ -16,7 +20,7 @@
 
 // Keeps text/modal/authoring and active continuous gestures ahead of discrete buttons.
 static bool blocked(const AppState* state) {
-    return state->routing_ui.open || state->fx_library_ui.open || state->midi_pattern_ui.open || state->sound_ui.open || state->preset_ui.editing || state->preset_ui.save_open || !state->engine || state->bounce_active || project_modal_input_active(state) ||
+    return state->routing_ui.open || state->fx_library_ui.open || state->midi_pattern_ui.open || state->sound_ui.open || state->preset_ui.editing || state->preset_ui.save_open || !state->engine || state->bounce_active || (project_modal_input_active(state) || state->group_panel.open) ||
         state->tempo_ui.editing || state->track_name_editor.editing ||
         library_input_is_editing(state) || inspector_input_has_text_focus(state) ||
         state->undo.active_drag_valid || state->layout_runtime.drag.active ||
@@ -31,10 +35,17 @@ static void activate(InputManager* manager, AppState* state, KitUiSurfaceKey key
     case 11: (void)timeline_controls_activate_at(state, x, y); break;
     case 12: (void)midi_editor_input_activate_at(state, x, y); break;
     case 13: (void)midi_instrument_panel_input_activate_at(state, x, y); break;
+    case 20: timeline_group_overview_activate(state,key.value,state->editor_controls.pointer_clicks>1);break;
+    case 21: timeline_group_overview_activate(state,key.value,false);break;
+    case 19: daw_group_toggle(state,key.value);break;
     case 15: timeline_track_control_activate(state, key.value); break;
     case 14:
         if(key.value==5){(void)daw_fx_library_panel_open(state);break;}
         if(key.value==6){(void)daw_routing_panel_open(state);break;}
+        if(key.value==7){(void)daw_effect_automation_open(state);break;}
+        if(key.value==10){(void)daw_live_meter_panel_open(state);break;}
+        if(key.value==9){(void)daw_song_export_panel_open(state);break;}
+        if(key.value==8){(void)daw_ab_panel_open(state);break;}
     case 16:
     case 17:
     case 18: {
@@ -79,8 +90,14 @@ bool daw_editor_controls_event(InputManager* manager, AppState* state, const SDL
     if (input.type == KIT_UI_INTERACTION_POINTER_DOWN) {
         ui->keyboard_focus = daw_editor_controls_at(state, event->button.x, event->button.y);
         if (!ui->keyboard_focus) ui->surface.interaction.focused_id = 0;
+        ui->pointer_clicks=event->button.clicks;
+        ui->focus_from_keyboard = false;
         ui->modifiers = SDL_GetModState();
-    } else if (input.type == KIT_UI_INTERACTION_KEY_DOWN) ui->modifiers = event->key.keysym.mod;
+    } else if (input.type == KIT_UI_INTERACTION_KEY_DOWN) {
+        ui->pointer_clicks=0;
+        ui->focus_from_keyboard = true;
+        ui->modifiers = event->key.keysym.mod;
+    }
     (void)kit_ui_surface_route(&ui->surface, &input, &result);
     if (result.activated_id && kit_ui_surface_take_activation(&ui->surface, result.activated_id)) {
         KitUiSurfaceKey key;
@@ -99,7 +116,7 @@ void daw_editor_controls_draw_focus(SDL_Renderer* renderer, AppState* state) {
     daw_editor_controls_sync(state);
     DawEditorControls* ui = &state->editor_controls;
     KitRenderRect marker;
-    if (!ui->keyboard_focus || !kit_ui_interaction_focus_marker(&ui->surface.interaction,
+    if (!ui->keyboard_focus || !ui->focus_from_keyboard || !kit_ui_interaction_focus_marker(&ui->surface.interaction,
         ui->surface.controls, ui->surface.count, &marker)) return;
     DawThemePalette theme;
     if (!daw_shared_theme_resolve_palette(&theme)) return;

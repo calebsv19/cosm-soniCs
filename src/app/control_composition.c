@@ -80,6 +80,16 @@ static void describe(cJSON* r, const DawControlCompositionState* entry) {
     if (render->request.has_target) daw_control_fx_values_json(cJSON_AddObjectToObject(processing, "track"), &render->track_fx.chain);
     cJSON* metrics = cJSON_AddObjectToObject(r, "metrics"); cJSON_AddNumberToObject(metrics, "peak", a->peak); cJSON_AddNumberToObject(metrics, "rms", a->rms);
     cJSON_AddNumberToObject(metrics, "dc", a->dc); id(metrics, "full_scale_samples", a->clipped_samples);
+    id(metrics,"overload_samples",a->overload_samples);
+    cJSON_AddStringToObject(metrics,"calibration","sample peak and unweighted RMS over all captured frames including tail; linear amplitude; dBFS=20log10(amplitude), silence null; full-scale abs>=1, overload abs>1; not live, LUFS or true-peak");
+    cJSON* channels=cJSON_AddArrayToObject(metrics,"channels");
+    for(int ch=0;ch<a->channel_count;++ch){const DawChannelMeter* m=&a->channel_meters[ch];cJSON* item=cJSON_CreateObject();cJSON_AddItemToArray(channels,item);
+        cJSON_AddNumberToObject(item,"index",ch);cJSON_AddStringToObject(item,"label",a->channel_count==1 ? "mono" : a->channel_count==2 ? (ch ? "right" : "left") : "indexed channel");
+        cJSON_AddNumberToObject(item,"sample_peak",m->peak);cJSON_AddNumberToObject(item,"rms",m->rms);
+        cJSON_AddItemToObject(item,"sample_peak_dbfs",isfinite(m->peak_dbfs) ? cJSON_CreateNumber(m->peak_dbfs) : cJSON_CreateNull());
+        cJSON_AddItemToObject(item,"rms_dbfs",isfinite(m->rms_dbfs) ? cJSON_CreateNumber(m->rms_dbfs) : cJSON_CreateNull());
+        cJSON_AddBoolToObject(item,"silent",m->peak==0);id(item,"full_scale_samples",m->full_scale_samples);id(item,"overload_samples",m->overload_samples);
+    }
     cJSON* plots = cJSON_AddObjectToObject(r, "plots"); id(plots, "window_frame", a->window_frame);
     cJSON_AddNumberToObject(plots, "spectrum_window_frames", ENGINE_ANALYSIS_MAX_FRAMES);
     cJSON_AddStringToObject(plots, "spectrum_calibration", "Hann coherent-gain tonal peak amplitude dBFS; 2048-frame mean-of-channels window; zero-padded at range end");

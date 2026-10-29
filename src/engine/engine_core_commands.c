@@ -1,4 +1,5 @@
 #include "engine/engine_internal.h"
+#include "engine/groups.h"
 
 #include "engine/instrument.h"
 
@@ -37,7 +38,7 @@ bool engine_post_command(Engine* engine, const EngineCommand* cmd) {
         return false;
     }
     if (SDL_ThreadID() != engine->control_thread_id ||
-        cmd->type < ENGINE_CMD_PLAY || cmd->type > ENGINE_CMD_PAUSE) {
+        cmd->type < ENGINE_CMD_PLAY || cmd->type > ENGINE_CMD_MIDI_AUDITION_PEDAL) {
         atomic_fetch_add_explicit(&engine->commands_rejected, 1, memory_order_relaxed);
         return false;
     }
@@ -45,7 +46,8 @@ bool engine_post_command(Engine* engine, const EngineCommand* cmd) {
     if ((cmd->type == ENGINE_CMD_STOP || cmd->type == ENGINE_CMD_PAUSE)) {
         safety = ENGINE_COMMAND_SAFETY_STOP;
     } else if (cmd->type == ENGINE_CMD_MIDI_AUDITION_NOTE_OFF ||
-               cmd->type == ENGINE_CMD_MIDI_AUDITION_ALL_OFF) {
+               cmd->type == ENGINE_CMD_MIDI_AUDITION_ALL_OFF ||
+               (cmd->type == ENGINE_CMD_MIDI_AUDITION_PEDAL && !cmd->payload.midi_audition.velocity)) {
         safety = ENGINE_COMMAND_SAFETY_ALL_OFF;
     }
     // Freeze regular admission until the preceding FIFO drains and safety is acknowledged.
@@ -114,6 +116,7 @@ void engine_transport_reset_history(Engine* engine) {
         fx_sample_ramp_reset(&mix->audition_gain_ramps[t], mix->audition_gain_ramps[t].target);
     }
     fxm_reset_render_state(mix->fxm);
+    engine_group_mix_reset(mix->group_mix);
 }
 
 // Applies a bounded FIFO batch, then coalesced rebuilds and overflow safety requests.
@@ -228,6 +231,9 @@ void engine_process_commands(Engine* engine) {
             }
             case ENGINE_CMD_MIDI_AUDITION_NOTE_OFF:
                 engine_midi_audition_apply_note_off(engine, cmd.payload.midi_audition.note);
+                break;
+            case ENGINE_CMD_MIDI_AUDITION_PEDAL:
+                engine_midi_audition_apply_pedal(engine, cmd.payload.midi_audition.velocity >= .5f);
                 break;
             case ENGINE_CMD_MIDI_AUDITION_ALL_OFF:
                 engine_midi_audition_apply_all_off(engine);

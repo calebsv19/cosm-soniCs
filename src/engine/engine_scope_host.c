@@ -1,6 +1,7 @@
 #include "engine/engine_internal.h"
 #include "core/loop/daw_mainthread_messages.h"
 
+#include "core_time.h"
 #include <stdlib.h>
 #include <limits.h>
 #include <string.h>
@@ -54,6 +55,7 @@ static EngineFxScopeTap* engine_scope_get_tap(EngineFxScopeBank* bank, FxInstId 
     if (tap) {
         tap->id = id;
         tap->kind = kind;
+        tap->latest = (EngineGainReductionSnapshot){0};
         ringbuf_reset(&tap->buffer);
     }
     return tap;
@@ -130,6 +132,8 @@ static bool engine_scope_write_scalar(EngineScopeHost* host,
     if (!tap) {
         return false;
     }
+    tap->latest = (EngineGainReductionSnapshot){.available = true, .gain_db = value,
+        .sequence = tap->latest.sequence + 1, .measured_ns = core_time_now_ns()};
     return ringbuf_write(&tap->buffer, &value, sizeof(value)) == sizeof(value);
 }
 

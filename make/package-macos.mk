@@ -72,12 +72,26 @@ package-desktop: package-build-lane
 	fi
 	@PACKAGE_DEP_SEARCH_ROOTS="$(TARGET_DEP_SEARCH_ROOTS)" "$(PACKAGE_DYLIB_BUNDLER)" "$(PACKAGE_MACOS_DIR)/daw-bin" "$(PACKAGE_FRAMEWORKS_DIR)"
 	@mkdir -p "$(PACKAGE_RESOURCES_DIR)/config/templates" "$(PACKAGE_RESOURCES_DIR)/assets/audio" "$(PACKAGE_RESOURCES_DIR)/include" "$(PACKAGE_RESOURCES_DIR)/shared/assets" "$(PACKAGE_RESOURCES_DIR)/vk_renderer" "$(PACKAGE_RESOURCES_DIR)/shaders"
+	@if [ "$(PACKAGE_PROFILE)" = "main-edit" ]; then /usr/libexec/PlistBuddy -c "Add :SoniCsCollectionsRoot string $(CODEWORK_WORKSPACE_ROOT)/daw/music_projects" "$(PACKAGE_CONTENTS_DIR)/Info.plist"; fi
+	@mkdir -p "$(PACKAGE_RESOURCES_DIR)/ThirdPartyLicenses"
+	@cp extern/ebur128/COPYING "$(PACKAGE_RESOURCES_DIR)/ThirdPartyLicenses/libebur128.txt"
 	@cp config/engine.cfg "$(PACKAGE_RESOURCES_DIR)/config/engine.cfg"
 	@cp config/timer_hud_settings.json "$(PACKAGE_RESOURCES_DIR)/config/timer_hud_settings.json"
 	@cp config/theme_preset.txt "$(PACKAGE_RESOURCES_DIR)/config/theme_preset.txt"
 	@cp config/README.md "$(PACKAGE_RESOURCES_DIR)/config/README.md"
 	@cp config/templates/public_default_project.json "$(PACKAGE_RESOURCES_DIR)/config/templates/public_default_project.json"
 	@cp assets/audio/README.md "$(PACKAGE_RESOURCES_DIR)/assets/audio/README.md"
+	@mkdir -p "$(PACKAGE_RESOURCES_DIR)/assets/instruments"
+	@cp -R assets/instruments/vsco2_solo_violin_v1 "$(PACKAGE_RESOURCES_DIR)/assets/instruments/"
+	@python3 tools/verify_violin_assets.py "$(PACKAGE_RESOURCES_DIR)/assets/instruments/vsco2_solo_violin_v1"
+	@cp -R assets/instruments/vsco2_trumpet_v1 assets/instruments/vsco2_clarinet_v1 assets/instruments/vcsl_tenor_saxophone_v1 assets/instruments/vsco2_flute_v1 assets/instruments/vsco2_cello_section_v1 assets/instruments/vsco2_oboe_v1 assets/instruments/vsco2_french_horn_v1 assets/instruments/vsco2_bassoon_v1 assets/instruments/vsco2_tenor_trombone_v1 assets/instruments/vsco2_viola_section_v1 assets/instruments/vsco2_violin_section_v1 assets/instruments/vsco2_double_bass_v1 assets/instruments/salamander_piano_v1 "$(PACKAGE_RESOURCES_DIR)/assets/instruments/"
+	@python3 tools/verify_sample_banks.py "$(PACKAGE_RESOURCES_DIR)/assets/instruments"
+	@python3 tools/verify_saxophone_assets.py "$(PACKAGE_RESOURCES_DIR)/assets/instruments/vcsl_tenor_saxophone_v1"
+	@python3 tools/verify_flute_cello_assets.py "$(PACKAGE_RESOURCES_DIR)/assets/instruments"
+	@python3 tools/verify_oboe_horn_assets.py "$(PACKAGE_RESOURCES_DIR)/assets/instruments"
+	@python3 tools/verify_bassoon_trombone_assets.py "$(PACKAGE_RESOURCES_DIR)/assets/instruments"
+	@python3 tools/verify_string_sections_assets.py "$(PACKAGE_RESOURCES_DIR)/assets/instruments"
+	@python3 tools/verify_acoustic_piano_assets.py "$(PACKAGE_RESOURCES_DIR)/assets/instruments"
 	@cp -R include/fonts "$(PACKAGE_RESOURCES_DIR)/include/"
 	@cp -R "$(SHARED_ROOT)/assets/fonts" "$(PACKAGE_RESOURCES_DIR)/shared/assets/"
 	@cp -R "$(VK_RENDERER_DIR)/shaders" "$(PACKAGE_RESOURCES_DIR)/vk_renderer/"
@@ -120,6 +134,7 @@ package-desktop-smoke: package-desktop
 	@if [ -f "$(PACKAGE_APP_ICON_SRC)" ] || [ -d "$(PACKAGE_APP_ICONSET_SRC)" ]; then \
 		test -f "$(PACKAGE_BUNDLED_ICON_PATH)" || (echo "Missing bundled AppIcon.icns"; exit 1); \
 	fi
+	@test -s "$(PACKAGE_RESOURCES_DIR)/assets/instruments/vsco2_solo_violin_v1/LLVln_ArcoVib_G3_p.wav" || (echo "Missing bundled violin bank"; exit 1)
 	@test -f "$(PACKAGE_RESOURCES_DIR)/assets/audio/README.md" || (echo "Missing bundled audio README"; exit 1)
 	@extra_audio="$$(find "$(PACKAGE_RESOURCES_DIR)/assets/audio" -type f ! -name README.md -print -quit)"; \
 	test -z "$$extra_audio" || (echo "Bundled local user audio: $$extra_audio"; exit 1)
@@ -188,6 +203,7 @@ package-desktop-main-edit:
 	@echo "Main Edit desktop package ready: $(MAIN_EDIT_APP_DIR)"
 
 package-desktop-main-edit-self-test: package-desktop-main-edit
+	@cmp extern/ebur128/COPYING "$(MAIN_EDIT_APP_DIR)/Contents/Resources/ThirdPartyLicenses/libebur128.txt"
 	@test -s "$(MAIN_EDIT_APP_DIR)/Contents/Resources/$(PACKAGE_APP_ICON_FILE)" || (echo "Missing bundled Main Edit icon"; exit 1)
 	@test "$$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "$(MAIN_EDIT_APP_DIR)/Contents/Info.plist")" = "$(PACKAGE_APP_ICON_NAME)" || (echo "Main Edit icon metadata mismatch"; exit 1)
 	@if [ -f "$(PACKAGE_APP_ICON_SRC)" ]; then cmp "$(PACKAGE_APP_ICON_SRC)" "$(MAIN_EDIT_APP_DIR)/Contents/Resources/$(PACKAGE_APP_ICON_FILE)" || exit 1; fi
@@ -195,6 +211,7 @@ package-desktop-main-edit-self-test: package-desktop-main-edit
 	@test "$$("/usr/libexec/PlistBuddy" -c 'Print :CFBundleDisplayName' "$(MAIN_EDIT_APP_DIR)/Contents/Info.plist")" = "$(MAIN_EDIT_DISPLAY_NAME)"
 	@test "$$("/usr/libexec/PlistBuddy" -c 'Print :SoniCsPackageProfile' "$(MAIN_EDIT_APP_DIR)/Contents/Info.plist")" = "$(MAIN_EDIT_PROFILE)"
 	@test "$$("/usr/libexec/PlistBuddy" -c 'Print :SoniCsRuntimeNamespace' "$(MAIN_EDIT_APP_DIR)/Contents/Info.plist")" = "$(MAIN_EDIT_RUNTIME_NAMESPACE)"
+	@test "$$("/usr/libexec/PlistBuddy" -c 'Print :SoniCsCollectionsRoot' "$(MAIN_EDIT_APP_DIR)/Contents/Info.plist")" = "$(CODEWORK_WORKSPACE_ROOT)/daw/music_projects"
 	@test "$$("/usr/libexec/PlistBuddy" -c 'Print :SoniCsLogNamespace' "$(MAIN_EDIT_APP_DIR)/Contents/Info.plist")" = "$(MAIN_EDIT_LOG_NAMESPACE)"
 	@test -f "$(MAIN_EDIT_APP_DIR)/Contents/Resources/build_identity.json"
 	@python3 "$(MEW1_TOOL)" verify-identity \

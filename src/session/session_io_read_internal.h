@@ -11,6 +11,10 @@ typedef struct {
     size_t pos;
 } JsonReader;
 
+// Parses complete physical mixer automation before session adoption.
+// Parses a complete lane with signed physical bounds.
+bool session_parse_parameter_automation(JsonReader*,EngineMixerAutomation*,float,float);
+bool session_parse_mixer_automation(JsonReader*,EngineMixerAutomation*,float);
 void json_reader_init(JsonReader* r, const char* data, size_t length);
 void json_skip_whitespace(JsonReader* r);
 bool json_expect(JsonReader* r, char expected);

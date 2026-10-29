@@ -31,6 +31,7 @@ void midi_editor_select_note(AppState* state,
     state->midi_editor_ui.hover_clip_index = selection->clip_index;
     state->midi_editor_ui.hover_clip_creation_index = selection->clip->creation_index;
     state->midi_editor_ui.hover_note_index = note_index;
+    state->midi_editor_ui.hover_note_part = MIDI_EDITOR_NOTE_HIT_BODY;
 }
 
 void midi_editor_toggle_note_selection(AppState* state,
@@ -72,6 +73,7 @@ void midi_editor_toggle_note_selection(AppState* state,
     state->midi_editor_ui.hover_clip_index = selection->clip_index;
     state->midi_editor_ui.hover_clip_creation_index = selection->clip->creation_index;
     state->midi_editor_ui.hover_note_index = note_index;
+    state->midi_editor_ui.hover_note_part = MIDI_EDITOR_NOTE_HIT_BODY;
 }
 
 bool midi_editor_note_is_selected(const AppState* state,
@@ -86,6 +88,7 @@ void midi_editor_clear_hover_note(AppState* state) {
     }
     state->midi_editor_ui.hover_note_valid = false;
     state->midi_editor_ui.hover_note_index = -1;
+    state->midi_editor_ui.hover_note_part = MIDI_EDITOR_NOTE_HIT_NONE;
 }
 
 void midi_editor_update_hover_note(AppState* state,
@@ -103,6 +106,7 @@ void midi_editor_update_hover_note(AppState* state,
         state->midi_editor_ui.hover_clip_index = selection->clip_index;
         state->midi_editor_ui.hover_clip_creation_index = selection->clip->creation_index;
         state->midi_editor_ui.hover_note_index = hit.note_index;
+        state->midi_editor_ui.hover_note_part = hit.part;
         return;
     }
     midi_editor_clear_hover_note(state);
@@ -230,7 +234,11 @@ bool midi_editor_set_drag_state(AppState* state,
     state->midi_editor_ui.drag_original_note = note;
     state->midi_editor_ui.drag_start_x = x;
     state->midi_editor_ui.drag_start_y = y;
+    MidiEditorLayout layout = {0};
+    midi_editor_compute_layout(state, &layout);
     state->midi_editor_ui.drag_anchor_frame = note.start_frame;
+    (void)midi_editor_point_to_frame(&layout, selection->clip->duration_frames, x,
+                                    &state->midi_editor_ui.drag_anchor_frame);
     state->midi_editor_ui.drag_anchor_note = note.note;
     state->midi_editor_ui.drag_anchor_velocity = note.velocity;
     state->midi_editor_ui.drag_velocity_group = false;
@@ -415,7 +423,7 @@ bool midi_editor_update_move_group_drag(AppState* state,
         uint64_t delta = (uint64_t)(-raw_delta);
         raw_anchor_start = delta > anchor_start ? 0 : anchor_start - delta;
     }
-    uint64_t snapped_anchor_start = midi_editor_snap_relative_frame(state, selection->clip, raw_anchor_start);
+    uint64_t snapped_anchor_start = midi_editor_snap_gesture_frame(state, selection->clip, raw_anchor_start);
     int64_t frame_delta = 0;
     if (snapped_anchor_start >= anchor_start) {
         frame_delta = (int64_t)(snapped_anchor_start - anchor_start);
@@ -487,13 +495,13 @@ bool midi_editor_update_move_group_drag(AppState* state,
         if (moved_note < ENGINE_MIDI_NOTE_MIN) moved_note = ENGINE_MIDI_NOTE_MIN;
         if (moved_note > ENGINE_MIDI_NOTE_MAX) moved_note = ENGINE_MIDI_NOTE_MAX;
         note.note = (uint8_t)moved_note;
-        if (!midi_editor_note_equal(note, original_notes[i])) {
-            changed = true;
-        }
         replacement[i] = note;
         selected_after[selected_after_count++] = note;
     }
 
+    for (int i = 0; i < original_count; ++i) {
+        if (!midi_editor_note_equal(replacement[i], current_notes[i])) changed = true;
+    }
     bool ok = true;
     if (changed) {
         ok = engine_clip_midi_set_notes(state->engine,
@@ -548,7 +556,6 @@ bool midi_editor_update_drag(AppState* state, int mouse_x, int mouse_y) {
             return false;
         }
     }
-    pointer_frame = midi_editor_snap_relative_frame(state, selection.clip, pointer_frame);
 
     EngineMidiNote note = state->midi_editor_ui.drag_original_note;
     uint64_t min_duration = midi_editor_min_note_duration(clip_frames);
@@ -565,6 +572,12 @@ bool midi_editor_update_drag(AppState* state, int mouse_x, int mouse_y) {
     case MIDI_EDITOR_DRAG_CREATE:
     case MIDI_EDITOR_DRAG_RESIZE_RIGHT: {
         uint64_t end_frame = pointer_frame;
+        if (state->midi_editor_ui.drag_mode == MIDI_EDITOR_DRAG_RESIZE_RIGHT) {
+            int64_t delta = (int64_t)pointer_frame - (int64_t)state->midi_editor_ui.drag_anchor_frame;
+            int64_t end = (int64_t)(note.start_frame + note.duration_frames) + delta;
+            end_frame = end < 0 ? 0 : (uint64_t)end;
+        }
+        end_frame = midi_editor_snap_gesture_frame(state, selection.clip, end_frame);
         if (end_frame < note.start_frame + min_duration) {
             end_frame = note.start_frame + min_duration;
         }
@@ -576,7 +589,9 @@ bool midi_editor_update_drag(AppState* state, int mouse_x, int mouse_y) {
     }
     case MIDI_EDITOR_DRAG_RESIZE_LEFT: {
         uint64_t end_frame = note.start_frame + note.duration_frames;
-        uint64_t new_start = pointer_frame;
+        int64_t delta = (int64_t)pointer_frame - (int64_t)state->midi_editor_ui.drag_anchor_frame;
+        int64_t start = (int64_t)note.start_frame + delta;
+        uint64_t new_start = midi_editor_snap_gesture_frame(state, selection.clip, start < 0 ? 0 : (uint64_t)start);
         if (new_start + min_duration > end_frame) {
             new_start = end_frame > min_duration ? end_frame - min_duration : 0;
         }
@@ -604,7 +619,7 @@ bool midi_editor_update_drag(AppState* state, int mouse_x, int mouse_y) {
         if (raw_start + note.duration_frames > clip_frames) {
             raw_start = clip_frames > note.duration_frames ? clip_frames - note.duration_frames : 0;
         }
-        note.start_frame = midi_editor_snap_relative_frame(state, selection.clip, raw_start);
+        note.start_frame = midi_editor_snap_gesture_frame(state, selection.clip, raw_start);
         if (note.start_frame + note.duration_frames > clip_frames) {
             note.start_frame = clip_frames > note.duration_frames ? clip_frames - note.duration_frames : 0;
         }

@@ -19,7 +19,7 @@ async def check(fixture, output):
             assert process.stdout.readline().strip()=='READY'
             async with stdio_client(StdioServerParameters(command=str(ROOT/'tools/mcp/run.sh'),env=env)) as (r,w):
                 async with ClientSession(r,w) as session:
-                    await session.initialize();tools={t.name:t for t in (await session.list_tools()).tools};assert len(tools)==45
+                    await session.initialize();tools={t.name:t for t in (await session.list_tools()).tools};assert len(tools)==70
                     async def call(name,**args):
                         """Decode accepted transport outcomes without hiding domain refusals."""
                         result=await session.call_tool(name,args);assert not result.isError,result
@@ -51,6 +51,32 @@ async def check(fixture, output):
                     fixture_command(process,'render rounded_keys');assert (output/'rounded_keys.wav').read_bytes()!=(output/'baseline.wav').read_bytes()
                     count=fixture_command(process,'end_gesture')
                     unchanged,_=await edit('parameter',effect_id=gain_id,parameter=0,value=-6.0);assert unchanged['code']=='unchanged' and fixture_command(process,'end_gesture')==count
+                    automation={'before':1,'after':1,'points':[{'frame':'0','value':-12.0,'curve':0},{'frame':'12000','value':0.0,'curve':2}]}
+                    baseline_fx=current
+                    automated,auto_args=await edit('automation',effect_id=gain_id,parameter=0,automation=automation);assert automated['ok']
+                    assert automated['effects'][0]['automation']==automation
+                    assert await call('edit_effect_chain',**auto_args)==automated
+                    assert await call('request_status',instance=instance,request_id=auto_args['request_id'])==automated
+                    fixture_command(process,'render auto_curve');assert (output/'auto_curve.wav').read_bytes()!=(output/'rounded_keys.wav').read_bytes()
+                    current=await call('undo_effect_chain',instance=instance,request_id=identity(),target=target,expected_state=current['expected_state']);assert current['effects']==baseline_fx['effects']
+                    current=await call('redo_effect_chain',instance=instance,request_id=identity(),target=target,expected_state=current['expected_state']);assert current['effects']==automated['effects']
+                    fixture_command(process,'render auto_redo');assert (output/'auto_curve.wav').read_bytes()==(output/'auto_redo.wav').read_bytes()
+                    invalid=dict(automation);invalid['points']=[{'frame':'00','value':0.0,'curve':0}]
+                    malformed=await session.call_tool('edit_effect_chain',dict(instance=instance,request_id=identity(),target=target,expected_state=current['expected_state'],action='automation',effect_id=gain_id,parameter=0,automation=invalid));assert malformed.isError
+                    invalid=dict(automation);invalid['points']=[{'frame':'1','value':0.0,'curve':0},{'frame':'0','value':0.0,'curve':0}]
+                    assert (await edit('automation',effect_id=gain_id,parameter=0,automation=invalid))[0]['code']=='invalid_request'
+                    assert (await edit('automation',effect_id=gain_id,parameter=1,automation=automation))[0]['code']=='invalid_request'
+                    cleared,_=await edit('automation',effect_id=gain_id,parameter=0,automation={'before':0,'after':0,'points':[]});assert cleared['ok'] and cleared['effects'][0]['automation'] is None
+                    fixture_command(process,'render auto_cleared');assert (output/'auto_cleared.wav').read_bytes()==(output/'rounded_keys.wav').read_bytes()
+                    current=await call('undo_effect_chain',instance=instance,request_id=identity(),target=target,expected_state=current['expected_state']);assert current['effects']==automated['effects']
+                    current=await call('undo_effect_chain',instance=instance,request_id=identity(),target=target,expected_state=current['expected_state']);assert current['effects']==baseline_fx['effects']
+                    pan,_=await edit('add',type_id=3);assert pan['ok'];pan_id=pan['effects'][-1]['effect_id']
+                    pan_curve={'before':0,'after':1,'points':[{'frame':'0','value':-1.0,'curve':1},{'frame':'12000','value':1.0,'curve':0}]}
+                    assert (await edit('automation',effect_id=pan_id,parameter=0,automation=pan_curve))[0]['ok']
+                    invalid=dict(pan_curve);invalid['points']=[{'frame':'0','value':1.01,'curve':0}]
+                    assert (await edit('automation',effect_id=pan_id,parameter=0,automation=invalid))[0]['code']=='invalid_request'
+                    current=await call('undo_effect_chain',instance=instance,request_id=identity(),target=target,expected_state=current['expected_state']);assert current['effects'][-1]['automation'] is None
+                    current=await call('undo_effect_chain',instance=instance,request_id=identity(),target=target,expected_state=current['expected_state']);assert current['effects']==baseline_fx['effects']
                     reverbed,_=await edit('add',type_id=90);assert reverbed['ok'];reverb_id=reverbed['effects'][1]['effect_id']
                     response,_=await edit('reorder',effect_id=reverb_id,position=0);assert response['effects'][0]['effect_id']==reverb_id
                     assert (await edit('enable',effect_id=reverb_id,enabled=False))[0]['ok']
@@ -111,7 +137,7 @@ async def check(fixture, output):
             if reader.poll() is None:reader.stdin.write('quit\n');reader.stdin.flush()
             reader.wait(timeout=10);assert reader.returncode==0
     (output/'fx-mcp.json').write_text(json.dumps(records,indent=2)+'\n')
-    print('mcp_fx_test: success (45 tools, 54 types, physical/beat params, ordering/bypass/removal, exact history/render/reopen, conflicts/replay/disconnect/read-only)')
+    print('mcp_fx_test: success (61 tools, 54 types, qualified Gain/Pan curves, physical/beat params, ordering/bypass/removal, exact history/render/reopen, conflicts/replay/disconnect/read-only)')
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--fixture',required=True);parser.add_argument('--output-root',required=True);args=parser.parse_args()

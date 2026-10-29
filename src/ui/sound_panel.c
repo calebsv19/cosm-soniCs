@@ -44,7 +44,7 @@ void daw_sound_panel_render(SDL_Renderer* r,AppState* state) {
     SDL_Rect previous;SDL_RenderGetClipRect(r,&previous);bool clipped=SDL_RenderIsClipEnabled(r);ui_set_content_clip_rect(r,&l.panel);
     SDL_SetRenderDrawColor(r,theme.inspector_fill.r,theme.inspector_fill.g,theme.inspector_fill.b,255);SDL_RenderFillRect(r,&l.panel);
     if(ui->listening>=14 && !engine_preview_active(state->engine)){ui->listening=-1;SDL_strlcpy(ui->message,"Capture playback finished.",sizeof(ui->message));}
-    const char* labels[]={"Waveform","RMS Envelope","Spectrum","Attack","Sustain","Release",ui->chord?"Chord":"C4","Refresh","Capture Ref","Play Current","Play Ref","Clear Ref","Close",ui->composition?"Region":"Instrument","Listen Capture","Listen Ref","Stop Capture"};
+    const char* labels[]={"Waveform","RMS Envelope","Spectrum","Attack","Sustain","Release",ui->chord?"Chord":"Note","Refresh","Capture Ref","Play Current","Play Ref","Clear Ref","Close",ui->composition?"Region":"Instrument","Listen Capture","Listen Ref","Stop Capture"};
     if(ui->composition){labels[6]=ui->dry?"Dry":"Processed";labels[9]="Save WAV";labels[10]="Save Ref WAV";}
     for(int i=0;i<17;++i)button(r,l.buttons[i],labels[i],&theme,i==ui->listening || i==ui->view || (i>=3 && i<=5 && i-3==(int)ui->window));
     if(!l.compact)ui_draw_text_clipped(r,l.panel.x+5,l.panel.y+76,ui->message,theme.text_muted,.7f,l.panel.w-10);

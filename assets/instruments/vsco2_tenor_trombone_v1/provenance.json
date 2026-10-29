@@ -1,0 +1,139 @@
+{
+  "library": "VSCO 2 Community Edition",
+  "license": "CC0-1.0",
+  "upstream_commit": "440300901dfe9275fd84e0b7763af1f8443ae62e",
+  "files": [
+    {
+      "file": "tenortbn_sus_A#0_v1_1.wav",
+      "bytes": 847440,
+      "sha256": "44a23123a24d683e9423d5982157ffdc8b1bfb80bd9b4e4523bdff6d47adf461",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_A%230_v1_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_A#0_v2_1.wav",
+      "bytes": 735596,
+      "sha256": "c8192572a34ba0c410cb77a33fe200a5850b334e1763b2ebc91ab5292978a0d4",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_A%230_v2_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_A#1_v1_1.wav",
+      "bytes": 3153736,
+      "sha256": "0d87a1004cbfeff3786f72731731cda752ec6f99d3b2a2e50cdd9a574b23272a",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_A%231_v1_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_A#1_v2_1.wav",
+      "bytes": 1658240,
+      "sha256": "09d6fff28ec8d8a3ac83505c61cf4e2e95fce5b232f3ae4f7adfefddb7af56e1",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_A%231_v2_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_C#1_v1_1.wav",
+      "bytes": 1313124,
+      "sha256": "924bbeffefd019a942bb38ff33100ef9bf0ae68a30ffb548e4ffd9c55a23fbf4",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_C%231_v1_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_C#1_v2_1.wav",
+      "bytes": 790124,
+      "sha256": "b957256f8057fef478fb8d713dd284ad9a1aa57f720ef9f18a4e0d1d59bbe65e",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_C%231_v2_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_C#3_v1_1.wav",
+      "bytes": 3507148,
+      "sha256": "6ac439fe6933ffb0b0f1010a8767171449464bfb81b94ef53183b10d8b54aba1",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_C%233_v1_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_C#3_v2_1.wav",
+      "bytes": 1899776,
+      "sha256": "2fbbd439a89cde570a6848c41b220d333a95995d0b935fd3973a197beb0f0674",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_C%233_v2_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_C3_v1_1.wav",
+      "bytes": 3920128,
+      "sha256": "a77fcd4bcdd66ae6a8c94045de492553b725a8b9b3489c9e817afb2ba08d1dc9",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_C3_v1_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_C3_v2_1.wav",
+      "bytes": 1612016,
+      "sha256": "6858987188e6e87a24ea6b37d0f3c07921e8f891adafbdbd2c72bb8f7241e8ab",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_C3_v2_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_D#1_v1_1.wav",
+      "bytes": 2080020,
+      "sha256": "c197b4c5e8c28a4160ff8665eb880abbe99e42ed2830a59707407b76ce225d60",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_D%231_v1_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_D#1_v2_1.wav",
+      "bytes": 1166532,
+      "sha256": "eecd696f213cda2f402ca84eb1af244d29c6006fd3f4bb7853854ab892eaeaa7",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_D%231_v2_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_D#3_v1_1.wav",
+      "bytes": 4283492,
+      "sha256": "f8506296062218d14899d8c74cfc32149de105d65520aafe7282d3fd07c206c2",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_D%233_v1_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_D#3_v2_1.wav",
+      "bytes": 2429760,
+      "sha256": "12df341a13615a9f1676a3b04cee91d1853649907243adbdd52675d833594394",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_D%233_v2_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_D2_v1_1.wav",
+      "bytes": 2733168,
+      "sha256": "44809d90ad88bcc42af6caa27749954886b7de5ea93c97dc490b2d52c627d853",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_D2_v1_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_D2_v2_1.wav",
+      "bytes": 1733144,
+      "sha256": "f71a6d3914ac0daa656553cbd2b50af560897fd31920fb578ac85313d2787b36",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_D2_v2_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_F1_v1_1.wav",
+      "bytes": 2281664,
+      "sha256": "a33428ce832fe0108e5399026bc8a7687b43c1503a4d19bb38fe24cdff071b25",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_F1_v1_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_F1_v2_1.wav",
+      "bytes": 1400820,
+      "sha256": "44939c24af3cc64bb5324830838d23ee2489ca90e4b679592e2535f86ec6418d",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_F1_v2_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_F2_v1_1.wav",
+      "bytes": 3612792,
+      "sha256": "c9d6777e444e1076000b0dbbacce691739ce7f7f9968b410f29501e38214a764",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_F2_v1_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_F2_v2_1.wav",
+      "bytes": 1752628,
+      "sha256": "9d4d0eeef23a823416724e150deebb141f85d5ff1a90226e947bc4ba13c00597",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_F2_v2_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_F3_v1_1.wav",
+      "bytes": 4557044,
+      "sha256": "c6b852da342f0afd5279b26b48d3d882d02bf52001f40c1b23542c61315ceeb6",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_F3_v1_1.wav"
+    },
+    {
+      "file": "tenortbn_sus_F3_v2_1.wav",
+      "bytes": 2127892,
+      "sha256": "3ef29a754b2cfcaa8c27b5a8a3c807247d606c8cf95650941cee295e8011cfeb",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Brass/Tenor%20Trombone/sus/tenortbn_sus_F3_v2_1.wav"
+    }
+  ]
+}

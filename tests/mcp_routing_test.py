@@ -19,11 +19,11 @@ async def check(fixture,output):
             assert process.stdout.readline().strip()=='READY'
             async with stdio_client(StdioServerParameters(command=str(ROOT/'tools/mcp/run.sh'),env=env)) as (r,w):
                 async with ClientSession(r,w) as session:
-                    await session.initialize();tools={t.name:t for t in (await session.list_tools()).tools};assert len(tools)==45
+                    await session.initialize();tools={t.name:t for t in (await session.list_tools()).tools};assert len(tools)==70
                     assert tools['get_routing'].annotations.readOnlyHint and not tools['create_return'].annotations.readOnlyHint
-                    async def call(name,**args):
+                    async def call(tool_name,**args):
                         """Inspect domain outcomes separately from transport success."""
-                        response=await session.call_tool(name,args);assert not response.isError,response
+                        response=await session.call_tool(tool_name,args);assert not response.isError,response
                         return response.structuredContent or json.loads(response.content[0].text)
                     instance=(await call('capabilities'))['instance'];empty=await call('get_routing');assert empty['track_count']==0
                     args=dict(instance=instance,request_id=identity(),expected_routing=empty['expected_routing'])
@@ -69,21 +69,68 @@ async def check(fixture,output):
                     fresh=await call('get_routing')
                     reset=await call('edit_routing',instance=instance,request_id=identity(),expected_routing=fresh['expected_routing'],edits=[dict(edit,target=reopened['tracks'][0]['target'],return_target=reopened['tracks'][1]['target'])]);assert reset['ok']
 
-                    (output/'routing-acceptance.json').write_text(json.dumps(dict(tool_count=45,created=created,sent=sent,reopened=reopened,exact_audio_reopen=True),indent=2)+'\n')
+                    root=await call('create_group',instance=instance,request_id=identity(),expected_routing=reset['expected_routing'],name='Strings');assert root['ok'],root
+                    strings=root['created_target'];sub=await call('create_group',instance=instance,request_id=identity(),expected_routing=root['expected_routing'],name='Major Theme');assert sub['ok'],sub
+                    theme=sub['created_target'];source=sub['tracks'][0]['target']
+                    nested=await call('edit_routing',instance=instance,request_id=identity(),expected_routing=sub['expected_routing'],edits=[dict(operation='parent',target=theme,parent_target=strings),dict(operation='parent',target=source,parent_target=theme)]);assert nested['ok'],nested
+                    group_fx=await call('get_effect_chain',target=strings);assert group_fx['ok'],group_fx
+                    effect=await call('edit_effect_chain',instance=instance,request_id=identity(),target=strings,expected_state=group_fx['expected_state'],action='add',type_id=1);assert effect['ok'],effect
+                    effect=await call('edit_effect_chain',instance=instance,request_id=identity(),target=strings,expected_state=effect['expected_state'],action='parameter',effect_id=effect['effects'][0]['effect_id'],parameter=0,value=-6.020599913);assert effect['ok'],effect
+                    expected_audio=await call('analyze_composition',start_frame='0',end_frame='48000');assert expected_audio['ok'],expected_audio
+                    routing=await call('get_routing');automation=dict(before=1,after=1,points=[dict(frame='0',value=0.5,curve=0),dict(frame='48000',value=0.5,curve=2)])
+                    curve_edit=dict(operation='volume_automation',target=strings,automation=automation)
+                    request=dict(instance=instance,request_id=identity(),expected_routing=routing['expected_routing'],edits=[curve_edit])
+                    curves=await call('edit_routing',**request);assert curves['ok'] and curves['tracks'][-2]['volume_automation']==automation
+                    assert await call('edit_routing',**request)==curves and await call('request_status',instance=instance,request_id=request['request_id'])==curves
+                    quieter=await call('analyze_composition',start_frame='0',end_frame='48000');assert abs(quieter['metrics']['rms']/expected_audio['metrics']['rms']-.75)<1e-4, (quieter['metrics'],expected_audio['metrics'])
+                    # .75 includes the independent child send that bypasses the group fader.
+                    undone_curve=await call('undo_routing',instance=instance,request_id=identity(),expected_routing=curves['expected_routing']);assert undone_curve['ok']
+                    assert (await call('get_routing'))['tracks']==routing['tracks']
+                    redone_curve=await call('redo_routing',instance=instance,request_id=identity(),expected_routing=undone_curve['expected_routing']);assert redone_curve['ok']
+                    undone_curve=await call('undo_routing',instance=instance,request_id=identity(),expected_routing=redone_curve['expected_routing']);assert undone_curve['ok']
+                    send_curve=dict(automation,points=[dict(frame='0',value=.25,curve=0),dict(frame='48000',value=.25,curve=1)])
+                    send_edit=dict(operation='send_automation',target=source,slot=3,automation=send_curve)
+                    send_auto=await call('edit_routing',instance=instance,request_id=identity(),expected_routing=undone_curve['expected_routing'],edits=[send_edit]);assert send_auto['ok'] and send_auto['tracks'][0]['sends'][3]['automation']==send_curve
+                    send_audio=await call('analyze_composition',start_frame='0',end_frame='48000');assert abs(send_audio['metrics']['rms']/expected_audio['metrics']['rms']-.75)<1e-4
+                    base_send=await call('edit_routing',instance=instance,request_id=identity(),expected_routing=send_auto['expected_routing'],edits=[dict(edit,target=source,return_target=send_auto['tracks'][0]['sends'][3]['return_target'],gain=.7)]);assert base_send['ok'] and base_send['tracks'][0]['sends'][3]['automation']==send_curve
+                    assert (await call('analyze_composition',start_frame='0',end_frame='48000'))['metrics']==send_audio['metrics']
+                    clear_base=await call('undo_routing',instance=instance,request_id=identity(),expected_routing=base_send['expected_routing']);assert clear_base['ok']
+                    undone_curve=await call('undo_routing',instance=instance,request_id=identity(),expected_routing=clear_base['expected_routing']);assert undone_curve['ok']
+                    nested=await call('get_routing')
+                    bad=dict(op='edit_routing',instance=instance,request_id=identity(),expected_routing=undone_curve['expected_routing'],edits=[dict(curve_edit,automation=dict(automation,points=[dict(frame='00',value=.5,curve=0)]))]);assert wire(endpoint,bad)['code']=='invalid_request'
+
+                    fixture_command(process,'play_view')
+                    current=await call('get_routing');fold_args=dict(instance=instance,request_id=identity(),expected_routing=current['expected_routing'],edits=[dict(operation='fold',target=strings,folded=True)])
+                    folded=await call('edit_routing',**fold_args);assert folded['ok'],folded
+                    assert await call('edit_routing',**fold_args)==folded
+                    assert folded['tracks'][0]['visible_row']==-1 and folded['tracks'][3]['visible_row']==-1
+                    unfolded=await call('undo_routing',instance=instance,request_id=identity(),expected_routing=folded['expected_routing']);assert unfolded['ok'],unfolded
+                    redo=await call('redo_routing',instance=instance,request_id=identity(),expected_routing=unfolded['expected_routing']);assert redo['ok'] and redo['tracks']==folded['tracks']
+                    fixture_command(process,'stop_view')
+                    folded_audio=await call('analyze_composition',start_frame='0',end_frame='48000');assert expected_audio['metrics']==folded_audio['metrics'] and expected_audio['plots']==folded_audio['plots']
+                    refused=await call('edit_routing',instance=instance,request_id=identity(),expected_routing=redo['expected_routing'],edits=[dict(operation='parent',target=strings,parent_target=theme)]);assert refused['code']=='invalid_request',refused
+                    ids=[row['persistent_id'] for row in redo['tracks']];fixture_command(process,'render composition');nested_wav=(output/'composition.wav').read_bytes()
+                    fixture_command(process,'reopen');after=await call('get_routing');assert [row['persistent_id'] for row in after['tracks']]==ids
+                    assert after['tracks'][2]['is_group'] and after['tracks'][2]['folded'] and after['tracks'][0]['parent_target']==after['tracks'][3]['target']
+                    fixture_command(process,'render composition');assert nested_wav==(output/'composition.wav').read_bytes()
+                    assert (await call('create_group',instance=instance,request_id=identity(),expected_routing=redo['expected_routing'],name='Brass'))['code']=='state_conflict'
+
+                    (output/'routing-acceptance.json').write_text(json.dumps(dict(tool_count=len(tools),created=created,sent=sent,reopened=reopened,exact_audio_reopen=True),indent=2)+'\n')
         finally:
             if process.poll() is None:process.stdin.write('quit\n');process.stdin.flush()
             process.wait(timeout=10);assert process.returncode==0
         reader=subprocess.Popen([fixture,endpoint,'read'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True,bufsize=1,env=env)
         try:
             assert reader.stdout.readline().strip()=='READY';instance=wire(endpoint,dict(op='capabilities'))['instance'];routing=wire(endpoint,dict(op='get_routing'))
-            for operation in ['create_return','edit_routing','undo_routing','redo_routing']:
+            for operation in ['create_group','create_return','edit_routing','undo_routing','redo_routing']:
                 payload=dict(op=operation,instance=instance,request_id=identity(),expected_routing=routing['expected_routing'])
+                if operation=='create_group':payload['name']='Brass'
                 if operation=='edit_routing':payload['edits']=[]
                 assert wire(endpoint,payload)['code']=='read_only'
         finally:
             if reader.poll() is None:reader.stdin.write('quit\n');reader.stdin.flush()
             reader.wait(timeout=10);assert reader.returncode==0
-    print('mcp_routing_test: success (45 tools, empty creation, stable history, exact signal/audio reopening, guards, receipts and read-only)')
+    print('mcp_routing_test: success (61 tools, nested groups, empty creation, stable history, exact signal/audio reopening, guards, receipts and read-only)')
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--fixture',required=True);parser.add_argument('--output-root',required=True);args=parser.parse_args()

@@ -233,7 +233,7 @@ void fx_param_format_value(const EffectParamSpec* spec, float value, char* out, 
     }
     switch (spec->unit) {
         case FX_PARAM_UNIT_DB:
-            snprintf(out, out_size, "%.1f dB", value);
+            snprintf(out, out_size, "%.3f dB", value);
             break;
         case FX_PARAM_UNIT_HZ:
             snprintf(out, out_size, "%.1f Hz", value);

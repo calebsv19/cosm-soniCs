@@ -292,7 +292,7 @@ bool midi_editor_handle_qwerty_event(AppState* state, const SDL_Event* event) {
     if (!state || !event || (event->type != SDL_KEYDOWN && event->type != SDL_KEYUP)) {
         return false;
     }
-    SDL_Keymod mods = SDL_GetModState();
+    SDL_Keymod mods = (SDL_Keymod)(SDL_GetModState() | event->key.keysym.mod);
     bool ctrl_or_cmd = (mods & (KMOD_CTRL | KMOD_GUI)) != 0;
     bool alt_held = (mods & KMOD_ALT) != 0;
     if (ctrl_or_cmd || alt_held) {
@@ -312,16 +312,21 @@ bool midi_editor_handle_qwerty_event(AppState* state, const SDL_Event* event) {
             return midi_editor_adjust_octave(state, 1);
         }
         if (key == SDLK_MINUS) {
-            return midi_editor_adjust_default_velocity(state, -0.05f);
+            return midi_editor_adjust_velocity(state, -0.05f);
         }
         if (key == SDLK_EQUALS) {
-            return midi_editor_adjust_default_velocity(state, 0.05f);
+            return midi_editor_adjust_velocity(state, 0.05f);
         }
         if (key == SDLK_q) {
             return midi_editor_quantize_selected_note(state);
         }
     }
 
+    // Holds piano sustain with semicolon only while QWERTY audition or recording owns keys.
+    if (key == SDLK_SEMICOLON && (state->midi_editor_ui.qwerty_test_enabled || state->midi_editor_ui.qwerty_record_armed)) {
+        if (!event->key.repeat && state->engine) (void)engine_midi_audition_pedal(state->engine,event->type == SDL_KEYDOWN);
+        return true;
+    }
     uint8_t base_note = 0;
     if (!midi_editor_qwerty_note_for_key(key, &base_note)) {
         return false;

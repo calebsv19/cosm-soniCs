@@ -138,3 +138,14 @@ DawSaveResult daw_save_file_copy(const char* source, const char* destination) {
     }
     return daw_save_file_commit(&save);
 }
+
+// Atomically links a prepared candidate without replacing any existing destination.
+DawSaveResult daw_save_file_commit_new(DawSaveFile* save) {
+    if (!save || !save->prepared) return DAW_SAVE_FAILED;
+    DawSaveResult result=DAW_SAVE_FAILED;
+    if (link(save->temporary,save->destination)==0) {
+        result=fsync(save->directory_fd)==0 ? DAW_SAVE_SYNCED : DAW_SAVE_PUBLISHED;
+        if (result==DAW_SAVE_PUBLISHED) SDL_Log("save_file: new checkpoint published but directory sync failed: %s",save->destination);
+    }
+    daw_save_file_abort(save);return result;
+}

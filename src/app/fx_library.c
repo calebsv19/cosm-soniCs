@@ -34,7 +34,7 @@ static const char* string(const cJSON* object,const char* key) {
 // Checks complete registry-compatible settings while retaining stored native fallback and beat values.
 static bool chain_valid(const Engine* engine,const FxMasterSnapshot* chain) {
     if(!engine || !engine_is_control_thread(engine) || !chain || chain->count<0 || chain->count>FX_MASTER_MAX)return false;
-    for(int i=0;i<chain->count;++i){const FxMasterInstanceInfo* item=&chain->items[i];const EffectParamSpec* specs=NULL;uint32_t count=0;FxDesc desc;
+    for(int i=0;i<chain->count;++i){const FxMasterInstanceInfo* item=&chain->items[i];if(item->automation.count)return false;const EffectParamSpec* specs=NULL;uint32_t count=0;FxDesc desc;
         if(!engine_fx_registry_get_desc(engine,item->type,&desc) || !engine_fx_registry_get_param_specs(engine,item->type,&specs,&count) || count!=item->param_count || count>FX_MAX_PARAMS)return false;
         for(uint32_t p=0;p<count;++p){const EffectParamSpec* spec=&specs[p];float value=item->params[p],beats=item->param_beats[p];FxParamMode mode=item->param_mode[p];
             if(!isfinite(value) || value<spec->min_value || value>spec->max_value || !isfinite(beats) || mode<FX_PARAM_MODE_NATIVE || mode>FX_PARAM_MODE_BEAT_RATE)return false;

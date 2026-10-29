@@ -44,7 +44,7 @@ async def check(fixture, output):
                     assert await call('request_status',instance=instance,request_id=args['request_id'])==saved
                     assert fixture_command(process,'end_gesture')=='DONE 1 0','saving must not add history'
                     assert (await call('get_instrument',target=target))['instrument']==edit['instrument']
-                    p=saved['preset']; assert len(p['parameters'])==18
+                    p=saved['preset']; assert len(p['parameters'])==32
                     listing=await call('list_presets',search='evening'); assert listing['presets']==[p]
                     assert (await call('get_preset',preset_id=p['id'],preset_revision=p['revision']))['preset']==p
                     assert wire(socket_path,{'op':'get_preset','preset_id':p['id'],'preset_revision':3})['code']=='invalid_request'

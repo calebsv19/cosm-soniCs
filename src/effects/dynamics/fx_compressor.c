@@ -45,6 +45,7 @@ typedef struct FxCompressor {
     // state
     float reduction_db; // Minimum applied gain in the most recent block, before
                         // makeup.
+    float* trace; // Borrowed only during a private diagnostic process call.
     float* env;         // detector envelope per channel
 } FxCompressor;
 
@@ -135,6 +136,7 @@ static void comp_process(FxHandle* h, const float* in, float* out, int frames, i
             float in_dB = lin_to_dB(level + 1e-12f);
             float g_db = fx_compressor_gain_db(in_dB, c->thresh_dB, c->ratio, c->knee_dB);
             c->reduction_db = fminf(c->reduction_db, g_db);
+            if(c->trace)c->trace[base+ch]=g_db;
             float gain = dB_to_lin(g_db) * makeup;
             out[base + ch] = x * gain;
         }
@@ -143,6 +145,9 @@ static void comp_process(FxHandle* h, const float* in, float* out, int frames, i
 
 // Returns the minimum gain applied before makeup in the last block.
 static float comp_reduction(FxHandle* h) { return ((FxCompressor*)h)->reduction_db; }
+
+// Borrows preallocated trace storage without changing detector or audio state.
+static void comp_trace(FxHandle* h,float* trace) {((FxCompressor*)h)->trace=trace;}
 
 // Describes the existing compressor controls.
 int compressor_get_desc(FxDesc* out) {
@@ -204,6 +209,7 @@ int compressor_create(const FxDesc* desc, FxHandle** out_handle, FxVTable* out_v
 
     *out_vt = (FxVTable){0};
     out_vt->gain_reduction_db = comp_reduction;
+    out_vt->set_reduction_trace = comp_trace;
     out_vt->process = comp_process;
     out_vt->set_param = comp_set_param;
     out_vt->reset = comp_reset;

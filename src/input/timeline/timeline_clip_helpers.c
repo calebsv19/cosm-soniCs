@@ -110,6 +110,9 @@ bool timeline_session_clip_from_engine(const EngineClip* clip, SessionClip* out_
             const EngineAutomationLane* src = &clip->automation_lanes[l];
             SessionAutomationLane* dst = &out_clip->automation_lanes[l];
             dst->target = src->target;
+        dst->domain = src->domain;
+        dst->before = src->before;
+        dst->after = src->after;
             dst->point_count = src->point_count;
             if (src->point_count > 0 && src->points) {
                 dst->points = (SessionAutomationPoint*)calloc((size_t)src->point_count,
@@ -121,6 +124,7 @@ bool timeline_session_clip_from_engine(const EngineClip* clip, SessionClip* out_
                 for (int p = 0; p < src->point_count; ++p) {
                     dst->points[p].frame = src->points[p].frame;
                     dst->points[p].value = src->points[p].value;
+                dst->points[p].curve = src->points[p].curve;
                 }
             }
         }

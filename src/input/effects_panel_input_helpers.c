@@ -1,6 +1,7 @@
 #include "input/effects_panel_input_helpers.h"
 
 #include "engine/engine.h"
+#include "ui/knob_drag.h"
 #include "effects/param_utils.h"
 #include "ui/effects_panel.h"
 #include "ui/effects_panel_slot_layout.h"
@@ -557,4 +558,39 @@ void close_overlay(EffectsPanelState* panel) {
     panel->hovered_effect_index = -1;
     panel->active_category_index = -1;
     panel->overlay_scroll_index = 0;
+}
+
+// Captures a size-independent knob position using the existing native or beat mapping.
+void begin_fx_knob_drag(AppState* state, int slot_index, int param_index, int y) {
+    EffectsPanelState* panel = &state->effects_panel;
+    const FxSlotUIState* slot = &panel->chain[slot_index];
+    const EffectParamSpec* spec = &find_type_info(panel, slot->type_id)->param_specs[param_index];
+    float value = slot->param_values[param_index];
+    float position = fx_param_map_value_to_ui(spec, value);
+    float lo, hi;
+    if (slot->param_mode[param_index] != FX_PARAM_MODE_NATIVE && fx_param_spec_is_syncable(spec) &&
+        fx_param_spec_get_beat_bounds(spec, &state->tempo, &lo, &hi) && hi > lo) {
+        value = slot->param_beats[param_index];
+        if (value <= 0.0f) value = fx_param_spec_native_to_beats(spec, slot->param_values[param_index], &state->tempo);
+        position = (value - lo) / (hi - lo);
+    }
+    panel->knob_start_y = y;
+    panel->knob_start_position = position;
+    panel->knob_drag_scale = (SDL_GetModState() & KMOD_SHIFT) ? 0.1f : 1.0f;
+    // All dB knobs use 0.04 dB per pixel, regardless of their allowed range.
+    if (spec->unit == FX_PARAM_UNIT_DB && spec->max_value > spec->min_value)
+        panel->knob_drag_scale *= 40.0f / (spec->max_value - spec->min_value);
+}
+
+// Applies relative vertical travel independently of widget size and preserves beat quantization.
+float fx_knob_value_from_drag(AppState* state, int slot_index, int param_index, int y) {
+    EffectsPanelState* panel = &state->effects_panel;
+    const FxSlotUIState* slot = &panel->chain[slot_index];
+    const EffectParamSpec* spec = &find_type_info(panel, slot->type_id)->param_specs[param_index];
+    float t = daw_knob_drag_position(panel->knob_start_position, panel->knob_start_y, y, panel->knob_drag_scale);
+    float lo, hi;
+    if (slot->param_mode[param_index] != FX_PARAM_MODE_NATIVE && fx_param_spec_is_syncable(spec) &&
+        fx_param_spec_get_beat_bounds(spec, &state->tempo, &lo, &hi))
+        return clampf(fx_param_quantize_beats(lo + t * (hi - lo)), lo, hi);
+    return fx_param_map_ui_to_value(spec, t);
 }

@@ -13,6 +13,8 @@ void timeline_input_mouse_handle_event(InputManager* manager, AppState* state, c
         return;
     }
 
+    if (timeline_scrollbar_handle_event(state, event)) return;
+
     if (event->type == SDL_MOUSEWHEEL) {
         timeline_input_mouse_handle_scroll(manager, state, event);
         return;
@@ -22,6 +24,7 @@ void timeline_input_mouse_handle_event(InputManager* manager, AppState* state, c
 }
 
 void timeline_input_mouse_update(InputManager* manager, AppState* state, bool was_down, bool is_down) {
+    if (timeline_scrollbar_update(state, is_down)) return;
     timeline_drop_handle_library_drag(manager, state, was_down, is_down);
     timeline_drop_update_hint(state);
     timeline_input_mouse_click_update(manager, state, was_down, is_down);

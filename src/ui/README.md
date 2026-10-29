@@ -1,11 +1,15 @@
 # UI module notes
 
+- Sub/Driven 808 expose Mono and Glide; Open Hat and Hat Kit join Drums with a Hat Choke switch. The existing isolated-note preview shows onset timbre; multi-note glide/choke requires a pattern.
+
+- Percussion factory voices add the Drums category; 808 voices remain in Bass. The instrument pane shows only applicable controls, an onset waveform and the production body/noise decay preview. See [percussion controls](../../docs/percussion_synth.md).
+
 - `font.h` / `font.c`: public UI font facade; active Vulkan draw/measure now routes through shared `kit_render_external_text.*`.
 - `font_bridge.c`: bounded logical-font cache and shared font-source registration for the UI text lane.
 - `text_draw.c`: shared text draw/measure wrapper plus the remaining local clipped-draw seam.
 - `layout.c`: Pane layout and rendering helpers.
 - `transport.c`: Transport bar (play/stop, time readout, grid toggle, zoom sliders).
-- `timeline_view.c`: Timeline lanes, clips, header bar controls, selection drawing, and automation-mode overlays.
+- `timeline_view.c`: Timeline lanes, clips, header bar controls, selection drawing, and automation-mode overlays. It consumes the same vertical viewport and offset as input, clips lanes below fixed chrome, and paints the bounded scrollbar and Height buttons.
 - `timeline_midi_clip_preview.c`: Timeline-region mini-renderer for velocity-colored MIDI clip note blocks, scaled by note timing and clip-local pitch bounds, with stable full-clip-width X mapping for right-edge resize.
 - `timeline_waveform.c`: Waveform cache for per-clip rendering.
 - `waveform_render.c`: Waveform renderer helpers shared by timeline/inspector views.
@@ -90,3 +94,19 @@ The sound inspector now supports actual Region captures alongside isolated instr
 `routing_panel.c` owns the Effects-header Routing form: copied complete guards, staged destinations/physical percentages/roles, return creation, explicit Refresh, shared text editing, matched releases and focus/project teardown. Common routing actions own publication and history; painters perform no engine writes.
 
 Region inspection includes direct captured/reference PCM listening, with matched pointer releases, finite completion feedback, stop/focus/project cancellation and immutable device ownership. Production output emits the exact capture without applying insert processing again.
+
+`automation_status.c` displays selected-point units, exact frames, shape and shortcuts using persistent queued text storage. `automation_view.h` draws curves through the engine evaluator and shares physical-unit mapping with point hit tests.
+
+- `automation_menu.c`: region-aware target dropdown, overlay input ownership and full target labels.
+
+Sampled Acoustic Piano, Viola Section, Double Bass and Violin Section extend the acoustic palette. Piano has finite velocity-selected strikes and voice-specific automation; bowed strings reuse sustain/dynamics playback. Audition notes follow each recorded range. See `docs/sampled_piano_strings.md`.
+
+Nested/collapsible audio bus groups, common history and MCP support are described in [track groups](../../docs/track_groups.md). Engine group projection/mixing and the native group panel have focused signal, persistence, rollback and SDL/Vulkan tests.
+
+[Collection-scoped Load/Save](../../docs/project_collections.md) now isolates folder lists, previews monotonically versioned checkpoints and preserves exact current-project save paths. Native collection and publication tests cover the shared modal geometry and atomic no-replace writer.
+
+[Compact track UI](../../docs/compact_track_ui.md) provides aligned headers/meters/FX access, derived descendant MIDI/audio overviews and fold-only playback-safe selection/history. New `timeline_track_header` and `timeline_group_overview` modules share production geometry and source preview components.
+
+[Header mixer and lane density](../../docs/header_mixer.md) adds guarded gain/pan scalar history, standard relative gestures, exact-value inspector synchronization, smaller gutters and subtle persistent lane tints. The application mixer/history boundary and input gesture owner are separate small modules.
+
+Clipped labels retain a 512-entry dense-arrangement working set. Cache entries distinguish font identity, owning renderer and raster density; font replacement invalidates its entries. Eviction and cache resets retire GPU textures through the existing frame-fence queue, with idle synchronization for out-of-frame invalidation. This prevents later region labels from reusing resources referenced by earlier transport/header draws.

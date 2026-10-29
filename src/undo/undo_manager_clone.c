@@ -111,6 +111,9 @@ static bool automation_lanes_clone(SessionAutomationLane** dst,
     }
     for (int l = 0; l < src_count; ++l) {
         lanes[l].target = src[l].target;
+        lanes[l].domain = src[l].domain;
+        lanes[l].before = src[l].before;
+        lanes[l].after = src[l].after;
         lanes[l].point_count = src[l].point_count;
         if (src[l].point_count > 0) {
             lanes[l].points = (SessionAutomationPoint*)calloc((size_t)src[l].point_count,
@@ -308,6 +311,7 @@ static bool session_track_clone(SessionTrack* dst, const SessionTrack* src) {
 void undo_created_track_capture(const EngineTrack* track, UndoCreatedTrack* out) {
     memset(out, 0, sizeof(*out));
     out->runtime_id = track->runtime_id;
+    out->persistent_id = track->persistent_id;
     out->settings.gain = track->gain; out->settings.pan = track->pan;
     out->settings.muted = track->muted; out->settings.solo = track->solo;
     out->settings.instrument_enabled = track->midi_instrument_enabled;
@@ -482,6 +486,8 @@ static bool undo_command_clone_fields(UndoCommand* dst, const UndoCommand* src) 
         case UNDO_CMD_EQ_CURVE:
             dst->data.eq_curve_edit = src->data.eq_curve_edit;
             return true;
+        case UNDO_CMD_TRACK_MIX:
+            dst->data.track_mix=src->data.track_mix;return true;
         case UNDO_CMD_TRACK_SNAPSHOT:
             dst->data.track_snapshot_edit = src->data.track_snapshot_edit;
             return true;

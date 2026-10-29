@@ -31,10 +31,10 @@ static void window_contract(AppState* state) {
         assert(!state->input_manager.prev_horiz_slider_down && !state->transport_ui.adjusting_seek);
         assert(!state->editor_controls.surface.interaction.pointer_owned && !state->transport_ui.controls.interaction.pointer_owned);
         assert(state->input_manager.window_wait_release);
-        SDL_Event held={.type=SDL_MOUSEBUTTONDOWN};held.button.button=SDL_BUTTON_LEFT;
+        SDL_Event held={.type=SDL_MOUSEMOTION};held.motion.state=SDL_BUTTON_LMASK;
         input_manager_handle_event(&state->input_manager,state,&held);
         assert(state->input_manager.window_wait_release);
-        held.type=SDL_MOUSEBUTTONUP;input_manager_handle_event(&state->input_manager,state,&held);
+        held.type=SDL_MOUSEBUTTONUP;held.button.button=SDL_BUTTON_LEFT;input_manager_handle_event(&state->input_manager,state,&held);
         assert(!state->input_manager.window_wait_release);
     }
 }

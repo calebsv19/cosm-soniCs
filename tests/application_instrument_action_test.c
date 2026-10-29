@@ -61,8 +61,8 @@ static void destroy_fixture(AppState* state) {
 static DawInstrumentRequest patch(DawActionTarget target) {
     DawInstrumentRequest request = {.target = target, .set_preset = true,
         .preset = ENGINE_INSTRUMENT_PRESET_SYNTH_LAB,
-        .parameter_mask = (UINT32_C(1) << ENGINE_INSTRUMENT_PARAM_LEVEL) |
-                          (UINT32_C(1) << ENGINE_INSTRUMENT_PARAM_ATTACK_MS)};
+        .parameter_mask = (UINT64_C(1) << ENGINE_INSTRUMENT_PARAM_LEVEL) |
+                          (UINT64_C(1) << ENGINE_INSTRUMENT_PARAM_ATTACK_MS)};
     request.params.level = .37f;
     request.params.attack_ms = 73;
     return request;
@@ -119,7 +119,7 @@ static void test_rejections(void) {
     CHECK(daw_action_set_instrument(state, &invalid).status == DAW_ACTION_INVALID, "infinity accepted");
     invalid.params.level = 1.51f;
     CHECK(daw_action_set_instrument(state, &invalid).status == DAW_ACTION_INVALID, "out-of-range silently clamped");
-    invalid = request; invalid.parameter_mask |= UINT32_C(1) << ENGINE_INSTRUMENT_PARAM_COUNT;
+    invalid = request; invalid.parameter_mask |= UINT64_C(1) << ENGINE_INSTRUMENT_PARAM_COUNT;
     CHECK(daw_action_set_instrument(state, &invalid).status == DAW_ACTION_INVALID, "unknown parameter bit accepted");
     invalid = request; invalid.preset = ENGINE_INSTRUMENT_PRESET_COUNT;
     CHECK(daw_action_set_instrument(state, &invalid).status == DAW_ACTION_INVALID && publications == 0, "unknown preset accepted");

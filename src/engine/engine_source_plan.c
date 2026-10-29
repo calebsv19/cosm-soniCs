@@ -1,6 +1,9 @@
 #include "engine/engine_internal.h"
+#include "engine/mix_probe.h"
 #include "engine/instrument.h"
+#include "engine/hat_choke.h"
 #include "engine/sampler.h"
+#include "engine/groups.h"
 
 #include <stdlib.h>
 #include <math.h>
@@ -13,6 +16,9 @@ typedef struct EngineOwnedSource {
     Engine* audition_engine;
     int audition_track;
     uint64_t export_end;
+    uint64_t track_id,clip_id;
+    EngineMixProbe* probe;
+    int probe_slot,probe_channels;
 } EngineOwnedSource;
 
 // Captures all scalar mixer targets so coalescing retains every accepted edit.
@@ -53,6 +59,7 @@ static void source_plan_render_export(void* userdata, float* output, int frames,
     if ((uint64_t)frames > left) frames = (int)left;
     if (source->instrument) engine_instrument_source_render(source->instrument, output, frames, start);
     else engine_sampler_source_render(source->sampler, output, frames, start);
+    if(source->probe && !source->probe->failed && source->probe->source && !source->probe->source(source->probe->user,source->probe_slot,start,output,frames,source->probe_channels))source->probe->failed=true;
 }
 
 // Configures only captured source format; export gates remain part of the immutable snapshot.
@@ -78,6 +85,7 @@ static void source_plan_destroy(Engine* engine, EngineSourcePlan* plan) {
         free(plan->mix->previous_tracks);
         free(plan->mix->track_pan_ramps);
         free(plan->mix->audition_gain_ramps);
+        engine_group_mix_destroy(plan->mix->group_mix);
         free(plan->mix->return_buffers);
         free(plan->mix->send_destinations);
         free(plan->mix->send_ramps);
@@ -100,6 +108,10 @@ static void source_plan_destroy(Engine* engine, EngineSourcePlan* plan) {
 // Prepares bounded return sums and resolves stable destinations without touching live DSP storage.
 static bool source_plan_prepare_routing(Engine* engine, EngineMixState* mix) {
     mix->isolated_return = -1;
+    if(engine_groups_present(mix->tracks,mix->track_count)) {
+        mix->group_mix=engine_group_mix_create(mix,engine->config.block_size,engine_graph_get_channels(engine->graph));
+        return mix->group_mix!=NULL;
+    }
     for (int t = 0; t < mix->track_count; ++t) if (mix->tracks[t].is_return) {
         if (mix->return_count == ENGINE_RETURN_CAP || engine->tracks[t].clip_count || engine->tracks[t].midi_instrument_enabled) return false;
         mix->return_tracks[mix->return_count++] = t;
@@ -162,14 +174,18 @@ static bool source_plan_prepare_mix(Engine* engine, EngineSourcePlan* plan, bool
     for (int t = 0; t < mix->track_count; ++t) {
         EngineTrack* dst = &mix->tracks[t];
         const EngineTrack* src = &engine->tracks[t];
+        if((src->is_group || src->is_return) && (src->clip_count || src->midi_instrument_enabled))return false;
         dst->runtime_id = src->runtime_id;
         dst->is_return = src->is_return;
+        dst->volume_automation=src->volume_automation;
+        dst->is_group=src->is_group; dst->parent_id=src->parent_id;
         memcpy(dst->sends, src->sends, sizeof(dst->sends));
         dst->gain = src->gain;
         dst->pan = src->pan;
         fx_sample_ramp_reset(&mix->track_pan_ramps[t], src->pan);
         float gain = src->is_return ? (!src->muted && (!return_solo || src->solo) ? src->gain : 0) :
             (src->active && !src->muted && (!any_solo || src->solo) ? src->gain : 0);
+        if(engine_groups_present(engine->tracks,engine->track_count))gain=engine_group_gain(engine->tracks,engine->track_count,t);
         fx_sample_ramp_reset(&mix->audition_gain_ramps[t], gain);
         dst->muted = src->muted;
         dst->solo = src->solo;
@@ -200,6 +216,7 @@ void engine_source_plan_collect(Engine* engine) {
 
 // Prepares all sources transactionally so allocation failure cannot publish a partial graph.
 static EngineSourcePlan* source_plan_build(Engine* engine, bool offline, uint64_t end, uint64_t tail, const EngineBounceOptions* filter) {
+    EngineHatChokeTimeline hats = {0};
     EngineSourcePlan* plan = calloc(1, sizeof(*plan));
     if (!plan) return NULL;
     if (!source_plan_prepare_mix(engine, plan, offline)) goto fail;
@@ -218,20 +235,28 @@ static EngineSourcePlan* source_plan_build(Engine* engine, bool offline, uint64_
     if (!plan->graph || !plan->sources) goto fail;
     for (int t = 0; t < engine->track_count; ++t) {
         const EngineTrack* track = &engine->tracks[t];
-        if (track->is_return) continue;
+        if (track->is_return || track->is_group) continue;
         if (offline && filter && filter->isolate_track && t != filter->track_index) {
             bool feeds_return = false;
             if (engine->tracks[filter->track_index].is_return)
                 for (int send = 0; send < ENGINE_SEND_CAP; ++send)
                     if (track->sends[send].return_id == engine->tracks[filter->track_index].runtime_id) feeds_return = true;
+            if(engine->tracks[filter->track_index].is_group && engine_group_descendant(engine->tracks,engine->track_count,t,filter->track_index))feeds_return=true;
+            if(engine->tracks[filter->track_index].is_return)for(int p=0;p<engine->track_count;++p)
+                if(engine_group_descendant(engine->tracks,engine->track_count,t,p))for(int send=0;send<ENGINE_SEND_CAP;++send)
+                    if(engine->tracks[p].sends[send].return_id==engine->tracks[filter->track_index].runtime_id)feeds_return=true;
             if (!feeds_return) continue;
         }
-        float track_gain = track->active && !track->muted && (!any_solo || track->solo) ? track->gain : 0;
+        engine_hat_choke_free(&hats);
+        if (!engine_hat_choke_prepare(&hats, engine, t, offline ? end : UINT64_MAX)) goto fail;
+        float track_gain = engine_groups_present(engine->tracks,engine->track_count) ? engine_group_gain(engine->tracks,engine->track_count,t) :
+            (track->active && !track->muted && (!any_solo || track->solo) ? track->gain : 0);
         for (int c = 0; c < track->clip_count; ++c) {
             const EngineClip* clip = &track->clips[c];
             if (offline && filter && filter->clip_id && clip->creation_index != filter->clip_id) continue;
             if (!clip->active || (offline && clip->timeline_start_frames >= end)) continue;
             EngineOwnedSource* owned = &plan->sources[plan->source_count++];
+            owned->track_id=track->runtime_id;owned->clip_id=clip->creation_index;
             const EngineGraphSourceOps* ops = NULL;
             void* source = NULL;
             if (clip->kind == ENGINE_CLIP_KIND_MIDI) {
@@ -248,6 +273,7 @@ static EngineSourcePlan* source_plan_build(Engine* engine, bool offline, uint64_
                         engine_clip_midi_effective_instrument_params(engine, t, c),
                         clip->midi_notes.notes, clip->midi_notes.note_count, track_lanes, lane_count,
                         clip->automation_lanes, clip->automation_lane_count)) goto fail;
+                if (!engine_hat_choke_apply(&hats, clip, owned->instrument)) goto fail;
                 if (offline) engine_instrument_source_set_export_end(owned->instrument, end, tail);
                 ops = &engine->instrument_ops;
                 source = owned->instrument;
@@ -283,8 +309,10 @@ static EngineSourcePlan* source_plan_build(Engine* engine, bool offline, uint64_
         engine_graph_set_last_clip_gain(plan->graph, 1.0f);
     }
     if (!engine_graph_prepare_identity_lookup(plan->graph)) goto fail;
+    engine_hat_choke_free(&hats);
     return plan;
 fail:
+    engine_hat_choke_free(&hats);
     source_plan_destroy(engine, plan);
     return NULL;
 }
@@ -412,6 +440,7 @@ void engine_source_plan_adopt(Engine* engine, EngineSourcePlan* plan) {
                     source_plan_transfer_fx_meters(&plan->mix->track_fx_meters[t], &old->mix->track_fx_meters[previous], &chain);
             }
         }
+        engine_group_mix_transfer(plan->mix->group_mix,old->mix->group_mix);
         int audition = engine->midi_audition_track_index;
         if (audition >= 0 && audition < old->mix->track_count) {
             int replacement = -1;
@@ -520,7 +549,7 @@ EngineSourcePlan* engine_source_plan_prepare_export_filtered(Engine* engine, uin
     }
     EngineSourcePlan* plan = source_plan_build(engine, true, end, tail, filter);
     if (!plan) return NULL;
-    if (filter && filter->isolate_track && plan->mix->tracks[filter->track_index].is_return)
+    if (filter && filter->isolate_track && (plan->mix->tracks[filter->track_index].is_return || plan->mix->tracks[filter->track_index].is_group))
         plan->mix->isolated_return = filter->track_index;
     if (filter) plan->mix->bypass_returns = filter->bypass_track_fx && plan->mix->isolated_return < 0;
     if (filter && (filter->isolate_track || filter->bypass_track_fx || filter->bypass_master_fx)) {
@@ -536,6 +565,14 @@ EngineSourcePlan* engine_source_plan_prepare_export_filtered(Engine* engine, uin
                         if (selected->sends[send].return_id == plan->mix->tracks[t].runtime_id) included = true;
                 }
             }
+            if(filter->isolate_track && plan->mix->group_mix) {
+                if(engine_group_descendant(plan->mix->tracks,plan->mix->track_count,filter->track_index,t))included=true;
+                if(plan->mix->tracks[filter->track_index].is_return && plan->mix->tracks[t].is_group)included=true;
+                if(plan->mix->tracks[filter->track_index].is_group && engine_group_descendant(plan->mix->tracks,plan->mix->track_count,t,filter->track_index))included=true;
+                if(plan->mix->tracks[filter->track_index].is_return)for(int p=0;p<plan->mix->track_count;++p)
+                    for(int send=0;send<ENGINE_SEND_CAP;++send)if(plan->mix->tracks[p].sends[send].return_id==plan->mix->tracks[filter->track_index].runtime_id &&
+                        (t==p || engine_group_descendant(plan->mix->tracks,plan->mix->track_count,t,p)))included=true;
+            }
             bool excluded = !included;
             if (filter->bypass_track_fx || excluded) {
                 if (!export_clear_chain(plan->mix->fxm, t)) goto fail;
@@ -548,8 +585,14 @@ EngineSourcePlan* engine_source_plan_prepare_export_filtered(Engine* engine, uin
         }
         if (!fxm_prepare_delay_compensation(plan->mix->fxm)) goto fail;
     }
+    if(plan->mix->group_mix) {
+        engine_group_mix_destroy(plan->mix->group_mix);
+        plan->mix->group_mix=engine_group_mix_create(plan->mix,engine->config.block_size,engine_graph_get_channels(plan->graph));
+        if(!plan->mix->group_mix)goto fail;
+    }
     engine_graph_reset(plan->graph);
     fxm_reset_render_state(plan->mix->fxm);
+    engine_group_mix_reset(plan->mix->group_mix);
     engine_eq_reset(&plan->mix->master_eq);
     for (int t = 0; t < plan->mix->track_count; ++t) engine_eq_reset(&plan->mix->tracks[t].track_eq);
     return plan;
@@ -567,7 +610,8 @@ EngineSourcePlan* engine_source_plan_prepare_export(Engine* engine, uint64_t end
 uint64_t engine_source_plan_export_latency(EngineSourcePlan* plan) {
     if (!plan) return 0;
     fxm_begin_render_block(plan->mix->fxm, engine_graph_get_max_block(plan->graph));
-    return fxm_processing_latency(plan->mix->fxm);
+    if(plan->mix->group_mix && !engine_group_mix_begin(plan->mix->group_mix,plan->mix,engine_graph_get_max_block(plan->graph),engine_graph_get_channels(plan->graph)))return UINT64_MAX;
+    return plan->mix->group_mix ? engine_group_mix_latency(plan->mix->group_mix,plan->mix) : fxm_processing_latency(plan->mix->fxm);
 }
 
 // Renders one export block through the same mixer with live telemetry disabled.
@@ -605,6 +649,8 @@ bool engine_request_mixer_update(Engine* engine) {
             .audition_gain = track->is_return ? (!track->muted && (!return_solo || track->solo) ? track->gain : 0) :
                 (track->active && !track->muted && (!audition_solo || track->solo) ? track->gain : 0)};
     }
+    if(engine_groups_present(engine->tracks,engine->track_count))for(int t=0;t<engine->track_count;++t)
+        update->scalars[t].source_gain=update->scalars[t].audition_gain=engine_group_gain(engine->tracks,engine->track_count,t);
     // Taking the pending slot gives control exclusive ownership; a worker can only take it before or after us.
     EngineSourcePlan* pending = atomic_exchange_explicit(&engine->pending_source_plan, NULL, memory_order_acq_rel);
     if (pending && !pending->scalars) {
@@ -622,5 +668,12 @@ bool engine_request_mixer_update(Engine* engine) {
         engine_source_plan_apply(engine);
         engine_source_plan_collect(engine);
     }
+    return true;
+}
+
+// Installs diagnostics exclusively on detached export ownership.
+bool engine_source_plan_set_probe(EngineSourcePlan* plan,struct EngineMixProbe* probe) {
+    if(!plan || !plan->mix || plan->mix->owner || !engine_mix_probe_install(plan->mix,probe))return false;
+    if(probe && probe->prepare_source)for(size_t i=0;i<plan->source_count;++i){EngineOwnedSource* s=&plan->sources[i];if(!s->instrument)continue;int slot=probe->prepare_source(probe->user,s->track_id,s->clip_id,s->instrument);if(slot<0)return false;s->probe_slot=slot;s->probe=probe;s->probe_channels=engine_graph_get_channels(plan->graph);}
     return true;
 }

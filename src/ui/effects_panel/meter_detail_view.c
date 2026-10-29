@@ -208,27 +208,8 @@ void effects_panel_meter_detail_compute_lufs_toggle_rects(const SDL_Rect* detail
     if (out_momentary) {
         *out_momentary = (SDL_Rect){0, 0, 0, 0};
     }
-    if (!detail_rect || detail_rect->w <= 0 || detail_rect->h <= 0) {
-        return;
-    }
-    SDL_Rect left_rect = {0, 0, 0, 0};
-    SDL_Rect right_rect = {0, 0, 0, 0};
-    meter_detail_compute_split_rects(detail_rect, &left_rect, &right_rect);
-
-    int btn_w = meter_detail_button_width("INT", 46);
-    int btn_h = meter_detail_button_height();
-    int btn_gap = meter_detail_button_gap();
-    int btn_y = right_rect.y + right_rect.h - btn_h - max_int(8, btn_h / 2);
-    int right_edge = right_rect.x + right_rect.w;
-    if (out_momentary) {
-        *out_momentary = (SDL_Rect){right_edge - btn_w, btn_y, btn_w, btn_h};
-    }
-    if (out_short_term) {
-        *out_short_term = (SDL_Rect){right_edge - btn_w * 2 - btn_gap, btn_y, btn_w, btn_h};
-    }
-    if (out_integrated) {
-        *out_integrated = (SDL_Rect){right_edge - btn_w * 3 - btn_gap * 2, btn_y, btn_w, btn_h};
-    }
+    (void)detail_rect; // Qualified offline programme LUFS replaces this approximate live view.
+    return;
 }
 
 // Computes toggle rectangles for spectrogram palette buttons.
@@ -669,6 +650,7 @@ void effects_panel_meter_detail_render(SDL_Renderer* renderer,
         show_spectrogram_toggle = (toggle_wb.w > 0 && toggle_bw.w > 0 && toggle_heat.w > 0);
     }
 
+    if(type_id==104u){ui_draw_text_clipped(renderer,rect.x+8,rect.y+8,"Live LUFS is not qualified. Use validated offline mix LUFS analysis.",label_color,.85,rect.w-16);return;}
     EngineFxMeterSnapshot snapshot = {0};
     bool have_snapshot = false;
     if (slot && state->engine) {

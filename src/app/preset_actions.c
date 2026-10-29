@@ -36,7 +36,7 @@ DawActionResult daw_action_apply_preset(AppState* state, DawActionTarget target,
     DawUserPreset preset; DawPresetStatus status = daw_preset_library_get(id, revision, &preset);
     if (status != DAW_PRESET_OK) return (DawActionResult){.status = DAW_ACTION_INVALID, .message = daw_preset_status_message(status)};
     DawInstrumentRequest request = {.target = target, .set_preset = true, .preset = preset.base,
-        .params = preset.params, .parameter_mask = (UINT32_C(1) << ENGINE_INSTRUMENT_PARAM_COUNT) - 1};
+        .params = preset.params, .parameter_mask = (uint64_t)((UINT64_C(1) << ENGINE_INSTRUMENT_PARAM_COUNT) - 1)};
     DawActionResult result = daw_action_set_instrument(state, &request);
     if (result.status <= DAW_ACTION_UNCHANGED) daw_preset_panel_remember(state, target, &preset);
     return result;
@@ -55,16 +55,16 @@ DawActionResult daw_action_audition_sound(AppState* state, DawActionTarget targe
     const EngineTrack* tracks = engine_get_tracks(state->engine);
     for (int t = 0; t < engine_get_track_count(state->engine); ++t) if (tracks[t].runtime_id == target.track_id) track = t;
     engine_midi_audition_all_notes_off(state->engine);
-    const uint8_t notes[] = {48, 55, 60, 64};
+    uint8_t notes[4]; int note_count=daw_sound_preview_notes(sound,notes);
     int rate = state->runtime_cfg.sample_rate > 0 ? state->runtime_cfg.sample_rate : 48000;
-    for (int i = 0; i < (chord ? 4 : 1); ++i) {
+    for (int i = 0; i < note_count; ++i) {
         if (!engine_midi_audition_note_preview(state->engine, track, sound.base,
-            sound.params, chord ? notes[i] : 60, .5f, (uint64_t)rate * 3 / 2)) {
+            sound.params, notes[i], .5f, (uint64_t)rate * 3 / 2)) {
             engine_midi_audition_all_notes_off(state->engine);
             result.status = DAW_ACTION_ENGINE_REJECTED; result.message = "Audition queue rejected the preview."; return result;
         }
     }
-    result.status = DAW_ACTION_UNCHANGED; result.message = chord ? "Auditioning C-major chord." : "Auditioning held C4.";
+    result.status = DAW_ACTION_UNCHANGED; result.message = chord ? "Auditioning C-major chord." : "Auditioning held note.";
     return result;
 }
 

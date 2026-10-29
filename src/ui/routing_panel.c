@@ -1,5 +1,6 @@
 #include "app_state.h"
 #include "ui/routing_panel.h"
+#include "ui/mixer_automation_panel.h"
 #include "ui/effects_panel.h"
 #include "ui/midi_editor.h"
 #include "ui/text_edit.h"
@@ -16,6 +17,7 @@
 void daw_routing_panel_release(AppState* state) {
     if (!state) return;
     DawRoutingUI* ui = &state->routing_ui;
+    ui->automation_mode=false;ui->effect_mode=false;
     ui->open = false; ui->focused = ui->pressed = -1;
     kit_ui_text_cancel_composition(&ui->text_edit); daw_text_resume_input(state);
 }
@@ -62,8 +64,9 @@ void daw_routing_panel_layout(const AppState* state, DawRoutingLayout* out) {
     *out = (DawRoutingLayout){0}; EffectsPanelLayout base; effects_panel_compute_layout(state, &base); out->panel = base.panel_rect;
     int x = out->panel.x + 8, y = out->panel.y + 8, w = out->panel.w - 16;
     if (w < 0) w = 0;
-    int button_width = (w - 16) / 5; if (button_width < 0) button_width = 0;
+    int button_width = (w - 20) / 6; if (button_width < 0) button_width = 0;
     for (int i = 0; i < 5; ++i) out->buttons[i] = (SDL_Rect){x + i * (button_width + 4), y + 26, button_width, 24};
+    out->buttons[7]=(SDL_Rect){x+5*(button_width+4),y+26,button_width,24};
     out->editable = out->panel.w >= 360 && out->panel.h >= 275;
     if (out->editable) {
         for (int send = 0; send < ENGINE_SEND_CAP; ++send) {
@@ -83,14 +86,14 @@ static bool visible(const DawRoutingLayout* layout, SDL_Rect rect) {
 // Resolves one control only within its complete visible hit region.
 static int hit(const DawRoutingUI* ui, const DawRoutingLayout* layout, int x, int y) {
     SDL_Point point = {x,y};
-    for (int i = 0; i < 7; ++i) if (visible(layout, layout->buttons[i]) && SDL_PointInRect(&point, &layout->buttons[i])) {
+    for (int i = 0; i < 8; ++i) if (visible(layout, layout->buttons[i]) && SDL_PointInRect(&point, &layout->buttons[i])) {
         if (i != 4 && !layout->editable) return -1;
         if ((i == 0 || i == 1 || i >= 5) && ui->selected < 0) return -1;
         return i;
     }
     if (!layout->editable || ui->selected < 0 || ui->staged_return) return -1;
     for (int send = 0; send < ENGINE_SEND_CAP; ++send)
-        if (SDL_PointInRect(&point, &layout->destinations[send])) return 7 + send;
+        if (SDL_PointInRect(&point, &layout->destinations[send])) return 8 + send;
     return -1;
 }
 // Starts shared native input on one explicitly selected send percentage.
@@ -115,6 +118,7 @@ static bool gain(const char* text, float* out) {
 // Applies staged edits, creation or destination selection through the common guarded owners.
 static void activate(AppState* state, int control) {
     DawRoutingUI* ui = &state->routing_ui;
+    if(control==7){daw_mixer_automation_open(state);return;}
     if (control == 4) { daw_routing_panel_release(state); return; }
     if (control == 3) { refresh(state); return; }
     if (control == 0 || control == 1) {
@@ -134,13 +138,14 @@ static void activate(AppState* state, int control) {
         EngineRoutingSnapshot next = ui->captured; EngineRoutingTrack* row = &next.tracks[ui->selected]; row->is_return = ui->staged_return;
         for (int send = 0; send < ENGINE_SEND_CAP; ++send) {
             float level; if (!gain(ui->gains[send], &level)) { SDL_strlcpy(ui->message, "Send percentages must be numbers from 0 to 100.", sizeof(ui->message)); return; }
-            row->sends[send] = (EngineSend){ui->destinations[send],level};
+            if(row->sends[send].return_id!=ui->destinations[send] && row->sends[send].automation.count){SDL_strlcpy(ui->message,"Clear this send curve before rebinding its destination.",sizeof(ui->message));return;}
+            row->sends[send].return_id=ui->destinations[send];row->sends[send].gain=level;
         }
         DawActionStatus status = daw_action_set_routing(state, &ui->captured, &next, &output);
         if (accepted(ui, status)) { refresh(state); accepted(ui, status); }
-    } else if (control >= 7 && control < 7 + ENGINE_SEND_CAP) {
+    } else if (control >= 8 && control < 8 + ENGINE_SEND_CAP) {
         ui->focused = -1; kit_ui_text_cancel_composition(&ui->text_edit); daw_text_resume_input(state);
-        int send = control - 7; uint64_t options[ENGINE_RETURN_CAP + 1] = {0}; int count = 1, index = 0;
+        int send = control - 8; uint64_t options[ENGINE_RETURN_CAP + 1] = {0}; int count = 1, index = 0;
         for (int t = 0; t < ui->captured.track_count; ++t) if (ui->captured.tracks[t].is_return && t != ui->selected) options[count++] = ui->captured.tracks[t].track_id;
         for (int i = 0; i < count; ++i) if (options[i] == ui->destinations[send]) index = i;
         ui->destinations[send] = options[(index + 1) % count];
@@ -158,6 +163,7 @@ bool daw_routing_panel_event(AppState* state, const SDL_Event* event) {
         if (event->window.event == SDL_WINDOWEVENT_FOCUS_LOST || event->window.event == SDL_WINDOWEVENT_HIDDEN) daw_routing_panel_release(state);
         return false;
     }
+    if(ui->automation_mode)return daw_mixer_automation_event(state,event);
     DawRoutingLayout layout; daw_routing_panel_layout(state, &layout);
     if (event->type == SDL_MOUSEBUTTONDOWN && event->button.button == SDL_BUTTON_LEFT) {
         ui->pressed = hit(ui, &layout, event->button.x, event->button.y);
@@ -190,13 +196,14 @@ static void button(SDL_Renderer* renderer, SDL_Rect rect, const char* label, con
 // Paints cached routing using the existing effects-pane clipping and shared control/text primitives.
 void daw_routing_panel_render(SDL_Renderer* renderer, const AppState* state) {
     if (!state->routing_ui.open) return;
+    if(state->routing_ui.automation_mode){daw_mixer_automation_render(renderer,state);return;}
     DawRoutingLayout layout; daw_routing_panel_layout(state,&layout); DawRoutingUI* ui = (DawRoutingUI*)&state->routing_ui;
     DawThemePalette theme; daw_shared_theme_resolve_palette(&theme);
     SDL_SetRenderDrawColor(renderer,theme.inspector_fill.r,theme.inspector_fill.g,theme.inspector_fill.b,255); SDL_RenderFillRect(renderer,&layout.panel);
     snprintf(ui->lane_label,sizeof(ui->lane_label),"Routing: %s",ui->selected < 0 ? "No lanes" : ui->names[ui->selected]);
     ui_draw_text_clipped(renderer,layout.panel.x+8,layout.panel.y+8,ui->lane_label,theme.text_primary,.9f,layout.panel.w-16);
-    const char* labels[] = {"Previous","Next","New Return","Refresh","Close",ui->staged_return?"Role: Return":"Role: Source","Apply"};
-    for (int i = 0; i < 7; ++i) if (visible(&layout,layout.buttons[i])) button(renderer,layout.buttons[i],labels[i],&theme);
+    const char* labels[] = {"Previous","Next","New Return","Refresh","Close",ui->staged_return?"Role: Return":"Role: Source","Apply","Auto"};
+    for (int i = 0; i < 8; ++i) if (visible(&layout,layout.buttons[i])) button(renderer,layout.buttons[i],labels[i],&theme);
     if (layout.editable && !ui->staged_return) ui_draw_text_clipped(renderer,layout.gains[0].x,layout.panel.y+59,"Level %",theme.text_muted,.75f,80);
     if (layout.editable && !ui->staged_return) for (int send = 0; send < ENGINE_SEND_CAP; ++send) {
         const char* name = "Off";

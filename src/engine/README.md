@@ -1,5 +1,10 @@
 # Directory: src/engine
 
+- `hat_choke.c`: control-thread track-local onset preparation and immutable per-note choke fences shared across enabled hat regions, including bounded natural tail spill and export context.
+- `instrument_articulation.c`: bounded preparation of mono 808 legato/glide trajectories and region-local hat choke ordering, with seekable analytic phase and no render-time allocation.
+
+- `instrument_percussion.c`: deterministic one-shot kick/snare/hat and gate-aware pitched 808 rendering, independent body/noise envelopes and integrated pitch sweep; see [percussion design](../../docs/percussion_synth.md).
+
 Purpose: Real-time audio engine, graph, and source implementations.
 
 The foundation implementation and remaining limits are reconciled in the [S1 closeout](../../docs/improvement/S1-CLOSEOUT.md). The original broad S1 contract is not fully complete; further implementation is stopped pending a new instruction.
@@ -179,3 +184,65 @@ Live and private export plans own return sums and destination maps. Sources feed
 `engine_append_return` shares ordinary track insertion's prepared topology/FX publication, setting the role before the candidate is visible. Fresh creation or retained-identity redo appends one independent empty return, refuses capacity/identity conflicts, and restores ownership on publication failure. Common creation history protects later lane edits before removing its return. See [routing](../../docs/routing.md) for agent adoption and remaining native controls.
 
 `instrument_catalog.c` owns stable instrument/preset identities and physical metadata separately from oscillator rendering. The filtered voice kernel adds signed octave decay and retriggered filter LFO movement; zero depths retain static filtering. Sweep Bass, Filter Pluck and Moving Pad use these shared controls, including diagnostic rendering and automation.
+
+`instrument_samples.c` owns the immutable bundled solo violin bank, nearby-root playback, sustain overlap and recorded dynamics. Instrument rendering supplies gate/release and smoothed per-note expression; see `docs/sampled_violin.md`.
+
+Violin stabilization uses longer phase-matched loops with correlation-aware overlap energy, per-pitch calibrated soft/strong layers, equal-power expression and S-curve note gates. Live audition retirement honors the minimum protected release. Original assets and the original preparation remain retained.
+
+The fixed sampler now shares bank descriptors across violin, trumpet and clarinet, including adjacent two/three-layer dynamics. Violin arithmetic and its original demo WAV are preserved exactly; see docs/sampled_winds.md.
+
+
+### Wind stabilization
+
+Wind playback uses `sample_map_stabilized.inc`, prepared with
+`tools/prepare_wind_samples.py assets/instruments --stabilize`. Loop selection
+measures 100 ms sustain-energy variation alongside seam correlation and boundary
+level matching. Original recordings and original preparation remain intact.
+Wind dynamics use a quintic easing curve within each adjacent-layer blend, giving
+the clarinet middle layer a smooth timbre slope. Existing protected attack and
+release gates remain active. Violin mapping, blend arithmetic and defaults are
+unchanged. Matching before/after WAVs and installed checks are retained in the
+canonical `artifacts/wind-stabilization/20261011/` evidence lane.
+
+
+The fixed acoustic sampler also supports native 48 kHz tenor saxophone; existing 44.1 kHz banks retain their original behavior. See `docs/sampled_saxophone.md`.
+
+
+Sax-only coordinated loop metadata and measured blend-energy attenuation stabilize layer interference. Existing instruments remain unchanged.
+
+Flute and cello section use optional per-recording pitch-center ratios with common reference-coordinate dynamics loops; older banks retain their original arithmetic. See `docs/sampled_flute_cello.md`.
+
+Flute/cello runtime uses immutable 100 ms layer-energy measurements with continuous onset/cycle lookup and bounded interference correction. The onset branch, attack/release envelope and older banks retain their existing behavior.
+
+Sampled Oboe and French Horn extend the existing acoustic sampler with paired recorded dynamics and held-note expression. Complete audition chords follow each bank's playable range. See `docs/sampled_oboe_horn.md` for ranges, provenance, preparation and verification.
+
+Oboe/French horn stabilization refines five qualified common loops and regenerates their bounded layer-energy curves; tighter all-pitch blend and note-transition checks cover the existing sampler. See `docs/sampled_oboe_horn.md`.
+
+Sampled Bassoon and Tenor Trombone add two paired-layer recorded sustain banks through the existing sampler, supported controls and guarded preset/automation tools. See `docs/sampled_bassoon_trombone.md` for ranges, source provenance and verification.
+
+Sampled Acoustic Piano, Viola Section, Double Bass and Violin Section extend the acoustic palette. Piano has finite velocity-selected strikes and voice-specific automation; bowed strings reuse sustain/dynamics playback. Audition notes follow each recorded range. See `docs/sampled_piano_strings.md`.
+
+Piano expression extension: [piano expression](../../docs/piano_expression.md) describes the three piano-only controls, binary region/live sustain, 88 string modes, recorded key/pedal mechanics, 32-field v6 presets and session v25. Older preset versions 1–5 and session v24 remain readable; existing non-piano voices keep their behavior.
+
+Nested/collapsible audio bus groups, common history and MCP support are described in [track groups](../../docs/track_groups.md). Engine group projection/mixing and the native group panel have focused signal, persistence, rollback and SDL/Vulkan tests.
+
+Private diagnostic observers attach only to detached export plans. `engine_mix_probe.c` derives tap-specific latency from the production graph; fixed tap hooks observe existing source/bus/master buffers without changing live processing. Full preceding and lookahead/block context are measured by the app-layer capture. See [mix diagnostics](../../docs/mix_diagnostics.md).
+
+Mix diagnostic insert pages now expose per-insert input/output levels and actual
+per-channel Compressor/Limiter attenuation with output-latency alignment; see
+`docs/mix_diagnostics.md` for paging, calibration and remaining measurement limits.
+
+Immutable mix capture schema v3 adds per-channel spectral windows for processed
+child/group/return/master outputs. `get_mix_capture` independently pages
+`frequency_window` and `frequency_channel`; see `docs/mix_diagnostics.md` for
+calibration, window coverage and remaining loudness/true-peak limits.
+
+Immutable mix captures now include prepared note-ending controls/fences and
+threshold-qualified aggregate MIDI source tails. `get_mix_capture` independently
+pages eight note rows with `note_offset`; see `docs/mix_diagnostics.md` section 7.
+
+Asynchronous whole-song WAV export now uses a captured production graph and shared worker, with native/MCP format/tail choices, progress, cancellation and verified no-overwrite output. See [export contracts](../../docs/song_export.md).
+
+Qualified live 400 ms per-channel/stereo/mono compatibility windows now cover child/group/return/master output, with native scope controls and guarded output-only stereo/mono monitoring. The approximate live LUFS view is hidden behind an explicit qualification notice; offline validated LUFS remains available. See [live metering contracts](../../docs/live_stereo_metering.md).
+
+Compressor/Limiter controls now have qualified non-consuming live gain-reduction feedback in native headers and `get_effect_chain.dynamics_feedback`, separate from authored edit tokens. Compressor detection remains independent by channel; Limiter is sample-peak, not true-peak. See [dynamics controls and feedback](../../docs/dynamics_feedback.md).

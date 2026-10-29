@@ -1,3 +1,4 @@
+#include "ui/automation_view.h"
 #include "ui/timeline_view_overlays.h"
 
 #include "ui/font.h"
@@ -148,46 +149,6 @@ void timeline_view_draw_automation_overlay(SDL_Renderer* renderer,
     }
 }
 
-static void draw_timeline_automation_segment(SDL_Renderer* renderer,
-                                             int baseline_y,
-                                             int range,
-                                             float window_start_seconds,
-                                             float window_end_seconds,
-                                             int content_left,
-                                             float pixels_per_second,
-                                             double seg_start_seconds,
-                                             double seg_end_seconds,
-                                             float start_value,
-                                             float end_value) {
-    if (!renderer || range <= 0 || pixels_per_second <= 0.0f) {
-        return;
-    }
-    if (seg_end_seconds <= seg_start_seconds) {
-        return;
-    }
-    double visible_start = seg_start_seconds;
-    double visible_end = seg_end_seconds;
-    if (visible_start < window_start_seconds) {
-        visible_start = window_start_seconds;
-    }
-    if (visible_end > window_end_seconds) {
-        visible_end = window_end_seconds;
-    }
-    if (visible_end <= visible_start) {
-        return;
-    }
-    double span = seg_end_seconds - seg_start_seconds;
-    float t0 = span > 0.0 ? (float)((visible_start - seg_start_seconds) / span) : 0.0f;
-    float t1 = span > 0.0 ? (float)((visible_end - seg_start_seconds) / span) : 0.0f;
-    float v0 = start_value + (end_value - start_value) * t0;
-    float v1 = start_value + (end_value - start_value) * t1;
-    int x0 = content_left + (int)llroundf((float)(visible_start - window_start_seconds) * pixels_per_second);
-    int x1 = content_left + (int)llroundf((float)(visible_end - window_start_seconds) * pixels_per_second);
-    int y0 = baseline_y - (int)llroundf(v0 * (float)range);
-    int y1 = baseline_y - (int)llroundf(v1 * (float)range);
-    SDL_RenderDrawLine(renderer, x0, y0, x1, y1);
-}
-
 void timeline_view_draw_clip_automation(SDL_Renderer* renderer,
                                         const SDL_Rect* clip_rect,
                                         const EngineClip* clip,
@@ -225,40 +186,10 @@ void timeline_view_draw_clip_automation(SDL_Renderer* renderer,
     if (clip_end_seconds <= window_start_seconds || clip_start_seconds >= window_end_seconds) {
         return;
     }
-    float prev_value = 0.0f;
-    double prev_seconds = clip_start_seconds;
-    if (lane && lane->point_count > 0) {
-        for (int i = 0; i < lane->point_count; ++i) {
-            const EngineAutomationPoint* point = &lane->points[i];
-            uint64_t frame = point->frame > clip_frames ? clip_frames : point->frame;
-            float value = point->value;
-            double point_seconds = clip_start_seconds + (double)frame / (double)sample_rate;
-            draw_timeline_automation_segment(renderer,
-                                             baseline_y,
-                                             range,
-                                             window_start_seconds,
-                                             window_end_seconds,
-                                             content_left,
-                                             pixels_per_second,
-                                             prev_seconds,
-                                             point_seconds,
-                                             prev_value,
-                                             value);
-            prev_seconds = point_seconds;
-            prev_value = value;
-        }
-    }
-    draw_timeline_automation_segment(renderer,
-                                     baseline_y,
-                                     range,
-                                     window_start_seconds,
-                                     window_end_seconds,
-                                     content_left,
-                                     pixels_per_second,
-                                     prev_seconds,
-                                     clip_end_seconds,
-                                     prev_value,
-                                     0.0f);
+    SDL_Rect curve_rect = {content_left, clip_rect->y, content_right - content_left, clip_rect->h};
+    ui_automation_draw_curve(renderer, &curve_rect, lane, clip_frames,
+        ((double)window_start_seconds - clip_start_seconds) * sample_rate,
+        (double)curve_rect.w / pixels_per_second * sample_rate);
 
     if (lane && lane->point_count > 0) {
         for (int i = 0; i < lane->point_count; ++i) {
@@ -272,7 +203,7 @@ void timeline_view_draw_clip_automation(SDL_Renderer* renderer,
             if (x < content_left - 6 || x > content_right + 6) {
                 continue;
             }
-            int y = baseline_y - (int)llround((double)point->value * (double)range);
+            int y = baseline_y - (int)llround((double)ui_automation_normalized(lane, point->value) * (double)range);
             int r = 3;
             SDL_Rect dot = {x - r, y - r, r * 2, r * 2};
             bool selected = automation_ui &&

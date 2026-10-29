@@ -568,9 +568,12 @@ static void effects_panel_event(InputManager* manager, AppState* state, const SD
                                 if (!begin_fx_param_drag(state, open_index, (int)widget->param_index)) return;
                                 panel->dragging_slider = true;
 
-                                float value =
-                                    effects_panel_spec_value_from_point(state, slot, &spec_layout, widget_index, pt.x, pt.y);
-                                apply_slider_value(state, open_index, (int)widget->param_index, value);
+                                if (widget->type == FX_SPEC_WIDGET_KNOB) {
+                                    begin_fx_knob_drag(state, open_index, (int)widget->param_index, pt.y);
+                                } else {
+                                    float value = effects_panel_spec_value_from_point(state, slot, &spec_layout, widget_index, pt.x, pt.y);
+                                    apply_slider_value(state, open_index, (int)widget->param_index, value);
+                                }
                                 return;
                             }
                         }
@@ -644,9 +647,12 @@ static void effects_panel_event(InputManager* manager, AppState* state, const SD
                             if (!begin_fx_param_drag(state, i, (int)widget->param_index)) return;
                             panel->dragging_slider = true;
 
-                            float value =
-                                effects_panel_spec_value_from_point(state, slot, &spec_layout, widget_index, pt.x, pt.y);
-                            apply_slider_value(state, i, (int)widget->param_index, value);
+                            if (widget->type == FX_SPEC_WIDGET_KNOB) {
+                                begin_fx_knob_drag(state, i, (int)widget->param_index, pt.y);
+                            } else {
+                                float value = effects_panel_spec_value_from_point(state, slot, &spec_layout, widget_index, pt.x, pt.y);
+                                apply_slider_value(state, i, (int)widget->param_index, value);
+                            }
                             return;
                         }
                     }
@@ -804,8 +810,10 @@ static void effects_panel_event(InputManager* manager, AppState* state, const SD
                             int widget_index = spec_layout_find_widget(&spec_layout, (uint32_t)param_index);
                             if (widget_index >= 0) {
                                 float value =
-                                    effects_panel_spec_value_from_point(state, slot, &spec_layout, widget_index,
-                                                                        event->motion.x, event->motion.y);
+                                    spec_layout.widgets[widget_index].type == FX_SPEC_WIDGET_KNOB
+                                    ? fx_knob_value_from_drag(state, slot_index, param_index, event->motion.y)
+                                    : effects_panel_spec_value_from_point(state, slot, &spec_layout, widget_index,
+                                                                          event->motion.x, event->motion.y);
                                 apply_slider_value(state, slot_index, param_index, value);
                             }
                         } else {
@@ -830,8 +838,10 @@ static void effects_panel_event(InputManager* manager, AppState* state, const SD
                         int widget_index = spec_layout_find_widget(&spec_layout, (uint32_t)param_index);
                         if (widget_index >= 0) {
                             float value =
-                                effects_panel_spec_value_from_point(state, slot, &spec_layout, widget_index,
-                                                                    event->motion.x, event->motion.y);
+                                spec_layout.widgets[widget_index].type == FX_SPEC_WIDGET_KNOB
+                                    ? fx_knob_value_from_drag(state, slot_index, param_index, event->motion.y)
+                                    : effects_panel_spec_value_from_point(state, slot, &spec_layout, widget_index,
+                                                                          event->motion.x, event->motion.y);
                             apply_slider_value(state, slot_index, param_index, value);
                         }
                     } else {

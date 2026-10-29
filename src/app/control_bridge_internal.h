@@ -5,8 +5,22 @@
 #include "daw/midi_regions.h"
 #include "daw/fx_actions.h"
 #include "daw/composition.h"
+#include "daw/mix_capture.h"
+#define DAW_CONTROL_MIX_STATES 4
+// Retains exact project guards within the endpoint lifetime.
+typedef struct DawControlMixGuard { char token[80]; DawMixSnapshot* snapshot; } DawControlMixGuard;
+// Retains immutable bounded stage measurements independently of current project state.
+typedef struct DawControlMixCapture { char token[80]; DawMixCapture* capture; } DawControlMixCapture;
 #include "daw/arrangement.h"
 #include "daw/routing_actions.h"
+#include "daw/track_controls.h"
+#include "daw/eq_actions.h"
+#define DAW_CONTROL_EQ_STATES 8
+// Owns exact accepted dedicated EQ guards behind bounded endpoint-local tokens.
+typedef struct DawControlEqState { char token[80]; DawEqSnapshot snapshot; } DawControlEqState;
+#define DAW_CONTROL_TRACK_STATES 16
+// Retains copied track controls behind bounded endpoint-local lifetime tokens.
+typedef struct DawControlTrackState { char token[80]; DawTrackControls snapshot; } DawControlTrackState;
 #define DAW_CONTROL_ROUTING_STATES 4
 // Owns complete routing guards behind bounded endpoint-local tokens.
 typedef struct DawControlRoutingState { char token[80]; EngineRoutingSnapshot snapshot; } DawControlRoutingState;
@@ -41,7 +55,25 @@ typedef struct DawControlReceipt {
     char* response;
 } DawControlReceipt;
 // Separates transport-owned buffers from application-owned receipts and engine access.
+// Controls one ephemeral guarded A/B cache on the application owner.
+// Routes coherent live observations and guarded ephemeral monitor requests.
+struct DawFxSnapshot;
+// Appends read-only dynamics feedback without changing authored effect snapshot tokens.
+void daw_control_dynamics_feedback(struct cJSON*, const struct AppState*, const struct DawFxSnapshot*);
+struct cJSON* daw_control_live_meters(DawControlBridge*,struct AppState*,const struct cJSON*);
+struct cJSON* daw_control_song_export(DawControlBridge*,struct AppState*,const struct cJSON*);
+struct cJSON* daw_control_ab_comparison(DawControlBridge*,struct AppState*,const struct cJSON*);
 struct DawControlBridge {
+    DawControlMixGuard mix_guards[DAW_CONTROL_MIX_STATES];
+    DawControlMixCapture mix_captures[DAW_CONTROL_MIX_STATES];
+    unsigned mix_guard_cursor,mix_capture_cursor;
+    uint64_t mix_sequence;
+    DawControlEqState eq_states[DAW_CONTROL_EQ_STATES];
+    unsigned eq_cursor;
+    uint64_t eq_sequence;
+    DawControlTrackState track_states[DAW_CONTROL_TRACK_STATES];
+    unsigned track_cursor;
+    uint64_t track_sequence;
     DawControlRoutingState routing_states[DAW_CONTROL_ROUTING_STATES];
     unsigned routing_cursor;
     uint64_t routing_sequence;
@@ -109,3 +141,17 @@ struct cJSON* daw_control_arrangement(DawControlBridge*, struct AppState*, const
 
 // Adapts common routing reads, creation, edits and typed history after endpoint admission.
 struct cJSON* daw_control_routing(DawControlBridge*, struct AppState*, const struct cJSON*, bool*);
+
+// Captures or reuses an exact authored arrangement guard for cooperating control domains.
+DawControlArrangementState* daw_control_arrangement_capture(DawControlBridge*, struct AppState*);
+// Routes guarded region automation reads and history-backed lane replacements.
+struct cJSON* daw_control_automation(DawControlBridge*, struct AppState*, const struct cJSON*, bool*);
+
+// Adapts stable-track mixer/label reads and receipt-admitted scalar history actions.
+struct cJSON* daw_control_track_controls(DawControlBridge*, struct AppState*, const struct cJSON*, const char*, bool*);
+
+// Adapts dedicated EQ reads and receipt-admitted common edits/history.
+struct cJSON* daw_control_eq(DawControlBridge*,struct AppState*,const struct cJSON*,bool*);
+
+// Routes bounded read-only mix diagnostic capture and immutable pages.
+struct cJSON* daw_control_mix_capture(DawControlBridge*, struct AppState*, const struct cJSON*);

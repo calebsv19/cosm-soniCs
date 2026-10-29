@@ -9,6 +9,7 @@
 #include "engine/engine.h"
 #include "effects/param_utils.h"
 #include "input/input_manager.h"
+#include "input/track_header_mixer.h"
 #include "ui/panes.h"
 #include "ui/resize.h"
 #include "ui/transport.h"
@@ -25,6 +26,12 @@
 #include "undo/undo_manager.h"
 #include "ui/preset_panel.h"
 #include "ui/sound_panel.h"
+#include "daw/ab_comparison.h"
+#include "ui/ab_panel.h"
+#include "ui/song_export_panel.h"
+#include "daw/song_export.h"
+#include "daw/live_meters.h"
+#include "ui/live_meter_panel.h"
 #include "ui/fx_library_panel.h"
 #include "ui/routing_panel.h"
 #include "ui/midi_pattern_panel.h"
@@ -142,6 +149,7 @@ typedef struct {
     int hover_clip_index;
     uint64_t hover_clip_creation_index;
     int hover_note_index;
+    int hover_note_part; // Identifies the highlighted move or resize target.
     MidiRegionPanelMode panel_mode;
     bool qwerty_record_armed;
     bool qwerty_test_enabled;
@@ -403,6 +411,9 @@ typedef struct {
     uint64_t history_serial; // Identifies the track gesture reservation.
     bool dragging;
     FxSnapshotControl active_control;
+    int drag_start_y;
+    float drag_start_position;
+    float drag_scale;
     float pan;
     float gain;
     bool muted;
@@ -485,6 +496,9 @@ typedef struct EffectsPanelState {
     bool focused;
     bool dragging_slider;
     uint64_t slider_history_serial; // Identifies the FX slider reservation.
+    int knob_start_y;
+    float knob_start_position;
+    float knob_drag_scale;
     int active_slot_index;
     int active_param_index;
     int list_open_slot_index;
@@ -529,6 +543,12 @@ typedef struct {
     SDL_Rect add_rect;
     SDL_Rect remove_rect;
     SDL_Rect midi_region_rect;
+    SDL_Rect height_down_rect;
+    SDL_Rect height_up_rect;
+    SDL_Rect groups_rect;
+    bool groups_hovered;
+    bool height_down_hovered;
+    bool height_up_hovered;
     bool add_hovered;
     bool remove_hovered;
     bool midi_region_hovered;
@@ -536,6 +556,7 @@ typedef struct {
     SDL_Rect snap_toggle_rect;
     SDL_Rect automation_toggle_rect;
     SDL_Rect automation_target_rect;
+    char target_label[48]; // Keeps the dropdown button label alive through queued rendering.
     SDL_Rect tempo_toggle_rect;
     SDL_Rect automation_label_toggle_rect;
     SDL_Rect loop_start_rect;
@@ -555,11 +576,18 @@ typedef struct {
 // Tracks the active automation target and selected point for editing.
 typedef struct {
     EngineAutomationTarget target;
+    bool menu_open, menu_release; // Owns the target dropdown and dismissal release.
+    int menu_hover; // Tracks the highlighted target for keyboard and pointer navigation.
     int track_index;
     int clip_index;
     int point_index;
     bool dragging;
     bool dragging_from_inspector;
+    int point_grab_x, point_grab_y; // Preserve the cursor offset within the point hitbox.
+    int press_x, press_y; // Suppress point mutation until a deliberate drag begins.
+    bool point_moved;
+    char status_text[256]; // Keeps queued automation status text alive through frame submission.
+    uint64_t history_serial; // Binds gesture completion to its own history reservation.
 } AutomationUIState;
 
 // Tracks selected tempo map event and drag state for the tempo overlay.
@@ -571,6 +599,7 @@ typedef struct {
 typedef struct {
     bool editing;
     int track_index;
+    DawActionTarget target;
     char buffer[ENGINE_CLIP_NAME_MAX];
     char original[ENGINE_CLIP_NAME_MAX];
     int cursor;
@@ -580,6 +609,7 @@ typedef struct {
 typedef struct {
     FxTypeId type_id;
     bool enabled;
+    EngineMixerAutomation automation; // Retains master curves through private session staging.
     uint32_t param_count;
     float param_values[FX_MAX_PARAMS];
     FxParamMode param_mode[FX_MAX_PARAMS];
@@ -659,6 +689,9 @@ struct AppState {
     float timeline_visible_seconds;
     float timeline_window_start_seconds;
     float timeline_vertical_scale;
+    float timeline_vertical_scroll;
+    bool timeline_scrollbar_dragging;
+    float timeline_scrollbar_grab;
     TimelineFollowMode timeline_follow_mode;
     bool timeline_follow_override;
     bool timeline_hovered;
@@ -680,6 +713,13 @@ struct AppState {
     DawMidiPatternUI midi_pattern_ui; // Retains transient pattern choices without project persistence.
     DawRoutingUI routing_ui; // Owns guarded native return/send staging and text.
     DawFxLibraryUI fx_library_ui; // Owns guarded effects-library browsing and save input.
+    uint64_t monitor_revision; // Guards ephemeral listening mode separately from authored history.
+    DawLiveMeterUI live_meter_ui; // Retains native scope and coherent meter presentation.
+    DawSongExports* exports; // Owns asynchronous exports independently of live transport.
+    DawSongExportUI export_ui; // Retains native export choices and status.
+    DawAbUI ab_ui; // Owns native ephemeral comparison controls.
+    DawAbComparison* ab; // Owns ephemeral comparison captures outside project/history.
+    uint64_t ab_revision;
     DawSoundUI sound_ui; // Owns private inspection and immutable reference captures.
     DawPresetUI preset_ui; // Owns personal preset browsing and captured save input.
     bool timeline_marquee_active;
@@ -713,10 +753,20 @@ struct AppState {
     TimeSignatureMap time_signature_map;
     DawAudioRecordingState audio_recording;
     TempoUIState tempo_ui;
+    struct {uint64_t group_id,track_id,clip_id,generation;} group_selection[128]; // Restores a group's primary child selection by lifetime.
+    DawTrackHeaderMixer header_mixer; // Owns compact gain/pan gestures without changing track selection.
     ProjectState project;
+    ProjectCollections project_collections;
     ProjectSavePrompt project_prompt;
     ProjectLoadModal project_load;
     DawProjectModalControls project_modal_controls;
+    struct {
+        bool open;
+        uint64_t selected_id, parent_id;
+        int scroll, pressed, width, height;
+        EngineRoutingSnapshot captured;
+        char error[160];
+    } group_panel; // Owns the native group manager's copied guards and staged parent choice.
     DawEditorControls editor_controls;
     WaveformCache waveform_cache;
     UndoManager undo;

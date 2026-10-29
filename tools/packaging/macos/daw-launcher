@@ -19,6 +19,11 @@ PACKAGE_PROFILE="$(read_plist_string SoniCsPackageProfile standard)"
 RUNTIME_NAMESPACE="$(read_plist_string SoniCsRuntimeNamespace DAW)"
 LOG_NAMESPACE="$(read_plist_string SoniCsLogNamespace DAW)"
 BUILD_LABEL="$(read_plist_string SoniCsBuildLabel soniCs)"
+# Supplies an explicit browser home only; global data roots and startup markers remain independent.
+if [ "$PACKAGE_PROFILE" = "main-edit" ] && [ -z "${DAW_COLLECTIONS_ROOT:-}" ]; then
+    DAW_COLLECTIONS_ROOT="$(read_plist_string SoniCsCollectionsRoot music_projects)"
+    export DAW_COLLECTIONS_ROOT
+fi
 LOG_DIR="${HOME}/Library/Logs/${LOG_NAMESPACE}"
 LOG_FILE="$LOG_DIR/launcher.log"
 RUNTIME_DIR_DEFAULT="${HOME}/Library/Application Support/${RUNTIME_NAMESPACE}/runtime"
@@ -85,6 +90,8 @@ if ! touch "$LOG_FILE" 2>/dev/null; then
 fi
 
 export DAW_RUNTIME_DIR="$RUNTIME_DIR"
+export DAW_INSTRUMENT_ASSET_ROOT="${DAW_INSTRUMENT_ASSET_ROOT:-$RES_DIR/assets/instruments/vsco2_solo_violin_v1}"
+export DAW_INSTRUMENT_BANKS_ROOT="${DAW_INSTRUMENT_BANKS_ROOT:-$RES_DIR/assets/instruments}"
 export DAW_PACKAGE_PROFILE="$PACKAGE_PROFILE"
 export DAW_RUNTIME_NAMESPACE="$RUNTIME_NAMESPACE"
 export DAW_LOG_NAMESPACE="$LOG_NAMESPACE"

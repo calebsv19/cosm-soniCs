@@ -112,12 +112,33 @@ static void filtered_partitions(void) {
     }
 }
 
+// Guards the source update and render paths used by bounded live mono and hat audition.
+static void articulation_heap_guard(void) {
+    const EngineInstrumentPresetId voices[] = {ENGINE_INSTRUMENT_PRESET_DRIVEN_808, ENGINE_INSTRUMENT_PRESET_HAT_KIT};
+    for (int v = 0; v < 2; ++v) {
+        EngineInstrumentSource* source = engine_instrument_source_create(); assert(source);
+        assert(engine_instrument_source_reserve_notes(source, 8));
+        EngineInstrumentParams p = engine_instrument_default_params(voices[v]); p.mono = 1; p.glide_ms = 120;
+        EngineMidiNote notes[] = {{12000, 18000, v ? 42 : 48, .7f}, {0, 18000, v ? 46 : 36, .8f}};
+        float buffer[256] = {0};
+        guarded = 1;
+        assert(engine_instrument_source_set_midi_clip(source, 0, 48000, voices[v], p, notes, 2, NULL, 0, NULL, 0));
+        engine_instrument_source_reset(source, 48000, 2);
+        engine_instrument_source_render(source, buffer, 128, 14000);
+        engine_instrument_source_set_export_end(source, 20000, 12000);
+        engine_instrument_source_render(source, buffer, 128, 20500);
+        guarded = 0;
+        assert(!heap_calls);
+        engine_instrument_source_destroy(source);
+    }
+}
+
 // Verifies candidate scheduling across formats while leaving DSP formulas under existing tests.
 int main(void) {
     int rates[] = {44100, 48000, 96000};
     for (int r = 0; r < 3; ++r) for (int channels = 1; channels <= 2; ++channels)
         for (int p = 0; p < ENGINE_INSTRUMENT_PRESET_FILTERED_KEYS; ++p) parity(rates[r], channels, p);
-    filtered_partitions();
+    filtered_partitions(); articulation_heap_guard();
     puts("midi_scheduling_test: success (original voices exact prior-scan parity, filtered voices exact block partition parity, automation/release growth, seeks, export, formats, wrap, reserve failure, zero render heap calls)");
     return 0;
 }

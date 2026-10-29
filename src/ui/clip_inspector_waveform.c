@@ -1,3 +1,4 @@
+#include "ui/automation_view.h"
 #include "ui/clip_inspector_waveform.h"
 
 #include "app_state.h"
@@ -118,57 +119,27 @@ static void clip_inspector_draw_automation(SDL_Renderer* renderer,
         range = 4;
     }
     uint64_t clip_start = clip->offset_frames;
-    uint64_t clip_end = clip_start + clip_frames;
-    float prev_value = 0.0f;
-    uint64_t prev_frame = clip_start;
     SDL_Color line_color = {0};
     SDL_Color point_color = {0};
     SDL_Color point_selected_color = {0};
     clip_inspector_automation_colors(&line_color, &point_color, &point_selected_color);
     SDL_SetRenderDrawColor(renderer, line_color.r, line_color.g, line_color.b, line_color.a);
-    if (lane && lane->point_count > 0) {
-        for (int i = 0; i < lane->point_count; ++i) {
-            const EngineAutomationPoint* point = &lane->points[i];
-            uint64_t abs_frame = clip_start + point->frame;
-            if (abs_frame > clip_end) {
-                abs_frame = clip_end;
-            }
-            double t0 = (double)(prev_frame > view_start ? prev_frame - view_start : 0) / (double)view_frames;
-            double t1 = (double)(abs_frame > view_start ? abs_frame - view_start : 0) / (double)view_frames;
-            if (t0 < 0.0) t0 = 0.0;
-            if (t0 > 1.0) t0 = 1.0;
-            if (t1 < 0.0) t1 = 0.0;
-            if (t1 > 1.0) t1 = 1.0;
-            int x0 = rect->x + (int)llround(t0 * (double)rect->w);
-            int y0 = baseline - (int)llround((double)prev_value * (double)range);
-            int x1 = rect->x + (int)llround(t1 * (double)rect->w);
-            int y1 = baseline - (int)llround((double)point->value * (double)range);
-            SDL_RenderDrawLine(renderer, x0, y0, x1, y1);
-            prev_frame = abs_frame;
-            prev_value = point->value;
-        }
-    }
-    double t_end = (double)(clip_end > view_start ? clip_end - view_start : 0) / (double)view_frames;
-    if (t_end < 0.0) t_end = 0.0;
-    if (t_end > 1.0) t_end = 1.0;
-    int x_end = rect->x + (int)llround(t_end * (double)rect->w);
-    int x_prev = rect->x + (int)llround((double)(prev_frame > view_start ? prev_frame - view_start : 0) / (double)view_frames * (double)rect->w);
-    int y_prev = baseline - (int)llround((double)prev_value * (double)range);
-    SDL_RenderDrawLine(renderer, x_prev, y_prev, x_end, baseline);
+    ui_automation_draw_curve(renderer, rect, lane, clip_frames,
+        (double)view_start - (double)clip_start, (double)view_frames);
 
     if (lane && lane->point_count > 0) {
         for (int i = 0; i < lane->point_count; ++i) {
             const EngineAutomationPoint* point = &lane->points[i];
             uint64_t abs_frame = clip_start + point->frame;
-            if (abs_frame > clip_end) {
-                abs_frame = clip_end;
+            if (abs_frame > clip_start + clip_frames) {
+                abs_frame = clip_start + clip_frames;
             }
             if (abs_frame < view_start || abs_frame > view_start + view_frames) {
                 continue;
             }
             double t = (double)(abs_frame - view_start) / (double)view_frames;
             int x = rect->x + (int)llround(t * (double)rect->w);
-            int y = baseline - (int)llround((double)point->value * (double)range);
+            int y = baseline - (int)llround((double)ui_automation_normalized(lane, point->value) * (double)range);
             SDL_Rect dot = {x - 3, y - 3, 6, 6};
             bool selected = automation_ui &&
                             automation_ui->track_index == track_index &&

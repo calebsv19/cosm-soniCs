@@ -15,7 +15,7 @@ static cJSON* analysis_json(const DawSoundAnalysis* a) {
     cJSON_AddStringToObject(j,"mode",a->sound.chord?"chord":"note");cJSON_AddStringToObject(j,"window",a->window==0?"attack":a->window==1?"sustain":"release");
     cJSON_AddNumberToObject(j,"synthesis_version",1);cJSON_AddNumberToObject(j,"sample_rate",DAW_SOUND_RATE);cJSON_AddNumberToObject(j,"channels",2);
     cJSON_AddNumberToObject(j,"frames",DAW_SOUND_FRAMES);cJSON_AddNumberToObject(j,"gate_frames",DAW_SOUND_GATE);cJSON_AddNumberToObject(j,"velocity",.5);
-    const float pitches[]={48,55,60,64},note[]={60};array(j,"notes",a->sound.chord?pitches:note,a->sound.chord?4:1);
+    uint8_t notes[4];int count=daw_sound_preview_notes(a->sound,notes);float pitches[4];for(int i=0;i<count;++i)pitches[i]=notes[i];array(j,"notes",pitches,count);
     cJSON_AddBoolToObject(j,"normalized",false);cJSON_AddBoolToObject(j,"effects",false);cJSON_AddBoolToObject(j,"project_automation",false);
     cJSON_AddNumberToObject(j,"peak",a->peak);cJSON_AddNumberToObject(j,"rms",a->rms);cJSON_AddNumberToObject(j,"dc",a->dc);cJSON_AddNumberToObject(j,"clipped_samples",a->clipped_samples);
     cJSON_AddNumberToObject(j,"window_start_frame",a->window_start);cJSON_AddNumberToObject(j,"waveform_span_frames",960);

@@ -12,6 +12,8 @@ MEMORY_CHECK_SRCS := \
 	tests/session_serialization_test.c \
 	tests/test_session_engine_stubs.c \
 	src/engine/automation.c \
+	src/engine/instrument_articulation.c \
+	src/engine/instrument_percussion.c \
 	src/engine/instrument_catalog.c \
 	src/engine/instrument_controls.c \
 	src/engine/instrument_filter.c \

@@ -29,6 +29,28 @@ typedef enum {
     ENGINE_INSTRUMENT_PRESET_SWEEP_BASS,
     ENGINE_INSTRUMENT_PRESET_FILTER_PLUCK,
     ENGINE_INSTRUMENT_PRESET_MOVING_PAD,
+    // Appends percussion identities without changing existing saved voices.
+    ENGINE_INSTRUMENT_PRESET_KICK_DRUM,
+    ENGINE_INSTRUMENT_PRESET_SNARE_DRUM,
+    ENGINE_INSTRUMENT_PRESET_CLOSED_HAT,
+    ENGINE_INSTRUMENT_PRESET_SUB_808,
+    ENGINE_INSTRUMENT_PRESET_DRIVEN_808,
+    ENGINE_INSTRUMENT_PRESET_OPEN_HAT,
+    ENGINE_INSTRUMENT_PRESET_HAT_KIT,
+    ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLIN,
+    ENGINE_INSTRUMENT_PRESET_SAMPLED_TRUMPET,
+    ENGINE_INSTRUMENT_PRESET_SAMPLED_CLARINET,
+    ENGINE_INSTRUMENT_PRESET_SAMPLED_SAXOPHONE,
+    ENGINE_INSTRUMENT_PRESET_SAMPLED_FLUTE,
+    ENGINE_INSTRUMENT_PRESET_SAMPLED_CELLO_SECTION,
+    ENGINE_INSTRUMENT_PRESET_SAMPLED_OBOE,
+    ENGINE_INSTRUMENT_PRESET_SAMPLED_FRENCH_HORN,
+    ENGINE_INSTRUMENT_PRESET_SAMPLED_BASSOON,
+    ENGINE_INSTRUMENT_PRESET_SAMPLED_TENOR_TROMBONE,
+    ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO,
+    ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLA_SECTION,
+    ENGINE_INSTRUMENT_PRESET_SAMPLED_DOUBLE_BASS,
+    ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLIN_SECTION,
     ENGINE_INSTRUMENT_PRESET_COUNT
 } EngineInstrumentPresetId;
 
@@ -39,6 +61,10 @@ typedef enum {
     ENGINE_INSTRUMENT_PRESET_CATEGORY_KEYS,
     ENGINE_INSTRUMENT_PRESET_CATEGORY_PADS,
     ENGINE_INSTRUMENT_PRESET_CATEGORY_PLUCK,
+    ENGINE_INSTRUMENT_PRESET_CATEGORY_DRUMS,
+    ENGINE_INSTRUMENT_PRESET_CATEGORY_STRINGS,
+    ENGINE_INSTRUMENT_PRESET_CATEGORY_BRASS,
+    ENGINE_INSTRUMENT_PRESET_CATEGORY_WOODWINDS,
     ENGINE_INSTRUMENT_PRESET_CATEGORY_COUNT
 } EngineInstrumentPresetCategoryId;
 
@@ -61,6 +87,20 @@ typedef enum {
     ENGINE_INSTRUMENT_PARAM_FILTER_DECAY_MS,
     ENGINE_INSTRUMENT_PARAM_FILTER_LFO_HZ,
     ENGINE_INSTRUMENT_PARAM_FILTER_LFO_OCTAVES,
+    ENGINE_INSTRUMENT_PARAM_BODY_DECAY_MS,
+    ENGINE_INSTRUMENT_PARAM_PITCH_ENV_SEMITONES,
+    ENGINE_INSTRUMENT_PARAM_PITCH_DECAY_MS,
+    ENGINE_INSTRUMENT_PARAM_NOISE_MIX,
+    ENGINE_INSTRUMENT_PARAM_NOISE_DECAY_MS,
+    ENGINE_INSTRUMENT_PARAM_CLICK_MIX,
+    ENGINE_INSTRUMENT_PARAM_MONO,
+    ENGINE_INSTRUMENT_PARAM_GLIDE_MS,
+    ENGINE_INSTRUMENT_PARAM_HAT_CHOKE,
+    ENGINE_INSTRUMENT_PARAM_DYNAMICS,
+    ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH,
+    ENGINE_INSTRUMENT_PARAM_SUSTAIN_PEDAL,
+    ENGINE_INSTRUMENT_PARAM_STRING_RESONANCE,
+    ENGINE_INSTRUMENT_PARAM_RELEASE_NOISE,
     ENGINE_INSTRUMENT_PARAM_COUNT
 } EngineInstrumentParamId;
 
@@ -93,6 +133,7 @@ typedef struct {
     EngineInstrumentParamScale scale;
 } EngineInstrumentParamSpec;
 
+// Stores the complete physical sound settings, including dormant controls for portable recall.
 typedef struct {
     float level;
     float tone;
@@ -112,6 +153,22 @@ typedef struct {
     float filter_decay_ms;
     float filter_lfo_hz;
     float filter_lfo_octaves;
+    float body_decay_ms;
+    float pitch_env_semitones;
+    float pitch_decay_ms;
+    float noise_mix;
+    float noise_decay_ms;
+    float click_mix;
+    float mono;
+    float glide_ms;
+    float hat_choke;
+    float dynamics;
+    float velocity_depth;
+    float sustain_pedal;
+    float string_resonance;
+    float release_noise;
+
+
 
 } EngineInstrumentParams;
 
@@ -148,6 +205,10 @@ EngineInstrumentParams engine_instrument_params_apply_automation_delta(EngineIns
                                                                        EngineInstrumentParamId param,
                                                                        float delta);
 EngineInstrumentSource* engine_instrument_source_create(void);
+// Changes a live piano pedal without replacing voices or restarting their release envelopes.
+void engine_instrument_source_piano_pedal(EngineInstrumentSource*, bool, uint64_t);
+// Reads a prepared live damper time for audition retirement.
+uint64_t engine_instrument_source_piano_gate(const EngineInstrumentSource*, uint64_t, uint8_t);
 void engine_instrument_source_destroy(EngineInstrumentSource* instrument);
 bool engine_instrument_source_set_midi_clip(EngineInstrumentSource* instrument,
                                             uint64_t timeline_start_frame,
@@ -163,6 +224,9 @@ bool engine_instrument_source_set_midi_clip(EngineInstrumentSource* instrument,
 void engine_instrument_source_reset(void* userdata, int sample_rate, int channels);
 void engine_instrument_source_render(void* userdata, float* interleaved, int frames, uint64_t transport_frame);
 void engine_instrument_source_ops(EngineGraphSourceOps* ops);
+
+// Copies region-relative track choke fences and enables bounded natural tails for new hat voices.
+bool engine_instrument_source_set_hat_chokes(EngineInstrumentSource*, const uint64_t* frames, int count);
 
 // Reserves note descriptors off-thread for bounded live audition updates.
 bool engine_instrument_source_reserve_notes(EngineInstrumentSource* instrument, int capacity);

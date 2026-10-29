@@ -1,0 +1,376 @@
+{
+  "source": "https://github.com/sgossner/VCSL",
+  "commit": "c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e",
+  "license": "CC0-1.0",
+  "articulation": "tenor saxophone non-vibrato sustain",
+  "files": [
+    {
+      "file": "BrettTenor_NV_Main_A#1_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_A#1_vl2_rr1.wav",
+      "bytes": 2283038,
+      "sha256": "b50739153f4c33357ee6aaed7e151a9c6e4d675e7755627305190e4711a3fa30",
+      "git_blob": "f8d89266ff4ba94711e537db7a517795e5c01da6",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_A%231_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_A#1_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_A#1_vl3_rr1.wav",
+      "bytes": 2059082,
+      "sha256": "73fb1c6f0db86870d7f2ca9a3d3eab326b19cefaf412c50e5ad7447a96f37123",
+      "git_blob": "ecdf8965687a37f91c0627dd8ef76de4058130ed",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_A%231_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_A#2_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_A#2_vl2_rr1.wav",
+      "bytes": 2181806,
+      "sha256": "be09161fe8f06650fb3d40e33a1d39e7537d6d5b6acbff3c976b0a5d52e56ad3",
+      "git_blob": "10a0ef18b56032d496e96cad2173bac8c8ecb605",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_A%232_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_A#2_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_A#2_vl3_rr1.wav",
+      "bytes": 2054648,
+      "sha256": "c48d46d010fdfbf88ce178e232d02f1d82d9b066e97f55f741b9d7453ffc2550",
+      "git_blob": "93c20135726fa3422c8813d0ed22b2ecfb68c3a5",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_A%232_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_A#3_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_A#3_vl2_rr1.wav",
+      "bytes": 2783300,
+      "sha256": "f95ba7ddcf84ca07aa4f458e00e999486fbf5489b5f87a8a0d538af4ae6a522d",
+      "git_blob": "bc92516cc9cbd3016ac9e2b7fa8bd679ffaf6c96",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_A%233_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_A#3_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_A#3_vl3_rr1.wav",
+      "bytes": 2191796,
+      "sha256": "775c669306f99d27be9920c679bad89224fafcd1f3807bd1f72fcbdc6dafec62",
+      "git_blob": "9a9fdae75099907f8861a3a8a30c3e2eb5f1021a",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_A%233_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_A#4_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_A#4_vl2_rr1.wav",
+      "bytes": 1682798,
+      "sha256": "7fbb710debcd2e22d68f54c3a6a78269a5b05ec601497f2eb5aecc2545ba6764",
+      "git_blob": "1c0295a4162d751054647b98a5224abdda7829ff",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_A%234_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_A#4_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_A#4_vl3_rr1.wav",
+      "bytes": 1877090,
+      "sha256": "e9208313762ac956fe8c25fc13113766685b5e5693babce717268009aa269a12",
+      "git_blob": "e07d593e46506b90e7526a1b145dbe91d8e3e206",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_A%234_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_C2_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_C2_vl2_rr1.wav",
+      "bytes": 2363426,
+      "sha256": "09ab83ec9ddccc53dfbcc2fe938eacf35c1f5e6a2add063a24808f294cee40ba",
+      "git_blob": "5b327c8f95808da4995f74f5f6da82bf4792f457",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_C2_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_C2_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_C2_vl3_rr1.wav",
+      "bytes": 2132990,
+      "sha256": "e4f9a951de691c5c7c4e1c54c9f3fd44e704c14a553a510b8422e7718b1cc1ab",
+      "git_blob": "f25d85bd4530c9ea296d809efb1d533075266217",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_C2_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_C3_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_C3_vl2_rr1.wav",
+      "bytes": 2121866,
+      "sha256": "4afeef41e7f3a5df8c47a3f31389b5948837fe8b21c9e3e9e135829e44050677",
+      "git_blob": "47868ef41bb3ca79f94706510d898b3cd0a6a0e2",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_C3_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_C3_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_C3_vl3_rr1.wav",
+      "bytes": 1986986,
+      "sha256": "17f42eaba3aba3e2e6d66b62e4ba5e8120d1760fd1a7e835829fe84f74385106",
+      "git_blob": "84c8548bfefecd03a6670bb4e4738c6bcd716f73",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_C3_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_C4_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_C4_vl2_rr1.wav",
+      "bytes": 2463728,
+      "sha256": "f2eebd4fc0faecae312bd886c9830b268b134842e927f5a5c79ccc2ed24ed597",
+      "git_blob": "9e9df9d0336413de8ba7b3aa4f0a564bdee17346",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_C4_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_C4_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_C4_vl3_rr1.wav",
+      "bytes": 2946356,
+      "sha256": "039dff9fa11e807ff5c3ceba33aae3416fa89c7ed2af64dbff4e657f67b28217",
+      "git_blob": "3d6419cf2f174406312d09ee67392d5c1bf3193e",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_C4_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_C5_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_C5_vl2_rr1.wav",
+      "bytes": 1967930,
+      "sha256": "4445fec0d7a63932c015dcdae5c04430140eb79d91b5edc9cea4bf35985bc565",
+      "git_blob": "779d9777b5ab5861123d6100701232f295f50ca2",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_C5_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_C5_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_C5_vl3_rr1.wav",
+      "bytes": 1827926,
+      "sha256": "0e0b46853ed63a4e4da294a2a5ac5c26869d63178f02a5a139097f890b0c34c5",
+      "git_blob": "c1db896d9a5d0098ba1fb9ce96eec691baa0174d",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_C5_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_D2_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_D2_vl2_rr1.wav",
+      "bytes": 2497130,
+      "sha256": "06e4b9b0842b3f274459e03b0d53a0f32795ec7999c20c6630581c554af3834d",
+      "git_blob": "cdcc49208e9b4771261c780e60eb81b7b20a942b",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_D2_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_D2_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_D2_vl3_rr1.wav",
+      "bytes": 2344676,
+      "sha256": "d7cf24c3551019db92aaa4c6fa68a90bcca9bd3c3311edec0ebfb8f201005d2e",
+      "git_blob": "c055c33c5056474c2ee33cdae0d4c043cc552d80",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_D2_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_D3_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_D3_vl2_rr1.wav",
+      "bytes": 2190272,
+      "sha256": "6324a58060534001081a33b54d6c2dfb290dee31ae82639f8514cdacf83eadee",
+      "git_blob": "4a9ce914994589b289d46c3a122dc9ecc164767c",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_D3_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_D3_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_D3_vl3_rr1.wav",
+      "bytes": 1962368,
+      "sha256": "cc07e85cf6a1768ff66478e07a060eb50be1432d7f12c0ad29c2d605774370b2",
+      "git_blob": "4251262bc348bec8392ea683178d20dd550216cc",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_D3_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_D4_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_D4_vl2_rr1.wav",
+      "bytes": 2185970,
+      "sha256": "ff1e28ceb67f160ff19f18a67c2e68029194a74bb3f6823c98502b6f66f6fbea",
+      "git_blob": "4e944c35e8b57972e927635c84e9896beff063ef",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_D4_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_D4_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_D4_vl3_rr1.wav",
+      "bytes": 2460458,
+      "sha256": "265259cc39249a364c36ce799673f81cd0861b26ba7dfcfb07825818055b8bbd",
+      "git_blob": "a7226be490b78dfc2c7794eb8cb9c75cca1529c2",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_D4_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_D5_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_D5_vl2_rr1.wav",
+      "bytes": 1973096,
+      "sha256": "ebc4c7f5ad3ab71ea6e5fa9d0934f46d005ae4f69a1a20cbd19f03a87a73e5ea",
+      "git_blob": "fc9190f0d7e9a1f4b8b08f98b961fbce3b810374",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_D5_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_D5_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_D5_vl3_rr1.wav",
+      "bytes": 1599794,
+      "sha256": "fe40f5f565f7eb854d76f6f2772c0883930cc6f5d818c71710f1d9242d9824fd",
+      "git_blob": "4a99df8e2e1488ad6b13e167f962fb8081d33faa",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_D5_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_E2_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_E2_vl2_rr1.wav",
+      "bytes": 2575376,
+      "sha256": "b2eaabe51741561e10d998e55cdc202546d33f394d9a35e5ba3e5ea397b2a12e",
+      "git_blob": "0c66f6bb0744a8488c3607bc89935b7f6c2fbdc4",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_E2_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_E2_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_E2_vl3_rr1.wav",
+      "bytes": 2678012,
+      "sha256": "13fd4a394879d5425feea5bfd5c2f59bf925b61c9c15e85f36285514b9fd0b1d",
+      "git_blob": "5e75a193d9a2312c72cd3c102d0de2060ca745de",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_E2_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_E3_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_E3_vl2_rr1.wav",
+      "bytes": 2146640,
+      "sha256": "3c6553a90fe366f6668488ee228a706d765de1e309e1e8f7d2fc1fa536368745",
+      "git_blob": "92f01526084bd01bc5f16344b11847220ef6d8ba",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_E3_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_E3_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_E3_vl3_rr1.wav",
+      "bytes": 1918292,
+      "sha256": "5113fc46b7cb89aa7b6d94dc1f5262b82b128e803e2959cdd922b421b27dba73",
+      "git_blob": "3eda79b6efb11d2b181964424bd4531628e306d1",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_E3_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_E4_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_E4_vl2_rr1.wav",
+      "bytes": 2469722,
+      "sha256": "603dac939646252362e52323fa8c7899f0a73d7b4b39fce379d7b9bd7e188856",
+      "git_blob": "84de0c2a4f807f92bc51974f17f500cbb3865d13",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_E4_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_E4_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_E4_vl3_rr1.wav",
+      "bytes": 2443970,
+      "sha256": "bdf15124f79e7d251c740d97f55b7fcf96005a5fe56d626a8a3b8e91f734d62d",
+      "git_blob": "22249902648d62d322123ac3fd69e71a1957abfc",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_E4_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_E5_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_E5_vl2_rr1.wav",
+      "bytes": 1648760,
+      "sha256": "d37747180f677dec64167c472d6e5c1f7f87074e83f28317e4f66a7c482c521f",
+      "git_blob": "a9ade08485d9cc4b2b57e9b857222ccf424a2a48",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_E5_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_E5_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_E5_vl3_rr1.wav",
+      "bytes": 1620494,
+      "sha256": "418b60123688a88c1a8d2bb0249ed08e527c11fa38538e34b21a5aaf6989b94c",
+      "git_blob": "b7d00815957b35158299b884a8f721a16f944c16",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_E5_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_F#2_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_F#2_vl2_rr1.wav",
+      "bytes": 2495084,
+      "sha256": "7dcce4c0312980039c0fc8e58598989759b7448eac0daa8ab245c4706b11e0d5",
+      "git_blob": "86314722b774a5464f00788bbb5afdb8971d45d9",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_F%232_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_F#2_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_F#2_vl3_rr1.wav",
+      "bytes": 3043562,
+      "sha256": "ee7f86be7f031abb547439b004f04752844f1afd1abec3b50ba552e3f015e6ac",
+      "git_blob": "29bc3c6cd6db18ccba66d842b8c3c6739833d9ea",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_F%232_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_F#3_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_F#3_vl2_rr1.wav",
+      "bytes": 2318216,
+      "sha256": "ccd189ac565b1eba4dfa86c3768796ee5396ae42eece9148bd9e1a91ffd8b79e",
+      "git_blob": "353bab1d01d7c2102ca24ed71196eb8aa2f15764",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_F%233_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_F#3_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_F#3_vl3_rr1.wav",
+      "bytes": 1932668,
+      "sha256": "f98cd9a5df4d69a1da5710b27d4ceb437074ab67ad747f4238fb4e799f606731",
+      "git_blob": "7d6a3e1528458aa83a0f34f7402232f8e9f08ebe",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_F%233_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_F#4_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_F#4_vl2_rr1.wav",
+      "bytes": 1647518,
+      "sha256": "699922b8bb7eb109e51c8fbf6a333eb29c09a7a8e836416030130ac0de47d5d4",
+      "git_blob": "8448ee134d3c817cfe6c9ea387700be8578cd193",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_F%234_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_F#4_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_F#4_vl3_rr1.wav",
+      "bytes": 2084528,
+      "sha256": "21ccaf8dc8894bec724289182a1a77f5dc54a53fbcdd3d45938028795d7e6cff",
+      "git_blob": "5c8676eee77b6cb12d626479bccb8e6d56a6a07c",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_F%234_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_G#1_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_G#1_vl2_rr1.wav",
+      "bytes": 2248820,
+      "sha256": "65082f5260afeea5f28b7a66ed7d7076d9ea09927e5775c9bc530752f847bd10",
+      "git_blob": "f3e0959b55b00ee7c76a83894da4e453653bead0",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_G%231_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_G#1_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_G#1_vl3_rr1.wav",
+      "bytes": 2111210,
+      "sha256": "03f23ea18c90dba053273de913288f894396a0898028159d054173854cdafa14",
+      "git_blob": "d762dada03371a216247ea2ae49fdc658f7d9be2",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_G%231_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_G#2_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_G#2_vl2_rr1.wav",
+      "bytes": 1938998,
+      "sha256": "c40b27a266b8547893834ef79f97ee05c4d78cd198d6d91b27aad7b556f68fda",
+      "git_blob": "363c2d481c019aa766e8f1b38653b6a6c5afac96",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_G%232_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_G#2_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_G#2_vl3_rr1.wav",
+      "bytes": 3199364,
+      "sha256": "8d1307c45fe03229b6dbc3379513440b27a5bd68de9eb1bbd04e189dd8b61222",
+      "git_blob": "39e9b3b05aa204558ad6b121619ba0c89f1b9ed6",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_G%232_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_G#3_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_G#3_vl2_rr1.wav",
+      "bytes": 2029766,
+      "sha256": "ee93e3985c09f84e28dcababc2aadd5daba7568062aac841a9235ddbdd7f6ae7",
+      "git_blob": "9dafb7ec9e6d79ebef68fa6f0cd1dd259d8d2b45",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_G%233_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_G#3_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_G#3_vl3_rr1.wav",
+      "bytes": 2213360,
+      "sha256": "64ca1e942b997a48d59d015b910f8f1aa5d4dec139ca45b3cdb4f7bdacacf1e2",
+      "git_blob": "7bdbd08c5b2010365b687dbe7453d886f5829ac9",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_G%233_vl3_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_G#4_vl2_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_G#4_vl2_rr1.wav",
+      "bytes": 1623830,
+      "sha256": "ee3fc8d1e8e8e6592c4aa9fd296ea300eeff10e596018419e3f7d2933cdc3828",
+      "git_blob": "877c31e4053b6761c847720f7e175267c03bf469",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_G%234_vl2_rr1.wav"
+    },
+    {
+      "file": "BrettTenor_NV_Main_G#4_vl3_rr1.wav",
+      "path": "Aerophones/Reed Aerophones/Tenor Saxophone/Non-Vibrato/BrettTenor_NV_Main_G#4_vl3_rr1.wav",
+      "bytes": 1568642,
+      "sha256": "4287a90482a207ed5f4f99afcc16273207b5e86bf84bf031d96c8ebc08cfd696",
+      "git_blob": "417fff41d98da184976306d59d292fb7cf397e63",
+      "source": "https://raw.githubusercontent.com/sgossner/VCSL/c1ea7bcc3c7309650ab0da9d15c9cd1fbc4a4c7e/Aerophones/Reed%20Aerophones/Tenor%20Saxophone/Non-Vibrato/BrettTenor_NV_Main_G%234_vl3_rr1.wav"
+    }
+  ]
+}

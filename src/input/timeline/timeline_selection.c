@@ -8,6 +8,7 @@
 #include "input/timeline_drag.h"
 #include "undo/undo_manager.h"
 #include "daw/arrangement.h"
+#include "input/timeline/timeline_geometry.h"
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -98,6 +99,7 @@ void timeline_selection_set_single(AppState* state, int track_index, int clip_in
     }
     state->selection_count = 0;
     timeline_selection_add(state, track_index, clip_index);
+    timeline_reveal_track(state, track_index);
 }
 
 void timeline_selection_set_primary(AppState* state, int track_index, int clip_index) {
@@ -125,6 +127,7 @@ void timeline_selection_set_track_focus(AppState* state, int track_index) {
     state->active_track_index = track_index;
     state->selected_track_index = track_index;
     state->timeline_drop_track_index = track_index;
+    timeline_reveal_track(state, track_index);
 }
 
 void timeline_selection_restore_clear(AppState* state) {

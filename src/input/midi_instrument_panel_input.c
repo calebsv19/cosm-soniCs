@@ -1,6 +1,7 @@
 #include "input/midi_instrument_panel_input.h"
 
 #include "app_state.h"
+#include "ui/knob_drag.h"
 #include "ui/sound_panel.h"
 #include "engine/engine.h"
 #include "input/input_manager.h"
@@ -28,11 +29,10 @@ static float instrument_panel_param_value_from_drag(AppState* state,
     if (!engine_instrument_param_spec((EngineInstrumentParamId)param_index, &spec)) {
         return 0.0f;
     }
-    float delta = (float)(state->midi_editor_ui.instrument_param_drag_start_y - y);
     float scale = state->midi_editor_ui.instrument_param_drag_scale > 0 ? state->midi_editor_ui.instrument_param_drag_scale : 1;
     float initial = engine_instrument_param_to_normalized((EngineInstrumentParamId)param_index,
         state->midi_editor_ui.instrument_param_drag_start_value);
-    return engine_instrument_param_from_normalized((EngineInstrumentParamId)param_index, initial + delta * scale / 140.0f);
+    return engine_instrument_param_from_normalized((EngineInstrumentParamId)param_index, daw_knob_drag_position(initial, state->midi_editor_ui.instrument_param_drag_start_y, y, scale));
 }
 
 static float instrument_panel_current_param_value(const AppState* state,

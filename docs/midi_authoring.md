@@ -1,5 +1,7 @@
 # Transactional MIDI patterns
 
+Current behavior: see [agent music capabilities](agent_music_capabilities.md). Tool counts, initial scope and later-slice forecasts below describe their dated implementation checkpoint; region creation, expression, arrangement, effects, routing and percussion have since been adopted.
+
 The first MIDI authoring slice is implemented in persistent DAW Main Edit. Copied region snapshots, validated append/replace actions, tempo-aware major-key patterns and the editor's Patterns popup share one application workflow. The MCP server now adopts this workflow through five MIDI tools (nineteen total); see [MIDI MCP control](midi_mcp.md).
 
 ## 1. Editor workflow
@@ -48,3 +50,13 @@ MIDI adoption now provides bounded reads with exact retained state tokens and gu
 The DAW's existing tempo-map conversions, MIDI list/publication engine and undo reservation are reused, together with shared kit_ui button tokens. `core_time` provides monotonic timing rather than musical tempo semantics; `core_math`/`core_data` do not own DAW note scheduling/history policy. No shared implementation, dependency minimum, adoption edge or session schema changes. Atlas was considered: these supporting modules remain within the existing MIDI editing workflow, without a new top-level plan or shared topology change.
 
 This additive feature merits a minor-release review when release work is authorized. VERSION remains 0.4.0; no commit, release, installed-app replacement or global MCP configuration is part of this development slice.
+
+## Pointer note editing
+
+Click and drag a note body to move it on the first press. Drag a highlighted left or right handle to change that endpoint while keeping the other endpoint fixed. The middle remains a move target on short notes, and visible note bodies take priority over nearby hit slop. Shift-click toggles selection; Shift-drag adjusts selected velocity; Shift-drag on empty space selects a group. Group body drags preserve spacing and pitch intervals.
+
+Timing follows the current snap/grid setting. Hold **Alt/Option during a pointer gesture** for continuous placement between grid lines, then release it to resume snapping. This does not change the global snap setting; pitch remains in semitones. **Q** explicitly quantizes selected notes, and **Q-/Q+** change the editing grid.
+
+**Vel-/Vel+**, or keyboard **minus/plus**, change selected-note velocities by five percentage points in one undo step. Values clamp at 0–100%; unselected notes are untouched. With no selection, these controls change the velocity used for new notes. The header identifies selected velocity bounds separately from the new-note velocity.
+
+Piano expression extension: [piano_expression.md](piano_expression.md) describes the three piano-only controls, binary region/live sustain, 88 string modes, recorded key/pedal mechanics, 32-field v6 presets and session v25. Older preset versions 1–5 and session v24 remain readable; existing non-piano voices keep their behavior.

@@ -1,3 +1,4 @@
+#include "engine/groups.h"
 #include "app/media_import.h"
 #include "input/timeline/timeline_drop.h"
 
@@ -136,7 +137,7 @@ void timeline_drop_update_hint(AppState* state) {
         int track_spacing = geom.track_spacing;
         int track_top = geom.track_top;
         int lane_height = track_height + track_spacing;
-        int last_lane_bottom = track_top + track_count * lane_height;
+        int last_lane_bottom = track_top + engine_group_visible_count(engine_get_tracks(state->engine),track_count) * lane_height;
         if (track_count == 0) {
             drop_track = 0;
         } else if (state->mouse_y >= last_lane_bottom) {

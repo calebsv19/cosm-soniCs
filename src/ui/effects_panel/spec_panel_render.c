@@ -91,7 +91,7 @@ static void draw_knob(SDL_Renderer* renderer, const SDL_Rect* rect, float t, con
     if (r < 2) {
         return;
     }
-    const int segments = 16;
+    const int segments = 48;
     SDL_Color ring = theme ? theme->knob_ring : (SDL_Color){80, 86, 102, 255};
     SDL_Color indicator = theme ? theme->knob_indicator : (SDL_Color){150, 190, 240, 255};
     SDL_SetRenderDrawColor(renderer, ring.r, ring.g, ring.b, ring.a);

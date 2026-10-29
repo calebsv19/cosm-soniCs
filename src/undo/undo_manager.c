@@ -1,3 +1,5 @@
+#include "daw/eq_actions.h"
+#include "daw/track_controls.h"
 #include "daw/fx_actions.h"
 #include "daw/routing_actions.h"
 #include "daw/arrangement.h"
@@ -25,47 +27,6 @@ static float clamp_float(float value, float min, float max) {
     if (value < min) return min;
     if (value > max) return max;
     return value;
-}
-
-static void eq_curve_from_session(EqCurveState* dst, const SessionEqCurve* src) {
-    if (!dst || !src) {
-        return;
-    }
-    dst->low_cut.enabled = src->low_cut.enabled;
-    dst->low_cut.freq_hz = clamp_float(src->low_cut.freq_hz, 20.0f, 20000.0f);
-    dst->low_cut.slope = src->low_cut.slope;
-    dst->high_cut.enabled = src->high_cut.enabled;
-    dst->high_cut.freq_hz = clamp_float(src->high_cut.freq_hz, 20.0f, 20000.0f);
-    dst->high_cut.slope = src->high_cut.slope;
-    for (int i = 0; i < 4; ++i) {
-        dst->bands[i].enabled = src->bands[i].enabled;
-        dst->bands[i].freq_hz = clamp_float(src->bands[i].freq_hz, 20.0f, 20000.0f);
-        dst->bands[i].gain_db = clamp_float(src->bands[i].gain_db, -20.0f, 20.0f);
-        dst->bands[i].q_width = clamp_float(src->bands[i].q_width, 0.1f, 4.0f);
-    }
-    dst->selected_band = -1;
-    dst->selected_handle = EQ_CURVE_HANDLE_NONE;
-    dst->hover_band = -1;
-    dst->hover_handle = EQ_CURVE_HANDLE_NONE;
-    dst->hover_toggle_band = -1;
-    dst->hover_toggle_low = false;
-    dst->hover_toggle_high = false;
-}
-
-static void eq_curve_to_engine(const EqCurveState* src, EngineEqCurve* dst) {
-    if (!src || !dst) {
-        return;
-    }
-    dst->low_cut.enabled = src->low_cut.enabled;
-    dst->low_cut.freq_hz = src->low_cut.freq_hz;
-    dst->high_cut.enabled = src->high_cut.enabled;
-    dst->high_cut.freq_hz = src->high_cut.freq_hz;
-    for (int i = 0; i < ENGINE_EQ_BANDS; ++i) {
-        dst->bands[i].enabled = src->bands[i].enabled;
-        dst->bands[i].freq_hz = src->bands[i].freq_hz;
-        dst->bands[i].gain_db = src->bands[i].gain_db;
-        dst->bands[i].q_width = src->bands[i].q_width;
-    }
 }
 
 static int find_clip_by_snapshot(const EngineTrack* track, const SessionClip* clip) {
@@ -204,6 +165,17 @@ static bool apply_automation_edit(AppState* state, UndoAutomationEdit* edit, boo
     if (!state || !edit || !state->engine) {
         return false;
     }
+    if (edit->track_runtime_id || edit->clip_creation_id) {
+        const EngineTrack* tracks = engine_get_tracks(state->engine);
+        int track = -1, clip = -1;
+        for (int t = 0; tracks && t < engine_get_track_count(state->engine); ++t)
+            if (tracks[t].runtime_id == edit->track_runtime_id)
+                for (int c = 0; c < tracks[t].clip_count; ++c)
+                    if (tracks[t].clips[c].creation_index == edit->clip_creation_id) { track = t; clip = c; }
+        if (track < 0) return false;
+        edit->track_index = track;
+        edit->clip_index = clip;
+    }
     const SessionAutomationLane* src_lanes = apply_after ? edit->after_lanes : edit->before_lanes;
     int lane_count = apply_after ? edit->after_lane_count : edit->before_lane_count;
     if (lane_count <= 0 || !src_lanes) {
@@ -219,6 +191,9 @@ static bool apply_automation_edit(AppState* state, UndoAutomationEdit* edit, boo
     }
     for (int i = 0; i < lane_count; ++i) {
         lanes[i].target = src_lanes[i].target;
+        lanes[i].domain = src_lanes[i].domain;
+        lanes[i].before = src_lanes[i].before;
+        lanes[i].after = src_lanes[i].after;
         lanes[i].points = (EngineAutomationPoint*)src_lanes[i].points;
         lanes[i].point_count = src_lanes[i].point_count;
         lanes[i].point_capacity = src_lanes[i].point_count;
@@ -345,16 +320,10 @@ static bool apply_track_snapshot(AppState* state, const UndoTrackSnapshotEdit* e
     return true;
 }
 
+// Replays only the exact stable-track label transition captured by native or MCP actions.
 static bool apply_track_rename(AppState* state, const UndoTrackRename* edit, bool apply_after) {
-    if (!state || !edit || !state->engine) {
-        return false;
-    }
-    const char* name = apply_after ? edit->after_name : edit->before_name;
-    if (!engine_track_set_name(state->engine, edit->track_index, name)) {
-        return false;
-    }
-    effects_panel_sync_from_engine(state);
-    return true;
+    return edit && daw_track_name_write(state,edit->target,apply_after ? edit->before_name : edit->after_name,
+        apply_after ? edit->after_name : edit->before_name);
 }
 
 static bool apply_library_rename(AppState* state, const UndoLibraryRename* edit, bool apply_after) {
@@ -455,37 +424,8 @@ static bool apply_midi_note_edit(AppState* state, const UndoMidiNoteEdit* edit, 
     return true;
 }
 
-static bool apply_eq_curve(AppState* state, const UndoEqCurveEdit* edit, bool apply_after) {
-    if (!state || !edit) {
-        return false;
-    }
-    const SessionEqCurve* curve = apply_after ? &edit->after : &edit->before;
-    EqCurveState ui_curve = {0};
-    eq_curve_from_session(&ui_curve, curve);
-    EngineEqCurve engine_curve;
-    eq_curve_to_engine(&ui_curve, &engine_curve);
-    if (edit->is_master) {
-        if (!engine_set_master_eq_curve(state->engine, &engine_curve)) return false;
-        state->effects_panel.eq_curve_master = ui_curve;
-        if (state->effects_panel.eq_detail.view_mode == EQ_DETAIL_VIEW_MASTER) {
-            state->effects_panel.eq_curve = ui_curve;
-        }
-        return true;
-    }
-    if (edit->track_index < 0) {
-        return false;
-    }
-    if (!engine_set_track_eq_curve(state->engine, edit->track_index, &engine_curve)) return false;
-    if (state->effects_panel.eq_curve_tracks &&
-        edit->track_index < state->effects_panel.eq_curve_tracks_count) {
-        state->effects_panel.eq_curve_tracks[edit->track_index] = ui_curve;
-    }
-    if (state->effects_panel.eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK &&
-        state->effects_panel.target_track_index == edit->track_index) {
-        state->effects_panel.eq_curve = ui_curve;
-    }
-    return true;
-}
+// Restores dedicated EQ through exact accepted-curve and lifetime guards shared with native/MCP edits.
+static bool apply_eq_curve(AppState* state,const UndoEqCurveEdit* edit,bool after) {return daw_eq_restore(state,edit,after);}
 
 static bool apply_fx_edit(AppState* state, UndoFxEdit* edit, bool apply_after) {
     if (!state || !edit || !state->engine) {
@@ -575,6 +515,7 @@ static bool undo_command_track_fields(UndoCommand* command, int** index, uint64_
 // Captures track identity before an application history entry is reserved or recorded.
 bool undo_command_bind_track(AppState* state, UndoCommand* command) {
     if (!state || !state->engine || !command) return false;
+    if(command->type==UNDO_CMD_EQ_CURVE)return daw_eq_bind_history(state,&command->data.eq_curve_edit);
     int* index; uint64_t* identity;
     if (!undo_command_track_fields(command, &index, &identity)) return true;
     if (*index < 0 || *index >= engine_get_track_count(state->engine)) return false;
@@ -595,6 +536,7 @@ bool undo_apply(AppState* state, UndoCommand* command, bool apply_after) {
         if (resolved < 0) return false;
         *track_index = resolved;
     }
+    if(command->type==UNDO_CMD_TRACK_MIX)return daw_track_mix_history_apply(state,&command->data.track_mix,apply_after);
     if (command->type == UNDO_CMD_TRACK_EDIT) return apply_track_edit(state, command, apply_after);
     if(command->type==UNDO_CMD_ARRANGEMENT)return daw_arrangement_history_restore(state,command,apply_after);
     if (command->type == UNDO_CMD_CLIP_CONTENT && (command->clip_content_before || command->clip_content_after)) {

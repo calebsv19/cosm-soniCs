@@ -177,6 +177,7 @@ void timeline_clipboard_paste(AppState* state) {
             for (int l = 0; l < source->automation_lane_count; ++l) {
                 const SessionAutomationLane* source_lane = &source->automation_lanes[l];
                 lanes[l].target = source_lane->target; lanes[l].point_count = source_lane->point_count;
+                lanes[l].domain = source_lane->domain; lanes[l].before = source_lane->before; lanes[l].after = source_lane->after;
                 if (source_lane->point_count) {
                     lanes[l].points = calloc((size_t)source_lane->point_count, sizeof(*lanes[l].points));
                     if (!lanes[l].points) goto done;

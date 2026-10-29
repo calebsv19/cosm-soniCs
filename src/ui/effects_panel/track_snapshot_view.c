@@ -341,7 +341,7 @@ void effects_panel_render_track_snapshot(SDL_Renderer* renderer, const AppState*
         draw_slider(renderer, &snap->gain_rect, gain_t);
         if (snap->gain_label_rect.w > 0 && snap->gain_label_rect.h > 0) {
             char line[64];
-            snprintf(line, sizeof(line), "Gain %.1f dB", gain_db);
+            snprintf(line, sizeof(line), "Gain %.3f dB", gain_db);
             ui_draw_text(renderer,
                          snap->gain_label_rect.x,
                          snap->gain_label_rect.y,

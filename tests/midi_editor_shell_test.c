@@ -12,6 +12,12 @@
 #include "ui/midi_instrument_panel.h"
 
 #include "test_rect_geometry.h"
+#include "input/timeline_input.h"
+#include "input/effects_panel_track_snapshot.h"
+#include "input/effects_panel_input.h"
+#include "ui/knob_drag.h"
+#include "ui/effects_panel_spec.h"
+#include <math.h>
 #include "test_assert.h"
 #include "test_midi_editor_harness.h"
 
@@ -1101,9 +1107,12 @@ static void test_midi_editor_drag_moves_note(void) {
     clip = &tracks[0].clips[clip_index];
     const EngineMidiNote* notes = engine_clip_midi_notes(clip);
     expect(state.midi_editor_ui.selected_note_index == 0, "first note click should select note");
-    expect(notes && notes[0].note == 60, "first note click-drag should not move unselected note pitch");
-    expect(notes[0].start_frame == (uint64_t)cfg.sample_rate / 4u,
-           "first note click-drag should not move unselected note start");
+    expect(notes && notes[0].note == 62, "first note click-drag should move the newly selected note pitch");
+    expect(notes[0].start_frame > (uint64_t)cfg.sample_rate / 4u,
+           "first note click-drag should move the newly selected note start");
+    expect(undo_manager_undo(&state.undo, &state), "first-press drag undo failed");
+    clip = &engine_get_tracks(state.engine)[0].clips[clip_index];
+    notes = engine_clip_midi_notes(clip);
 
     midi_editor_compute_layout(&state, &layout);
     expect(midi_editor_note_rect(&layout, &notes[0], clip->duration_frames, &note_rect),
@@ -1137,7 +1146,7 @@ static void test_midi_editor_drag_moves_note(void) {
     state_destroy(&state);
 }
 
-static void test_midi_editor_resize_requires_selected_note(void) {
+static void test_midi_editor_resize_on_first_press(void) {
     AppState state;
     EngineRuntimeConfig cfg;
     state_init(&state, &cfg);
@@ -1185,8 +1194,11 @@ static void test_midi_editor_resize_requires_selected_note(void) {
     clip = &tracks[0].clips[clip_index];
     const EngineMidiNote* notes = engine_clip_midi_notes(clip);
     expect(state.midi_editor_ui.selected_note_index == 0, "first edge click should select note");
-    expect(notes && notes[0].duration_frames == duration,
-           "first edge click-drag should not resize unselected note");
+    expect(notes && notes[0].duration_frames > duration,
+           "first edge click-drag should resize the newly selected note");
+    expect(undo_manager_undo(&state.undo, &state), "first-press resize undo failed");
+    clip = &engine_get_tracks(state.engine)[0].clips[clip_index];
+    notes = engine_clip_midi_notes(clip);
 
     midi_editor_compute_layout(&state, &layout);
     expect(midi_editor_note_rect(&layout, &notes[0], clip->duration_frames, &note_rect),
@@ -1249,8 +1261,8 @@ static void test_midi_editor_shift_drag_edits_velocity(void) {
     SDL_Keymod old_mods = SDL_GetModState();
     SDL_SetModState((SDL_Keymod)(old_mods | KMOD_SHIFT));
     dispatch_mouse_button(&manager, &state, SDL_MOUSEBUTTONDOWN, start_x, start_y);
-    dispatch_mouse_motion(&manager, &state, start_x, start_y - 72);
-    dispatch_mouse_button(&manager, &state, SDL_MOUSEBUTTONUP, start_x, start_y - 72);
+    dispatch_mouse_motion(&manager, &state, start_x, start_y - 502);
+    dispatch_mouse_button(&manager, &state, SDL_MOUSEBUTTONUP, start_x, start_y - 502);
     SDL_SetModState(old_mods);
 
     tracks = engine_get_tracks(state.engine);
@@ -2543,12 +2555,12 @@ static void test_midi_instrument_panel_param_knob_drag_sets_region_param(void) {
     dispatch_instrument_mouse_motion(&manager,
                                      &state,
                                      level_knob.x + level_knob.w / 2,
-                                     level_knob.y + level_knob.h / 2 + 180);
+                                     level_knob.y + level_knob.h / 2 + 1800);
     dispatch_instrument_mouse_button(&manager,
                                      &state,
                                      SDL_MOUSEBUTTONUP,
                                      level_knob.x + level_knob.w / 2,
-                                     level_knob.y + level_knob.h / 2 + 180);
+                                     level_knob.y + level_knob.h / 2 + 1800);
     expect(!state.midi_editor_ui.instrument_param_drag_active,
            "instrument param mouse up should stop knob drag");
 
@@ -2677,8 +2689,8 @@ static void test_instrument_time_controls_and_applicability(void) {
     SDL_SetModState(KMOD_SHIFT);
     dispatch_instrument_mouse_button(&manager, &state, SDL_MOUSEBUTTONDOWN, x, y);
     SDL_SetModState(KMOD_NONE); // Fine scaling is latched; releasing Shift must not jump.
-    dispatch_instrument_mouse_motion(&manager, &state, x, y - 7);
-    dispatch_instrument_mouse_button(&manager, &state, SDL_MOUSEBUTTONUP, x, y - 7);
+    dispatch_instrument_mouse_motion(&manager, &state, x, y - 50);
+    dispatch_instrument_mouse_button(&manager, &state, SDL_MOUSEBUTTONUP, x, y - 50);
     float changed = engine_clip_midi_effective_instrument_params(state.engine, 0, clip).attack_ms;
     float expected_value = engine_instrument_param_from_normalized(ENGINE_INSTRUMENT_PARAM_ATTACK_MS,
         engine_instrument_param_to_normalized(ENGINE_INSTRUMENT_PARAM_ATTACK_MS, initial) + .005f);
@@ -2713,11 +2725,11 @@ static void test_instrument_gesture_target_and_cancel(void) {
     state.selected_clip_index = second;
     state.selection[0].clip_index = second;
     midi_editor_input_set_selected_clip(&state, 0, second, engine_get_tracks(state.engine)[0].clips[second].creation_index);
-    dispatch_instrument_mouse_motion(&manager, &state, x, y + 180);
+    dispatch_instrument_mouse_motion(&manager, &state, x, y + 1800);
     const EngineTrack* tracks = engine_get_tracks(state.engine);
     expect(tracks[0].clips[first].instrument_params.level < .05f &&
            tracks[0].clips[second].instrument_inherits_track, "selection change redirected knob mutation");
-    dispatch_instrument_mouse_button(&manager, &state, SDL_MOUSEBUTTONUP, x, y + 180);
+    dispatch_instrument_mouse_button(&manager, &state, SDL_MOUSEBUTTONUP, x, y + 1800);
     expect(state.undo.undo_count == 1 && !state.undo.active_drag_valid, "changed selection lost knob history");
     expect(undo_manager_undo(&state.undo, &state) &&
            engine_get_tracks(state.engine)[0].clips[first].instrument_inherits_track, "captured knob undo failed");
@@ -2733,7 +2745,7 @@ static void test_instrument_gesture_target_and_cancel(void) {
     knob = layout.param_knob_rects[ENGINE_INSTRUMENT_PARAM_LEVEL];
     x = knob.x + knob.w / 2; y = knob.y + knob.h / 2;
     dispatch_instrument_mouse_button(&manager, &state, SDL_MOUSEBUTTONDOWN, x, y);
-    dispatch_instrument_mouse_motion(&manager, &state, x, y + 180);
+    dispatch_instrument_mouse_motion(&manager, &state, x, y + 1800);
     SDL_Event escape = {.type = SDL_KEYDOWN};
     escape.key.keysym.sym = SDLK_ESCAPE;
     expect(midi_instrument_panel_input_handle_event(&manager, &state, &escape), "Escape not consumed");
@@ -2755,6 +2767,119 @@ static void test_instrument_gesture_target_and_cancel(void) {
     state_destroy(&state);
 }
 
+
+// Exercises real snapshot input and timeline sampling over an expanded MIDI editor.
+static void test_relative_gain_and_editor_pointer_ownership(void) {
+    AppState state;
+    EngineRuntimeConfig cfg;
+    state_init(&state, &cfg);
+    effects_panel_refresh_catalog(&state);
+    InputManager fx_manager = {0};
+    expect(undo_manager_add_effect(&state, -1, 1), "gain effect fixture");
+    effects_panel_sync_from_engine(&state);
+    state.effects_panel.view_mode = FX_PANEL_VIEW_STACK;
+    state.effects_panel.spec_panel_enabled = true;
+    EffectsPanelLayout knobs;
+    effects_panel_compute_layout(&state, &knobs);
+    EffectsSpecPanelLayout spec_layout;
+    effects_panel_spec_compute_layout(&state, &state.effects_panel, &state.effects_panel.chain[0],
+                                     &knobs.slots[0].body_rect, 0, &spec_layout);
+    expect(spec_layout.widget_count > 0 && spec_layout.widgets[0].type == FX_SPEC_WIDGET_KNOB,
+           "gain effect should expose a knob");
+    SDL_Rect knob = spec_layout.widgets[0].control_rect;
+    float baseline = state.effects_panel.chain[0].param_values[0];
+    SDL_Event knob_press = {.type = SDL_MOUSEBUTTONDOWN}; knob_press.button.button = SDL_BUTTON_LEFT;
+    knob_press.button.x = knob.x + 1; knob_press.button.y = knob.y + knob.h / 2;
+    effects_panel_input_handle_event(&fx_manager, &state, &knob_press);
+    expect(state.effects_panel.dragging_slider && state.effects_panel.chain[0].param_values[0] == baseline,
+           "effects knob jumped on press");
+    SDL_Event knob_motion = {.type = SDL_MOUSEMOTION};
+    knob_motion.motion.x = knob.x + knob.w + 100; knob_motion.motion.y = knob_press.button.y - 1;
+    effects_panel_input_handle_event(&fx_manager, &state, &knob_motion);
+    float adjusted = state.effects_panel.chain[0].param_values[0];
+    expect(adjusted > baseline && adjusted - baseline < .1f, "effects knob small drag is too coarse");
+    SDL_Event knob_release = {.type = SDL_MOUSEBUTTONUP}; knob_release.button.button = SDL_BUTTON_LEFT;
+    effects_panel_input_handle_event(&fx_manager, &state, &knob_release);
+    expect(undo_manager_undo(&state.undo, &state), "effects knob undo missing");
+    effects_panel_sync_from_engine(&state);
+    expect(state.effects_panel.chain[0].param_values[0] == baseline, "effects knob undo lost baseline");
+    state.selected_track_index = 0;
+    state.effects_panel.view_mode = FX_PANEL_VIEW_LIST;
+    state.effects_panel.target = FX_PANEL_TARGET_TRACK;
+    state.effects_panel.target_track_index = 0;
+    effects_panel_sync_from_engine(&state);
+    EffectsPanelLayout fx;
+    effects_panel_compute_layout(&state, &fx);
+    SDL_Rect gain = fx.track_snapshot.gain_hit_rect;
+    expect(gain.w > 0, "gain fixture has no hit area");
+    float original = engine_get_tracks(state.engine)[0].gain;
+    SDL_Event press = {.type = SDL_MOUSEBUTTONDOWN};
+    press.button.button = SDL_BUTTON_LEFT;
+    press.button.x = gain.x + 1;
+    press.button.y = gain.y + gain.h / 2;
+    SDL_SetModState(KMOD_NONE);
+    expect(effects_panel_track_snapshot_handle_mouse_down(&state, &fx, &press), "gain press refused");
+    expect(engine_get_tracks(state.engine)[0].gain == original, "gain jumped on press");
+    SDL_Event motion = {.type = SDL_MOUSEMOTION};
+    motion.motion.x = gain.x + gain.w + 200;
+    motion.motion.y = press.button.y - 1;
+    expect(effects_panel_track_snapshot_handle_mouse_motion(&state, &fx, &motion), "gain motion refused");
+    float changed = engine_get_tracks(state.engine)[0].gain;
+    expect(fabsf(20.0f * log10f(changed / original) - 0.04f) < 0.0001f, "one pixel gain adjustment is too coarse");
+    SDL_Event release = {.type = SDL_MOUSEBUTTONUP}; release.button.button = SDL_BUTTON_LEFT;
+    expect(effects_panel_track_snapshot_handle_mouse_up(&state, &release), "gain release refused");
+    expect(undo_manager_undo(&state.undo, &state), "gain undo missing");
+    expect(engine_get_tracks(state.engine)[0].gain == original, "gain undo changed baseline");
+    effects_panel_sync_from_engine(&state);
+    SDL_SetModState(KMOD_SHIFT);
+    effects_panel_track_snapshot_handle_mouse_down(&state, &fx, &press);
+    SDL_SetModState(KMOD_NONE);
+    effects_panel_track_snapshot_handle_mouse_motion(&state, &fx, &motion);
+    changed = engine_get_tracks(state.engine)[0].gain;
+    expect(fabsf(20.0f * log10f(changed / original) - 0.004f) < 0.0001f, "fine gain modifier not latched");
+    effects_panel_track_snapshot_handle_mouse_up(&state, &release);
+    expect(daw_knob_drag_position(.5f, 200, 100, 1) > .59f &&
+           daw_knob_drag_position(.6f, 200, 100, 1) > .69f, "repeated relative drags lost progress");
+    expect(daw_knob_drag_position(.5f, 0, -2000, 1) == 1 &&
+           daw_knob_drag_position(.5f, 0, 2000, 1) == 0, "knob limit clamp failed");
+
+    int clip;
+    expect(engine_add_midi_clip_to_track(state.engine, 0, 0, cfg.sample_rate * 4, &clip), "editor fixture");
+    state.selected_track_index = 0; state.selected_clip_index = clip;
+    state.selection_count = 1;
+    state.selection[0] = (TimelineSelectionEntry){.track_index = 0, .clip_index = clip};
+    state.midi_editor_ui.panel_mode = MIDI_REGION_PANEL_EDITOR;
+    state.layout_runtime.mixer_ratio = .7f;
+    ui_layout_panes(&state, 1280, 800);
+    MidiEditorLayout editor;
+    midi_editor_compute_layout(&state, &editor);
+    InputManager manager = {0};
+    state.mouse_x = editor.grid_rect.x + editor.grid_rect.w / 2;
+    state.mouse_y = editor.grid_rect.y + editor.grid_rect.h / 2;
+    timeline_input_update(&manager, &state, false, true);
+    expect(state.selected_clip_index == clip && !state.timeline_drag.active &&
+           !state.timeline_marquee_active, "sampled timeline stole MIDI press");
+    press.button.x = state.mouse_x; press.button.y = state.mouse_y;
+    input_manager_handle_event(&manager, &state, &press);
+    expect(engine_clip_midi_note_count(&engine_get_tracks(state.engine)[0].clips[clip]) == 1,
+           "MIDI grid press did not create note");
+    release.button.x = state.mouse_x; release.button.y = state.mouse_y;
+    input_manager_handle_event(&manager, &state, &release);
+    int y = state.panes[2].rect.y;
+    press.button.x = state.panes[2].rect.x + state.panes[2].rect.w / 2;
+    press.button.y = y;
+    input_manager_handle_event(&manager, &state, &press);
+    expect(state.layout_runtime.drag.active, "divider did not capture event edge");
+    motion.motion.x = press.button.x; motion.motion.y = y + 30;
+    input_manager_handle_event(&manager, &state, &motion);
+    expect(state.panes[2].rect.y > y, "divider motion did not resize editor");
+    release.button.x = motion.motion.x; release.button.y = motion.motion.y;
+    input_manager_handle_event(&manager, &state, &release);
+    expect(!state.layout_runtime.drag.active && state.selected_clip_index == clip,
+           "divider release leaked into timeline selection");
+    state_destroy(&state);
+}
+
 int main(void) {
     if (TTF_Init() != 0) {
         fail("TTF_Init failed");
@@ -2771,7 +2896,8 @@ int main(void) {
     test_midi_editor_pitch_fit_selected_notes();
     test_midi_editor_pitch_viewport_edge_cases_and_selection_stability();
     test_midi_editor_drag_moves_note();
-    test_midi_editor_resize_requires_selected_note();
+    test_relative_gain_and_editor_pointer_ownership();
+    test_midi_editor_resize_on_first_press();
     test_midi_editor_shift_drag_edits_velocity();
     test_midi_editor_qwerty_records_timed_note();
     test_midi_editor_qwerty_octave_and_velocity_controls();

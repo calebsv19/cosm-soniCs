@@ -168,18 +168,15 @@ static void validate_meter_detail_layout(const SDL_Rect* detail_rect) {
 
     expect(rect_has_positive_size(&toggle_ms), "meter ms toggle rect invalid");
     expect(rect_has_positive_size(&toggle_lr), "meter lr toggle rect invalid");
-    expect(rect_has_positive_size(&toggle_int), "meter lufs int rect invalid");
-    expect(rect_has_positive_size(&toggle_short), "meter lufs short rect invalid");
-    expect(rect_has_positive_size(&toggle_momentary), "meter lufs momentary rect invalid");
+    expect(!toggle_int.w && !toggle_int.h, "unqualified live LUFS int control must be hidden");
+    expect(!toggle_short.w && !toggle_short.h, "unqualified live LUFS short control must be hidden");
+    expect(!toggle_momentary.w && !toggle_momentary.h, "unqualified live LUFS momentary control must be hidden");
     expect(rect_has_positive_size(&toggle_wb), "meter spectrogram wb rect invalid");
     expect(rect_has_positive_size(&toggle_bw), "meter spectrogram bw rect invalid");
     expect(rect_has_positive_size(&toggle_heat), "meter spectrogram heat rect invalid");
 
     expect(rect_contains_rect(detail_rect, &toggle_ms), "meter ms toggle outside detail rect");
     expect(rect_contains_rect(detail_rect, &toggle_lr), "meter lr toggle outside detail rect");
-    expect(rect_contains_rect(detail_rect, &toggle_int), "meter int toggle outside detail rect");
-    expect(rect_contains_rect(detail_rect, &toggle_short), "meter short toggle outside detail rect");
-    expect(rect_contains_rect(detail_rect, &toggle_momentary), "meter momentary toggle outside detail rect");
     expect(rect_contains_rect(detail_rect, &toggle_wb), "meter wb toggle outside detail rect");
     expect(rect_contains_rect(detail_rect, &toggle_bw), "meter bw toggle outside detail rect");
     expect(rect_contains_rect(detail_rect, &toggle_heat), "meter heat toggle outside detail rect");
@@ -461,6 +458,11 @@ static void run_sweep_case(int zoom_step, const SweepWindowSize* window) {
     expect(rect_contains_rect(&layout.panel_rect, &layout.detail_rect), "effects detail outside panel");
     expect(!rects_overlap_strict(&layout.list_rect, &layout.detail_rect), "effects list/detail overlap");
 
+    expect(rect_has_positive_size(&layout.live_meter_button_rect), "live meter button invalid");
+    expect(rect_contains_rect(&layout.panel_rect, &layout.live_meter_button_rect), "live meter button outside panel");
+    expect(!rects_overlap_strict(&layout.live_meter_button_rect, &layout.target_label_rect), "live meter button overlaps target title");
+    expect(!rects_overlap_strict(&layout.live_meter_button_rect, &layout.list_rect), "live meter button overlaps effects list");
+    expect(!rects_overlap_strict(&layout.live_meter_button_rect, &layout.detail_rect), "live meter button overlaps effect detail");
     validate_header_layout(&layout);
     validate_eq_detail_layout(&layout.detail_rect);
     validate_meter_detail_layout(&layout.detail_rect);

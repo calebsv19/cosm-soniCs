@@ -1,6 +1,11 @@
 #include "engine/instrument.h"
+#include "engine/note_ending.h"
+#include "engine/instrument_samples.h"
+#include "engine/piano_expression.h"
 #include "engine/instrument_waveform.h"
 #include "engine/instrument_filter.h"
+#include "engine/instrument_percussion.h"
+#include "engine/instrument_articulation.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -13,9 +18,13 @@
 // Keeps invariant pitch and reusable candidate indices beside each prepared note descriptor.
 typedef struct EnginePreparedNote {
     EngineMidiNote note;
+    int original_index; // Retains authored identity through private export compaction.
     double frequency;
     int candidate_index;
+    uint64_t choke_frame;
     EngineInstrumentFilter filter;
+    float sampler_dynamics;
+    uint64_t piano_gate;
 } EnginePreparedNote;
 
 // Computes an invariant MIDI base frequency during note preparation.
@@ -27,7 +36,9 @@ struct EngineInstrumentSource {
     uint64_t clip_duration_frames;
     uint64_t render_duration_frames;
     uint64_t export_end_frame;
+    bool track_hat_routing;
     EnginePreparedNote* notes;
+    EngineArticulationTimeline articulation;
     int candidate_count;
     int note_count;
     int note_capacity;
@@ -39,9 +50,24 @@ struct EngineInstrumentSource {
     int automation_lane_capacity;
     EngineInstrumentPresetId preset;
     EngineInstrumentParams params;
+    EnginePianoExpression piano;
+    bool live_pedal_down;
     int sample_rate;
     int channels;
 };
+
+// Supplies prepared articulation with the same region and track automation as normal rendering.
+static EngineInstrumentParams instrument_articulation_params(void* context, uint64_t frame);
+
+// Prepares piano dampers outside rendering using the same authored parameter evaluator.
+static void instrument_prepare_piano(EngineInstrumentSource* instrument);
+
+// Extends supported hat tails beyond region edges without changing legacy closed-hat playback.
+static void instrument_hat_tail_bounds(EngineInstrumentSource* instrument) {
+    if ((!instrument->track_hat_routing && !engine_instrument_sampled_preset(instrument->preset)) || instrument->export_end_frame != UINT64_MAX) return;
+    uint64_t tail = (uint64_t)instrument->sample_rate * 4;
+    instrument->render_duration_frames = instrument->clip_duration_frames > UINT64_MAX - tail ? UINT64_MAX : instrument->clip_duration_frames + tail;
+}
 
 static void instrument_reset_internal(EngineInstrumentSource* instrument, int sample_rate, int channels) {
     if (!instrument) {
@@ -49,7 +75,17 @@ static void instrument_reset_internal(EngineInstrumentSource* instrument, int sa
     }
     instrument->sample_rate = sample_rate > 0 ? sample_rate : 48000;
     instrument->channels = channels > 0 ? channels : 2;
-    for (int i = 0; i < instrument->note_count; ++i) engine_instrument_filter_reset(&instrument->notes[i].filter);
+    instrument_hat_tail_bounds(instrument);
+    if (instrument->preset == ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO) {
+        engine_piano_expression_reset(&instrument->piano, instrument->sample_rate);
+        instrument_prepare_piano(instrument);
+    }
+    for (int i = 0; i < instrument->note_count; ++i) {
+        engine_instrument_filter_reset(&instrument->notes[i].filter);
+        instrument->notes[i].sampler_dynamics = -1;
+    }
+    if (engine_instrument_percussion_808(instrument->preset) && instrument->params.mono >= .5f)
+        engine_articulation_retime(&instrument->articulation, instrument->sample_rate, instrument_articulation_params, instrument);
 }
 
 static void instrument_clear_automation_lanes(EngineAutomationLane** lanes, int* lane_count, int* lane_capacity) {
@@ -99,6 +135,8 @@ static bool instrument_copy_automation_lanes(EngineAutomationLane** dst_lanes,
 }
 
 EngineInstrumentSource* engine_instrument_source_create(void) {
+    (void)engine_instrument_samples_init();
+    (void)engine_piano_expression_init();
     EngineInstrumentSource* instrument = (EngineInstrumentSource*)calloc(1, sizeof(EngineInstrumentSource));
     if (!instrument) {
         return NULL;
@@ -113,6 +151,7 @@ EngineInstrumentSource* engine_instrument_source_create(void) {
 bool engine_instrument_source_reserve_notes(EngineInstrumentSource* instrument, int capacity) {
     if (!instrument || capacity < 0) return false;
     if (capacity <= instrument->note_capacity) return true;
+    if (!engine_articulation_reserve(&instrument->articulation, capacity)) return false;
     EnginePreparedNote* notes = realloc(instrument->notes, (size_t)capacity * sizeof(*notes));
     if (!notes) return false;
     instrument->notes = notes; instrument->note_capacity = capacity;
@@ -123,6 +162,7 @@ void engine_instrument_source_destroy(EngineInstrumentSource* instrument) {
     if (!instrument) {
         return;
     }
+    engine_articulation_free(&instrument->articulation);
     free(instrument->notes);
     instrument->notes = NULL;
     instrument->note_count = 0;
@@ -153,9 +193,22 @@ bool engine_instrument_source_set_midi_clip(EngineInstrumentSource* instrument,
     if (note_count > 0 && !notes) {
         return false;
     }
+    if (engine_instrument_sampled_preset(preset) && !engine_instrument_sample_bank_ready(preset)) return false;
+    if (preset == ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO && !engine_piano_expression_init()) return false;
     if (!engine_instrument_source_reserve_notes(instrument, note_count)) return false;
+    bool live_piano = clip_duration_frames == UINT64_MAX && preset == ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO && instrument->preset == preset;
+    EngineMidiNote old_notes[256]; uint64_t old_gates[256];
+    int old_count = live_piano && instrument->note_count <= 256 ? instrument->note_count : 0;
+    for (int i=0;i<old_count;++i) { old_notes[i]=instrument->notes[i].note;old_gates[i]=instrument->notes[i].piano_gate; }
     for (int n = 0; n < note_count; ++n) {
         instrument->notes[n].note = notes[n];
+        instrument->notes[n].original_index = n;
+        instrument->notes[n].piano_gate = notes[n].duration_frames;
+        if (live_piano && (instrument->live_pedal_down || params.sustain_pedal >= .5f)) instrument->notes[n].piano_gate = UINT64_MAX-notes[n].start_frame;
+        for (int j=0;j<old_count;++j) if (notes[n].start_frame==old_notes[j].start_frame && notes[n].note==old_notes[j].note &&
+            old_notes[j].duration_frames!=UINT64_MAX-old_notes[j].start_frame) instrument->notes[n].piano_gate=old_gates[j];
+        instrument->notes[n].choke_frame = UINT64_MAX;
+        instrument->notes[n].sampler_dynamics = -1;
         instrument->notes[n].frequency = midi_note_frequency(notes[n].note);
         engine_instrument_filter_reset(&instrument->notes[n].filter);
     }
@@ -164,6 +217,7 @@ bool engine_instrument_source_set_midi_clip(EngineInstrumentSource* instrument,
     instrument->clip_duration_frames = clip_duration_frames;
     instrument->render_duration_frames = clip_duration_frames;
     instrument->export_end_frame = UINT64_MAX;
+    instrument->track_hat_routing = false;
     instrument->preset = engine_instrument_preset_clamp(preset);
     instrument->params = engine_instrument_params_sanitize(instrument->preset, params);
     if (!instrument_copy_automation_lanes(&instrument->track_automation_lanes,
@@ -173,11 +227,37 @@ bool engine_instrument_source_set_midi_clip(EngineInstrumentSource* instrument,
                                           track_automation_lane_count)) {
         return false;
     }
-    return instrument_copy_automation_lanes(&instrument->automation_lanes,
+    if (!instrument_copy_automation_lanes(&instrument->automation_lanes,
                                             &instrument->automation_lane_count,
                                             &instrument->automation_lane_capacity,
                                             automation_lanes,
-                                            automation_lane_count);
+                                            automation_lane_count)) return false;
+    instrument_hat_tail_bounds(instrument);
+    if (preset == ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO && !live_piano) {
+        engine_piano_expression_reset(&instrument->piano, instrument->sample_rate);
+        instrument_prepare_piano(instrument);
+    }
+    instrument->articulation.count = 0;
+    bool articulated = (engine_instrument_percussion_808(instrument->preset) && instrument->params.mono >= .5f) ||
+        (engine_instrument_percussion_hat(instrument->preset) && instrument->params.hat_choke >= .5f);
+    if (articulated) engine_articulation_prepare(&instrument->articulation, notes, note_count, instrument->sample_rate,
+        instrument_articulation_params, instrument);
+    for (int i = 0; i + 1 < instrument->articulation.count; ++i) {
+        int index = instrument->articulation.events[i].note_index;
+        instrument->notes[index].choke_frame = instrument->articulation.events[i + 1].note.start_frame;
+    }
+    return true;
+}
+
+// Copies immutable fences before publication; rendering never borrows the track event list.
+bool engine_instrument_source_set_hat_chokes(EngineInstrumentSource* instrument, const uint64_t* frames, int count) {
+    if (!instrument || count != instrument->note_count || (count && !frames)) return false;
+    if (!engine_instrument_percussion_hat(instrument->preset)) return true;
+    if (instrument->params.hat_choke >= .5f)
+        for (int n = 0; n < count; ++n) instrument->notes[n].choke_frame = frames[n];
+    instrument->track_hat_routing = instrument->preset != ENGINE_INSTRUMENT_PRESET_CLOSED_HAT || instrument->params.hat_choke >= .5f;
+    instrument_hat_tail_bounds(instrument);
+    return true;
 }
 
 // Gates only the captured instrument at the export boundary while preserving authored automation timing.
@@ -190,11 +270,37 @@ void engine_instrument_source_set_export_end(EngineInstrumentSource* instrument,
         EnginePreparedNote note = instrument->notes[i];
         if (note.note.start_frame >= cut) continue;
         if (note.note.duration_frames > cut - note.note.start_frame) note.note.duration_frames = cut - note.note.start_frame;
+        if (note.choke_frame >= cut) note.choke_frame = UINT64_MAX;
         instrument->notes[kept++] = note;
     }
     instrument->note_count = kept;
+    int events = 0;
+    for (int i = 0; i < instrument->articulation.count; ++i) {
+        EngineArticulationEvent e = instrument->articulation.events[i];
+        if (e.note.start_frame >= cut) continue;
+        if (e.note.duration_frames > cut - e.note.start_frame) e.note.duration_frames = cut - e.note.start_frame;
+        instrument->articulation.events[events++] = e;
+    }
+    instrument->articulation.count = events;
     instrument->render_duration_frames = cut + tail;
     instrument->export_end_frame = end;
+    if (instrument->preset == ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO) instrument_prepare_piano(instrument);
+}
+
+// Captures released notes while down and sets their damper release to the actual pedal-up clock.
+void engine_instrument_source_piano_pedal(EngineInstrumentSource* s,bool down,uint64_t frame) {
+    if(!s || s->preset!=ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO || s->clip_duration_frames!=UINT64_MAX) return;
+    if(s->live_pedal_down && !down) for(int n=0;n<s->note_count;++n) {
+        EnginePreparedNote* p=&s->notes[n];
+        if(p->piano_gate==UINT64_MAX-p->note.start_frame && p->note.duration_frames!=UINT64_MAX-p->note.start_frame)
+            p->piano_gate=frame>p->note.start_frame?frame-p->note.start_frame:0;
+    }
+    s->live_pedal_down=down;
+}
+// Looks up the retained damper separately from the original key release.
+uint64_t engine_instrument_source_piano_gate(const EngineInstrumentSource* s,uint64_t start,uint8_t note) {
+    for(int i=0;s && i<s->note_count;++i) if(s->notes[i].note.start_frame==start && s->notes[i].note.note==note) return s->notes[i].piano_gate;
+    return 0;
 }
 
 void engine_instrument_source_reset(void* userdata, int sample_rate, int channels) {
@@ -337,6 +443,12 @@ static float preset_sample(EngineInstrumentPresetId preset, EngineInstrumentPara
 // Evaluates one voice using a precomputed base frequency and the existing synthesis arithmetic.
 static float instrument_voice_sample(EngineInstrumentPresetId preset, EngineInstrumentParams params,
     double frequency, float velocity, int rate, uint64_t relative_frame, uint64_t duration, float accumulated) {
+    if (engine_instrument_sampled_preset(preset)) {
+        int note = (int)lround(69 + 12*log2(frequency/440));
+        return accumulated + engine_instrument_sample_bank_note(preset, (uint8_t)note, velocity, params, rate, relative_frame, duration);
+    }
+    if (engine_instrument_percussion_preset(preset))
+        return accumulated + engine_instrument_percussion_sample(preset, params, frequency, rate, relative_frame, duration) * params.level * velocity;
     double freq = frequency;
     if (preset == ENGINE_INSTRUMENT_PRESET_SYNTH_LAB && params.vibrato_depth > 0.0f && params.vibrato_rate > 0.0f) {
         double seconds = (double)relative_frame / (double)rate;
@@ -361,7 +473,12 @@ float engine_instrument_note_sample(EngineInstrumentPresetId preset, EngineInstr
         engine_instrument_note_waveform(preset, params, note, velocity, rate, relative_frame, 0, gate_frames, &value, 1);
         return value;
     }
-    return instrument_voice_sample(preset, params, midi_note_frequency(note), velocity, rate, relative_frame, gate_frames, 0);
+    EngineInstrumentPresetId voice = engine_instrument_percussion_note_voice(preset, note);
+    if (preset == ENGINE_INSTRUMENT_PRESET_HAT_KIT && voice == ENGINE_INSTRUMENT_PRESET_CLOSED_HAT) params.noise_decay_ms = fminf(params.noise_decay_ms, 80);
+    float sample=instrument_voice_sample(voice, params, midi_note_frequency(note), velocity, rate, relative_frame, gate_frames, 0);
+    if (voice == ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO)
+        sample += engine_piano_key_release(note,velocity,params.release_noise,params.level,rate,relative_frame,gate_frames);
+    return sample;
 }
 
 // Samples the source's actual ADSR with physical millisecond timing and note-off release level.
@@ -402,6 +519,28 @@ static EngineInstrumentParams instrument_params_at_frame(const EngineInstrumentS
     return engine_instrument_params_sanitize(instrument->preset, params);
 }
 
+// Latches pitch-drop controls at each legato chain onset and glide at each transition.
+static EngineInstrumentParams instrument_articulation_params(void* context, uint64_t frame) {
+    EngineInstrumentSource* instrument = context;
+    uint64_t global = frame > UINT64_MAX - instrument->timeline_start_frame ? UINT64_MAX : instrument->timeline_start_frame + frame;
+    return instrument_params_at_frame(instrument, global, frame);
+}
+
+// Stores independent key-off and damper-off times so mechanics remain audible under sustain.
+static void instrument_prepare_piano(EngineInstrumentSource* instrument) {
+    if (instrument->clip_duration_frames == UINT64_MAX) return;
+    uint64_t end=instrument->clip_duration_frames;
+    if(instrument->export_end_frame!=UINT64_MAX) end=instrument->export_end_frame-instrument->timeline_start_frame;
+    for(int n=0;n<instrument->note_count;++n) {
+        EnginePreparedNote* p=&instrument->notes[n];
+        uint64_t off=p->note.duration_frames>UINT64_MAX-p->note.start_frame?UINT64_MAX:p->note.start_frame+p->note.duration_frames;
+        uint64_t damper=engine_piano_damper_frame(off,end,instrument->timeline_start_frame,
+            instrument->track_automation_lanes,instrument->track_automation_lane_count,
+            instrument->automation_lanes,instrument->automation_lane_count,instrument_articulation_params,instrument);
+        p->piano_gate=damper>=p->note.start_frame?damper-p->note.start_frame:0;
+    }
+}
+
 // Reads an existing gain/pan automation lane using the same normalized values as audio clips.
 static float instrument_signal_lane(const EngineAutomationLane* lanes, int count, EngineAutomationTarget target,
                                     uint64_t frame, uint64_t length) {
@@ -420,13 +559,16 @@ static void instrument_select_candidates(EngineInstrumentSource* instrument, uin
     EngineInstrumentParamSpec release_spec;
     (void)engine_instrument_param_spec(ENGINE_INSTRUMENT_PARAM_RELEASE_MS, &release_spec);
     uint64_t maximum_release = instrument_ms_to_frames(release_spec.max_value, instrument->sample_rate);
+    if (instrument->preset == ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO) maximum_release = (uint64_t)instrument->sample_rate * 4;
+    if (engine_instrument_percussion_one_shot(instrument->preset)) maximum_release = instrument_ms_to_frames(4000, instrument->sample_rate);
     for (int n = 0; n < instrument->note_count; ++n) {
         const EngineMidiNote* note = &instrument->notes[n].note;
         if (!wrap) {
             if (note->start_frame > last_clip) continue;
             if (first_clip >= note->start_frame) {
                 uint64_t age = first_clip - note->start_frame;
-                if (age >= note->duration_frames && age - note->duration_frames >= maximum_release) continue;
+                uint64_t gate=instrument->preset == ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO ? instrument->notes[n].piano_gate : note->duration_frames;
+                if (age >= gate && age - gate >= maximum_release) continue;
             }
         }
         instrument->notes[instrument->candidate_count++].candidate_index = n;
@@ -456,16 +598,41 @@ void engine_instrument_source_render(void* userdata, float* interleaved, int fra
         uint64_t automation_clip = automation_global - instrument->timeline_start_frame;
         EngineInstrumentParams frame_params = instrument_params_at_frame(instrument, automation_global, automation_clip);
         float sample = 0.0f;
-        for (int candidate = 0; candidate < instrument->candidate_count; ++candidate) {
+        float piano_noise = 0;
+        bool piano = instrument->preset == ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO;
+        bool piano_held[88] = {false};
+        if (piano && instrument->clip_duration_frames == UINT64_MAX && instrument->live_pedal_down) frame_params.sustain_pedal = 1;
+        if (piano && (clip_frame >= instrument->clip_duration_frames || global_frame >= instrument->export_end_frame)) frame_params.sustain_pedal = 0;
+        bool mono = engine_instrument_percussion_808(instrument->preset) && instrument->params.mono >= .5f;
+        if (mono) sample = engine_articulation_808_sample(&instrument->articulation, instrument->preset, frame_params, instrument->sample_rate, clip_frame);
+        for (int candidate = 0; !mono && candidate < instrument->candidate_count; ++candidate) {
             int n = instrument->notes[candidate].candidate_index;
             const EngineMidiNote* note = &instrument->notes[n].note;
-            if (clip_frame < note->start_frame) {
+            if ((instrument->track_hat_routing && note->start_frame >= instrument->clip_duration_frames) || clip_frame < note->start_frame) {
                 continue;
             }
+            bool choke = engine_instrument_percussion_hat(instrument->preset) && instrument->params.hat_choke >= .5f;
+            if (choke && clip_frame >= instrument->notes[n].choke_frame) continue;
             uint64_t rel = clip_frame - note->start_frame;
-            uint64_t release = instrument_ms_to_frames(frame_params.release_ms, instrument->sample_rate);
-            if (rel >= note->duration_frames && rel - note->duration_frames >= release) continue;
-            if (engine_instrument_filter_preset(instrument->preset)) {
+            uint64_t release = instrument_ms_to_frames(engine_instrument_sampled_preset(instrument->preset) ? fmaxf(4,frame_params.release_ms) : frame_params.release_ms, instrument->sample_rate);
+            if (piano) {
+                uint64_t gate=instrument->notes[n].piano_gate;
+                if(note->note>=21 && note->note<=108 && rel<note->duration_frames) piano_held[note->note-21]=true;
+                sample += engine_instrument_sample_bank_note(instrument->preset,note->note,note->velocity,frame_params,instrument->sample_rate,rel,gate);
+                piano_noise += engine_piano_key_release(note->note,note->velocity,frame_params.release_noise,frame_params.level,
+                    instrument->sample_rate,rel,note->duration_frames);
+                continue;
+            }
+            if (!engine_instrument_percussion_one_shot(instrument->preset) && rel >= note->duration_frames && rel - note->duration_frames >= release) continue;
+            if (engine_instrument_sampled_preset(instrument->preset)) {
+                float desired = fminf(1,fmaxf(0,frame_params.dynamics+(note->velocity-.5f)*frame_params.velocity_depth));
+                float* smoothed=&instrument->notes[n].sampler_dynamics;
+                if (*smoothed < 0) *smoothed=desired;
+                *smoothed += (desired-*smoothed)/(1+.02f*instrument->sample_rate);
+                EngineInstrumentParams voice_params=frame_params;
+                voice_params.dynamics=*smoothed; voice_params.velocity_depth=0;
+                sample += engine_instrument_sample_bank_note(instrument->preset,note->note,note->velocity,voice_params,instrument->sample_rate,rel,note->duration_frames);
+            } else if (engine_instrument_filter_preset(instrument->preset)) {
                 double frequency = instrument->notes[n].frequency;
                 double phase = (2.0 * M_PI * frequency * (double)rel) / instrument->sample_rate;
                 float raw = preset_sample(instrument->preset, frame_params, phase, frequency, instrument->sample_rate);
@@ -473,10 +640,26 @@ void engine_instrument_source_render(void* userdata, float* interleaved, int fra
                     frame_params, instrument->sample_rate, rel);
                 sample += filtered * frame_params.level * note->velocity * note_envelope(rel, note->duration_frames, &frame_params, instrument->sample_rate);
             } else {
-                sample = instrument_voice_sample(instrument->preset, frame_params, instrument->notes[n].frequency,
-                    note->velocity, instrument->sample_rate, rel, note->duration_frames, sample);
+                if (!engine_instrument_percussion_hat(instrument->preset) || (!choke && instrument->preset == ENGINE_INSTRUMENT_PRESET_CLOSED_HAT)) {
+                    sample = instrument_voice_sample(instrument->preset, frame_params, instrument->notes[n].frequency,
+                        note->velocity, instrument->sample_rate, rel, note->duration_frames, sample);
+                    continue;
+                }
+                EngineInstrumentPresetId voice = engine_instrument_percussion_note_voice(instrument->preset, note->note);
+                EngineInstrumentParams voice_params = frame_params;
+                if (instrument->preset == ENGINE_INSTRUMENT_PRESET_HAT_KIT && voice == ENGINE_INSTRUMENT_PRESET_CLOSED_HAT)
+                    voice_params.noise_decay_ms = fminf(voice_params.noise_decay_ms, 80);
+                float hit = instrument_voice_sample(voice, voice_params, instrument->notes[n].frequency,
+                    note->velocity, instrument->sample_rate, rel, note->duration_frames, 0);
+                if (choke && instrument->notes[n].choke_frame != UINT64_MAX) {
+                    uint64_t remaining = instrument->notes[n].choke_frame - clip_frame;
+                    hit *= fminf(1, (float)remaining / fmaxf(1, instrument->sample_rate * .002f));
+                }
+                sample += hit;
             }
         }
+
+        if (piano) sample += piano_noise + engine_piano_expression_process(&instrument->piano,frame_params,sample,piano_held,clip_frame);
 
         if (sample > 1.0f) {
             sample = 1.0f;
@@ -491,7 +674,11 @@ void engine_instrument_source_render(void* userdata, float* interleaved, int fra
             ENGINE_AUTOMATION_TARGET_PAN, automation_clip, instrument->clip_duration_frames);
         pan += instrument_signal_lane(instrument->track_automation_lanes, instrument->track_automation_lane_count,
             ENGINE_AUTOMATION_TARGET_PAN, automation_global, UINT64_MAX);
-        sample *= fminf(2, fmaxf(0, 1+volume));
+        bool physical_gain = false;
+        for (int l = 0; l < instrument->automation_lane_count; ++l)
+            if (instrument->automation_lanes[l].target == ENGINE_AUTOMATION_TARGET_VOLUME &&
+                instrument->automation_lanes[l].domain == ENGINE_AUTOMATION_DOMAIN_PHYSICAL) physical_gain = true;
+        sample *= physical_gain ? fmaxf(0, 1 + volume) : fminf(2, fmaxf(0, 1 + volume));
         pan = fminf(1, fmaxf(-1, pan));
         for (int ch = 0; ch < channels; ++ch) {
             float balance = channels < 2 ? 1 : ch==0 && pan>0 ? 1-pan : ch==1 && pan<0 ? 1+pan : 1;
@@ -538,4 +725,24 @@ bool engine_instrument_note_waveform(EngineInstrumentPresetId preset, EngineInst
         output[i] = value * params.level * velocity * note_envelope(wanted, gate, &params, rate);
     }
     return true;
+}
+
+// Evaluates targets with the same export freeze and piano pedal-up override as production rendering.
+static EngineInstrumentParams ending_params(EngineInstrumentSource* s,uint64_t relative) {
+    uint64_t global=relative>UINT64_MAX-s->timeline_start_frame?UINT64_MAX:s->timeline_start_frame+relative;
+    bool forced=s->preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO && (relative>=s->clip_duration_frames || global>=s->export_end_frame);
+    if(global>=s->export_end_frame)global=s->export_end_frame-1;
+    EngineInstrumentParams params=instrument_params_at_frame(s,global,global-s->timeline_start_frame);if(forced)params.sustain_pedal=0;return params;
+}
+
+// Reads actual prepared piano/choke/mono fences using the production automation evaluator.
+bool engine_instrument_source_note_ending(const EngineInstrumentSource* source,int index,EngineNoteEnding* out) {
+    if(!source || !out || index<0 || index>=source->note_count)return false;EngineInstrumentSource* s=(EngineInstrumentSource*)source;const EnginePreparedNote* p=&s->notes[index];
+    *out=(EngineNoteEnding){.original_index=p->original_index,.start=p->note.start_frame,.key_off=p->note.start_frame+p->note.duration_frames,.source_end=s->render_duration_frames,.choke=UINT64_MAX,.handoff=UINT64_MAX};
+    out->sampled=engine_instrument_sampled_preset(s->preset);out->piano=s->preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO;out->one_shot=engine_instrument_percussion_one_shot(s->preset);out->mono=engine_instrument_percussion_808(s->preset) && s->params.mono>=.5f;
+    out->damper_off=out->piano?p->note.start_frame+p->piano_gate:out->key_off;
+    if(engine_instrument_percussion_hat(s->preset) && s->params.hat_choke>=.5f)out->choke=p->choke_frame;
+    out->chain_start=out->start;
+    for(int n=0;out->mono && n<s->articulation.count;++n)if(s->articulation.events[n].note_index==p->original_index){const EngineArticulationEvent* event=&s->articulation.events[n];out->legato=event->legato;out->chain_start=event->chain_start;if(n+1<s->articulation.count){out->handoff=s->articulation.events[n+1].note.start_frame;out->next_legato=s->articulation.events[n+1].legato;}break;}
+    out->onset_params=ending_params(s,out->start);out->key_off_params=ending_params(s,out->damper_off);out->boundary_params=ending_params(s,s->clip_duration_frames?s->clip_duration_frames-1:0);return true;
 }

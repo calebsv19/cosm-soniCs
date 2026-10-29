@@ -144,7 +144,7 @@ int timeline_view_controls_compute_layout(int timeline_x,
                                           int timeline_width,
                                           TimelineControlsUI* out_controls) {
     const TimelineTextMetrics* metrics = timeline_text_metrics();
-    enum { k_button_count = 9 };
+    enum { k_button_count = 12 };
     const int left_pad = 10;
     const int right_pad = 10;
     const int button_gap = 6;
@@ -171,7 +171,7 @@ int timeline_view_controls_compute_layout(int timeline_x,
     SDL_Rect* button_rects[k_button_count] = {
         &local_rects[0], &local_rects[1], &local_rects[2], &local_rects[3],
         &local_rects[4], &local_rects[5], &local_rects[6], &local_rects[7],
-        &local_rects[8]
+        &local_rects[8], &local_rects[9], &local_rects[10], &local_rects[11]
     };
     if (out_controls) {
         SDL_Rect zero = {0, 0, 0, 0};
@@ -193,6 +193,9 @@ int timeline_view_controls_compute_layout(int timeline_x,
         button_rects[6] = &out_controls->automation_target_rect;
         button_rects[7] = &out_controls->tempo_toggle_rect;
         button_rects[8] = &out_controls->automation_label_toggle_rect;
+        button_rects[9] = &out_controls->height_down_rect;
+        button_rects[10] = &out_controls->height_up_rect;
+        button_rects[11] = &out_controls->groups_rect;
     }
 
     if (timeline_width <= 0) {
@@ -211,7 +214,7 @@ int timeline_view_controls_compute_layout(int timeline_x,
     widths[3] = timeline_button_width("LOOP", 36);
     widths[4] = timeline_button_width("SNAP", 40);
     widths[5] = timeline_button_width("AUTO", 44);
-    widths[6] = timeline_button_width("PAN", 40);
+    widths[6] = timeline_button_width("Noise Decay v", 110);
     {
         int vol_w = timeline_button_width("VOL", 40);
         if (vol_w > widths[6]) {
@@ -220,6 +223,9 @@ int timeline_view_controls_compute_layout(int timeline_x,
     }
     widths[7] = timeline_button_width("TEMPO", 52);
     widths[8] = timeline_button_width("VAL", 40);
+    widths[9] = timeline_button_width("Height -", 64);
+    widths[10] = timeline_button_width("Height +", 64);
+    widths[11] = timeline_button_width("Groups",64);
 
     for (int i = 0; i < k_button_count; ++i) {
         if (widths[i] > available_w) {
@@ -333,77 +339,17 @@ void timeline_view_compute_track_header_layout(const SDL_Rect* timeline_rect,
                                                int track_height,
                                                int header_width,
                                                TimelineTrackHeaderLayout* out_layout) {
-    const TimelineTextMetrics* metrics = timeline_text_metrics();
-    TimelineTrackHeaderLayout layout = {0};
-    int text_h;
-    int button_w;
-    int button_h;
-    int button_spacing;
-    int buttons_total;
-    int buttons_x;
-    int buttons_min_x;
-    int button_y;
-    if (!timeline_rect || !out_layout) {
-        return;
-    }
-    layout.header_rect = (SDL_Rect){
-        timeline_rect->x + 8,
-        lane_top + 4,
-        header_width - 16,
-        track_height - 8
-    };
-    if (layout.header_rect.w < 18) {
-        layout.header_rect.w = 18;
-    }
-    if (layout.header_rect.h < 12) {
-        layout.header_rect.h = 12;
-    }
-
-    text_h = metrics->text_h_1x;
-    if (text_h < 10) {
-        text_h = 10;
-    }
-    button_w = metrics->width_m + 8;
-    if (button_w < text_h) {
-        button_w = text_h;
-    }
-    if (button_w < 16) {
-        button_w = 16;
-    }
-    button_h = text_h + 4;
-    if (button_h > layout.header_rect.h - 2) {
-        button_h = layout.header_rect.h - 2;
-    }
-    if (button_h < 10) {
-        button_h = 10;
-    }
-    button_spacing = 4;
-    buttons_total = button_w * 2 + button_spacing;
-    buttons_x = layout.header_rect.x + layout.header_rect.w - buttons_total - 8;
-    buttons_min_x = layout.header_rect.x + 6 + metrics->width_track + 4;
-    if (buttons_x < buttons_min_x) {
-        buttons_x = buttons_min_x;
-    }
-    button_y = layout.header_rect.y + layout.header_rect.h - button_h - 4;
-    if (button_y < layout.header_rect.y + 1) {
-        button_y = layout.header_rect.y + 1;
-    }
-    layout.mute_rect = (SDL_Rect){buttons_x, button_y, button_w, button_h};
-    layout.solo_rect = (SDL_Rect){buttons_x + button_w + button_spacing, button_y, button_w, button_h};
-
-    layout.text_x = layout.header_rect.x + 6;
-    layout.text_max_x = layout.mute_rect.x - 4;
-    if (layout.text_max_x < layout.text_x) {
-        layout.text_max_x = layout.text_x;
-    }
-    layout.text_y = layout.header_rect.y + 4;
-    if (layout.text_y + text_h > layout.header_rect.y + layout.header_rect.h - 1) {
-        layout.text_y = layout.header_rect.y + layout.header_rect.h - text_h - 1;
-    }
-    if (layout.text_y < layout.header_rect.y + 1) {
-        layout.text_y = layout.header_rect.y + 1;
-    }
-    *out_layout = layout;
+    if(!timeline_rect || !out_layout)return;
+    TimelineTrackHeaderLayout l={0};
+    l.header_rect=(SDL_Rect){timeline_rect->x+2,lane_top,header_width-4,track_height};
+    int x=l.header_rect.x+6,y=lane_top+3,right=l.header_rect.x+l.header_rect.w-4;
+    int cy=lane_top+(track_height>=44 ? 22 : 16);
+    l.mute_rect=(SDL_Rect){x,cy,18,17};l.solo_rect=(SDL_Rect){x+21,cy,18,17};
+    l.effects_rect=(SDL_Rect){x+42,cy,26,17};
+    l.gain_rect=(SDL_Rect){x+71,cy,58,17};l.pan_rect=(SDL_Rect){x+132,cy,right-(x+132),17};
+    l.text_x=x;l.text_y=y;l.text_max_x=right;
+    l.meter_rect=(SDL_Rect){x,lane_top+track_height-2,right-x,1};
+    *out_layout=l;
 }
 
 void timeline_view_draw_button(SDL_Renderer* renderer,
@@ -434,10 +380,14 @@ void timeline_view_draw_button(SDL_Renderer* renderer,
     daw_ui_button_spec_init(&spec, label);
     spec.state.hovered = hovered && enabled;
     spec.state.disabled = !enabled;
+    spec.state.selected = active_border && enabled;
     if (daw_ui_button_style_resolve(&palette, &spec, &style) != 0) {
         return;
     }
-    if(active_border)style.outline=(CoreThemeColor){active_border->r,active_border->g,active_border->b,active_border->a};
+    if (active_border) {
+        style.outline=(CoreThemeColor){active_border->r,active_border->g,active_border->b,255};
+        style.fill=(CoreThemeColor){active_border->r/3,active_border->g/3,active_border->b/3,255};
+    }
     if (daw_ui_button_draw_frame(renderer, rect, &style) != 0) {
         return;
     }

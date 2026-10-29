@@ -125,14 +125,23 @@ static int run_factory_preset_session_matrix_test(void) {
         clip->instrument_preset = preset;
         clip->instrument_params = engine_instrument_default_params(preset);
         clip->instrument_inherits_track = (i == 0);
-        clip->instrument_params.level = 0.50f + 0.03f * (float)i;
-        clip->instrument_params.tone = 0.20f + 0.04f * (float)i;
+        clip->instrument_params.level = 0.50f + 0.02f * (float)i;
+        clip->instrument_params.tone = fminf(1.0f, 0.20f + 0.03f * (float)i);
         clip->instrument_params.attack_ms = 2.0f + (float)i;
         clip->instrument_params.release_ms = 40.0f + 3.0f * (float)i;
         clip->instrument_params.filter_env_octaves = -.75f;
         clip->instrument_params.filter_decay_ms = 321.123f;
         clip->instrument_params.filter_lfo_hz = .73f;
         clip->instrument_params.filter_lfo_octaves = .41f;
+        clip->instrument_params.body_decay_ms = 1234;
+        clip->instrument_params.pitch_env_semitones = 17;
+        clip->instrument_params.pitch_decay_ms = 37;
+        clip->instrument_params.noise_mix = .67f;
+        clip->instrument_params.noise_decay_ms = 123;
+        clip->instrument_params.click_mix = .31f;
+        clip->instrument_params.mono = 1;
+        clip->instrument_params.glide_ms = 137;
+        clip->instrument_params.hat_choke = 1;
         clip->midi_note_count = 1;
         clip->midi_notes = (EngineMidiNote*)calloc(1, sizeof(EngineMidiNote));
         if (!clip->midi_notes) {
@@ -178,14 +187,23 @@ static int run_factory_preset_session_matrix_test(void) {
         if (clip->kind != ENGINE_CLIP_KIND_MIDI ||
             clip->instrument_preset != (EngineInstrumentPresetId)i ||
             clip->instrument_inherits_track != (i == 0) ||
-            fabsf(clip->instrument_params.level - (0.50f + 0.03f * (float)i)) > 0.01f ||
-            fabsf(clip->instrument_params.tone - (0.20f + 0.04f * (float)i)) > 0.01f ||
+            fabsf(clip->instrument_params.level - (0.50f + 0.02f * (float)i)) > 0.01f ||
+            fabsf(clip->instrument_params.tone - fminf(1.0f, 0.20f + 0.03f * (float)i)) > 0.01f ||
             fabsf(clip->instrument_params.attack_ms - (2.0f + (float)i)) > 0.01f ||
             fabsf(clip->instrument_params.release_ms - (40.0f + 3.0f * (float)i)) > 0.01f ||
             clip->instrument_params.filter_env_octaves != -.75f ||
             clip->instrument_params.filter_decay_ms != 321.123f ||
             clip->instrument_params.filter_lfo_hz != .73f ||
             clip->instrument_params.filter_lfo_octaves != .41f ||
+            clip->instrument_params.body_decay_ms != 1234 ||
+            clip->instrument_params.pitch_env_semitones != 17 ||
+            clip->instrument_params.pitch_decay_ms != 37 ||
+            clip->instrument_params.noise_mix != .67f ||
+            clip->instrument_params.noise_decay_ms != 123 ||
+            clip->instrument_params.click_mix != .31f ||
+            clip->instrument_params.mono != 1 ||
+            clip->instrument_params.glide_ms != 137 ||
+            clip->instrument_params.hat_choke != 1 ||
             clip->midi_note_count != 1 ||
             !clip->midi_notes ||
             clip->midi_notes[0].note != (uint8_t)(48 + i)) {

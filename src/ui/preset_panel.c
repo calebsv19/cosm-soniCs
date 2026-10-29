@@ -107,7 +107,7 @@ void daw_preset_panel_render(SDL_Renderer* renderer, const AppState* state, cons
     button(renderer, layout->library_button, "My Presets", &theme, ui->open);
     button(renderer, layout->save_button, layout->save_button.w < 110 ? "Save As..." : "Save Preset As...", &theme, ui->save_open && !ui->update);
     button(renderer, layout->update_button, layout->update_button.w < 110 ? "Update" : "Update Preset", &theme, ui->save_open && ui->update);
-    button(renderer, layout->note_button, layout->note_button.w < 110 ? "C4" : "Audition C4", &theme, false);
+    button(renderer, layout->note_button, layout->note_button.w < 110 ? "Note" : "Audition Note", &theme, false);
     button(renderer, layout->chord_button, layout->chord_button.w < 110 ? "Chord" : "Audition Chord", &theme, false);
     if (!ui->open && !ui->save_open) {
         if (ui->message[0]) {
@@ -142,7 +142,7 @@ void daw_preset_panel_render(SDL_Renderer* renderer, const AppState* state, cons
         button(renderer, layout->refresh, "Refresh", &theme, false);
         for (int i = 0; i < layout->row_count; ++i) button(renderer, layout->rows[i], ui->row_labels[layout->item_indices[i]], &theme, i == ui->selected_row);
         ui_draw_text_clipped(renderer, field.x, clip.y + clip.h - 21,
-            ui->message[0] ? ui->message : ui->library.count ? "Select to load; use Audition C4 or Chord to listen." : "No saved sounds yet. Use Save Preset As...",
+            ui->message[0] ? ui->message : ui->library.count ? "Select to load; use Audition Note or Chord to listen." : "No saved sounds yet. Use Save Preset As...",
             theme.text_muted, .75f, field.w);
     }
     SDL_RenderSetClipRect(renderer, clipped ? &previous_clip : NULL);

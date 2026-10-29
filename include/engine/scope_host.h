@@ -3,6 +3,14 @@
 #include "effects/effects_manager.h"
 
 #include <stdbool.h>
+#include <stdint.h>
+
+// Copies one most recent DSP process-call reduction, independently of scope consumers.
+typedef struct EngineGainReductionSnapshot {
+    bool available, fresh, enabled;
+    float gain_db;
+    uint64_t sequence, measured_ns, age_ns;
+} EngineGainReductionSnapshot;
 
 typedef enum {
     ENGINE_SCOPE_STREAM_NONE = 0,

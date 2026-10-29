@@ -49,6 +49,10 @@ bool timeline_input_mouse_handle_scroll(InputManager* manager, AppState* state, 
     int mouse_x = 0;
     int mouse_y = 0;
     SDL_GetMouseState(&mouse_x, &mouse_y);
+#if SDL_VERSION_ATLEAST(2, 26, 0)
+    mouse_x = event->wheel.mouseX;
+    mouse_y = event->wheel.mouseY;
+#endif
     SDL_Point p = {mouse_x, mouse_y};
     bool hovered = timeline_pane && SDL_PointInRect(&p, &timeline_pane->rect);
     if (!hovered) {
@@ -60,83 +64,76 @@ bool timeline_input_mouse_handle_scroll(InputManager* manager, AppState* state, 
     if (!timeline || !timeline_compute_geometry(state, timeline, &geom)) {
         return false;
     }
-    int delta = event->wheel.y != 0 ? event->wheel.y : event->wheel.x;
-    if (event->wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {
-        delta = -delta;
-    }
-    if (delta == 0) {
-        return true;
-    }
-    float step_px = 60.0f;
-    float delta_px = (float)delta * step_px;
-    float delta_sec = delta_px / geom.pixels_per_second;
+    float dx = (float)event->wheel.x, dy = (float)event->wheel.y;
+#if SDL_VERSION_ATLEAST(2, 0, 18)
+    if (event->wheel.preciseX != 0.0f) dx = event->wheel.preciseX;
+    if (event->wheel.preciseY != 0.0f) dy = event->wheel.preciseY;
+#endif
+    if (event->wheel.direction == SDL_MOUSEWHEEL_FLIPPED) { dx = -dx; dy = -dy; }
     SDL_Keymod mods = SDL_GetModState();
-
+    float delta = dy != 0.0f ? dy : dx;
     if (mods & KMOD_ALT) {
-        float zoom_factor = 1.0f - (float)delta * 0.1f;
-        if (zoom_factor < 0.1f) {
-            zoom_factor = 0.1f;
-        }
-        float anchor_seconds = timeline_x_to_seconds(&geom, mouse_x);
-        timeline_zoom_around_seconds(state, anchor_seconds, zoom_factor);
+        float zoom_factor = fmaxf(0.1f, 1.0f - delta * 0.1f);
+        timeline_zoom_around_seconds(state, timeline_x_to_seconds(&geom, mouse_x), zoom_factor);
     } else if (mods & KMOD_CTRL) {
-        float scale = state->timeline_vertical_scale + (float)delta * 0.1f;
-        state->timeline_vertical_scale = clamp_scalar(scale, TIMELINE_MIN_VERTICAL_SCALE, TIMELINE_MAX_VERTICAL_SCALE);
-    } else if (mods & KMOD_SHIFT) {
-        const EngineRuntimeConfig* cfg = engine_get_config(state->engine);
-        int sample_rate = cfg ? cfg->sample_rate : state->runtime_cfg.sample_rate;
-        if (sample_rate <= 0) {
-            return true;
-        }
-        float total_seconds = timeline_total_seconds(state);
-        float ph_sec = (float)((double)engine_get_presentation_frame(state->engine) / (double)sample_rate);
-        float rel_sec = ph_sec - geom.window_start_seconds;
-        float padding_px = 50.0f;
-        float pad_sec = padding_px / geom.pixels_per_second;
-        if (pad_sec < 0.0f) pad_sec = 0.0f;
-        if (pad_sec > geom.visible_seconds * 0.45f) {
-            pad_sec = geom.visible_seconds * 0.45f;
-        }
-        float rel_target = rel_sec - delta_sec;
-        float window_start = geom.window_start_seconds;
-        float min_start = 0.0f;
-        float max_start = 0.0f;
-        timeline_get_scroll_bounds(state, geom.visible_seconds, &min_start, &max_start);
-
-        if (rel_target < pad_sec) {
-            float past = pad_sec - rel_target;
-            window_start -= past;
-        } else if (rel_target > geom.visible_seconds - pad_sec) {
-            float past = rel_target - (geom.visible_seconds - pad_sec);
-            window_start += past;
-        } else {
-            ph_sec -= delta_sec;
-        }
-        state->timeline_window_start_seconds = clamp_scalar(window_start, min_start, max_start);
-
-        if (rel_target < pad_sec) {
-            ph_sec = window_start + pad_sec;
-        } else if (rel_target > geom.visible_seconds - pad_sec) {
-            ph_sec = window_start + geom.visible_seconds - pad_sec;
-        }
-        if (ph_sec < 0.0f) ph_sec = 0.0f;
-        if (total_seconds > 0.0f && ph_sec > total_seconds) ph_sec = total_seconds;
-
-        uint64_t frame = (uint64_t)llroundf(ph_sec * (float)sample_rate);
-        bool was_playing = engine_transport_requested_playing(state->engine);
-        input_manager_reset_meter_history_on_seek(state);
-        engine_transport_seek(state->engine, frame);
-        if (was_playing) {
-            engine_transport_play(state->engine);
-        }
+        timeline_zoom_rows(state, state->timeline_vertical_scale + delta * 0.1f, mouse_y);
     } else {
-        float window_start = geom.window_start_seconds - delta_sec;
-        float min_start = 0.0f;
-        float max_start = 0.0f;
-        timeline_get_scroll_bounds(state, geom.visible_seconds, &min_start, &max_start);
-        state->timeline_window_start_seconds = clamp_scalar(window_start, min_start, max_start);
-        state->timeline_follow_override = true;
+        if (mods & KMOD_SHIFT) { dx += dy; dy = 0.0f; }
+        timeline_set_vertical_scroll(state, geom.vertical_scroll - dy * 60.0f);
+        if (dx != 0.0f) {
+            float min_start, max_start;
+            timeline_get_scroll_bounds(state, geom.visible_seconds, &min_start, &max_start);
+            state->timeline_window_start_seconds = clamp_scalar(
+                geom.window_start_seconds - dx * 60.0f / geom.pixels_per_second, min_start, max_start);
+            state->timeline_follow_override = true;
+        }
     }
 
+    return true;
+}
+
+// Moves a captured scrollbar thumb using live bounds, even beyond the pane.
+static void timeline_scrollbar_move(AppState* state, int y) {
+    const Pane* pane = ui_layout_get_pane(state, 1);
+    TimelineGeometry geom;
+    if (!pane || !timeline_compute_geometry(state, pane, &geom)) return;
+    int travel = geom.scrollbar.h - geom.scroll_thumb.h;
+    if (travel <= 0) { timeline_set_vertical_scroll(state, 0.0f); return; }
+    float fraction = (y - geom.scrollbar.y - state->timeline_scrollbar_grab) / travel;
+    timeline_set_vertical_scroll(state, fraction * geom.vertical_max);
+}
+
+// Captures scrollbar presses before clip/header hit testing can consume them.
+bool timeline_scrollbar_handle_event(AppState* state, const SDL_Event* event) {
+    if (!state || !event) return false;
+    if (state->timeline_scrollbar_dragging) {
+        if (event->type == SDL_MOUSEMOTION) timeline_scrollbar_move(state, event->motion.y);
+        if (event->type == SDL_MOUSEBUTTONUP && event->button.button == SDL_BUTTON_LEFT) {
+            timeline_scrollbar_move(state, event->button.y);
+            state->timeline_scrollbar_dragging = false;
+        }
+        return event->type == SDL_MOUSEMOTION || event->type == SDL_MOUSEBUTTONUP || event->type == SDL_MOUSEBUTTONDOWN;
+    }
+    if (event->type != SDL_MOUSEBUTTONDOWN || event->button.button != SDL_BUTTON_LEFT) return false;
+    const Pane* pane = ui_layout_get_pane(state, 1);
+    TimelineGeometry geom;
+    SDL_Point point = {event->button.x, event->button.y};
+    if (!pane || !pane->visible || !timeline_compute_geometry(state, pane, &geom) ||
+        !SDL_PointInRect(&point, &geom.scrollbar)) return false;
+    if (SDL_PointInRect(&point, &geom.scroll_thumb)) {
+        state->timeline_scrollbar_grab = point.y - geom.scroll_thumb.y;
+        state->timeline_scrollbar_dragging = true;
+    } else {
+        float page = point.y < geom.scroll_thumb.y ? -(float)geom.viewport.h : (float)geom.viewport.h;
+        timeline_set_vertical_scroll(state, geom.vertical_scroll + page);
+    }
+    return true;
+}
+
+// Gives a held scrollbar exclusive sampled-pointer ownership until release.
+bool timeline_scrollbar_update(AppState* state, bool is_down) {
+    if (!state || !state->timeline_scrollbar_dragging) return false;
+    if (!is_down) state->timeline_scrollbar_dragging = false;
+    else timeline_scrollbar_move(state, state->mouse_y);
     return true;
 }

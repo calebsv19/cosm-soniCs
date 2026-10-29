@@ -18,6 +18,7 @@ static void sdl_audio_trampoline(void* userdata, Uint8* stream, int len) {
     if (device->callback) {
         device->callback(output, frames, channels, device->userdata);
         audio_device_preview_render(device,output,frames,channels);
+        audio_device_monitor_render(device,output,frames,channels);
     }
 }
 
@@ -37,6 +38,7 @@ bool audio_device_open(AudioDevice* device, const AudioDeviceSpec* desired, Audi
     }
 
     SDL_zero(*device);
+    atomic_init(&device->monitor_mono,0);
     device->callback = cb;
     device->userdata = userdata;
 

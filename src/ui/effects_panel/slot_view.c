@@ -49,6 +49,12 @@ static bool effects_slot_get_gain_reduction(const AppState* state,
     if (!state || !slot || !out_gr_db) {
         return false;
     }
+    if (slot->type_id == 20 || slot->type_id == 21) {
+        EngineGainReductionSnapshot v = {0};
+        bool ok = engine_get_gain_reduction(state->engine, is_master, track_index, slot->id, &v);
+        *out_gr_db = v.gain_db;
+        return ok && v.enabled && v.available;
+    }
     float samples[32];
     int count = engine_get_fx_scope_samples(state->engine,
                                             is_master,
@@ -156,45 +162,34 @@ void effects_slot_render(SDL_Renderer* renderer,
         title_max_w = 0;
     }
     int title_y = header.y + (header.h - title_h) / 2;
-    ui_draw_text_clipped(renderer, title_x, title_y, fx_name, label_color, title_scale, title_max_w);
+    bool dynamics = slot->type_id == 20 || slot->type_id == 21;
     if (effects_slot_preview_has_gr(slot->type_id)) {
-        bool is_master = panel->target == FX_PANEL_TARGET_MASTER;
-        float gr_db = 0.0f;
-        char gr_label[32];
-        const char* gr_kind = (slot->type_id == 20u || slot->type_id == 21u || slot->type_id == 24u) ? "GR peak" : "RMS delta";
-        bool have_gr = effects_slot_get_gain_reduction(state,
-                                                       slot,
-                                                       is_master,
-                                                       panel->target_track_index,
-                                                       &gr_db);
-        int meter_h = max_int(10, header.h - 8);
-        int meter_w = max_int(56, ui_measure_text_width("GR -24.0 dB", 1.0f) + 14);
-        SDL_Rect gr_meter = {slot_layout->toggle_rect.x - meter_w - 6,
-                             header.y + (header.h - meter_h) / 2,
-                             meter_w,
-                             meter_h};
-        if (have_gr) {
-            effects_slot_draw_gr_meter(renderer, &gr_meter, gr_db);
-        } else {
-            effects_slot_draw_gr_meter(renderer, &gr_meter, 0.0f);
+        EngineGainReductionSnapshot v = {0};
+        bool master = panel->target == FX_PANEL_TARGET_MASTER;
+        bool ok = dynamics ? engine_get_gain_reduction(state->engine, master, panel->target_track_index, slot->id, &v)
+                           : effects_slot_get_gain_reduction(state, slot, master, panel->target_track_index, &v.gain_db);
+        if (!dynamics) { v.available = ok; v.fresh = ok; }
+        char* label = ((EffectsPanelState*)panel)->slot_runtime[slot_index].reduction_label;
+        if (!dynamics) {
+            const char* kind = slot->type_id == 24 ? "GR peak" : "RMS delta";
+            if (ok) snprintf(label, 64, "%s %.1f", kind, v.gain_db);
+            else snprintf(label, 64, "%s --", kind);
         }
-        if (have_gr) {
-            snprintf(gr_label, sizeof(gr_label), "%s %.1f dB", gr_kind, gr_db);
-        } else {
-            snprintf(gr_label, sizeof(gr_label), "%s --", gr_kind);
-        }
-        int right_bound = gr_meter.x - 8;
-        int min_x = title_x + 8;
-        int gr_y = header.y + (header.h - ui_font_line_height(1.1f)) / 2;
-        if (right_bound > min_x) {
-            int gr_max_w = right_bound - min_x;
-            ui_draw_text_clipped(renderer, min_x, gr_y, gr_label, text_dim, 1.1f, gr_max_w);
-        }
-        int title_space_after_meter = gr_meter.x - title_x - 10;
-        if (title_space_after_meter > 0) {
-            ui_draw_text_clipped(renderer, title_x, title_y, fx_name, label_color, title_scale, title_space_after_meter);
-        }
+        else if (!slot->enabled) snprintf(label, 64, "GR bypass");
+        else if (!ok || !v.available) snprintf(label, 64, "GR --");
+        else snprintf(label, 64, "GR %.1f%s", -v.gain_db,
+                      v.fresh && engine_transport_requested_playing(state->engine) ? " dB" : " hold");
+        int meter_w = ui_measure_text_width("GR 24.0 hold", 1.0f) + 12;
+        int available_w = slot_layout->toggle_rect.x - title_x - 12;
+        if (meter_w > available_w) meter_w = max_int(0, available_w);
+        SDL_Rect meter = {slot_layout->toggle_rect.x - meter_w - 6,
+                          header.y + 3, meter_w, max_int(0, header.h - 6)};
+        effects_slot_draw_gr_meter(renderer, &meter, ok && v.available ? v.gain_db : 0);
+        ui_draw_text_clipped(renderer, meter.x + 4, header.y + (header.h - ui_font_line_height(1.0f))/2,
+                             label, label_color, 1.0f, max_int(0, meter.w - 8));
+        title_max_w = max_int(0, meter.x - title_x - 6);
     }
+    ui_draw_text_clipped(renderer, title_x, title_y, fx_name, label_color, title_scale, title_max_w);
 
     effects_slot_draw_enable_toggle(renderer, &slot_layout->toggle_rect, slot->enabled, toggle_highlight);
     effects_slot_draw_remove_button(renderer, &slot_layout->remove_rect, remove_highlight);

@@ -116,7 +116,7 @@ DawSaveResult wav_stream_finish(WavStreamWriter* writer) {
         return DAW_SAVE_FAILED;
     }
     writer->active = false;
-    return daw_save_file_commit(&writer->save);
+    return writer->no_replace ? daw_save_file_commit_new(&writer->save) : daw_save_file_commit(&writer->save);
 }
 
 // Delegates contiguous callers to the same checked streaming conversion and publication path.

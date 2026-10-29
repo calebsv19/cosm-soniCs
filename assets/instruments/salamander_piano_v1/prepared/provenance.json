@@ -1,0 +1,815 @@
+{
+  "algorithm": "centered-mono-natural-decay-v1",
+  "files": [
+    {
+      "file": "prepared/A0v1.wav",
+      "source": "originals/A0v1.flac",
+      "source_sha256": "cf54142b888af252af90d7da0394a5dfb52f2bdfd21ed2add0b3292c17bc97b1",
+      "sha256": "92f2470368a90c11c5af54bd6dafd3d639eac8b7d121ea9222efd4ab039bbf5f",
+      "bytes": 3041186,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A0v16.wav",
+      "source": "originals/A0v16.flac",
+      "source_sha256": "aa6b97204fec347ba3776ae3659fc8ac5b02d20f11d0383c22158b3c9c6eabc5",
+      "sha256": "6c9ce7b24e44b15224918ad7c2ba28e18aa9d9a33be872c08d8ee39bda281d11",
+      "bytes": 3724262,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A0v8.wav",
+      "source": "originals/A0v8.flac",
+      "source_sha256": "f2745945c5a13a313f6d752f5391e203a4dfbddf4d973ddb009d69043452a1b4",
+      "sha256": "6153e92636e1faba099ad6669e0c41f14f3c132d493fbe171aff8b9fb5b6df79",
+      "bytes": 3600542,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A1v1.wav",
+      "source": "originals/A1v1.flac",
+      "source_sha256": "50d0294ff0a63c0014d85899424e65082848b39cdde81b67c469ad963d8b3338",
+      "sha256": "b1e94de2fc1cd928d1e387f8b0d38673bb66655be26a5d8e208650a3f0a5e3a8",
+      "bytes": 2907878,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A1v16.wav",
+      "source": "originals/A1v16.flac",
+      "source_sha256": "f8d9cc466983e8ae112b03b4d90c3d3f33badf432d5d8b47489209f9c985a7db",
+      "sha256": "54d92b13f529120cecd562f778d5f64a47d9ee1e429326a60ea581c4934583e6",
+      "bytes": 3371420,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A1v8.wav",
+      "source": "originals/A1v8.flac",
+      "source_sha256": "357b13d2e918e6146c3ead9d016a867bb49133b370e58dcb0bc1f41a56023abf",
+      "sha256": "455b9b6515836ca4689aefb7148e1879b1f4df5fdc79f9cbe95ee83f4094edb7",
+      "bytes": 3356246,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A2v1.wav",
+      "source": "originals/A2v1.flac",
+      "source_sha256": "be89b30ee2f9f433b4d31652cc1e66adee0779d9a2064ef6a60945bd361a55b4",
+      "sha256": "c4819193af79983611e0f5b54f2fb6ad85a131a12874f149a933d951af50c6fb",
+      "bytes": 2317274,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A2v16.wav",
+      "source": "originals/A2v16.flac",
+      "source_sha256": "8378285981e3c1c2d194ad09fbec8ceea3c02f1ea80635d6d5c37fc90b969770",
+      "sha256": "189d44223e2e56e44d198a575254f987abc145f7edb01248899a445cb1b02c3d",
+      "bytes": 2345120,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A2v8.wav",
+      "source": "originals/A2v8.flac",
+      "source_sha256": "31dcdb3c1dea91943c4cccbb9f804dde2953ae1f16cb3990fe7def7acf60f944",
+      "sha256": "980c2c1f9d53fb18d934aced1b92d663082d3b446b65d7c17560ef8ac4ab6630",
+      "bytes": 2295140,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A3v1.wav",
+      "source": "originals/A3v1.flac",
+      "source_sha256": "d92ad57a5e67a12c159738399bbe407b60d4f0820a41426094165b3b001e64dc",
+      "sha256": "472fbf02b095f35d4e3fa41931b47a992395244e3a83745719bcf1af450f7f0f",
+      "bytes": 1874576,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A3v16.wav",
+      "source": "originals/A3v16.flac",
+      "source_sha256": "d584ac0c3fc47e6ac35773ea71fb73d8ebee373c06130a47357ef5a3e9b2ef53",
+      "sha256": "225b193d6ccaa37e0c262e129af1f272aceed4c8097751ba1a2cf5073fb2fc6b",
+      "bytes": 2288510,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A3v8.wav",
+      "source": "originals/A3v8.flac",
+      "source_sha256": "b02ed7c37d6b902552274c92d66911751ee52aac20b28618387e1388b1653ed4",
+      "sha256": "5dae47a2b9745a76fc9ca226b1d5df79c6efa835997be4b3435e79cf4d22a6d9",
+      "bytes": 2248874,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A4v1.wav",
+      "source": "originals/A4v1.flac",
+      "source_sha256": "b20e925aa7393ecffd84a5a25c465ad343f06611407d37ae3a034665a93e2ab7",
+      "sha256": "24aeca76a546a86ae067180f987287e51c0105a270749c65388b4a947af79af4",
+      "bytes": 1901528,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A4v16.wav",
+      "source": "originals/A4v16.flac",
+      "source_sha256": "5bea0aeb7d5b8a3e332ea52c2c5cb195bfd2ebdf73689adddac13fbd24ff85b0",
+      "sha256": "8496eca0b40f39c0ea02241b81498f15369ea502ef47d427c58d3027bc4f95cd",
+      "bytes": 2150336,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A4v8.wav",
+      "source": "originals/A4v8.flac",
+      "source_sha256": "59529694455698d7fd212cde8eec4029eaae8e5e6d454bb48bf36428eaa8009b",
+      "sha256": "99babca7bb628e03195ec65235026fe8a66d23858747b08665389793eaccfe1f",
+      "bytes": 1918550,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A5v1.wav",
+      "source": "originals/A5v1.flac",
+      "source_sha256": "867b8f9cde668b7ee9b1a7ad19a3dc4ac75a40e45a74cb3de1c9e31c0f0cf301",
+      "sha256": "90991c1d7c71aaa9afb5c1dfb52f3cdeb671fc769be07ada19dcf0ad906030d1",
+      "bytes": 1003034,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A5v16.wav",
+      "source": "originals/A5v16.flac",
+      "source_sha256": "04e48cc80f16484d0d8fbe3d421534f2a6ae68119bf3369ae8bc8bb5ac8dda92",
+      "sha256": "d08341524c6ac364f1eefcf6e7a547b53554300da9a114c177bb1c641c456fc5",
+      "bytes": 1522898,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A5v8.wav",
+      "source": "originals/A5v8.flac",
+      "source_sha256": "c71f80ecee2dfc37519769ab97e2e92732bfce9314f6562ba884a737cfa018a9",
+      "sha256": "ac88b22c70164c89ebbbd019e66108e09b146662b0ceacaba1e3636f668ceef4",
+      "bytes": 1517732,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A6v1.wav",
+      "source": "originals/A6v1.flac",
+      "source_sha256": "bc6ed6d433f54c872327de1f122ca5892ff56b4fcee0d493154d9c1334aafacb",
+      "sha256": "d2fe9c6e9cd8fd27a8519e7db478049c6456305ee7c518bb5230e7c1fb1e6c1e",
+      "bytes": 786278,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A6v16.wav",
+      "source": "originals/A6v16.flac",
+      "source_sha256": "258f9e90418c3efdf2dcb319990e82e5c5dbbb3567cb1586eb8d84746d1d33c4",
+      "sha256": "7c578a5af44233e338a0dc061282a458aca5e6e8f8036b9843cc8777f461673b",
+      "bytes": 984554,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A6v8.wav",
+      "source": "originals/A6v8.flac",
+      "source_sha256": "6c49808b96392ddec4fd237a89af11fb70ed31da11a6022905f6eb3ae897c989",
+      "sha256": "344fdedafa4fc34f43433dbdd7ba70ca1bb0eeac73abd414290b8719c158cb58",
+      "bytes": 980690,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A7v1.wav",
+      "source": "originals/A7v1.flac",
+      "source_sha256": "c65953d0469488c361766c8457fd549fc70e480da147f412c5df39de0e7a4256",
+      "sha256": "21b1bb97ee8a82035b6d272fd8f4e460fad153eb884896b0acac0b8d0f21a0e9",
+      "bytes": 378182,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A7v16.wav",
+      "source": "originals/A7v16.flac",
+      "source_sha256": "b87f7cf8844c9f6e96d594318df2b3a3af2c2468673dac9b1a54844a3c273098",
+      "sha256": "e37d6f3ae47182a0510bc9a02e4114dcea570487054a1adeab02a6b736f18b23",
+      "bytes": 512612,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/A7v8.wav",
+      "source": "originals/A7v8.flac",
+      "source_sha256": "5da612cb53df006ec83101ecdf00f15b8c2a5f7d98a63eceb310ebfd2cb82ea8",
+      "sha256": "a7c04dd51c124f029c74b616bb980033a9963816e82c9bede524fac96a2e8aeb",
+      "bytes": 580142,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C1v1.wav",
+      "source": "originals/C1v1.flac",
+      "source_sha256": "d60dc7ebc5217aba8e8798980140037451ae21c5b03889c2a1c3044b287e6f2f",
+      "sha256": "57a5a97a13d91c9cd93344387a82b4e27f9a26e46478d696b3bce58440d2d6fc",
+      "bytes": 3437078,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C1v16.wav",
+      "source": "originals/C1v16.flac",
+      "source_sha256": "e61f7b9c9994d350b5ad1654b9d49ed8a8b9ba9ba280c07a39e656cc85146847",
+      "sha256": "06b811408fd5fe525e5a8047b3c69b45b0d01e38707f460820a3fbf9a24959c0",
+      "bytes": 3380522,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C1v8.wav",
+      "source": "originals/C1v8.flac",
+      "source_sha256": "67212ec084c1de5e51d2a9b0bc6204fab808ea0e034f71cfbed94a8a8de2fb5a",
+      "sha256": "eab2a9a504bb28e8e2970144059a593387e6232190b52eafeabe4b31b82e9715",
+      "bytes": 3401720,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C2v1.wav",
+      "source": "originals/C2v1.flac",
+      "source_sha256": "6240272e3506ffbdf83b734477b8ce8d9af2808ecf971651f67e6fb7f91f70e3",
+      "sha256": "9acb3fd33d1cd3522fed9d4fdf9c6cacf9e19a89ad6e0b29869c319bacc783f5",
+      "bytes": 2688950,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C2v16.wav",
+      "source": "originals/C2v16.flac",
+      "source_sha256": "dc9ee5e32ae23753fd565af1f181e79edf043ebbb93d9f5c28637248c98f629b",
+      "sha256": "4904cbd90f1fb9d1c2e5bea372700c8ee8defc8175f0db79e8d6eb1e59ecd7d3",
+      "bytes": 3214532,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C2v8.wav",
+      "source": "originals/C2v8.flac",
+      "source_sha256": "2fae21e19a214aeecd527a2235b106f66030df6ff51cfa789a5b4c6feb3d7357",
+      "sha256": "ef59d04b03ba67e9edbfc4f8ae380a24a128540f64b9785517013c6885aa958f",
+      "bytes": 3214562,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C3v1.wav",
+      "source": "originals/C3v1.flac",
+      "source_sha256": "82888e21aa0b342b92c3fbbd898e3546b82ce91f00f6475ae2701b748a4b740c",
+      "sha256": "c866771c8051797e7bb4e2db9fef839455e3e896b2d8d923f965dfcb94683f3a",
+      "bytes": 2285876,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C3v16.wav",
+      "source": "originals/C3v16.flac",
+      "source_sha256": "d1ff6d03ff0bed873d3b5ab2ad9f7ff31117779cbf64671b267206e140116045",
+      "sha256": "53c5d8526b1c7d879e3365b077e93442fbddd7485bffcf1b8c361b7200c42d12",
+      "bytes": 2343986,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C3v8.wav",
+      "source": "originals/C3v8.flac",
+      "source_sha256": "b9200830cdef54fe0eb92db928dea161cd26d1faf31c7a08a4f51c97549e05bf",
+      "sha256": "9f8123cc9cc225228b54056f7812cc0e1030a3234941d7546288212755d7ddf0",
+      "bytes": 2304278,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C4v1.wav",
+      "source": "originals/C4v1.flac",
+      "source_sha256": "ca44d2e906110ebc2f67ae4c233e84cbbf0e657fe53e1c6724e4f31409478f11",
+      "sha256": "1c97515c5fc0b7454c4f3c68e3f19183855be2b73c6366915bf1f6958ac56050",
+      "bytes": 1735268,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C4v16.wav",
+      "source": "originals/C4v16.flac",
+      "source_sha256": "e2944a0d1b31ea0ff8eb82b20ae2108027f111d96fb680c6e36d01f40582c252",
+      "sha256": "368ccdfd1c24c46f0349e7b6b30deccb3b35a20e7df248eb069f81196330645c",
+      "bytes": 2234696,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C4v8.wav",
+      "source": "originals/C4v8.flac",
+      "source_sha256": "36fb0535a1f21fe1dfc367c361dedda73710144e8c4940b40e97e6e5f8a3c694",
+      "sha256": "90faae1bd50d569f21488fd416e5a2597821e0233b4a6f9436552413d3312f8b",
+      "bytes": 2330972,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C5v1.wav",
+      "source": "originals/C5v1.flac",
+      "source_sha256": "1bbb83ea4dd14a97e8d06b8d8e448e09f612975d4d68ce7a27aa19995d554c60",
+      "sha256": "183596d1de36f77a745bb2474446c6e93104c0cda0752f5f62ffdfb772214e56",
+      "bytes": 1930472,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C5v16.wav",
+      "source": "originals/C5v16.flac",
+      "source_sha256": "6ae603ecdcf54ec2a55b5e727b7a67668475a4cfcb48a12a4677cb6402683073",
+      "sha256": "9c685d1150a2b96e70e4f3036b65425dea107d0d3ad042975c515b51a871cc56",
+      "bytes": 2121248,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C5v8.wav",
+      "source": "originals/C5v8.flac",
+      "source_sha256": "f663242a552aad54113f186a6dd90c907c81d1f6374887a23179814544f78d79",
+      "sha256": "df96963d3a0b89c7b7ae9446a368278577a39ec2ba3d8b43ee18c8213974150b",
+      "bytes": 2242598,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C6v1.wav",
+      "source": "originals/C6v1.flac",
+      "source_sha256": "da29681675ab7a2b35e761ec82923a2564e66acfe0280fcf458e7b542d295979",
+      "sha256": "e7c57f6c5e6eec23530bafef56fffb4ba4bae43e7e7bb63e83c5608ce291c04c",
+      "bytes": 751730,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C6v16.wav",
+      "source": "originals/C6v16.flac",
+      "source_sha256": "e7cffec5a543fe98423606d82a13e3d79200b90fd0a30a27e9da67ccb091d166",
+      "sha256": "77f468c6569eb156b05c4b14613887eecd998fd314c8940b8222def6529077f4",
+      "bytes": 892280,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C6v8.wav",
+      "source": "originals/C6v8.flac",
+      "source_sha256": "e5d5db275007d4b0e35ce94b00e0b53f6c659707517ee1326bd77eeba119693b",
+      "sha256": "0849699ffcda2330e62dfc6e6ff645cb63db6a0cc93256b2e99c75697882358e",
+      "bytes": 897284,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C7v1.wav",
+      "source": "originals/C7v1.flac",
+      "source_sha256": "c5444165462f3b8da599394c634def16cc59a4f2b427ffd58b1517d3cda1297f",
+      "sha256": "50bff6864516ba3e719e8ece01db2b550f496e8953a8040703f113214677517c",
+      "bytes": 596120,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C7v16.wav",
+      "source": "originals/C7v16.flac",
+      "source_sha256": "50f029c5bb2fc7fce3fc778c87b7f044f9020e4d695d8b2fc5f8dd026c8d2fa4",
+      "sha256": "421c87846eb645a709355e135ef283ec6fb216be73bb2c5b63f9d85d59210891",
+      "bytes": 628664,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C7v8.wav",
+      "source": "originals/C7v8.flac",
+      "source_sha256": "fbe68e0670fd7edd46923e983da11a97ca7d2b8826585258b81918f97e268b68",
+      "sha256": "e3116f9835d714b47ac7e10f0656bc1e7785f43ff95105c5b58de1a45fcd4193",
+      "bytes": 588026,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C8v1.wav",
+      "source": "originals/C8v1.flac",
+      "source_sha256": "9fd397f3013a3d572b330301ccb1cba291272a0eb7461640b16c35d0852e6bb0",
+      "sha256": "35cfea17dbd24a6bc60caa8facc7a276383d64ff1798cefc6541333dd85fafdc",
+      "bytes": 446546,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C8v16.wav",
+      "source": "originals/C8v16.flac",
+      "source_sha256": "c4d4e9937fc5b3ea71ad7ae6f01d8d543f527e113a5adbbfe5ff7e37397e1595",
+      "sha256": "25274a5cdcf996a221b094ed6fcd6258d97473af97ca93cd451f36b50cc04094",
+      "bytes": 524828,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/C8v8.wav",
+      "source": "originals/C8v8.flac",
+      "source_sha256": "85e4b0349c420358a280aa38cee25948e950a5a13af31317018ae66f5b9ef73c",
+      "sha256": "323355494817565a943ef4ad32810f0a2fcc8e6441e31324540d3877de2d559c",
+      "bytes": 559652,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#1v1.wav",
+      "source": "originals/D#1v1.flac",
+      "source_sha256": "7667078df4d7560055c41ef9d020525da894a4062271e75492d1d36e6fd99337",
+      "sha256": "c3948e6728da14ce103838ae7d8555223fda4adae40610f287b5a51a5b807f64",
+      "bytes": 2742920,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#1v16.wav",
+      "source": "originals/D#1v16.flac",
+      "source_sha256": "8a4a159fbc61e4bbe2267b75a23b0f9ff43dfffbb1f3ef3c73b0a67779f2d3f6",
+      "sha256": "5c85f24d07c50a8a2c3e19c75ba318bb34d4198d076a5abe9191c7ef716aae83",
+      "bytes": 3496238,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#1v8.wav",
+      "source": "originals/D#1v8.flac",
+      "source_sha256": "26bd314332181a0093c5a8a07b58f457c4215e19475f26b398e8e0300e60be7b",
+      "sha256": "445bbcd7e115c59bfac841794a5be8cb4cb724f8ff3aca4c6de5edfb19b6a77e",
+      "bytes": 3496310,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#2v1.wav",
+      "source": "originals/D#2v1.flac",
+      "source_sha256": "cc057a690e71b8f20ac340f968327ee768e8ad38af940703b5658f6402482bcf",
+      "sha256": "a72da1f85c21b5a2f84536297019e77a9b6b264f3f6a15e61da4dc01a1fe1311",
+      "bytes": 2723852,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#2v16.wav",
+      "source": "originals/D#2v16.flac",
+      "source_sha256": "9b644fa0b7cb6f4987c153d3139c7ccdcd77b8117cce4eb7f01920924e351adf",
+      "sha256": "25e1b49f90ebbe3caa9e353d83972da3ade2e3bf81a2573179954474c68bbde1",
+      "bytes": 3199844,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#2v8.wav",
+      "source": "originals/D#2v8.flac",
+      "source_sha256": "662b21ad6ee7634777fe8b5952c70db1795a23bfc8557ecb35844ce8d12eba70",
+      "sha256": "e0616a7fe2e0528d682f6b734627eed3c8362e9c4a670f3c3e7fdc62dd649696",
+      "bytes": 3184058,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#3v1.wav",
+      "source": "originals/D#3v1.flac",
+      "source_sha256": "0411144df641c1a8da592808c7f81feabcbe1c7a81bd415556b3423480f11c97",
+      "sha256": "80a37253dbb0e600d3bf3e3e9c38e3e4772089d0f94aaf54a8e06af65a8dada9",
+      "bytes": 1889288,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#3v16.wav",
+      "source": "originals/D#3v16.flac",
+      "source_sha256": "7d3b691deb5ef72f3e5bcaa9f8e38e92226d25781c14b275407e606104262691",
+      "sha256": "215cb38e0e924b64710ba7dc3ed0b88d47a881c8a2410f2ae43687c202008ab3",
+      "bytes": 2319728,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#3v8.wav",
+      "source": "originals/D#3v8.flac",
+      "source_sha256": "900ad0d774e6cefd44c1081b66d50556b3121bf1d3f255c5329a9117447b9cff",
+      "sha256": "db921ab33211920872891a77941f8b39d01c991bfdcbe5b0a227b4a0597ddd50",
+      "bytes": 2315780,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#4v1.wav",
+      "source": "originals/D#4v1.flac",
+      "source_sha256": "605c37f94f6e37951443af31a366d6fe93033be55d36bfdbe33e0aab01804171",
+      "sha256": "2afa5ab968f643afb3c453464a758ddf12dc7217f248484e73b8de40e7f641dc",
+      "bytes": 1923056,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#4v16.wav",
+      "source": "originals/D#4v16.flac",
+      "source_sha256": "e16a8fe9c9f78a6a269054957458566ceca8603845dd5bf62e2ecc9e5f1e849d",
+      "sha256": "009c331dea276a9c35568e7c68b8a2cfd4a7d107858187999aa0b8b4c14195f2",
+      "bytes": 2135852,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#4v8.wav",
+      "source": "originals/D#4v8.flac",
+      "source_sha256": "295179461449c598c44ad712977d47b41c0c25d9c782d349094e748dc06c0dfa",
+      "sha256": "96a62b29cdb0fa14121699f2d630ae13b81f0ed59b85f0367ebd80766987c7b9",
+      "bytes": 2278700,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#5v1.wav",
+      "source": "originals/D#5v1.flac",
+      "source_sha256": "d0a661e7512dd0be3f5eae077e9e336d5888091fc9f139f37cae0bf0b3957dd8",
+      "sha256": "86a8a71763d67ed55e3bbbdfea5ae29eccfa575baddc5377dc81b305fcc45fc5",
+      "bytes": 1797134,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#5v16.wav",
+      "source": "originals/D#5v16.flac",
+      "source_sha256": "ad16c4ac6eb1f359ab615eaa646747d91f12b27580c85d6567d1ec669bc105f6",
+      "sha256": "d9ef8c8550a16c380ada58edddce542ab9f1e3fd29396d70790c98e4f1c77a5b",
+      "bytes": 1912610,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#5v8.wav",
+      "source": "originals/D#5v8.flac",
+      "source_sha256": "f841ad0506994313f4202fbe3f07d917e60eeb10fb3461df3eae4fb9cd58432a",
+      "sha256": "6f4cda35e1d6ee8252cb0c6d35a0f1b11cad5144d1606fa06191b6c7ba6b19d4",
+      "bytes": 1864484,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#6v1.wav",
+      "source": "originals/D#6v1.flac",
+      "source_sha256": "4ee6af367215079199055021dc9a305e0da62c64d005ac14989a9faa41fe0ec7",
+      "sha256": "bd122dc32cf949249226cce65ef969901c9ba9b6bdfe882e0284abc1b6bb7d48",
+      "bytes": 995012,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#6v16.wav",
+      "source": "originals/D#6v16.flac",
+      "source_sha256": "5548903a1b14cd41fcfd74bf0b245a7377140375906b38eb26a15b424f84c5a0",
+      "sha256": "555f55a84d84ac888b639ab00626519facb5c5018596a6e55f1f991c74c6e87d",
+      "bytes": 929612,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#6v8.wav",
+      "source": "originals/D#6v8.flac",
+      "source_sha256": "ef9d6d285795ea2ed51c0d0261d7d4997d1041dadc53939363a080edc5dcdc4e",
+      "sha256": "15a4dbaebc62fbddaa544e12337c4d4f8de5fca69feb6c9f76ace72c3b0dd944",
+      "bytes": 964766,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#7v1.wav",
+      "source": "originals/D#7v1.flac",
+      "source_sha256": "009ee7d58dba9b58e513ac5cf6705aa5f75eba47d82d4337ba6aa6389b456f0a",
+      "sha256": "15338ded88d6ca586bd2f384764d6662f3c9b6d16358102e12c458ef6f2aa18d",
+      "bytes": 728810,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#7v16.wav",
+      "source": "originals/D#7v16.flac",
+      "source_sha256": "a35e589f4f4b6f17a7fe2afe970919a7f59aac6f5a39a847b918d9783d6ed00a",
+      "sha256": "7bf3bb803aa2f4ef15517ad3c1f019f682fbb3e9119cdcc719de3c2e61cf274c",
+      "bytes": 738224,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/D#7v8.wav",
+      "source": "originals/D#7v8.flac",
+      "source_sha256": "848aea2c59fe175ff0d4772d6828a5f71e1869ac0aadb5c4dd1e065e2cd8cc53",
+      "sha256": "2ea31fb9258e90fdcf271c86abec9f64909f311ac9d5a82544d9577dd879ccfe",
+      "bytes": 702464,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#1v1.wav",
+      "source": "originals/F#1v1.flac",
+      "source_sha256": "1afa2f82ea8e69048dcbaa3580e97334bbd0aeaa3e76cc67608288993289e6d9",
+      "sha256": "00b997e290cb99f2678d3602e016f37ac84a5519aa06244033fddf58644c5ee6",
+      "bytes": 2407382,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#1v16.wav",
+      "source": "originals/F#1v16.flac",
+      "source_sha256": "16b058e9a2419566ad8597127db568347d8c9dd7e262f277bfe1253c9c48cc3f",
+      "sha256": "b7e778a1ce2ac96d05c7282bc30d678616f89b472e4db4bed8f243f1bea5ce92",
+      "bytes": 3352040,
+      "source_trim_frames": 57,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#1v8.wav",
+      "source": "originals/F#1v8.flac",
+      "source_sha256": "72c390d53bbec6eba14beecc422e2b081ab27b7a377604cd6f4cee5fdb3cf7ae",
+      "sha256": "7becd62a845ed58d8c182518db7507cd8f7e75097c025a297830d01a4af6aa27",
+      "bytes": 3362618,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#2v1.wav",
+      "source": "originals/F#2v1.flac",
+      "source_sha256": "a8b1fe4fa7a249cad2a571e567f45115d2a20605dc362a9d60ab830568437eaf",
+      "sha256": "e0f82f8abbaa85abeb6589c54d7172377c541b87c3aacf3543001a3cc9065b8b",
+      "bytes": 2498486,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#2v16.wav",
+      "source": "originals/F#2v16.flac",
+      "source_sha256": "4a97516c9c86d640dd0c41f21080105bdd562ca27374a61829b9b7d5ef18df33",
+      "sha256": "8e737858080b83ed62426b9ad3c3909dd6f2294b1388992c62d2fe1b10481bfb",
+      "bytes": 2973164,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#2v8.wav",
+      "source": "originals/F#2v8.flac",
+      "source_sha256": "05c649a7114f0845ee09716831242af9726b2429dad92eb170fc84e92f92a8e1",
+      "sha256": "4e6f7a8d77e77a85c29214b43f39559a15f4f6cafcf48eff8e2f5cf723a65595",
+      "bytes": 2945216,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#3v1.wav",
+      "source": "originals/F#3v1.flac",
+      "source_sha256": "c93c93297522839b8ecc4782e9e493a248dd29703a002633525c9bb85ee2df97",
+      "sha256": "7ab3e23d1b345eccff3bbb7ce6b4f2c3ca2f1ece87e4f0ef8b61189183ef5d2c",
+      "bytes": 2232038,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#3v16.wav",
+      "source": "originals/F#3v16.flac",
+      "source_sha256": "fd43eb16b6cfbfe2ca8440c85109aba2a591572d5bcd5992719a87e99f6aa4df",
+      "sha256": "f3c2c2276111869b8da21b5a5bb298cb40ad7df21712ff86e0dbaf8107437e7d",
+      "bytes": 2220320,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#3v8.wav",
+      "source": "originals/F#3v8.flac",
+      "source_sha256": "116a760f8552491d361cae27ac06f4e46d226f9a50e5ea58f6c385fac7efca68",
+      "sha256": "9bb1311565a5650e9d476804d02b6e3787c6b364df6a37ab8544941f3dd8b187",
+      "bytes": 2322908,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#4v1.wav",
+      "source": "originals/F#4v1.flac",
+      "source_sha256": "0affd0a349717ffd35fbd71b039e8f4d2eaf15234e696719984ed09343ebc120",
+      "sha256": "9a99a8c932a1bb86d9f6fcdf2323ed444685c02a15baa1fbea4bbb812738b964",
+      "bytes": 1786412,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#4v16.wav",
+      "source": "originals/F#4v16.flac",
+      "source_sha256": "76a4f0d7faaf8577f13c405f38b04f37cbd318064bf1c029e86e87ae9f3910dd",
+      "sha256": "c6cb387a23c34dafc2cf03879a0414a60a5ec3f90d51af240c1e10809d281cb2",
+      "bytes": 2087912,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#4v8.wav",
+      "source": "originals/F#4v8.flac",
+      "source_sha256": "be2dc339e8cec5f2f1da4ff583672dbc518bf5319547a08901b094617ac6998e",
+      "sha256": "1a3011a974dbf5e30976b51d6260f34a0a48ba4944df2f9232fa32ea008f6beb",
+      "bytes": 2115704,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#5v1.wav",
+      "source": "originals/F#5v1.flac",
+      "source_sha256": "1ec9e9d2fdff12cf54e1d951ec9ddbe03f7974daac23a6fbca5e63cc8d22a72c",
+      "sha256": "c77585442c63fb949cbb13736ec923cff619b543ae3e45c485a15970fe8d8d71",
+      "bytes": 1609244,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#5v16.wav",
+      "source": "originals/F#5v16.flac",
+      "source_sha256": "79594c2edcd522a812c5728c111fc5a076e4885969d9fd3aec7f3fff8e3cf6dc",
+      "sha256": "7396de6b5fd5df883ff1ee87ba6db91c65a2d902b139bdfa9e79c367d45beef6",
+      "bytes": 1728788,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#5v8.wav",
+      "source": "originals/F#5v8.flac",
+      "source_sha256": "7757ef988e874313432a3b4ed586f0407fd4a9933b7ccc613b8ff96a2f83bc87",
+      "sha256": "ff345b7ac07d59f5bd6aaf2ac01844e16a4f3314c22022a10c393ebfd128b0ec",
+      "bytes": 1716182,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#6v1.wav",
+      "source": "originals/F#6v1.flac",
+      "source_sha256": "4d9ae87b595e0af271a0c3aae17905c24ec47213e11adf20b3fee7617ade5885",
+      "sha256": "0c992edde6ea7a90337e5e478e97ff5a02069de745c38ffc9c89531bf018a2cc",
+      "bytes": 619124,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#6v16.wav",
+      "source": "originals/F#6v16.flac",
+      "source_sha256": "5e0776b53ab7d286e1cc9cd4361dbd4d4e938cd0f6f397e162dc63ef2c78855a",
+      "sha256": "8415e5f8a08ef62b60f0f952213535bcd77106cdca6d5ee8533c824e7f447ad7",
+      "bytes": 862244,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#6v8.wav",
+      "source": "originals/F#6v8.flac",
+      "source_sha256": "8dd12f1be1cad3bb4be36c5609ff8426640d6d37b3ef0b9b3eed3b159ae51088",
+      "sha256": "fcb67a1053e3913098cb38bedf1cd901a6cd4959ac41bc6b7575a6aa17ed3c6f",
+      "bytes": 842996,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#7v1.wav",
+      "source": "originals/F#7v1.flac",
+      "source_sha256": "24276ac211819fffbf22d8b2353ffaf1588f706ed2cc221a1756e57c5672d085",
+      "sha256": "61ca47b550bebdb3141e6d141c29dd9a38fd33b82fac6923b7057dd89522d05d",
+      "bytes": 697208,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#7v16.wav",
+      "source": "originals/F#7v16.flac",
+      "source_sha256": "6712bba1bf4ede7684986170330d3121f0a081d49fc732b5f90696f0bc0a2912",
+      "sha256": "1440611e8b85750a4fed65b8f040e88e590d33d46f95a4eb1d952bfd6a850df7",
+      "bytes": 649634,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    },
+    {
+      "file": "prepared/F#7v8.wav",
+      "source": "originals/F#7v8.flac",
+      "source_sha256": "4cc707928d34b8d56b23571d75eb8ce13c4161ae2f649a822b0fd407e0aa1131",
+      "sha256": "5b2da7c39252adf9296cb638a0aa13697df54eae5a4f50c7b1520c850bf81f4f",
+      "bytes": 696122,
+      "source_trim_frames": 0,
+      "end_fade_frames": 2400
+    }
+  ]
+}

@@ -35,6 +35,7 @@ The [initial audit](docs/audits/2026-09-19/AUDIT.md) and [S1–S6 improvement pl
 ## Implemented Today
 
 - Multi-track timeline editing with clip selection, drag, trim, and snap behavior.
+- Vertical track scrolling, a bounded scrollbar and visible track-height controls; see [timeline navigation](docs/timeline_navigation.md).
 - Transport controls (play/stop/seek), loop region controls, zoom, and grid options.
 - Library browser for local audio assets (`.wav` and `.mp3`).
 - Track mute/solo handling and core timeline/track interaction loop.
@@ -307,3 +308,73 @@ Processed composition analysis and captured PCM previews now have MCP adapters, 
 [MIDI expression](docs/midi_expression.md) adds tempo-aware quantize strength/swing, velocity scaling and deterministic bounded humanization through common one-step actions, native Patterns shortcuts and guarded `transform_midi`.
 
 Guarded MIDI arrangement now supports common/MCP duplicate, move, right-edge trim and delete batches with full captured content guards and one undo step. Native MIDI duplicate/delete shares this action; dedicated native Arrange fields and actual-window painter/App_Run acceptance now pass. See [arrangement](docs/arrangement.md). Advanced routing and synthesis remain active goal work.
+
+
+Trumpet and clarinet sustain loops now include level-stability scoring, with smooth dynamics-layer entry and exit. See `docs/sampled_winds.md` for preparation and comparison evidence.
+
+
+Sampled tenor saxophone is available under Woodwinds, with 23 recorded roots, two dynamics layers and expressive sustain. See `docs/sampled_saxophone.md`.
+
+
+Saxophone now uses phase-aligned dynamics and coordinated loops to reduce layer cancellation; see `docs/sampled_saxophone.md`.
+
+Sampled Flute and Sampled Cello Section now extend the acoustic sampler with prepared two-layer sustains. See `docs/sampled_flute_cello.md` for ranges, expression and source material.
+
+Flute/cello stabilization now uses bounded prepared layer-energy curves and qualified cello loop refinements; see `docs/sampled_flute_cello.md`.
+
+Sampled Oboe and French Horn extend the existing acoustic sampler with paired recorded dynamics and held-note expression. Complete audition chords follow each bank's playable range. See `docs/sampled_oboe_horn.md` for ranges, provenance, preparation and verification.
+
+Oboe/French horn stabilization refines five qualified common loops and regenerates their bounded layer-energy curves; tighter all-pitch blend and note-transition checks cover the existing sampler. See `docs/sampled_oboe_horn.md`.
+
+Sampled Bassoon and Tenor Trombone add two paired-layer recorded sustain banks through the existing sampler, supported controls and guarded preset/automation tools. See `docs/sampled_bassoon_trombone.md` for ranges, source provenance and verification.
+
+Sampled Acoustic Piano, Viola Section, Double Bass and Violin Section extend the acoustic palette. Piano has finite velocity-selected strikes and voice-specific automation; bowed strings reuse sustain/dynamics playback. Audition notes follow each recorded range. See `docs/sampled_piano_strings.md`.
+
+Piano expression extension: [docs/piano_expression.md](docs/piano_expression.md) describes the three piano-only controls, binary region/live sustain, 88 string modes, recorded key/pedal mechanics, 32-field v6 presets and session v25. Older preset versions 1–5 and session v24 remain readable; existing non-piano voices keep their behavior.
+
+Nested/collapsible audio bus groups, common history and MCP support are described in [track groups](docs/track_groups.md). Engine group projection/mixing and the native group panel have focused signal, persistence, rollback and SDL/Vulkan tests.
+
+[Collection-scoped Load/Save](docs/project_collections.md) now isolates folder lists, previews monotonically versioned checkpoints and preserves exact current-project save paths. Native collection and publication tests cover the shared modal geometry and atomic no-replace writer.
+
+[Compact track UI](docs/compact_track_ui.md) provides aligned headers/meters/FX access, derived descendant MIDI/audio overviews and fold-only playback-safe selection/history. New `timeline_track_header` and `timeline_group_overview` modules share production geometry and source preview components.
+
+[Header mixer and lane density](docs/header_mixer.md) adds guarded gain/pan scalar history, standard relative gestures, exact-value inspector synchronization, smaller gutters and subtle persistent lane tints. The application mixer/history boundary and input gesture owner are separate small modules.
+
+Main Edit supports guarded MCP track/group naming and base gain/pan with shared native scalar history. See [header controls](docs/header_mixer.md) and the current [music capability table](docs/agent_music_capabilities.md).
+
+Dedicated native EQ now has guarded MCP read/edit/history, and immutable composition analysis reports calibrated per-channel sample peak/RMS/dBFS with separate full-scale/overload counts. See [dedicated EQ and captured metering](docs/dedicated_eq_mcp.md).
+
+Read-only [production mix diagnostics](docs/mix_diagnostics.md) measure actual child/group/return/master stages from one privately rendered snapshot with full preceding context, channel/time-bin levels and immutable MCP pages. These source capabilities remain separate from installing a development candidate.
+
+Mix diagnostic insert pages now expose per-insert input/output levels and actual
+per-channel Compressor/Limiter attenuation with output-latency alignment; see
+`docs/mix_diagnostics.md` for paging, calibration and remaining measurement limits.
+
+Immutable mix capture schema v3 adds per-channel spectral windows for processed
+child/group/return/master outputs. `get_mix_capture` independently pages
+`frequency_window` and `frequency_channel`; see `docs/mix_diagnostics.md` for
+calibration, window coverage and remaining loudness/true-peak limits.
+
+Immutable mix captures now include prepared note-ending controls/fences and
+threshold-qualified aggregate MIDI source tails. `get_mix_capture` independently
+pages eight note rows with `note_offset`; see `docs/mix_diagnostics.md` section 7.
+
+Private mix captures now expose selected-passage integrated/momentary/short-term LUFS, 100 ms history and interpolated per-channel true peak through the existing read-only MCP capture tools. Explicit mono/stereo at 44.1/48/96 kHz is qualified with reconstructed EBU signal definitions, analytic edge cases and independent FFmpeg comparisons; whole-programme loudness, LRA and full EBU certification remain outside the 30-second capture contract. See [measurement boundaries](docs/mix_diagnostics.md#8-selected-passage-lufs-and-true-peak).
+
+Whole-song analysis now derives the complete arrangement endpoint and adds an explicit bounded tail through `capture_mix(whole_song=True)`. Programme integrated LUFS, 10 Hz EBU loudness range and channel true peak are returned through immutable node pages; authored duration may be up to ten minutes plus thirty seconds tail. See [whole-song limits and qualification](docs/mix_diagnostics.md#9-whole-song-integrated-loudness-and-lra) and the [mixing/mastering functionality assessment](docs/mixing_mastering_status.md).
+
+## Group and send automation — 2026-10-13
+
+Main Edit adds project-frame group-volume and post-fader send curves, native Routing → Auto point editing, exact persistence and shared guarded routing undo/redo/MCP. Linear, hold and smooth curves use absolute linear gain with explicit baseline/hold boundaries. Editing is stopped; playback/rendering applies latency-aligned curves without allocations. See [contracts and controls](docs/mixer_automation.md).
+
+## Selected effect-parameter automation — 2026-10-13
+
+Main Edit qualifies Gain dB and constant-power Pan position curves on child/group/return/master inserts. Native FX Auto point editing, native project persistence, shared effect-chain history and existing guarded MCP tools use the same complete physical curves. Inserts follow incoming and preceding-processor latency; static Gain ramps remain intact. See [contracts and proof](docs/effect_parameter_automation.md).
+
+Gain-matched A/B listening is available through the native effects toolbar and four guarded MCP tools. Captures are ephemeral, preserve authored gains/history and use equal all-channel RMS with attenuation-only sample-peak protection. See [A/B listening](docs/ab_listening.md).
+
+Asynchronous whole-song WAV export now uses a captured production graph and shared worker, with native/MCP format/tail choices, progress, cancellation and verified no-overwrite output. See [export contracts](docs/song_export.md).
+
+Qualified live 400 ms per-channel/stereo/mono compatibility windows now cover child/group/return/master output, with native scope controls and guarded output-only stereo/mono monitoring. The approximate live LUFS view is hidden behind an explicit qualification notice; offline validated LUFS remains available. See [live metering contracts](docs/live_stereo_metering.md).
+
+Compressor/Limiter controls now have qualified non-consuming live gain-reduction feedback in native headers and `get_effect_chain.dynamics_feedback`, separate from authored edit tokens. Compressor detection remains independent by channel; Limiter is sample-peak, not true-peak. See [dynamics controls and feedback](docs/dynamics_feedback.md).

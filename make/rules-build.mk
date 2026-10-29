@@ -66,3 +66,9 @@ $(HOST_OBJ_DIR)/kit_ui_platform/%.o: $(KIT_UI_DIR)/src/%.c
 
 clean:
 	rm -rf $(BUILD_DIR)
+
+# Keep bounded whole-song loudness practical without changing IEEE math or unrelated compilation.
+$(APP_OBJ_DIR)/extern/ebur128/ebur128.o $(APP_OBJ_DIR)/src/app/mix_loudness.o $(APP_OBJ_DIR)/src/app/loudness_range.o: CFLAGS += -O2
+
+# Rebuild these objects when their optimized compilation contract changes.
+$(APP_OBJ_DIR)/extern/ebur128/ebur128.o $(APP_OBJ_DIR)/src/app/mix_loudness.o $(APP_OBJ_DIR)/src/app/loudness_range.o: make/rules-build.mk

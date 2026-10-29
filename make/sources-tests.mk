@@ -168,10 +168,15 @@ AUDIO_RECORDING_TEST_DEPS := $(AUDIO_RECORDING_TEST_OBJS:.o=.d)
 TRACK_ROLE_TEST_DEPS := $(TRACK_ROLE_TEST_OBJS:.o=.d)
 ALL_DEPS := $(APP_DEPS) $(TIMER_HUD_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(TIMELINE_CONTRACT_TEST_DEPS) $(MIDI_MODEL_TEST_DEPS) $(MIDI_INSTRUMENT_RENDER_TEST_DEPS) $(TIMELINE_MIDI_REGION_TEST_DEPS) $(MIDI_EDITOR_SHELL_TEST_DEPS) $(SMOKE_TEST_DEPS) $(PACK_CONTRACT_TEST_DEPS) $(LAYOUT_SWEEP_TEST_DEPS) $(DATA_PATH_CONTRACT_TEST_DEPS) $(CONFIG_DIAGNOSTICS_TEST_DEPS) $(AUDIO_CAPTURE_DEVICE_TEST_DEPS) $(AUDIO_RECORDING_TEST_DEPS) $(TRACK_ROLE_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
 
-STABLE_TEST_TARGETS := \
+STABLE_TEST_TARGETS := test-dynamics-feedback test-live-stereo test-song-export test-comparison-player test-ab-comparison test-effect-automation test-mixer-automation test-loudness-analysis test-mix-capture \
+	test-text-cache-lifetime \
+	test-eq-meter \
+	test-header-mixer \
+	test-track-ui \
+	test-project-collections \
 	test-arrangement test-midi-authoring test-midi-expression test-midi-regions test-fx-actions test-fx-library test-fx-library-ui test-composition \
 	test-sound-inspection \
-	test-instrument-controls \
+	test-instrument-controls test-percussion-render test-instrument-articulation test-track-hat-choke \
 	test-application-instrument-action \
 	test-input-delivery \
 	test-media-preparation test-media-jobs test-media-import \
@@ -206,7 +211,7 @@ STABLE_TEST_TARGETS := \
 	test-midi-editor-shell \
 	test-audio-capture-device \
 	test-audio-output-device test-audio-preview \
-	test-effects-revision test-fx-return-alignment test-engine-routing test-routing-actions test-routing-ui \
+	test-effects-revision test-fx-return-alignment test-track-groups test-engine-routing test-routing-actions test-routing-ui \
 	test-engine-mix-ownership \
 	test-engine-analysis-lifecycle \
 	test-audio-recording \
@@ -222,3 +227,9 @@ LEGACY_TEST_TARGETS := \
 	test-overlap \
 	test-smoke \
 	test-shared-theme-font-adapter
+
+MIDI_NOTE_EDITING_TEST_OBJS := $(TEST_BUILD_ROOT)/midi_note_editing_test.o
+MIDI_NOTE_EDITING_TEST_BIN := $(TEST_BUILD_ROOT)/midi_note_editing_test
+ALL_DEPS += $(MIDI_NOTE_EDITING_TEST_OBJS:.o=.d)
+
+ALL_DEPS += $(TEST_BUILD_ROOT)/automation_model_test.d

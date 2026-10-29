@@ -248,10 +248,10 @@ bool midi_editor_input_activate_at(AppState* state, int x, int y) {
         return midi_editor_adjust_octave(state, 1);
     }
     if (SDL_PointInRect(&point, &layout.velocity_down_button_rect)) {
-        return midi_editor_adjust_default_velocity(state, -0.05f);
+        return midi_editor_adjust_velocity(state, -0.05f);
     }
     if (SDL_PointInRect(&point, &layout.velocity_up_button_rect)) {
-        return midi_editor_adjust_default_velocity(state, 0.05f);
+        return midi_editor_adjust_velocity(state, 0.05f);
     }
     state->midi_editor_ui.instrument_menu_open = false;
     state->midi_editor_ui.instrument_menu_scroll_row = 0;
@@ -297,7 +297,8 @@ bool midi_editor_input_activate_at(AppState* state, int x, int y) {
                                                         selected_count > 1);
         }
         midi_editor_select_note(state, &selection, hit.note_index);
-        return true;
+        return midi_editor_begin_note_press_pending(state, &selection, hit.note_index,
+                                                    hit.part, x, y, false);
     }
     midi_editor_clear_hover_note(state);
 
@@ -314,7 +315,7 @@ bool midi_editor_input_activate_at(AppState* state, int x, int y) {
     if (!midi_editor_point_to_note_frame(&layout, clip_frames, x, y, &note, &frame)) {
         return true;
     }
-    frame = midi_editor_snap_relative_frame(state, selection.clip, frame);
+    frame = midi_editor_snap_gesture_frame(state, selection.clip, frame);
     uint64_t duration = midi_editor_default_note_duration(state, selection.clip);
     if (frame + duration > clip_frames) {
         frame = clip_frames > duration ? clip_frames - duration : 0;
@@ -343,12 +344,14 @@ bool midi_editor_input_handle_event(InputManager* manager, AppState* state, cons
         return false;
     }
 
+    bool owns_pointer = state->midi_editor_ui.drag_active || state->midi_editor_ui.note_press_pending ||
+        state->midi_editor_ui.shift_note_pending || state->midi_editor_ui.marquee_active;
     switch (event->type) {
     case SDL_MOUSEBUTTONDOWN:
         if (event->button.button == SDL_BUTTON_LEFT) {
             return midi_editor_input_activate_at(state, event->button.x, event->button.y);
         }
-        return midi_editor_point_in_panel(state, event->button.x, event->button.y);
+        return owns_pointer || midi_editor_point_in_panel(state, event->button.x, event->button.y);
     case SDL_MOUSEBUTTONUP:
         if (event->button.button == SDL_BUTTON_LEFT) {
             state->midi_editor_ui.instrument_param_drag_active = false;
@@ -358,7 +361,7 @@ bool midi_editor_input_handle_event(InputManager* manager, AppState* state, cons
             midi_editor_commit_marquee(state);
             midi_editor_end_drag(state);
         }
-        return midi_editor_point_in_panel(state, event->button.x, event->button.y);
+        return owns_pointer || midi_editor_point_in_panel(state, event->button.x, event->button.y);
     case SDL_MOUSEMOTION:
         if (state->midi_editor_ui.shift_note_pending) {
             midi_editor_update_shift_note_pending(state, event->motion.x, event->motion.y);
@@ -384,7 +387,7 @@ bool midi_editor_input_handle_event(InputManager* manager, AppState* state, cons
                 midi_editor_clear_hover_note(state);
             }
         }
-        return midi_editor_point_in_panel(state, event->motion.x, event->motion.y);
+        return owns_pointer || midi_editor_point_in_panel(state, event->motion.x, event->motion.y);
     case SDL_MOUSEWHEEL:
         return midi_editor_handle_scroll(state, event);
     case SDL_KEYDOWN:

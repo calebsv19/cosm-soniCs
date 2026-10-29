@@ -6,6 +6,7 @@
 
 #include "session.h"
 #include "session/project_manager.h"
+#include "session/project_collections.h"
 
 // Tracks the current project identity and save path.
 typedef struct {
@@ -18,7 +19,8 @@ typedef struct {
 typedef struct {
     bool active;
     char error[128];
-    char buffer[SESSION_NAME_MAX];
+    char buffer[SESSION_PATH_MAX];
+    bool folder_mode, resume_load;
     int cursor;
     KitUiTextEdit text_edit;
 } ProjectSavePrompt;

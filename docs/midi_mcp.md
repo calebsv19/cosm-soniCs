@@ -1,5 +1,7 @@
 # MIDI MCP control
 
+Current behavior: see [agent music capabilities](agent_music_capabilities.md). Tool counts, initial scope and later-slice forecasts below describe their dated implementation checkpoint; region creation, expression, arrangement, effects, routing and percussion have since been adopted.
+
 The local official-SDK server exposes 40 tools, including MIDI authoring, expression and arrangement tools backed by the same application actions as the native Patterns editor. This is qualified Main Edit source behavior. Building does not replace the installed app or register tools in an existing client session.
 
 ## 1. Creative workflow
@@ -60,3 +62,5 @@ The actual native App_Run acceptance independently performs MIDI reads, pattern/
 Selected receipts/audio and native acceptance are retained under `build/receipts/mcp-midi-20261009/`. The qualified executable is `build/mcp-midi-20261009/targets/macOS-arm64/toolchains/clang/bin/daw_app`. No VERSION, shared-library source/minimum, session schema, global client registration, installed app, commit or release changes. Existing shared runtime/mailbox facilities remain reused; MIDI wire/state policy belongs to DAW rather than core_data/core_pack/core_time. Atlas was considered: this adapter is supporting source within the existing DAW control workflow, without a new plan/topology/adoption edge.
 
 This additive control surface merits a minor-release review when release work is authorized. Future creative slices can add richer timing/key controls, region creation and arrangement operations through the same action/readback/history contracts. Physical listening preference and sustained audio-device performance are separate acceptance.
+
+Piano expression extension: [piano_expression.md](piano_expression.md) describes the three piano-only controls, binary region/live sustain, 88 string modes, recorded key/pedal mechanics, 32-field v6 presets and session v25. Older preset versions 1–5 and session v24 remain readable; existing non-piano voices keep their behavior.

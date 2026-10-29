@@ -10,7 +10,9 @@ typedef struct DawEditorControls {
     uint64_t context;
     unsigned generation;
     bool keyboard_focus;
+    bool focus_from_keyboard; // Distinguishes keyboard focus chrome from mouse selection.
     SDL_Keymod modifiers;
+    unsigned pointer_clicks; // Keeps double-click exploration bound to the accepted press.
 } DawEditorControls;
 
 // Rebuilds semantic controls from the same product layouts used for drawing.

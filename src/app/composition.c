@@ -6,18 +6,26 @@
 #include <string.h>
 
 // Measures the actual rendered range at original level with bounded calibrated plot output.
-static bool measure(const EngineBounceBuffer* buffer, uint64_t window, DawCompositionAnalysis* out) {
-    if (!buffer || !buffer->data || !buffer->frame_count || buffer->channels <= 0 || window >= buffer->frame_count) return false;
-    memset(out, 0, sizeof(*out)); out->window_frame = window;
+bool daw_composition_measure(const EngineBounceBuffer* buffer, uint64_t window, DawCompositionAnalysis* out) {
+    if (!buffer || !buffer->data || !buffer->frame_count || buffer->channels <= 0 || buffer->channels > DAW_COMPOSITION_CHANNELS || window >= buffer->frame_count) return false;
+    if(!out)return false;memset(out, 0, sizeof(*out)); out->window_frame = window;out->channel_count=buffer->channels;
     uint64_t count = buffer->frame_count * (uint64_t)buffer->channels;
     double power = 0, sum = 0;
     for (uint64_t i = 0; i < count; ++i) {
         double sample = buffer->data[i]; if (!isfinite(sample)) return false;
         if (fabs(sample) > out->peak) out->peak = fabs(sample);
         if (fabs(sample) >= 1) ++out->clipped_samples;
+        if (fabs(sample) > 1) ++out->overload_samples;
+        DawChannelMeter* meter=&out->channel_meters[i % buffer->channels];
+        if(fabs(sample)>meter->peak)meter->peak=fabs(sample);
+        meter->rms+=sample*sample;
+        if(fabs(sample)>=1)++meter->full_scale_samples;
+        if(fabs(sample)>1)++meter->overload_samples;
         power += sample * sample; sum += sample;
     }
     out->rms = sqrt(power / count); out->dc = sum / count;
+    for(int ch=0;ch<buffer->channels;++ch){DawChannelMeter* m=&out->channel_meters[ch];m->rms=sqrt(m->rms/buffer->frame_count);
+        m->peak_dbfs=m->peak>0 ? 20*log10(m->peak) : -INFINITY;m->rms_dbfs=m->rms>0 ? 20*log10(m->rms) : -INFINITY;}
     uint64_t wave_length = (uint64_t)buffer->sample_rate / 50;
     if (!wave_length) wave_length = 1;
     for (int p = 0; p < DAW_COMPOSITION_POINTS; ++p) {
@@ -63,7 +71,7 @@ DawActionStatus daw_action_render_composition(AppState* state, const DawComposit
         request->window >= request->end - request->start + request->tail ||
         request->end - request->start + request->tail > UINT64_C(8388608)) return DAW_ACTION_INVALID;
     EngineBounceOptions options = engine_bounce_options_default(); options.normalize_if_clipping = false;
-    options.preroll_frames = (uint64_t)rate; options.tail_frames = request->tail;
+    options.preroll_frames = (uint64_t)rate*(request->comparison_context?60:1); options.tail_frames = request->tail;
     options.bypass_track_fx = options.bypass_master_fx = request->dry;
     int track = -1, clip = -1;
     if (request->has_target) {
@@ -77,7 +85,7 @@ DawActionStatus daw_action_render_composition(AppState* state, const DawComposit
     if (daw_action_get_fx(state, out->generation, 0, &out->master_fx) != DAW_ACTION_UNCHANGED ||
         (track >= 0 && daw_action_get_fx(state, out->generation, track_id, &out->track_fx) != DAW_ACTION_UNCHANGED)) return DAW_ACTION_ENGINE_REJECTED;
     if (!engine_bounce_range_to_buffer_with_options(state->engine, request->start, request->end, &options, NULL, NULL, &out->audio)) return DAW_ACTION_ENGINE_REJECTED;
-    if (!measure(&out->audio, request->window, &out->analysis)) {
+    if (!daw_composition_measure(&out->audio, request->window, &out->analysis)) {
         daw_composition_render_free(out); return DAW_ACTION_ENGINE_REJECTED;
     }
     return DAW_ACTION_UNCHANGED;

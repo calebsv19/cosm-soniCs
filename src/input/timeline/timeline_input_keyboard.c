@@ -1,3 +1,5 @@
+#include "input/automation_keyboard.h"
+#include "daw/automation_actions.h"
 #include "input/timeline/timeline_input_keyboard.h"
 
 #include "app/audio_recording.h"
@@ -128,17 +130,7 @@ bool timeline_input_keyboard_handle_event(InputManager* manager, AppState* state
         }
     }
 
-    if ((key == SDLK_DELETE || key == SDLK_BACKSPACE) && state->timeline_automation_mode) {
-        if (state->automation_ui.point_index >= 0) {
-            engine_clip_remove_automation_point(state->engine,
-                                                state->automation_ui.track_index,
-                                                state->automation_ui.clip_index,
-                                                state->automation_ui.target,
-                                                state->automation_ui.point_index);
-            state->automation_ui.point_index = -1;
-            return true;
-        }
-    }
+    if (automation_keyboard_handle(state, event)) return true;
 
     if ((mods & (KMOD_CTRL | KMOD_GUI | KMOD_ALT)) == 0) {
         if (key == SDLK_r && event->key.repeat == 0) {

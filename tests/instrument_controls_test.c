@@ -1,6 +1,7 @@
 #include "engine/instrument.h"
 #include "test_assert.h"
 #include "engine/instrument_filter.h"
+#include "engine/instrument_percussion.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -36,7 +37,8 @@ static void applicability(void) {
     const unsigned drive = 1u << ENGINE_INSTRUMENT_PARAM_DRIVE;
     const unsigned expected[] = {base, base, base, base, 0xfff, base|osc_mix|detune|sub,
         base|osc_mix|drive, base|drive, base|sub, base|sub|drive, base|osc_mix|detune|sub|drive,
-        base|osc_mix|detune|sub|drive, base|osc_mix|detune|sub|drive, 0x3f3ff, 0x3f3ff, 0x3f3ff, 0x3f3ff, 0x3f3ff};
+        base|osc_mix|detune|sub|drive, base|osc_mix|detune|sub|drive, 0x3f3ff, 0x3f3ff, 0x3f3ff, 0x3f3ff, 0x3f3ff,
+        0x9c0207, 0xfc0207, 0x4400007, 0x39c020f, 0x39c020f, 0x4400007, 0x4400007, (1u<<ENGINE_INSTRUMENT_PARAM_LEVEL)|(1u<<ENGINE_INSTRUMENT_PARAM_ATTACK_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_RELEASE_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_DYNAMICS)|(1u<<ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH), (1u<<ENGINE_INSTRUMENT_PARAM_LEVEL)|(1u<<ENGINE_INSTRUMENT_PARAM_ATTACK_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_RELEASE_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_DYNAMICS)|(1u<<ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH), (1u<<ENGINE_INSTRUMENT_PARAM_LEVEL)|(1u<<ENGINE_INSTRUMENT_PARAM_ATTACK_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_RELEASE_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_DYNAMICS)|(1u<<ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH), (1u<<ENGINE_INSTRUMENT_PARAM_LEVEL)|(1u<<ENGINE_INSTRUMENT_PARAM_ATTACK_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_RELEASE_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_DYNAMICS)|(1u<<ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH), (1u<<ENGINE_INSTRUMENT_PARAM_LEVEL)|(1u<<ENGINE_INSTRUMENT_PARAM_ATTACK_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_RELEASE_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_DYNAMICS)|(1u<<ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH), (1u<<ENGINE_INSTRUMENT_PARAM_LEVEL)|(1u<<ENGINE_INSTRUMENT_PARAM_ATTACK_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_RELEASE_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_DYNAMICS)|(1u<<ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH), (1u<<ENGINE_INSTRUMENT_PARAM_LEVEL)|(1u<<ENGINE_INSTRUMENT_PARAM_ATTACK_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_RELEASE_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_DYNAMICS)|(1u<<ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH), (1u<<ENGINE_INSTRUMENT_PARAM_LEVEL)|(1u<<ENGINE_INSTRUMENT_PARAM_ATTACK_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_RELEASE_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_DYNAMICS)|(1u<<ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH), (1u<<ENGINE_INSTRUMENT_PARAM_LEVEL)|(1u<<ENGINE_INSTRUMENT_PARAM_ATTACK_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_RELEASE_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_DYNAMICS)|(1u<<ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH), (1u<<ENGINE_INSTRUMENT_PARAM_LEVEL)|(1u<<ENGINE_INSTRUMENT_PARAM_ATTACK_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_RELEASE_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_DYNAMICS)|(1u<<ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH), (1u<<ENGINE_INSTRUMENT_PARAM_LEVEL)|(1u<<ENGINE_INSTRUMENT_PARAM_ATTACK_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_RELEASE_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_SUSTAIN_PEDAL)|(1u<<ENGINE_INSTRUMENT_PARAM_STRING_RESONANCE)|(1u<<ENGINE_INSTRUMENT_PARAM_RELEASE_NOISE), (1u<<ENGINE_INSTRUMENT_PARAM_LEVEL)|(1u<<ENGINE_INSTRUMENT_PARAM_ATTACK_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_RELEASE_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_DYNAMICS)|(1u<<ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH), (1u<<ENGINE_INSTRUMENT_PARAM_LEVEL)|(1u<<ENGINE_INSTRUMENT_PARAM_ATTACK_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_RELEASE_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_DYNAMICS)|(1u<<ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH), (1u<<ENGINE_INSTRUMENT_PARAM_LEVEL)|(1u<<ENGINE_INSTRUMENT_PARAM_ATTACK_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_RELEASE_MS)|(1u<<ENGINE_INSTRUMENT_PARAM_DYNAMICS)|(1u<<ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH)};
     for (int preset = 0; preset < ENGINE_INSTRUMENT_PRESET_COUNT; ++preset) {
         unsigned actual = 0;
         for (int i = 0; i < engine_instrument_preset_param_count(preset); ++i) {
@@ -47,7 +49,7 @@ static void applicability(void) {
         }
         CHECK(actual == expected[preset], "preset DSP dependency set");
         CHECK(engine_instrument_preset_group_active(preset, ENGINE_INSTRUMENT_PARAM_GROUP_MOD) ==
-            (preset == ENGINE_INSTRUMENT_PRESET_SYNTH_LAB || engine_instrument_filter_preset(preset)), "modulation applicability");
+            (preset == ENGINE_INSTRUMENT_PRESET_SYNTH_LAB || engine_instrument_filter_preset(preset) || (preset >= ENGINE_INSTRUMENT_PRESET_KICK_DRUM && !engine_instrument_percussion_hat(preset))), "modulation applicability");
     }
     CHECK(engine_instrument_preset_param_count(ENGINE_INSTRUMENT_PRESET_COUNT) == 0, "invalid preset");
 }
@@ -57,6 +59,7 @@ static void preview_parity(void) {
     const int rates[] = {44100, 48000, 96000};
     for (int r = 0; r < 3; ++r) for (int preset = 0; preset < ENGINE_INSTRUMENT_PRESET_COUNT; ++preset) {
         EngineInstrumentParams params = engine_instrument_default_params(preset);
+        params.string_resonance = 0; params.release_noise = 0;
         params.attack_ms = 4; params.decay_ms = 6; params.sustain = .37f; params.release_ms = 10;
         params.vibrato_depth = 24;
         for (int mode = 0; mode < 2; ++mode) {
@@ -75,6 +78,7 @@ static void preview_parity(void) {
             } else {
             for (int i = 0; i < 2400; ++i) {
                 float sampled = engine_instrument_note_sample(preset, params, 60, .73f, rates[r], i, gate);
+                if (sampled != rendered[i]) fprintf(stderr,"preview mismatch preset=%d rate=%d frame=%d gate=%llu diagnostic=%g source=%g\n",preset,rates[r],i,(unsigned long long)gate,sampled,rendered[i]);
                 CHECK(sampled == rendered[i], "diagnostic/source exact sample parity");
             }
             }
@@ -190,7 +194,7 @@ static void filter_modulation(void) {
     engine_instrument_filter_process(&f,.1f,p,48000,18000); CHECK(fabsf(f.cutoff-500)<.001f,"LFO opposite octave fall");
     engine_instrument_filter_process(&f,.1f,p,48000,0); CHECK(f.cutoff==1000,"LFO retriggers at note onset");
     p.filter_env_octaves=-4; p.filter_lfo_octaves=0; engine_instrument_filter_process(&f,.1f,p,48000,0); CHECK(f.cutoff==80,"negative envelope clamps physical cutoff");
-    for(int id=ENGINE_INSTRUMENT_PARAM_FILTER_ENV_OCTAVES;id<ENGINE_INSTRUMENT_PARAM_COUNT;++id) {
+    for(int id=ENGINE_INSTRUMENT_PARAM_FILTER_ENV_OCTAVES;id<ENGINE_INSTRUMENT_PARAM_MONO;++id) {
         EngineInstrumentParamId mapped; CHECK(engine_instrument_param_from_automation_target(engine_instrument_param_automation_target(id),&mapped) && mapped==id,"additive automation identity");
     }
 }

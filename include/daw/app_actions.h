@@ -53,7 +53,7 @@ typedef struct DawInstrumentRequest {
     DawActionTarget target;
     bool set_preset;
     EngineInstrumentPresetId preset;
-    uint32_t parameter_mask;
+    uint64_t parameter_mask;
     EngineInstrumentParams params;
 } DawInstrumentRequest;
 

@@ -15,7 +15,7 @@ async def check(fixture,output):
             async with stdio_client(StdioServerParameters(command=str(ROOT/'tools/mcp/run.sh'),env=env)) as (r,w):
                 async with ClientSession(r,w) as session:
                     await session.initialize()
-                    tools={t.name:t for t in (await session.list_tools()).tools};assert len(tools)==45
+                    tools={t.name:t for t in (await session.list_tools()).tools};assert len(tools)==70
                     assert tools['analyze_instrument'].annotations.readOnlyHint and tools['analyze_preset'].annotations.readOnlyHint
                     async def call(tool,**args):
                         """Decode a structured domain result independently of MCP transport success."""

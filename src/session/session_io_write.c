@@ -59,6 +59,8 @@ static void json_write_string(FILE* file, const char* value) {
     fputc('"', file);
 }
 
+// Serializes bounded project-time mixer curves using the dedicated codec.
+void session_write_mixer_automation(FILE*,const EngineMixerAutomation*);
 static void json_write_float(FILE* file, float value);
 
 static bool session_fx_has_param_ids(const SessionFxInstance* fx) {
@@ -159,13 +161,16 @@ static void session_write_automation_lanes(FILE* file,
         json_write_indent(file, indent + 1);
         fprintf(file, "\"target\": %d,\n", (int)lane->target);
         json_write_indent(file, indent + 1);
+        fprintf(file, "\"domain\": %d, \"before\": %d, \"after\": %d,\n",
+                lane->domain, lane->before, lane->after);
+        json_write_indent(file, indent + 1);
         fprintf(file, "\"points\": [\n");
         for (int p = 0; p < lane->point_count; ++p) {
             const SessionAutomationPoint* point = &lane->points[p];
             json_write_indent(file, indent + 2);
             fprintf(file, "{ \"frame\": %" PRIu64 ", \"value\": ", point->frame);
             json_write_float(file, point->value);
-            fprintf(file, " }");
+            fprintf(file, ", \"curve\": %d }", point->curve);
             if (p + 1 < lane->point_count) {
                 fprintf(file, ",");
             }
@@ -193,7 +198,8 @@ static const char* session_clip_kind_to_string(EngineClipKind kind) {
 }
 
 // Serializes into an isolated candidate, validates it, and retains the previous valid save before publication.
-bool session_document_write_file(const SessionDocument* doc, const char* path) {
+// Serializes one validated session, optionally requiring an unused destination.
+static bool session_document_write_mode(const SessionDocument* doc, const char* path, bool new_only) {
     char error[256] = {0};
     if (!session_document_validate(doc, error, sizeof(error))) {
         SDL_Log("session_document_write_file: invalid document: %s", error[0] ? error : "unknown error");
@@ -539,6 +545,7 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
         json_write_indent(file, 2);
         fprintf(file, "{\n");
         json_write_indent(file, 3);
+        if(fx->automation.count){fprintf(file,"\"automation\": ");session_write_mixer_automation(file,&fx->automation);fprintf(file,",\n");json_write_indent(file,3);}
         fprintf(file, "\"type\": %u,\n", fx->type);
         if (fx->name[0] != '\0') {
             json_write_indent(file, 3);
@@ -613,11 +620,17 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
         json_write_indent(file, 3);
         fprintf(file, "\"is_return\": %s,\n", track->is_return ? "true" : "false");
         json_write_indent(file, 3);
+        fprintf(file, "\"is_group\": %s, \"persistent_id\": \"%llu\", \"parent_track\": %d, \"sibling_order\": %d, \"folded\": %s,\n",
+            track->is_group ? "true" : "false", (unsigned long long)track->persistent_id,
+            track->parent_track, track->sibling_order, track->folded ? "true" : "false");
+        json_write_indent(file, 3);
+        if(track->volume_automation.count){fprintf(file,"\"volume_automation\": ");session_write_mixer_automation(file,&track->volume_automation);fprintf(file,",\n");json_write_indent(file,3);}
         fprintf(file, "\"sends\": [");
         for (int send = 0; send < ENGINE_SEND_CAP; ++send) {
             if (send) fprintf(file, ", ");
             fprintf(file, "{\"destination_track\": %d, \"gain\": ", track->sends[send].destination_track);
             json_write_float(file, track->sends[send].gain);
+            if(track->sends[send].automation.count){fprintf(file,", \"automation\": ");session_write_mixer_automation(file,&track->sends[send].automation);}
             fprintf(file, "}");
         }
         fprintf(file, "],\n");
@@ -802,6 +815,7 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
             json_write_indent(file, 4);
             fprintf(file, "{\n");
             json_write_indent(file, 5);
+            if(fx->automation.count){fprintf(file,"\"automation\": ");session_write_mixer_automation(file,&fx->automation);fprintf(file,",\n");json_write_indent(file,5);}
             fprintf(file, "\"type\": %u,\n", fx->type);
             if (fx->name[0] != '\0') {
                 json_write_indent(file, 5);
@@ -877,6 +891,8 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
         return false;
     }
 
+    if (new_only) return daw_save_file_commit_new(&save) != DAW_SAVE_FAILED;
+
     // Only a readable, valid primary may replace the retained recovery copy.
     struct stat existing;
     if (stat(path, &existing) == 0) {
@@ -907,6 +923,15 @@ bool session_document_write_file(const SessionDocument* doc, const char* path) {
     DawSaveResult result = daw_save_file_commit(&save);
     if (result == DAW_SAVE_FAILED) SDL_Log("session_document_write_file: publication failed for %s", path);
     return result != DAW_SAVE_FAILED;
+}
+
+// Retains the existing validated replacement and recovery-copy behavior.
+bool session_document_write_file(const SessionDocument* doc, const char* path) {
+    return session_document_write_mode(doc,path,false);
+}
+// Uses atomic no-replace publication for versioned collection saves.
+bool session_document_write_file_new(const SessionDocument* doc, const char* path) {
+    return session_document_write_mode(doc,path,true);
 }
 
 bool session_save_to_file(const AppState* state, const char* path) {

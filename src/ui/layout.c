@@ -1,7 +1,11 @@
 #include "ui/layout.h"
+#include "ui/track_group_panel.h"
+#include "input/timeline/timeline_geometry.h"
 #include "ui/pane_composition.h"
+#include "ui/automation_menu.h"
 
 #include "app_state.h"
+#include "ui/ab_panel.h"
 #include "engine/engine.h"
 #include "ui/font.h"
 #include "ui/render_utils.h"
@@ -326,6 +330,13 @@ void ui_layout_panes(AppState* state, int width, int height) {
         return;
     }
     const UILayoutConfig* cfg = ui_layout_config_get();
+    TimelineGeometry before;
+    int focused = state->selected_track_index;
+    bool reveal = false;
+    if (timeline_compute_geometry(state, &state->panes[1], &before) && focused >= 0) {
+        int top = timeline_track_lane_y(state,focused,before.track_top,before.track_height,before.track_spacing);
+        reveal = top >= before.viewport.y && top + before.track_height <= before.viewport.y + before.viewport.h;
+    }
     UILayoutRuntime* runtime = &state->layout_runtime;
 
     if (width < 1) width = 1;
@@ -420,6 +431,8 @@ void ui_layout_panes(AppState* state, int width, int height) {
     runtime->library_ratio = width > 0 ? (float)library_width / (float)width : 0.0f;
     runtime->mixer_ratio = content_height_actual > 0 ? (float)mixer_height / (float)content_height_actual : 0.0f;
 
+    timeline_set_vertical_scroll(state, state->timeline_vertical_scroll);
+    if (reveal) timeline_reveal_track(state, focused);
     ui_layout_update_zones(state);
 #if !defined(NDEBUG)
     if (!ui_layout_debug_validate(state)) {
@@ -503,6 +516,9 @@ void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
             effects_panel_render(renderer,state,&layout);
             daw_fx_library_panel_render(renderer,state);
             daw_routing_panel_render(renderer,state);
+            daw_ab_panel_render(renderer,state);
+            daw_song_export_panel_render(renderer,state);
+            daw_live_meter_panel_render(renderer,state);
         }
         daw_pane_clip_end(renderer,&clip);
     }
@@ -512,10 +528,12 @@ void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
 
     // Status log display removed per request.
 
+    automation_menu_render(renderer,state);
     ui_render_project_prompt_overlay(renderer, state);
     ui_render_project_load_overlay(renderer, state);
 
 
+    daw_group_panel_render(renderer,state);
 }
 
 void ui_render_controls(SDL_Renderer* renderer, AppState* state) {
@@ -546,8 +564,8 @@ void ui_layout_update_zones(AppState* state) {
     UILayoutRuntime* runtime = &state->layout_runtime;
     runtime->zone_count = 0;
 
-    const int thickness = 32;
-    const int corner_size = 64;
+    const int thickness = 14;
+    const int corner_size = 20;
 
     if (state->pane_count < 4) {
         return;

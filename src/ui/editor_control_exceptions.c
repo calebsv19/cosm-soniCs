@@ -1,4 +1,5 @@
 #include "ui/editor_controls_internal.h"
+#include "engine/groups.h"
 #include "app_state.h"
 #include "ui/layout.h"
 #include "ui/timeline_view.h"
@@ -14,15 +15,20 @@ void daw_editor_track_controls_collect(AppState* state, KitUiSurface* surface) {
     if (!pane || !pane->visible || !timeline_compute_geometry(state, pane, &geometry)) return;
     SDL_Rect clip = ui_layout_pane_content_rect(pane);
     // The ruler/toolbar are painted over this area; only lane content is interactive.
-    int bottom = clip.y + clip.h;
-    clip.y = geometry.track_top;
-    clip.h = bottom - clip.y;
+    SDL_IntersectRect(&clip, &geometry.viewport, &clip);
     const EngineTrack* tracks = engine_get_tracks(state->engine);
     for (int i = 0; tracks && i < engine_get_track_count(state->engine); ++i) {
+        if(engine_group_visible_row(tracks,engine_get_track_count(state->engine),i)<0)continue;
         TimelineTrackHeaderLayout header;
-        timeline_view_compute_track_header_layout(&pane->rect,
-            geometry.track_top + i * (geometry.track_height + geometry.track_spacing),
+        timeline_track_header_layout(state,i,&pane->rect,
+            timeline_track_lane_y(state, i, geometry.track_top, geometry.track_height, geometry.track_spacing),
             geometry.track_height, geometry.header_width, &header);
+        if(tracks[i].is_group)daw_editor_control_add(surface,19,tracks[i].runtime_id,header.fold_rect,clip,true);
+        daw_editor_control_add(surface,21,tracks[i].runtime_id,header.effects_rect,clip,true);
+        if(tracks[i].is_group) {
+            SDL_Rect overview={geometry.content_left,header.header_rect.y,geometry.content_width,geometry.track_height};
+            daw_editor_control_add(surface,20,tracks[i].runtime_id,overview,clip,true);
+        }
         uint64_t key = (uint64_t)tracks[i].runtime_id * 2;
         daw_editor_control_add(surface, 15, key, header.mute_rect, clip, true);
         daw_editor_control_add(surface, 15, key + 1, header.solo_rect, clip, true);

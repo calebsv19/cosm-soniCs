@@ -1,4 +1,8 @@
-# soniCs local MCP baseline
+# soniCs local MCP
+
+Current Main Edit surface: 54 tools, 39 factory voices and 32 physical instrument parameters. Instruments/presets, MIDI creation/notes/expression/arrangement, serial effects/chain libraries, nested buses, guarded child/group names and base mixer controls, post-fader sends/returns, isolated analysis and production composition captures are implemented. Read [current capabilities](../../docs/agent_music_capabilities.md) for limits and gaps; historical slice reports are not the current tool inventory.
+
+## Setup and exact-state operation
 
 1. Install the isolated SDK environment from the repository root (Python 3.11+):
 
@@ -84,39 +88,89 @@
    The ordinary headless smoke suite remains independent of Python dependencies
    and local socket permission. See [application control](../../docs/application_control.md).
 
-The baseline intentionally exposes instrument operations only. Transport/mixer,
-effects, full arrangement/region creation, importing/downloading media, project open/save,
-project render/export jobs and project audio analysis are subsequent application-action slices.
-No physical listening, native UI acceptance, installation or release is implied
-by the software integration test. MCP follows each validated application feature.
+## Creative workflow references
+
+- [Current capability map](../../docs/agent_music_capabilities.md).
+- [MIDI notes/patterns](../../docs/midi_mcp.md), [region creation/extension](../../docs/midi_regions.md), [expression](../../docs/midi_expression.md), [arrangement](../../docs/arrangement.md).
+- [Instrument controls](../../docs/instrument_controls.md), [filtered voices](../../docs/filtered_synth.md), [percussion/808/glide/hat choke](../../docs/percussion_synth.md).
+- [User presets](../../docs/user_presets.md), [effects and captured audio](../../docs/effect_chains.md), [routing](../../docs/routing.md), [isolated sound analysis](../../docs/sound_inspection.md).
+
+The optional `sonics-music-authoring` skill connects these operations with composition, percussion, effects and listening guidance. Complete project sound settings remain embedded independently of library files. Its recipes do not create new tools or grant permission to replace projects or change client settings.
+
+## Qualification
+
+Use focused tests for the changed domain, such as `test-mcp-midi`, `test-mcp-percussion`, `test-mcp-articulation`, `test-mcp-track-hat-choke`, `test-mcp-fx`, `test-mcp-composition`, `test-mcp-fx-library` and `test-mcp-routing`. Use fresh task-owned build/shared inputs: ordinary shared-library rules recursively clean their selected shared source build directories. Do not run broad cleanup over retained evidence. `run-headless-smoke` is broader non-interactive proof; native save/reopen, installed discovery and physical listening remain separate.
+
+Analysis is read-only; WAV publication and library saves require write admission. Project open/save/transport, general audio import, arbitrary automation are not tools on this surface. No automatic app/client restart or global configuration update is part of this guide.
+
+## Track and group controls
+
+Use `get_track_controls` with a stable track target to read its name, base gain/pan, mute/solo and bus roles. `set_track_control` changes one `name`, `gain` or `pan` field using the copied `expected_state`, endpoint instance and a new request UUID. Gain uses linear amplitude 0–10 (1 unity); pan uses stereo balance -1–1. Names accept 1–127 UTF-8 bytes without control characters. Matching `undo_track_control` and `redo_track_control` cannot skip unrelated history. These tools apply to source children, groups and returns; unrelated fields remain unchanged. Refresh an expired state token before a deliberate new operation. See [header controls](../../docs/header_mixer.md).
+
+A fresh official SDK session discovers all 54 tools. Existing chat catalogs can remain cached; reconnect the MCP client to rediscover additive tools. Client discovery is independent from installed endpoint capability, and setup does not automatically restart a user editor or change global settings.
+
+## Automation control
+
+The Main Edit source adds guarded region automation inspection, replacement, undo and redo. See [automation units, boundaries and commands](../../docs/automation.md). Reads and writes use region-local sample frames, complete arrangement guards, stable IDs, and the shared graphical command layer. `make test-mcp-automation` exercises the official SDK with isolated fixture endpoints.
+
+Sampled violin capabilities advertise MIDI 55–96, a fixed CC0 bank and two recorded dynamics. Automation targets 26/27 are Dynamics/Velocity Timbre; preset schema v6 stores 32 parameters while v1–v5 remain readable. See `docs/sampled_violin.md`.
+
+Sampled Trumpet and Clarinet use existing guarded sound/preset/automation tools. Capabilities expose the actual sounding range and two/three layers; no new parameter schema or automation IDs. See docs/sampled_winds.md.
 
 
-The [instrument-controls refinement](../../docs/instrument_controls.md) adds
-preset-specific supported `visible_parameters` and `control_scale` metadata.
-Writes still use physical values, not normalized UI knob positions. Use
-`make BUILD_DIR=build/synth-controls-20261008 test-mcp-instrument-loop` to exercise
-a real rendered C-major phrase with exact undo/redo output restoration. Its
-fixture exports are test-only; no render tool is added to the MCP surface.
+Sampled Tenor Saxophone (`sampled_saxophone`) uses the same guarded tools and 32-parameter v6 schema (v5 remains readable). Capabilities advertise MIDI 44–88, 23 recorded roots and two dynamics layers. See `docs/sampled_saxophone.md`.
 
-The additive [rounded family](../../docs/rounded_synth.md) is discovered as
-`rounded_keys`, `rounded_pluck` and `rounded_pad`. Select one with an empty
-parameter object to apply its factory defaults when changing preset, then edit
-its ten supported controls through the existing guarded action surface. The
-musical test now checks these selections and undo/redo, and exports a held pad
-chord in addition to the shared eight-note phrase. No tool signature changes.
+Sampled Flute (`sampled_flute`) and Sampled Cello Section (`sampled_cello_section`) use the existing guarded preset tools and 32-parameter v6 schema (v5 remains readable). Capabilities report their actual ranges, recorded roots, two layers and five supported instrument controls. See `docs/sampled_flute_cello.md`.
 
-Filtered Keys/Pad now adopt the existing instrument loop: capabilities report 15 presets and 14 parameters, including cutoff `log_hz` and resonance Q. The actual native Main Edit application passes set/undo/redo and saved-session readback. See [filter controls and next steps](../../docs/filtered_synth.md). [Reusable user presets](../../docs/user_presets.md) now add `list_presets`, `get_preset`, guarded `save_preset`/`apply_preset`, and standardized isolated `preview_preset` WAVs. General project render/analysis remains separate; isolated instrument analysis is now delivered below.
+Sampled Oboe and French Horn extend the existing acoustic sampler with paired recorded dynamics and held-note expression. Complete audition chords follow each bank's playable range. See `docs/sampled_oboe_horn.md` for ranges, provenance, preparation and verification.
 
-The library defaults to `$HOME/Music/soniCs/User Library/Presets`; configure `DAW_PRESET_LIBRARY` in the **DAW process environment** to override it. List/get are read-only. Save requires exact target/state; Update also requires current library ID/revision and retains one previous file. Apply copies all settings through project undo. Preview requires write admission and a current revision, publishes a fixed C4/chord WAV without effects/normalization and reports peak/RMS. All admitted writes share existing immutable receipts; project recall does not depend on library files.
+Sampled Bassoon and Tenor Trombone add two paired-layer recorded sustain banks through the existing sampler, supported controls and guarded preset/automation tools. See `docs/sampled_bassoon_trombone.md` for ranges, source provenance and verification.
 
-Run `make BUILD_DIR=<fresh-root> test-preset-library test-mcp-presets` with the existing SDK environment. The qualified Main Edit executable for this slice is `build/preset-library-20261009/targets/macOS-arm64/toolchains/clang/bin/daw_app`. Client tool discovery requires client reconfiguration/restart as described above.
+Sampled Acoustic Piano, Viola Section, Double Bass and Violin Section extend the acoustic palette. Piano has finite velocity-selected strikes and voice-specific automation; bowed strings reuse sustain/dynamics playback. Audition notes follow each recorded range. See `docs/sampled_piano_strings.md`.
 
-The sound-inspection slice adds read-only `analyze_instrument` and revision-bound `analyze_preset`, bringing discovery to fourteen tools. They return exact captured sound settings, metrics and bounded plot arrays without publishing files or consuming write receipts. See [sound inspection](../../docs/sound_inspection.md). Run `make BUILD_DIR=<fresh-root> test-sound-inspection test-mcp-sound-analysis`; the new qualified Main Edit executable is `build/sound-inspection-20261009/targets/macOS-arm64/toolchains/clang/bin/daw_app`.
+Piano expression extension: [piano expression](../../docs/piano_expression.md) describes the three piano-only controls, binary region/live sustain, 88 string modes, recorded key/pedal mechanics, 32-field v6 presets and session v25. Older preset versions 1–5 and session v24 remain readable; existing non-piano voices keep their behavior.
 
-The [MIDI application slice](../../docs/midi_authoring.md) is now adopted by five tools: `get_midi_region`, `set_midi_notes`, `create_midi_pattern`, `undo_midi` and `redo_midi`, bringing discovery to nineteen. Read bounded pages with one exact state token, then explicitly append/replace notes or major-key patterns using the existing request receipt workflow. See [MIDI MCP limits, usage and verification](../../docs/midi_mcp.md). Run `make BUILD_DIR=<fresh-root> test-mcp-midi`; native App_Run and actual restart also qualify the source executable shown above. Client discovery still requires configuring/restarting the client with this server and endpoint.
+## Nested groups
 
-Current discovery is 36 tools. The four effects-library tools provide list/get and guarded revision-bound save/apply; see [effect chains](../../docs/effect_chains.md). `transform_midi` adds whole-region quantize/swing, velocity and seeded humanization through the existing MIDI token/history/receipt contract; see [expression](../../docs/midi_expression.md).
+[Track groups](../../docs/track_groups.md) extend the initial return graph with exclusive parent routing, nested bus effects, visible hierarchy, format-26 persistence and guarded group history. MCP adds `create_group` plus group/parent/fold/order `edit_routing` operations; reacquire runtime targets after reopening. Earlier return-only restrictions describe that initial slice; returns still cannot feed groups or returns.
 
-The server now exposes 40 tools, including `get_arrangement`, `arrange_regions`, `undo_arrangement` and `redo_arrangement`. See [guarded arrangement](../../docs/arrangement.md) for batch fields, capture limits and history scope.
+### Track/child/group header controls
 
-Current discovery is **45 tools**. `get_routing`, `create_return`, `edit_routing`, `undo_routing` and `redo_routing` adopt the common guarded send/return actions and creation history. Read the current routing token, create a return (including from zero tracks), configure its existing effect chain, then connect source send slots with linear gains. Writes are stopped/busy guarded and share immutable receipts; no return-to-return feedback is allowed. See [routing fields, persistence and limits](../../docs/routing.md). Run `make BUILD_DIR=<task-root> test-routing-actions test-mcp-routing`. Native routing controls and installed-client adoption remain separate.
+The current adapter exposes 54 tools. Discover `get_track_controls`, `set_track_control`, `undo_track_control` and `redo_track_control` after refreshing cached SDK discovery. Reads include names, linear gain, stereo balance, mute/solo and bus role; writes own one name/gain/pan field, with the existing endpoint receipt recovery and stable lifetime guards. Use a track target from `get_routing`; names and base mixer values persist in the native project. See [header mixer](../../docs/header_mixer.md) for units, ranges, field-scoped token checks, live-playback admission and history limits. Native collection Load/Save remains the project-file workflow; these are not new/open/save commands.
+
+### Dedicated native EQ and captured channel calibration
+
+The current source adapter exposes 70 tools. `get_eq`, `edit_eq`, `undo_eq`, `redo_eq` adopt the native dedicated EQ separately from insert EQ. `analyze_composition` adds immutable per-channel sample peak/RMS/dBFS and separate full-scale/overload counts. See [physical units, guards and calibration](../../docs/dedicated_eq_mcp.md). Refresh cached tool discovery after the candidate is installed at a saved/closed app boundary; an older running app does not acquire new bridge operations from source edits.
+
+`get_mix_snapshot`, `capture_mix` and `get_mix_capture` add read-only exact guards and immutable in-context production graph diagnostics. These work on read-only endpoints and do not publish PCM or alter the project. See [stages, physical units, context, limits and SDK example](../../docs/mix_diagnostics.md). A prepared candidate must be installed at the existing saved/closed handoff boundary before an older normal app supports the new bridge operations.
+
+Mix diagnostic insert pages now expose per-insert input/output levels and actual
+per-channel Compressor/Limiter attenuation with output-latency alignment; see
+`docs/mix_diagnostics.md` for paging, calibration and remaining measurement limits.
+
+Immutable mix capture schema v3 adds per-channel spectral windows for processed
+child/group/return/master outputs. `get_mix_capture` independently pages
+`frequency_window` and `frequency_channel`; see `docs/mix_diagnostics.md` for
+calibration, window coverage and remaining loudness/true-peak limits.
+
+Immutable mix captures now include prepared note-ending controls/fences and
+threshold-qualified aggregate MIDI source tails. `get_mix_capture` independently
+pages eight note rows with `note_offset`; see `docs/mix_diagnostics.md` section 7.
+
+Whole-song analysis uses the existing tool: `capture_mix(expected_mix=guard, whole_song=True, tail_frames="240000")` derives the arrangement end and requests a 5-second tail at 48 kHz; leave start/end at their defaults. Read each node through `get_mix_capture`. Programme LUFS/LRA/true peak supports ten-minute arrangements plus at most thirty seconds explicit tail. Default tail is zero. Read [full contracts](../../docs/mix_diagnostics.md#9-whole-song-integrated-loudness-and-lra); detailed passage history is separate. A cached client catalogue may need rediscovery to expose the new optional arguments. Package installation and private SDK proof do not imply a running live endpoint.
+
+Group-volume and send-level curves use existing guarded `edit_routing` operations `volume_automation` and `send_automation`; the adapter still has 70 tools. Exact decimal frame strings, absolute gain, baseline/hold boundaries and linear/hold/smooth points are read back by `get_routing` and mix provenance. Native editing and MCP share routing undo/redo. See [mixer automation](../../docs/mixer_automation.md).
+
+## Selected effect-parameter automation — 2026-10-13
+
+Main Edit qualifies Gain dB and constant-power Pan position curves on child/group/return/master inserts. Native FX Auto point editing, native project persistence, shared effect-chain history and existing guarded MCP tools use the same complete physical curves. Inserts follow incoming and preceding-processor latency; static Gain ramps remain intact. See [contracts and proof](../../docs/effect_parameter_automation.md).
+
+Gain-matched A/B listening is available through the native effects toolbar and four guarded MCP tools. Captures are ephemeral, preserve authored gains/history and use equal all-channel RMS with attenuation-only sample-peak protection. See [A/B listening](../../docs/ab_listening.md).
+
+Asynchronous whole-song WAV export now uses a captured production graph and shared worker, with native/MCP format/tail choices, progress, cancellation and verified no-overwrite output. See [export contracts](../../docs/song_export.md).
+
+Qualified live 400 ms per-channel/stereo/mono compatibility windows now cover child/group/return/master output, with native scope controls and guarded output-only stereo/mono monitoring. The approximate live LUFS view is hidden behind an explicit qualification notice; offline validated LUFS remains available. See [live metering contracts](../../docs/live_stereo_metering.md).
+
+Compressor/Limiter controls now have qualified non-consuming live gain-reduction feedback in native headers and `get_effect_chain.dynamics_feedback`, separate from authored edit tokens. Compressor detection remains independent by channel; Limiter is sample-peak, not true-peak. See [dynamics controls and feedback](../../docs/dynamics_feedback.md).
+
+Production `capture_ab` and `analyze_composition` requests use a bounded 60-second socket timeout; `capture_mix` retains 180 seconds. `request_status` also allows 60 seconds because receipt recovery can wait behind an owner-thread render. Ordinary controls remain at five seconds. A timeout/closed response is uncertain: recover with the original instance/request ID, or reconcile actual state on `stale_instance`; never automatically replay or invent a new request ID. These budgets are client waits, not render cancellation or guaranteed completion deadlines.

@@ -1,3 +1,4 @@
+#include "daw/track_controls.h"
 #include "input/timeline_input.h"
 
 #include "app_state.h"
@@ -21,23 +22,14 @@ void track_name_editor_stop(AppState* state, bool commit) {
         return;
     }
     SDL_Log("track_name_editor_stop (commit=%d, track=%d)", commit ? 1 : 0, editor->track_index);
-    if (commit && state->engine && editor->track_index >= 0) {
-        int track_count = engine_get_track_count(state->engine);
-        if (editor->track_index < track_count) {
-            if (strcmp(editor->original, editor->buffer) != 0) {
-                UndoCommand cmd = {0};
-                cmd.type = UNDO_CMD_TRACK_RENAME;
-                cmd.data.track_rename.track_index = editor->track_index;
-                strncpy(cmd.data.track_rename.before_name, editor->original,
-                        sizeof(cmd.data.track_rename.before_name) - 1);
-                cmd.data.track_rename.before_name[sizeof(cmd.data.track_rename.before_name) - 1] = '\0';
-                strncpy(cmd.data.track_rename.after_name, editor->buffer,
-                        sizeof(cmd.data.track_rename.after_name) - 1);
-                cmd.data.track_rename.after_name[sizeof(cmd.data.track_rename.after_name) - 1] = '\0';
-                undo_manager_push(&state->undo, &cmd);
-            }
-            engine_track_set_name(state->engine, editor->track_index, editor->buffer);
-            effects_panel_sync_from_engine(state);
+    if (commit && state->engine) {
+        DawTrackControls current;
+        if (daw_track_controls_get(state,editor->target,&current)==DAW_ACTION_UNCHANGED && !strcmp(current.name,editor->original)) {
+            char fallback[ENGINE_CLIP_NAME_MAX];
+            snprintf(fallback,sizeof(fallback),"Track %d",editor->track_index+1);
+            // Release text ownership before invoking the common guarded/reserved label action.
+            editor->editing=false;
+            daw_track_controls_set(state,&current,DAW_TRACK_NAME,editor->buffer[0] ? editor->buffer : fallback,0);
         }
     }
     kit_ui_text_cancel_composition(&editor->text_edit);
@@ -63,6 +55,7 @@ void track_name_editor_start(AppState* state, int track_index) {
     TrackNameEditor* editor = &state->track_name_editor;
     editor->editing = true;
     editor->track_index = track_index;
+    editor->target=(DawActionTarget){engine_instance_id(state->engine),track->runtime_id,0,DAW_ACTION_TARGET_TRACK};
     strncpy(editor->original, track->name, sizeof(editor->original) - 1);
     editor->original[sizeof(editor->original) - 1] = '\0';
     const char* source = track->name[0] ? track->name : NULL;

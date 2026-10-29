@@ -1,5 +1,6 @@
 #include "engine/engine_internal.h"
 #include "engine/instrument.h"
+#include "engine/instrument_samples.h"
 
 #include <math.h>
 #include <stdbool.h>
@@ -14,8 +15,14 @@ static void engine_midi_audition_refresh_source(Engine* engine) {
                                                  engine->midi_audition_preset, engine->midi_audition_params,
                                                  engine->midi_audition_notes.notes,
                                                  engine->midi_audition_notes.note_count, NULL, 0, NULL, 0);
-    engine_instrument_source_reset(engine->midi_audition_source, engine->config.sample_rate,
-                                   engine_graph_get_channels(engine->graph));
+    bool piano=engine->midi_audition_preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO;
+    if (!piano || !engine->midi_audition_piano_configured)
+        engine_instrument_source_reset(engine->midi_audition_source, engine->config.sample_rate, engine_graph_get_channels(engine->graph));
+    if(piano) {
+        engine->midi_audition_piano_configured=true;
+        engine_instrument_source_piano_pedal(engine->midi_audition_source,engine->midi_audition_pedal_down,
+            engine->transport_frame+engine->midi_audition_idle_frame);
+    }
 }
 
 // Reports whether the caller owns live audition state.
@@ -80,7 +87,9 @@ static void apply_gated(Engine* engine, int track_index, EngineInstrumentPresetI
 
     if (engine->midi_audition_track_index != track_index || engine->midi_audition_preset != clamped_preset ||
         memcmp(&engine->midi_audition_params, &clamped_params, sizeof(clamped_params)) != 0) {
+        bool pending=engine->midi_audition_pedal_down && !engine->midi_audition_notes.note_count;
         engine_midi_audition_apply_all_off(engine);
+        if(pending) engine->midi_audition_pedal_down=true;
     }
     engine_midi_audition_apply_note_off(engine, note);
     engine_midi_audition_retire(engine);
@@ -145,14 +154,23 @@ void engine_midi_audition_retire(Engine* engine) {
         return;
     uint64_t now = engine_midi_audition_current_frame(engine);
     uint64_t release =
-        (uint64_t)llround(engine->midi_audition_params.release_ms * 0.001 * engine->config.sample_rate);
+        (uint64_t)llround((engine_instrument_sampled_preset(engine->midi_audition_preset) ? fmaxf(4,engine->midi_audition_params.release_ms) : engine->midi_audition_params.release_ms) * 0.001 * engine->config.sample_rate);
     bool changed = false;
     for (int i = engine->midi_audition_notes.note_count - 1; i >= 0; --i) {
         EngineMidiNote* voice = &engine->midi_audition_notes.notes[i];
         if (voice->duration_frames == UINT64_MAX - voice->start_frame || now < voice->start_frame)
             continue;
         uint64_t age = now - voice->start_frame;
-        if (age >= voice->duration_frames && age - voice->duration_frames >= release) {
+        uint64_t gate=voice->duration_frames;
+        if(engine->midi_audition_preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO) {
+            gate=engine_instrument_source_piano_gate(engine->midi_audition_source,voice->start_frame,voice->note);
+            release=(uint64_t)engine->config.sample_rate*2;
+            if(gate==UINT64_MAX-voice->start_frame) {
+                if(age<(uint64_t)engine->config.sample_rate*40) continue;
+                gate=voice->duration_frames;
+            }
+        }
+        if (age >= gate && age - gate >= release) {
             engine_midi_note_list_remove(&engine->midi_audition_notes, i);
             changed = true;
         }
@@ -173,8 +191,12 @@ void engine_midi_audition_retire(Engine* engine) {
 
 // Immediately clears all audition voices without freeing worker-owned prepared storage.
 void engine_midi_audition_apply_all_off(Engine* engine) {
-    if (!engine || (!engine->midi_audition_notes.note_count && !engine->midi_audition_tail_until))
-        return;
+    if (!engine) return;
+    engine->midi_audition_pedal_down=false;
+    engine->midi_audition_piano_configured=false;
+    engine_instrument_source_piano_pedal(engine->midi_audition_source,false,engine_midi_audition_current_frame(engine));
+    if (!engine->midi_audition_notes.note_count && !engine->midi_audition_tail_until) return;
+    engine_instrument_source_piano_pedal(engine->midi_audition_source,false,engine_midi_audition_current_frame(engine));
     engine->midi_audition_notes.note_count = 0;
     engine->midi_audition_tail_until = 0;
     engine->midi_audition_idle_frame = 0;
@@ -184,12 +206,13 @@ void engine_midi_audition_apply_all_off(Engine* engine) {
         engine_transport_reset_history(engine);
     }
     engine_midi_audition_refresh_source(engine);
+    engine_instrument_source_reset(engine->midi_audition_source,engine->config.sample_rate,engine_graph_get_channels(engine->graph));
 }
 
 bool engine_midi_audition_note_on(Engine* engine, int track_index, EngineInstrumentPresetId preset,
                                   EngineInstrumentParams params, uint8_t note, float velocity) {
     if (!engine || note > ENGINE_MIDI_NOTE_MAX || track_index < 0 || track_index >= engine->track_count ||
-        engine->tracks[track_index].is_return || SDL_ThreadID() != engine->control_thread_id) {
+        (engine->tracks[track_index].is_return || engine->tracks[track_index].is_group) || SDL_ThreadID() != engine->control_thread_id) {
         return false;
     }
     engine_preview_stop(engine);
@@ -219,6 +242,19 @@ bool engine_midi_audition_note_off(Engine* engine, uint8_t note) {
     }
     EngineCommand cmd = {.type = ENGINE_CMD_MIDI_AUDITION_NOTE_OFF, .payload.midi_audition = {.note = note}};
     return engine_post_command(engine, &cmd);
+}
+
+// Mutates only worker-owned piano sustain state without invalidating sounding voices.
+void engine_midi_audition_apply_pedal(Engine* engine,bool down) {
+    if(engine) engine->midi_audition_pedal_down=down;
+    if(engine) engine_instrument_source_piano_pedal(engine->midi_audition_source,down,engine_midi_audition_current_frame(engine));
+}
+// Uses safety admission for pedal-up so a saturated command queue cannot leave sustain stuck.
+bool engine_midi_audition_pedal(Engine* engine,bool down) {
+    if(!engine || !engine_is_control_thread(engine)) return false;
+    if(engine_midi_audition_should_apply_direct(engine)) { engine_midi_audition_apply_pedal(engine,down);return true; }
+    EngineCommand cmd={.type=ENGINE_CMD_MIDI_AUDITION_PEDAL,.payload.midi_audition={.velocity=down?1:0}};
+    return engine_post_command(engine,&cmd);
 }
 
 void engine_midi_audition_all_notes_off(Engine* engine) {

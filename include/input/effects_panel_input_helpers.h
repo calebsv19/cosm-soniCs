@@ -11,6 +11,10 @@ bool panel_targets_track(const EffectsPanelState* panel);
 void sync_meter_modes_from_slot_params(EffectsPanelState* panel, const FxSlotUIState* slot);
 void fx_instance_from_slot(const FxSlotUIState* slot, SessionFxInstance* out_instance);
 bool begin_fx_param_drag(AppState* state, int slot_index, int param_index);
+// Captures a knob baseline without applying a mouse-down value.
+void begin_fx_knob_drag(AppState* state, int slot_index, int param_index, int y);
+// Maps the captured relative knob gesture through the parameter's native or beat scale.
+float fx_knob_value_from_drag(AppState* state, int slot_index, int param_index, int y);
 
 void effects_panel_toggle_preview(EffectsPanelState* panel, int slot_index);
 void effects_panel_set_all_previews(EffectsPanelState* panel, bool open);

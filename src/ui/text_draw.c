@@ -27,8 +27,11 @@ typedef struct DawRasterFontCacheEntry {
     uint32_t stamp;
 } DawRasterFontCacheEntry;
 
+/* Keeps a clipped label texture with its font, renderer and raster density identity. */
 typedef struct DawClippedTextCacheEntry {
     TTF_Font* font;
+    SDL_Renderer* renderer;
+    float raster_scale;
     char text[128];
     SDL_Color color;
     int width;
@@ -41,7 +44,8 @@ typedef struct DawClippedTextCacheEntry {
 static DawTextFontSourceEntry g_font_sources[32];
 static DawRasterFontCacheEntry g_raster_font_cache[32];
 static uint32_t g_raster_font_cache_stamp = 0;
-static DawClippedTextCacheEntry g_clipped_cache[128];
+/* Retain a dense arrangement working set without rebuilding labels every frame. */
+static DawClippedTextCacheEntry g_clipped_cache[512];
 static uint32_t g_clipped_cache_stamp = 0;
 static SDL_Renderer* g_clipped_cache_renderer = NULL;
 static bool g_clipped_cache_clear_pending = false;
@@ -64,23 +68,38 @@ static void daw_text_clear_raster_font_cache(void) {
     g_raster_font_cache_stamp = 0;
 }
 
-static void daw_text_cache_clear(SDL_Renderer* renderer) {
-    size_t i = 0;
-    for (i = 0; i < (sizeof(g_clipped_cache) / sizeof(g_clipped_cache[0])); ++i) {
-        if (!g_clipped_cache[i].in_use) {
-            continue;
-        }
-        if (renderer) {
-            vk_renderer_texture_destroy(renderer, &g_clipped_cache[i].texture);
-        }
-        g_clipped_cache[i] = (DawClippedTextCacheEntry){0};
+/* Retire a cached label only after recorded GPU draws have completed. */
+static void daw_text_cache_retire(DawClippedTextCacheEntry* entry) {
+    if (!entry || !entry->in_use) return;
+    VkRenderer* owner = (VkRenderer*)entry->renderer;
+    if (owner) {
+        if (owner->current_frame_index == UINT32_MAX) vk_renderer_wait_idle(owner);
+        vk_renderer_queue_texture_destroy(owner, &entry->texture);
     }
+    *entry = (DawClippedTextCacheEntry){0};
+}
+
+/* Invalidate all clipped labels, or only those backed by a replaced font. */
+static void daw_text_cache_clear_font(TTF_Font* font) {
+    for (size_t i = 0; i < sizeof(g_clipped_cache) / sizeof(g_clipped_cache[0]); ++i) {
+        if (!font || g_clipped_cache[i].font == font) daw_text_cache_retire(&g_clipped_cache[i]);
+    }
+}
+
+/* Clear cached labels using their owning renderer rather than the caller's context. */
+static void daw_text_cache_clear(SDL_Renderer* renderer) {
+    (void)renderer;
+    daw_text_cache_clear_font(NULL);
     g_clipped_cache_stamp = 0;
 }
 
+/* Switch renderer ownership while keeping old frame resources alive until completion. */
 static void daw_text_ensure_renderer(SDL_Renderer* renderer) {
-    if (!renderer) {
-        return;
+    if (!renderer) return;
+    if (g_clipped_cache_renderer && g_clipped_cache_renderer != renderer) {
+        daw_text_cache_clear(g_clipped_cache_renderer);
+        vk_renderer_wait_idle((VkRenderer*)g_clipped_cache_renderer);
+        kit_render_external_text_reset_renderer(g_clipped_cache_renderer);
     }
     g_clipped_cache_renderer = renderer;
     if (g_clipped_cache_clear_pending) {
@@ -90,7 +109,9 @@ static void daw_text_ensure_renderer(SDL_Renderer* renderer) {
     }
 }
 
-static DawClippedTextCacheEntry* daw_text_cache_find(TTF_Font* font,
+static DawClippedTextCacheEntry* daw_text_cache_find(SDL_Renderer* renderer,
+                                                     float raster_scale,
+                                                     TTF_Font* font,
                                                      const char* text,
                                                      SDL_Color color) {
     size_t i = 0;
@@ -99,7 +120,8 @@ static DawClippedTextCacheEntry* daw_text_cache_find(TTF_Font* font,
     }
     for (i = 0; i < (sizeof(g_clipped_cache) / sizeof(g_clipped_cache[0])); ++i) {
         DawClippedTextCacheEntry* entry = &g_clipped_cache[i];
-        if (!entry->in_use || entry->font != font) {
+        if (!entry->in_use || entry->font != font || entry->renderer != renderer ||
+            entry->raster_scale != raster_scale) {
             continue;
         }
         if (entry->color.r != color.r || entry->color.g != color.g ||
@@ -341,6 +363,12 @@ void daw_text_register_font_source(TTF_Font* font,
                                    int kerning_enabled) {
     size_t i = 0;
     DawTextFontSourceEntry* slot = NULL;
+    if (g_clipped_cache_renderer &&
+        ((VkRenderer*)g_clipped_cache_renderer)->current_frame_index == UINT32_MAX) {
+        vk_renderer_wait_idle((VkRenderer*)g_clipped_cache_renderer);
+    }
+    daw_text_cache_clear_font(font);
+    daw_text_clear_raster_font_cache();
     for (i = 0; i < (sizeof(g_font_sources) / sizeof(g_font_sources[0])); ++i) {
         if (g_font_sources[i].font == font) {
             slot = &g_font_sources[i];
@@ -371,6 +399,11 @@ void daw_text_register_font_source(TTF_Font* font,
 
 void daw_text_unregister_font_source(TTF_Font* font) {
     size_t i = 0;
+    if (g_clipped_cache_renderer &&
+        ((VkRenderer*)g_clipped_cache_renderer)->current_frame_index == UINT32_MAX) {
+        vk_renderer_wait_idle((VkRenderer*)g_clipped_cache_renderer);
+    }
+    daw_text_cache_clear_font(font);
     for (i = 0; i < (sizeof(g_font_sources) / sizeof(g_font_sources[0])); ++i) {
         if (g_font_sources[i].font == font) {
             g_font_sources[i] = (DawTextFontSourceEntry){0};
@@ -388,7 +421,7 @@ void daw_text_unregister_font_source(TTF_Font* font) {
 void daw_text_invalidate_cache(SDL_Renderer* renderer) {
     daw_text_clear_raster_font_cache();
     if (renderer) {
-        g_clipped_cache_renderer = renderer;
+        daw_text_ensure_renderer(renderer);
     }
     if (g_clipped_cache_renderer) {
         daw_text_cache_clear(g_clipped_cache_renderer);
@@ -403,11 +436,11 @@ void daw_text_shutdown(void) {
     daw_text_clear_raster_font_cache();
     if (g_clipped_cache_renderer) {
         daw_text_cache_clear(g_clipped_cache_renderer);
+        vk_renderer_wait_idle((VkRenderer*)g_clipped_cache_renderer);
         kit_render_external_text_reset_renderer(g_clipped_cache_renderer);
-        g_clipped_cache_clear_pending = false;
-        return;
     }
-    g_clipped_cache_clear_pending = true;
+    g_clipped_cache_renderer = NULL;
+    g_clipped_cache_clear_pending = false;
 }
 
 int daw_text_measure_utf8(SDL_Renderer* renderer,
@@ -467,14 +500,14 @@ int daw_text_draw_utf8_clipped(SDL_Renderer* renderer,
         return 1;
     }
 
-    entry = daw_text_cache_find(font, text, color);
+    entry = daw_text_cache_find(renderer, daw_text_vulkan_raster_scale(renderer), font, text, color);
     if (!entry) {
         entry = daw_text_cache_pick_slot();
         if (!entry) {
             return 0;
         }
         if (entry->in_use) {
-            vk_renderer_texture_destroy(renderer, &entry->texture);
+            daw_text_cache_retire(entry);
         }
         if (!daw_text_render_local(renderer,
                                    font,
@@ -487,6 +520,8 @@ int daw_text_draw_utf8_clipped(SDL_Renderer* renderer,
             return 0;
         }
         entry->font = font;
+        entry->renderer = renderer;
+        entry->raster_scale = daw_text_vulkan_raster_scale(renderer);
         entry->color = color;
         entry->stamp = ++g_clipped_cache_stamp;
         entry->in_use = true;

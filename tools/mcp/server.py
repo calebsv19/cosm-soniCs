@@ -22,6 +22,15 @@ class Target(BaseModel):
     kind: Literal["track", "midi_region"]
 
 
+def bridge_timeout(operation: str | None) -> int:
+    """Bound render requests and receipt recovery separately from ordinary controls."""
+    if operation == "capture_mix":
+        return 180
+    if operation in {"analyze_composition", "capture_ab", "request_status"}:
+        return 60
+    return 5
+
+
 def bridge_call(payload: dict) -> dict:
     """Send exactly one request; uncertain transport failures are never automatically replayed."""
     path = os.environ.get("DAW_CONTROL_SOCKET")
@@ -32,7 +41,8 @@ def bridge_call(payload: dict) -> dict:
         raise ValueError("Request exceeds the 16 KiB bridge limit.")
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
-            connection.settimeout(5)
+            # Receipt recovery can queue behind a synchronous owner-thread render.
+            connection.settimeout(bridge_timeout(payload.get("op")))
             connection.connect(path)
             connection.sendall(raw)
             data = bytearray()
@@ -326,18 +336,34 @@ def list_effects(offset: int = Field(default=0, ge=0, le=1000000)) -> dict:
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 def get_effect_chain(target: Target | None = None) -> dict:
     """Read a complete ordered track chain, or the master chain when target is omitted."""
+    # Dynamics feedback is ephemeral and does not participate in expected_state.
     return bridge_call(dict(op="get_effect_chain", **({"target": target.model_dump()} if target else {})))
+
+class EffectAutomationPoint(BaseModel):
+    """Store exact project frames and physical Gain dB or Pan position."""
+    model_config = ConfigDict(extra="forbid")
+    frame: str = Field(pattern=r"^(0|[1-9][0-9]{0,19})$")
+    value: StrictFloat = Field(ge=-96,le=24)
+    curve: StrictInt = Field(ge=0,le=2)
+
+class EffectAutomation(BaseModel):
+    """Own one complete qualified insert parameter curve."""
+    model_config = ConfigDict(extra="forbid")
+    before: StrictInt = Field(ge=0,le=1)
+    after: StrictInt = Field(ge=0,le=1)
+    points: list[EffectAutomationPoint] = Field(max_length=32)
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True))
 def edit_effect_chain(instance: str, request_id: str, expected_state: str,
-                      action: Literal["add", "remove", "reorder", "enable", "parameter"],
+                      action: Literal["add", "remove", "reorder", "enable", "parameter", "automation"],
                       target: Target | None = None, type_id: StrictInt | None = None, effect_id: StrictInt | None = None,
                       position: StrictInt | None = None, enabled: StrictBool | None = None, parameter: StrictInt | None = None,
                       value: StrictFloat | None = None, mode: Literal["native", "beats", "beat_rate"] | None = None,
-                      beats: StrictFloat | None = None) -> dict:
+                      beats: StrictFloat | None = None, automation: EffectAutomation | None = None) -> dict:
     """Apply one exact-state guarded effect-chain edit as one reserved undo step."""
     payload = dict(op="edit_effect_chain", instance=instance, request_id=request_id, expected_state=expected_state, action=action)
     if target: payload["target"] = target.model_dump()
+    if automation is not None: payload["automation"] = automation.model_dump()
     for key, item in dict(type_id=type_id, effect_id=effect_id, position=position, enabled=enabled, parameter=parameter, value=value, mode=mode, beats=beats).items():
         if item is not None: payload[key] = item
     return bridge_call(payload)
@@ -475,13 +501,76 @@ class RoutingSendEdit(BaseModel):
     gain: StrictFloat = Field(ge=0, le=1)
 
 
-RoutingEdit = Annotated[RoutingRoleEdit | RoutingSendEdit, Field(discriminator="operation")]
+class RoutingGroupEdit(BaseModel):
+    """Convert an empty lane's group role in a guarded final hierarchy."""
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["group"]
+    target: Target
+    is_group: StrictBool
+
+class RoutingParentEdit(BaseModel):
+    """Bind the exclusive main output to a group, or null for master."""
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["parent"]
+    target: Target
+    parent_target: Target | None
+
+class RoutingFoldEdit(BaseModel):
+    """Fold or reveal descendants without changing the audio graph."""
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["fold"]
+    target: Target
+    folded: StrictBool
+
+class RoutingOrderEdit(BaseModel):
+    """Order siblings without moving their engine/processor identities."""
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["order"]
+    target: Target
+    sibling_order: StrictInt = Field(ge=0,le=1000000)
+
+class MixerAutomationPoint(BaseModel):
+    """Represent one absolute project frame and physical linear gain with an outgoing curve."""
+    model_config = ConfigDict(extra="forbid")
+    frame: str = Field(pattern=r"^(0|[1-9][0-9]{0,19})$")
+    value: StrictFloat = Field(ge=0,le=10)
+    curve: StrictInt = Field(default=0,ge=0,le=2)
+
+class MixerAutomation(BaseModel):
+    """Carry a complete bounded gain curve; boundaries0=static baseline,1=hold; curves0=linear,1=hold,2=smooth."""
+    model_config = ConfigDict(extra="forbid")
+    before: StrictInt = Field(default=0,ge=0,le=1)
+    after: StrictInt = Field(default=0,ge=0,le=1)
+    points: list[MixerAutomationPoint] = Field(max_length=32)
+
+class GroupVolumeAutomationEdit(BaseModel):
+    """Replace one group's complete absolute-linear0..10 fader curve as guarded routing history."""
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["volume_automation"]
+    target: Target
+    automation: MixerAutomation
+
+class SendAutomationEdit(BaseModel):
+    """Replace one bound post-fader send's absolute-linear0..1 curve; native admission verifies limits."""
+    model_config = ConfigDict(extra="forbid")
+    operation: Literal["send_automation"]
+    target: Target
+    slot: StrictInt = Field(ge=0,le=3)
+    automation: MixerAutomation
+
+RoutingEdit = Annotated[GroupVolumeAutomationEdit | SendAutomationEdit | RoutingRoleEdit | RoutingSendEdit | RoutingGroupEdit | RoutingParentEdit | RoutingFoldEdit | RoutingOrderEdit, Field(discriminator="operation")]
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 def get_routing() -> dict:
     """Capture complete track roles and post-fader sends with an exact routing state token."""
     return bridge_call({"op": "get_routing"})
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True))
+def create_group(instance: str, request_id: str, expected_routing: str, name: str) -> dict:
+    """Create one named nested audio-bus group with stable identity and one shared undo step."""
+    return bridge_call(dict(op="create_group", instance=instance, request_id=request_id, expected_routing=expected_routing, name=name))
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True))
@@ -493,7 +582,7 @@ def create_return(instance: str, request_id: str, expected_routing: str) -> dict
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True))
 def edit_routing(instance: str, request_id: str, expected_routing: str,
                  edits: list[RoutingEdit] = Field(min_length=1, max_length=16)) -> dict:
-    """Apply one atomic role/send batch; linear gains 0..1, no return feedback, stopped writes only."""
+    """Apply one atomic routing batch; linear gains 0..1, no return feedback. Fold-only writes/history permit playback; topology edits require stopped transport."""
     return bridge_call(dict(op="edit_routing", instance=instance, request_id=request_id, expected_routing=expected_routing,
                             edits=[edit.model_dump() for edit in edits]))
 
@@ -509,6 +598,224 @@ def redo_routing(instance: str, request_id: str, expected_routing: str) -> dict:
     """Redo matching routing history with the same accepted return identities."""
     return bridge_call(dict(op="redo_routing", instance=instance, request_id=request_id, expected_routing=expected_routing))
 
+
+class AutomationTarget(BaseModel):
+    """Identify an audio or MIDI region in one project lifetime."""
+    model_config = ConfigDict(extra="forbid")
+    generation: str = Field(pattern=r"^(0|[1-9][0-9]{0,19})$")
+    track_id: str = Field(pattern=r"^[1-9][0-9]{0,19}$")
+    clip_id: str = Field(pattern=r"^[1-9][0-9]{0,19}$")
+    kind: Literal["region"] = "region"
+
+
+class AutomationPoint(BaseModel):
+    """Specify a local sample frame, authored value and outgoing curve."""
+    model_config = ConfigDict(extra="forbid")
+    frame: str = Field(pattern=r"^(0|[1-9][0-9]{0,19})$")
+    value: StrictFloat = Field(allow_inf_nan=False)
+    curve: Literal["linear", "hold", "smooth"] = "linear"
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+def get_automation(target: AutomationTarget, lane_target: int = Field(default=0, ge=0, le=30),
+                   offset: int = Field(default=0, ge=0, le=65536), expected_arrangement: str | None = None) -> dict:
+    """Read 128 exact automation points, lane units, boundaries and a full arrangement guard.
+    Use generation, track_id and clip_id from get_arrangement with kind=region.
+    Target 0 is volume and 1 stereo balance; available_targets lists instrument lanes.
+    Frames are local to the region. Supply the returned guard on later pages to refuse drift.
+    """
+    payload = dict(op="get_automation", target=target.model_dump(), lane_target=lane_target, offset=offset)
+    if expected_arrangement is not None:
+        payload["expected_arrangement"] = expected_arrangement
+    return bridge_call(payload)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True))
+def set_automation(instance: str, request_id: str, target: AutomationTarget,
+                   expected_arrangement: str, lane_target: int = Field(ge=0, le=30),
+                   domain: Literal["physical", "offset"] = ..., before: Literal["baseline", "hold"] = ...,
+                   after: Literal["baseline", "hold"] = ..., points: list[AutomationPoint] = Field(max_length=128)) -> dict:
+    """Replace one complete lane as an undoable, receipt-backed shared editor command.
+    Physical volume is -120 (silence) to +24 dB; physical balance is -1 left to +1 right.
+    Other instrument targets use legacy offsets. Points must be sorted, unique and within duration.
+    Empty points neutralize the lane. Other lanes are retained. Recover uncertainty with request_status.
+    """
+    return bridge_call(dict(op="set_automation", instance=instance, request_id=request_id,
+        target=target.model_dump(), expected_arrangement=expected_arrangement, lane_target=lane_target,
+        domain=domain, before=before, after=after, points=[point.model_dump() for point in points]))
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True))
+def undo_automation(instance: str, request_id: str, target: AutomationTarget,
+                    expected_arrangement: str, lane_target: int = Field(default=0, ge=0, le=30)) -> dict:
+    """Undo only automation history for this stable region after a full current-state check."""
+    return bridge_call(dict(op="undo_automation", instance=instance, request_id=request_id,
+        target=target.model_dump(), expected_arrangement=expected_arrangement, lane_target=lane_target))
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True))
+def redo_automation(instance: str, request_id: str, target: AutomationTarget,
+                    expected_arrangement: str, lane_target: int = Field(default=0, ge=0, le=30)) -> dict:
+    """Redo only automation history for this stable region after a full current-state check."""
+    return bridge_call(dict(op="redo_automation", instance=instance, request_id=request_id,
+        target=target.model_dump(), expected_arrangement=expected_arrangement, lane_target=lane_target))
+
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False))
+def get_track_controls(target: Target) -> dict:
+    """Read a stable track/child/group/return label, base linear gain, stereo pan, mute and solo.
+    Gain 0=silence, 1=unity; writes allow 0..10 (+20 dB). Pan -1=left, 0=center, +1=right.
+    Returned expected_state guards only the chosen field and target lifetime on later writes.
+    """
+    return bridge_call(dict(op="get_track_controls",target=target.model_dump()))
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False))
+def set_track_control(instance: str, request_id: str = Field(min_length=1,max_length=64), target: Target = ...,
+                      expected_state: str = ..., control: Literal["name","gain","pan"] = ...,
+                      value: str | StrictFloat = ...) -> dict:
+    """Set one base label/mixer field as one undo step; unrelated notes, effects and mix fields remain owned.
+    Names: 1..127 UTF-8 bytes, no control characters. Gain: linear amplitude 0..10. Pan: balance -1..1.
+    Native playback is allowed; recording/gestures refuse. Use immutable request IDs and request_status recovery.
+    """
+    return bridge_call(dict(op="set_track_control",instance=instance,request_id=request_id,target=target.model_dump(),expected_state=expected_state,control=control,value=value))
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False))
+def undo_track_control(instance: str, request_id: str, target: Target, expected_state: str,
+                       control: Literal["name","gain","pan"]) -> dict:
+    """Undo only matching target/field history at the shared cursor with exact lifetime/current-value guards."""
+    return bridge_call(dict(op="undo_track_control",instance=instance,request_id=request_id,target=target.model_dump(),expected_state=expected_state,control=control))
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False))
+def redo_track_control(instance: str, request_id: str, target: Target, expected_state: str,
+                       control: Literal["name","gain","pan"]) -> dict:
+    """Redo only matching target/field history; never skip another domain command or overwrite a stale value."""
+    return bridge_call(dict(op="redo_track_control",instance=instance,request_id=request_id,target=target.model_dump(),expected_state=expected_state,control=control))
+
+
+class EqCut(BaseModel):
+    """Describe one fixed-slope dedicated low/high cut in Hz."""
+    model_config = ConfigDict(extra="forbid")
+    enabled: StrictBool
+    frequency_hz: StrictFloat = Field(ge=20,le=20000)
+
+class EqBand(BaseModel):
+    """Describe one dedicated peaking band with physical gain and bandwidth."""
+    model_config = ConfigDict(extra="forbid")
+    enabled: StrictBool
+    frequency_hz: StrictFloat = Field(ge=20,le=20000)
+    gain_db: StrictFloat = Field(ge=-20,le=20)
+    width_octaves: StrictFloat = Field(ge=.1,le=4)
+
+class EqCurve(BaseModel):
+    """Own the complete four-band dedicated curve, including disabled settings."""
+    model_config = ConfigDict(extra="forbid")
+    low_cut: EqCut
+    high_cut: EqCut
+    bands: list[EqBand] = Field(min_length=4,max_length=4)
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True,destructiveHint=False))
+def get_eq(target: Target | None = None) -> dict:
+    """Read native dedicated EQ; omit target for master, use track handles for child/group/return.
+    This curve is separate from EQ inserts. Return token covers all stored controls and exact lifetime.
+    """
+    return bridge_call(dict(op="get_eq",**({"target":target.model_dump()} if target else {})))
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False))
+def edit_eq(instance: str, request_id: str, expected_state: str, curve: EqCurve, target: Target | None = None) -> dict:
+    """Replace one native dedicated EQ curve as one reserved undo step against exact current state.
+    Hz 20..20000 (enabled <=0.45*sample rate), gain -20..20 dB, bandwidth .1..4 octaves.
+    Fixed 12 dB/oct cuts; stopped transport/recording and no conflicting owners. Recover uncertain writes with original-ID request_status.
+    """
+    return bridge_call(dict(op="edit_eq",instance=instance,request_id=request_id,expected_state=expected_state,curve=curve.model_dump(),**({"target":target.model_dump()} if target else {})))
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False))
+def undo_eq(instance: str, request_id: str, expected_state: str, target: Target | None = None) -> dict:
+    """Undo matching dedicated EQ at the shared cursor with exact curve/lifetime guards; no other sound fields are restored."""
+    return bridge_call(dict(op="undo_eq",instance=instance,request_id=request_id,expected_state=expected_state,**({"target":target.model_dump()} if target else {})))
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False,destructiveHint=False))
+def redo_eq(instance: str, request_id: str, expected_state: str, target: Target | None = None) -> dict:
+    """Redo only matching dedicated EQ history, retaining unrelated mixer, inserts, notes and instruments."""
+    return bridge_call(dict(op="redo_eq",instance=instance,request_id=request_id,expected_state=expected_state,**({"target":target.model_dump()} if target else {})))
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+def get_mix_snapshot() -> dict:
+    """Capture an exact bounded authored mix guard; no transport, selection or mixer changes."""
+    return bridge_call(dict(op="get_mix_snapshot"))
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+def capture_mix(expected_mix: str, start_frame: str = Field(default="0", pattern=r"^(0|[1-9][0-9]{0,19})$"),
+                end_frame: str = Field(default="1", pattern=r"^[1-9][0-9]{0,19}$"), whole_song: StrictBool = False,
+                tail_frames: str = Field(default="0", pattern=r"^(0|[1-9][0-9]{0,19})$")) -> dict:
+    """Capture immutable in-context graph levels and selected-range LUFS/true peak; full cold context from zero, at most 300s context and 30s measured range. whole_song=True instead derives the complete arrangement (<=600s), adds explicit tail_frames (<=30s), and captures programme LUFS/LRA/true peak; leave start/end at defaults 0/1."""
+    return bridge_call(dict(op="capture_mix", expected_mix=expected_mix, start_frame=start_frame, end_frame=end_frame, whole_song=whole_song, tail_frames=tail_frames))
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+def get_mix_capture(capture_id: str, node_offset: int = Field(default=0, ge=0, le=32),
+                    source_offset: int = Field(default=0, ge=0, le=256),
+                    effect_offset: int = Field(default=0, ge=0, le=15),
+                    frequency_window: int = Field(default=0, ge=0, le=31),
+                    frequency_channel: int = Field(default=0, ge=0, le=7),
+                    note_offset: int = Field(default=0, ge=0, le=32768)) -> dict:
+    """Read immutable whole-song LUFS/LRA/true-peak node summaries or passage LUFS/true-peak and graph/insert/spectral pages, eight sources with measured tails and eight note endings; independent cursors; source/FX tails are aggregate."""
+    return bridge_call(dict(op="get_mix_capture", capture_id=capture_id, node_offset=node_offset, source_offset=source_offset, effect_offset=effect_offset, frequency_window=frequency_window, frequency_channel=frequency_channel, note_offset=note_offset))
+
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+def get_ab_comparison() -> dict:
+    """Read the current native/MCP ephemeral A/B captures, listening gains and exact revision."""
+    return bridge_call(dict(op="get_ab_comparison"))
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True))
+def capture_ab(instance: str, request_id: str, expected_comparison: str, expected_mix: str,
+               side: Literal["A","B"], start_frame: str, end_frame: str,
+               tail_frames: str="0", dry: StrictBool=False, target: Target | None=None) -> dict:
+    """Capture A or compatible B privately; A replaces the pair, using exact comparison/mix guards."""
+    payload=dict(op="capture_ab",instance=instance,request_id=request_id,expected_comparison=expected_comparison,expected_mix=expected_mix,side=side,start_frame=start_frame,end_frame=end_frame,tail_frames=tail_frames,dry=dry)
+    if target is not None: payload["target"]=target.model_dump()
+    return bridge_call(payload)
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True))
+def listen_ab(instance: str, request_id: str, expected_comparison: str, side: Literal["A","B"],
+              matched: StrictBool=True, restart: StrictBool=False) -> dict:
+    """Listen to aligned immutable A/B audio or switch at the current cursor through a 5 ms crossfade."""
+    return bridge_call(dict(op="listen_ab",instance=instance,request_id=request_id,expected_comparison=expected_comparison,side=side,matched=matched,restart=restart))
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True))
+def stop_ab(instance: str, request_id: str, expected_comparison: str, clear: StrictBool=False) -> dict:
+    """Stop only the owned A/B audition; explicit clear also releases the ephemeral captures."""
+    return bridge_call(dict(op="stop_ab",instance=instance,request_id=request_id,expected_comparison=expected_comparison,clear=clear))
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+def get_song_export(job_id: str | None=None) -> dict:
+    """Read atomic progress and verified result for a retained job, or latest when omitted."""
+    return bridge_call(dict(op="get_song_export",**({"job_id":job_id} if job_id is not None else {})))
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True))
+def start_song_export(instance: str, request_id: str, expected_mix: str,
+                      format: Literal["pcm16","float32"]="pcm16", tail_frames: str="0", normalize: StrictBool=False) -> dict:
+    """Queue captured whole-song WAV without project edits; up to one hour plus 60 s tail. Save returned job_id and poll status; receipt replay never submits twice."""
+    return bridge_call(dict(op="start_song_export",instance=instance,request_id=request_id,expected_mix=expected_mix,format=format,tail_frames=tail_frames,normalize=normalize))
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True))
+def cancel_song_export(instance: str, request_id: str, job_id: str) -> dict:
+    """Cancel exact queued/rendering job; publication_started/already_finished does not remove a file."""
+    return bridge_call(dict(op="cancel_song_export",instance=instance,request_id=request_id,job_id=job_id))
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+def get_live_meters(target: Target | None=None) -> dict:
+    """Read coherent 400 ms channel/stereo compatibility windows and freshness; omit target for master. Values precede output-only mono monitoring."""
+    return bridge_call(dict(op="get_live_meters",**({"target":target.model_dump()} if target else {})))
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=True))
+def set_monitor_mode(instance: str, request_id: str, expected_monitor: str, mode: Literal["stereo","mono"]) -> dict:
+    """Select listening-only 5 ms mono fold/stereo with exact endpoint/revision guard; no project/capture/export/history changes."""
+    return bridge_call(dict(op="set_monitor_mode",instance=instance,request_id=request_id,expected_monitor=expected_monitor,mode=mode))
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")

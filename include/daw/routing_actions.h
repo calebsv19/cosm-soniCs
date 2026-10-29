@@ -20,6 +20,8 @@ bool daw_routing_history_restore(struct AppState*, const DawRoutingHistory*, boo
 DawActionStatus daw_action_routing_history(struct AppState*, const EngineRoutingSnapshot* expected,
                                          bool redo, EngineRoutingSnapshot* out);
 
+// Creates one named group after reserving complete routing and created-lane history.
+DawActionStatus daw_action_create_group(struct AppState*, const EngineRoutingSnapshot* expected, const char* name, EngineRoutingSnapshot* out);
 // Creates one trailing empty return after reserving complete routing and created-lane history.
 DawActionStatus daw_action_create_return(struct AppState*, const EngineRoutingSnapshot* expected,
                                         EngineRoutingSnapshot* out);

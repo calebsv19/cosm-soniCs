@@ -28,6 +28,8 @@ bool daw_save_file_begin(DawSaveFile* save, const char* path);
 bool daw_save_file_prepare(DawSaveFile* save);
 // Renames a prepared candidate and reports whether directory synchronization also succeeded.
 DawSaveResult daw_save_file_commit(DawSaveFile* save);
+// Publishes only when the destination does not exist, including concurrent-writer collisions.
+DawSaveResult daw_save_file_commit_new(DawSaveFile* save);
 // Releases candidate storage without changing a previously published destination.
 void daw_save_file_abort(DawSaveFile* save);
 // Publishes a short metadata value using the same checked transaction.

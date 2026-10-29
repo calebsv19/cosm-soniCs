@@ -3,6 +3,7 @@
 #include "ui/effects_panel_meter_detail.h"
 #include "engine/engine_internal.h"
 #include "app_state.h"
+#include "daw/eq_actions.h"
 #include "input/timeline_drag.h"
 #include "input/inspector_input_numeric_edit.h"
 #include "input/inspector_input.h"
@@ -67,6 +68,7 @@ static bool capacity_ring_init(RingBuffer* ring, size_t bytes) {
 #include "../src/engine/engine_clips_midi.c"
 #define malloc automation_test_malloc
 #include "../src/engine/automation.c"
+#include "../src/engine/automation_semantics.c"
 #define realloc midi_test_realloc
 #include "../src/engine/midi.c"
 #undef realloc
@@ -521,7 +523,7 @@ static void test_automation_transactions(void) {
     CHECK(wav_write_pcm16_dithered(path, samples, 128, 1, config.sample_rate, 4), "automation WAV");
     CHECK(engine_add_clip_to_track(engine, 1, path, 0, NULL), "automation audio clip");
     EngineAutomationPoint points[] = {{0, 0.25f}, {64, 0.5f}};
-    EngineAutomationPoint changed[] = {{0, -1}, {4096, -1}};
+    EngineAutomationPoint changed[] = {{0, -1}, {127, -1}};
     for (int track = 0; track < 2; ++track) {
         EngineAutomationTarget target = track == 0 ? ENGINE_AUTOMATION_TARGET_INSTRUMENT_LEVEL : ENGINE_AUTOMATION_TARGET_VOLUME;
         EngineAutomationLane initial = {.target = target, .points = points, .point_count = 2, .point_capacity = 2};
@@ -1542,6 +1544,9 @@ static void test_effects_history_reservation(void) {
     undo_manager_cancel_drag(&state->undo);
     CHECK(engine_track_set_gain(state->engine, 0, gain), "restore stale-preview fixture");
     CHECK(effects_panel_track_snapshot_handle_mouse_down(state, &layout, &down), "accepted gain");
+    CHECK(state->effects_panel.track_snapshot.dragging && engine_get_tracks(state->engine)[0].gain == gain, "press changed gain");
+    SDL_Event motion = {0}; motion.type = SDL_MOUSEMOTION; motion.motion.x = 180; motion.motion.y = 90;
+    CHECK(effects_panel_track_snapshot_handle_mouse_motion(state, &layout, &motion), "gain relative motion");
     CHECK(state->effects_panel.track_snapshot.dragging && engine_get_tracks(state->engine)[0].gain != gain,
           "gain did not apply");
     effects_panel_track_snapshot_handle_mouse_up(state, &up);
@@ -1557,6 +1562,7 @@ static void test_eq_history_rejection(void) {
     state->engine = engine_create(&cfg); CHECK(state->engine != NULL, "EQ engine");
     undo_manager_init(&state->undo);
     UndoCommand command = {.type = UNDO_CMD_EQ_CURVE}; command.data.eq_curve_edit.is_master = true;
+    CHECK(daw_eq_bind_history(state,&command.data.eq_curve_edit),"EQ lifetime and accepted baseline");
     command.data.eq_curve_edit.before.bands[0].enabled = true;
     command.data.eq_curve_edit.before.bands[0].freq_hz = 1000;
     command.data.eq_curve_edit.before.bands[0].gain_db = 6;
@@ -1785,6 +1791,8 @@ static void test_effect_gesture_target(void) {
     state->selected_track_index = 1;
     effects_panel_sync_from_engine(state);
     CHECK(state->effects_panel.target_track_index == 0 && engine->tracks[1].gain == 1.0f, "selection redirected gesture");
+    SDL_Event motion = {0}; motion.type = SDL_MOUSEMOTION; motion.motion.x = 180; motion.motion.y = 90;
+    CHECK(effects_panel_track_snapshot_handle_mouse_motion(state, &layout, &motion), "move owned track gesture");
     SDL_Event up = down; up.type = SDL_MOUSEBUTTONUP;
     effects_panel_track_snapshot_handle_mouse_up(state, &up);
     CHECK(engine_insert_track(engine, 0) && undo_manager_undo(&state->undo, state) &&

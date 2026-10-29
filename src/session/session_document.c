@@ -274,6 +274,9 @@ static bool session_copy_engine_automation_lanes(const EngineAutomationLane* src
         const EngineAutomationLane* src_lane = &src_lanes[i];
         SessionAutomationLane* dst_lane = &(*dst_lanes)[i];
         dst_lane->target = src_lane->target;
+        dst_lane->domain = src_lane->domain;
+        dst_lane->before = src_lane->before;
+        dst_lane->after = src_lane->after;
         dst_lane->point_count = src_lane->point_count;
         if (src_lane->point_count > 0) {
             dst_lane->points = (SessionAutomationPoint*)calloc((size_t)src_lane->point_count,
@@ -284,6 +287,7 @@ static bool session_copy_engine_automation_lanes(const EngineAutomationLane* src
             for (int p = 0; p < src_lane->point_count; ++p) {
                 dst_lane->points[p].frame = src_lane->points[p].frame;
                 dst_lane->points[p].value = src_lane->points[p].value;
+                dst_lane->points[p].curve = src_lane->points[p].curve;
             }
         }
     }
@@ -507,7 +511,16 @@ static bool session_document_capture_candidate(const AppState* state, SessionDoc
         dst_track->muted = src_track->muted;
         dst_track->solo = src_track->solo;
         dst_track->is_return = src_track->is_return;
+        dst_track->volume_automation=src_track->volume_automation;
+        dst_track->is_group = src_track->is_group; dst_track->persistent_id = src_track->persistent_id;
+        dst_track->folded = src_track->folded; dst_track->sibling_order = src_track->sibling_order;
+        if (src_track->parent_id) {
+            int parent = 0; while (parent < engine_track_count && engine_tracks[parent].runtime_id != src_track->parent_id) ++parent;
+            if (parent == engine_track_count) { session_document_reset(out_doc); return false; }
+            dst_track->parent_track = parent + 1;
+        }
         for (int send = 0; send < ENGINE_SEND_CAP; ++send) {
+            dst_track->sends[send].automation=src_track->sends[send].automation;
             dst_track->sends[send].gain = src_track->sends[send].gain;
             uint64_t destination = src_track->sends[send].return_id;
             if (!destination) continue;
@@ -633,6 +646,7 @@ static bool session_document_capture_candidate(const AppState* state, SessionDoc
                 if (state->engine) {
                     engine_fx_registry_get_param_specs(state->engine, src->type, &specs, &spec_count);
                 }
+                dst_fx->automation = src->automation;
                 dst_fx->type = src->type;
                 dst_fx->enabled = src->enabled;
                 dst_fx->param_count = src->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : src->param_count;
@@ -681,6 +695,7 @@ static bool session_document_capture_candidate(const AppState* state, SessionDoc
             if (state->engine) {
                 engine_fx_registry_get_param_specs(state->engine, src->type, &specs, &spec_count);
             }
+            dst->automation = src->automation;
             dst->type = src->type;
             dst->enabled = src->enabled;
             dst->param_count = src->param_count > FX_MAX_PARAMS ? FX_MAX_PARAMS : src->param_count;

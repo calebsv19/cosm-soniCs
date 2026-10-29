@@ -89,3 +89,31 @@ uses shared rounded tokens; product palette, status and geometry remain owned by
 Sonics. See `docs/shared_ui_rollout.md` for exact coverage and retained exceptions.
 
 `window_input.c` closes accepted continuous gestures through existing release/undo owners, explicitly cancels shared discrete captures and preedit, and latches pointer release across native transitions.
+
+## Relative knob adjustment
+
+Pressing effects or instrument knobs preserves the current value. Drag upward to increase and downward to decrease; 1000 pixels covers the normalized range, independent of knob size; dB knobs instead use a consistent 0.04 dB per pixel. Hold Shift before pressing for tenfold finer adjustment. Release and drag again to continue from the new value. Gain readouts show three decimal places in dB. Track snapshot gain and pan use the same vertical gesture. Existing parameter limits and beat-sync quantization still apply.
+
+The MIDI editor claims sampled timeline presses over its surface; hidden track clips and headers cannot receive those clicks. Pane dividers claim the event press and retain it through release, using a 10-pixel border hit band.
+
+## MIDI note editing
+
+A note press selects and prepares a drag immediately; a small motion threshold keeps clicks from editing notes. Body drags preserve the grab offset, and selected groups retain their relative timing and pitch. Hover/selection outlines expose distinct left/right resize handles, with the current operation shown in the footer. Edge drags preserve the opposite endpoint. Hold Alt/Option during creation, movement, or resizing to bypass timing snap; release it to resume the current grid. Pitch still follows semitone rows. Quantize remains an explicit command.
+
+Vel-/Vel+ and keyboard minus/plus adjust all selected notes by five percentage points, clamp to the valid range, preserve selection, and reserve one undo entry. With no selected notes they adjust the new-note insertion velocity. The summary shows selected velocity bounds or the insertion velocity. `midi_editor_input_velocity.c` owns this command.
+
+`automation_keyboard.c` owns selected-point curve, boundary and precision keys through shared history commands, with Alt/Option sample nudges and unit-aware gain adjustments.
+
+- MIDI QWERTY shortcuts honor event-time command modifiers, keeping Command-Q from quantizing a note during application quit.
+
+Nested/collapsible audio bus groups, common history and MCP support are described in [track groups](../../docs/track_groups.md). Engine group projection/mixing and the native group panel have focused signal, persistence, rollback and SDL/Vulkan tests.
+
+[Collection-scoped Load/Save](../../docs/project_collections.md) now isolates folder lists, previews monotonically versioned checkpoints and preserves exact current-project save paths. Native collection and publication tests cover the shared modal geometry and atomic no-replace writer.
+
+[Compact track UI](../../docs/compact_track_ui.md) provides aligned headers/meters/FX access, derived descendant MIDI/audio overviews and fold-only playback-safe selection/history. New `timeline_track_header` and `timeline_group_overview` modules share production geometry and source preview components.
+
+[Header mixer and lane density](../../docs/header_mixer.md) adds guarded gain/pan scalar history, standard relative gestures, exact-value inspector synchronization, smaller gutters and subtle persistent lane tints. The application mixer/history boundary and input gesture owner are separate small modules.
+
+Native track renaming captures a generation/runtime target and uses the common guarded label action, reserving history before publication and refusing late edits after project replacement.
+
+Dedicated EQ drags/resets bind accepted engine curves and generation/runtime identity before reserving history. Native publication and replay share the common exact-curve action with MCP; failed or stale publication restores the last accepted UI draft.

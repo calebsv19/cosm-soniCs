@@ -24,6 +24,8 @@ typedef struct DawSoundAnalysis {
 } DawSoundAnalysis;
 // Rejects nonfinite or out-of-range captured settings before rendering or audition publication.
 bool daw_sound_spec_valid(DawSoundSpec sound);
+// Returns the shared C4 or range-aware C-major audition notes.
+int daw_sound_preview_notes(DawSoundSpec sound, uint8_t pitches[4]);
 // Renders the fixed held C4/chord through the production synthesizer with original level and no effects.
 bool daw_sound_render(DawSoundSpec sound, DawSoundRender* out);
 // Releases only caller-owned private render storage.

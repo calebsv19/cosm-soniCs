@@ -55,6 +55,7 @@ bool parse_master_fx(JsonReader* r, SessionDocument* doc) {
         }
         uint32_t params_found = 0;
         bool params_set = false;
+        bool automation_seen = false;
         while (true) {
             json_skip_whitespace(r);
             if (r->pos < r->length && r->data[r->pos] == '}') {
@@ -74,6 +75,9 @@ bool parse_master_fx(JsonReader* r, SessionDocument* doc) {
                     return false;
                 }
                 fx->type = (FxTypeId)(val < 0 ? 0 : val);
+            } else if (strcmp(key, "automation") == 0) {
+                if(automation_seen || !session_parse_parameter_automation(r,&fx->automation,-96,24))return false;
+                automation_seen=true;
             } else if (strcmp(key, "name") == 0) {
                 if (!json_parse_string(r, fx->name, sizeof(fx->name))) {
                     return false;

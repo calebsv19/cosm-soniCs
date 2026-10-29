@@ -25,13 +25,50 @@ typedef enum {
     ENGINE_AUTOMATION_TARGET_INSTRUMENT_FILTER_DECAY_MS,
     ENGINE_AUTOMATION_TARGET_INSTRUMENT_FILTER_LFO_HZ,
     ENGINE_AUTOMATION_TARGET_INSTRUMENT_FILTER_LFO_OCTAVES,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_BODY_DECAY_MS,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_PITCH_ENV_SEMITONES,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_PITCH_DECAY_MS,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_NOISE_MIX,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_NOISE_DECAY_MS,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_CLICK_MIX,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_DYNAMICS,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_VELOCITY_DEPTH,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_SUSTAIN_PEDAL,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_STRING_RESONANCE,
+    ENGINE_AUTOMATION_TARGET_INSTRUMENT_RELEASE_NOISE,
     ENGINE_AUTOMATION_TARGET_COUNT
 } EngineAutomationTarget;
 
-// Stores a single automation point at a frame with a normalized value.
+// Defines the outgoing interpolation shape of a point; zero preserves legacy linear segments.
+typedef enum {
+    ENGINE_AUTOMATION_CURVE_LINEAR = 0,
+    ENGINE_AUTOMATION_CURVE_HOLD,
+    ENGINE_AUTOMATION_CURVE_SMOOTH,
+    ENGINE_AUTOMATION_CURVE_COUNT
+} EngineAutomationCurve;
+
+// Defines whether values use legacy additive offsets or explicit physical target units.
+typedef enum {
+    ENGINE_AUTOMATION_DOMAIN_OFFSET = 0,
+    ENGINE_AUTOMATION_DOMAIN_PHYSICAL,
+    ENGINE_AUTOMATION_DOMAIN_COUNT
+} EngineAutomationDomain;
+
+// Defines extrapolation at a region boundary; zero preserves the legacy neutral endpoint ramp.
+typedef enum {
+    ENGINE_AUTOMATION_BOUNDARY_BASELINE = 0,
+    ENGINE_AUTOMATION_BOUNDARY_HOLD,
+    ENGINE_AUTOMATION_BOUNDARY_COUNT
+} EngineAutomationBoundary;
+
+#define ENGINE_AUTOMATION_POINT_LIMIT 65536
+
+// Stores a frame, lane-domain value, and outgoing segment curve.
+
 typedef struct {
     uint64_t frame;
     float value;
+    EngineAutomationCurve curve;
 } EngineAutomationPoint;
 
 // Stores a lane of automation points for a specific target.
@@ -40,6 +77,9 @@ typedef struct {
     EngineAutomationPoint* points;
     int point_count;
     int point_capacity;
+    EngineAutomationDomain domain;
+    EngineAutomationBoundary before;
+    EngineAutomationBoundary after;
 } EngineAutomationLane;
 
 // Resets an automation lane to a target with no points.
@@ -69,3 +109,14 @@ float engine_automation_lane_eval(const EngineAutomationLane* lane, uint64_t fra
 bool engine_automation_target_is_instrument_param(EngineAutomationTarget target);
 // Returns a compact timeline label for the target.
 const char* engine_automation_target_display_label(EngineAutomationTarget target);
+
+// Validates domain, endpoint policy, finite values, curve kinds and strictly ordered frame bounds.
+bool engine_automation_lane_validate(const EngineAutomationLane* lane, uint64_t region_frames);
+// Returns the neutral value in the lane's declared units.
+float engine_automation_lane_baseline(const EngineAutomationLane* lane);
+// Converts an authored value to the legacy delta consumed by playback.
+float engine_automation_value_to_delta(const EngineAutomationLane* lane, float value);
+// Evaluates the authored curve without converting its declared units.
+float engine_automation_lane_eval_value(const EngineAutomationLane* lane, uint64_t frame, uint64_t region_frames);
+// Returns a stable unit label for physical or legacy lane values.
+const char* engine_automation_lane_unit(const EngineAutomationLane* lane);

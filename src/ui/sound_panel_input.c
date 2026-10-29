@@ -22,8 +22,10 @@ static void composition_analysis(const DawCompositionRender* capture, DawSoundAn
 // Releases only inspector-owned samples; isolated instrument measurements remain value-owned.
 void daw_sound_panel_release(AppState* state) {
     if(!state)return;
+    bool owned=state->sound_ui.listening>=14;
     state->sound_ui.pressed=state->sound_ui.listening=-1;
-    engine_preview_stop(state->engine);
+    uint64_t position;bool comparison=state->ab && engine_comparison_status(state->engine,state->ab->revision,&position);
+    if(owned && !comparison)engine_preview_stop(state->engine);
     daw_composition_render_free(&state->sound_ui.captured);
     daw_composition_render_free(&state->sound_ui.captured_reference);
     if(state->sound_ui.composition)state->sound_ui.has_current=state->sound_ui.has_reference=false;

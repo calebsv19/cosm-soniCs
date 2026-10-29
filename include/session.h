@@ -11,7 +11,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define SESSION_DOCUMENT_VERSION 24
+#define SESSION_DOCUMENT_VERSION 26
 #define SESSION_PATH_MAX 512
 #define SESSION_NAME_MAX 128
 #define SESSION_FX_NAME_MAX 64
@@ -19,16 +19,16 @@
 #define SESSION_TIMELINE_SELECTION_MAX 256
 
 // Captures serialized automation point data for session persistence.
-typedef struct {
-    uint64_t frame;
-    float value;
-} SessionAutomationPoint;
+typedef EngineAutomationPoint SessionAutomationPoint;
 
 // Captures serialized automation lane data for session persistence.
 typedef struct {
     EngineAutomationTarget target;
     int point_count;
     SessionAutomationPoint* points;
+    EngineAutomationDomain domain;
+    EngineAutomationBoundary before;
+    EngineAutomationBoundary after;
 } SessionAutomationLane;
 
 // Captures serialized clip data for session persistence.
@@ -166,6 +166,7 @@ typedef struct {
 
 // Captures serialized effect instance parameters for session persistence.
 typedef struct SessionFxInstance {
+    EngineMixerAutomation automation; // Owns the selected effect parameter curve.
     FxTypeId type;
     bool enabled;
     uint32_t param_count;
@@ -181,7 +182,7 @@ typedef struct SessionFxInstance {
 } SessionFxInstance;
 
 // Stores one send using a one-based destination in the complete saved track array; zero is unbound.
-typedef struct { int destination_track; float gain; } SessionSend;
+typedef struct { int destination_track; float gain; EngineMixerAutomation automation; } SessionSend;
 
 // Owns complete lane content, processing and routing without borrowing runtime identities.
 typedef struct {
@@ -191,6 +192,12 @@ typedef struct {
     bool muted;
     bool solo;
     bool is_return;
+    bool is_group;
+    uint64_t persistent_id;
+    int parent_track;
+    int sibling_order;
+    bool folded;
+    EngineMixerAutomation volume_automation;
     SessionSend sends[ENGINE_SEND_CAP];
     bool midi_instrument_enabled;
     EngineInstrumentPresetId midi_instrument_preset;
@@ -264,6 +271,8 @@ void session_document_reset(SessionDocument* doc);
 void session_document_free(SessionDocument* doc);
 bool session_document_capture(const struct AppState* state, SessionDocument* out_doc);
 bool session_document_validate(const SessionDocument* doc, char* error_message, size_t error_message_len);
+// Publishes a validated checkpoint without replacing existing project bytes.
+bool session_document_write_file_new(const SessionDocument* doc, const char* path);
 bool session_document_write_file(const SessionDocument* doc, const char* path);
 bool session_save_to_file(const struct AppState* state, const char* path);
 bool session_document_read_file(const char* path, SessionDocument* out_doc);

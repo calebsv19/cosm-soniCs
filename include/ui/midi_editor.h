@@ -10,6 +10,12 @@ struct AppState;
 
 #define MIDI_EDITOR_VISIBLE_KEY_ROWS 24
 
+// Keeps the two resize zones distinct and leaves a central move target on short notes.
+static inline int midi_editor_note_edge_width(int width) {
+    int edge = width / 4;
+    return edge < 1 ? 1 : (edge > 6 ? 6 : edge);
+}
+
 typedef struct {
     int track_index;
     int clip_index;

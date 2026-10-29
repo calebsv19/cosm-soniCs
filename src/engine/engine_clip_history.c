@@ -441,7 +441,7 @@ static bool history_prepare_insert(Engine* engine, const EngineClipInsert* input
             (input->kind == ENGINE_CLIP_KIND_AUDIO && engine_automation_target_is_instrument_param(lane->target)) ||
             lane->point_count < 0 || (lane->point_count && !lane->points)) return false;
         for (int j = 0; j < l; ++j) if (input->automation_lanes[j].target == lane->target) return false;
-        for (int i = 0; i < lane->point_count; ++i) if (!isfinite(lane->points[i].value)) return false;
+        if (!engine_automation_lane_validate(lane, input->transform.duration_frames)) return false;
     }
     out->kind = input->kind; out->active = true;
     if (input->kind == ENGINE_CLIP_KIND_AUDIO) {
@@ -639,9 +639,11 @@ bool engine_track_history_insert(Engine* engine, int track_index, const EngineCl
 static bool history_lanes_equal(const EngineAutomationLane* a, int ac, const EngineAutomationLane* b, int bc) {
     if (ac != bc) return false;
     for (int l = 0; l < ac; ++l) {
-        if (a[l].target != b[l].target || a[l].point_count != b[l].point_count) return false;
+        if (a[l].target != b[l].target || a[l].point_count != b[l].point_count ||
+            a[l].domain != b[l].domain || a[l].before != b[l].before || a[l].after != b[l].after) return false;
         for (int p = 0; p < a[l].point_count; ++p)
-            if (a[l].points[p].frame != b[l].points[p].frame || a[l].points[p].value != b[l].points[p].value) return false;
+            if (a[l].points[p].frame != b[l].points[p].frame || a[l].points[p].value != b[l].points[p].value ||
+                a[l].points[p].curve != b[l].points[p].curve) return false;
     }
     return true;
 }
@@ -680,9 +682,11 @@ static bool history_clips_equal(const EngineClip* a,int ac,const EngineClip* b,i
 
 // Rejects deletion when later unrecorded authored edits would otherwise be silently discarded.
 static bool history_track_equal(const EngineTrack* a, const EngineTrack* b) {
-    if (a->is_return != b->is_return) return false;
+    if (a->is_return != b->is_return || a->is_group != b->is_group || a->parent_id != b->parent_id ||
+        a->folded != b->folded || a->sibling_order != b->sibling_order || a->persistent_id != b->persistent_id) return false;
+    if(!engine_mixer_automation_equal(&a->volume_automation,&b->volume_automation))return false;
     for (int send = 0; send < ENGINE_SEND_CAP; ++send)
-        if (a->sends[send].return_id != b->sends[send].return_id || a->sends[send].gain != b->sends[send].gain) return false;
+        if (!engine_mixer_automation_equal(&a->sends[send].automation,&b->sends[send].automation) || a->sends[send].return_id != b->sends[send].return_id || a->sends[send].gain != b->sends[send].gain) return false;
     if (a->runtime_id != b->runtime_id || a->clip_count != b->clip_count || a->gain != b->gain ||
         a->pan != b->pan || a->muted != b->muted || a->solo != b->solo || a->active != b->active ||
         strcmp(a->name, b->name) || a->midi_instrument_enabled != b->midi_instrument_enabled ||

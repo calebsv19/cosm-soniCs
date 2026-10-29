@@ -1,11 +1,15 @@
 #pragma once
 #include "daw/routing_actions.h"
+#include "daw/fx_actions.h"
 #include "kit_ui_text_edit.h"
 #include <SDL2/SDL.h>
 struct AppState;
 // Owns staged lane routing, copied guards and bounded shared percentage editing.
 typedef struct DawRoutingUI {
-    bool open, staged_return;
+    bool open, staged_return, automation_mode, effect_mode;
+    DawFxSnapshot effect_capture; // Owns the selected stable insert chain guard.
+    int auto_lane,auto_point;
+    char auto_frame[32],auto_value[32],auto_labels[16][160];
     int selected, focused, cursor, pressed;
     EngineRoutingSnapshot captured;
     uint64_t destinations[ENGINE_SEND_CAP];
@@ -15,7 +19,7 @@ typedef struct DawRoutingUI {
 } DawRoutingUI;
 // Shares visible panel/button/field geometry between native input and rendering.
 typedef struct DawRoutingLayout {
-    SDL_Rect panel, buttons[7], destinations[ENGINE_SEND_CAP], gains[ENGINE_SEND_CAP], status;
+    SDL_Rect panel, buttons[8], destinations[ENGINE_SEND_CAP], gains[ENGINE_SEND_CAP], status;
     bool editable;
 } DawRoutingLayout;
 // Opens the routing modal over the existing effects pane with a complete captured guard.

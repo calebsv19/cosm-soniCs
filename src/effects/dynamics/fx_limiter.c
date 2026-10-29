@@ -11,6 +11,7 @@ typedef struct FxLimiter {
     float sr, ceiling_db, release_ms, gain, reduction_db;
     unsigned channels, delay, capacity, write_pos, peak_head, peak_count;
     uint64_t frame;
+    float* trace; // Borrowed only during a private diagnostic process call.
     float* audio;
     float* peaks;
     uint64_t* peak_frames;
@@ -105,6 +106,7 @@ static void limiter_process(FxHandle* handle, const float* in, float* out, int f
         float needed = maximum > ceiling ? ceiling / maximum : 1;
         l->gain = needed < l->gain ? needed : release * l->gain + (1 - release) * needed;
         min_gain = fminf(min_gain, l->gain);
+        if(l->trace)for(int ch=0;ch<channels;++ch)l->trace[(size_t)n*channels+ch]=20*log10f(fmaxf(l->gain,1e-20f));
         unsigned read = (l->write_pos + l->capacity - l->delay) % l->capacity;
         for (int ch = 0; ch < channels; ++ch)
             out[(size_t)n * channels + ch] = l->audio[(size_t)read * l->channels + ch] * l->gain;
@@ -113,6 +115,9 @@ static void limiter_process(FxHandle* handle, const float* in, float* out, int f
     }
     l->reduction_db = 20 * log10f(fmaxf(min_gain, 1e-20f));
 }
+
+// Borrows preallocated trace storage without changing detector or audio state.
+static void limiter_trace(FxHandle* h,float* trace) {((FxLimiter*)h)->trace=trace;}
 
 // Describes the existing three controls and the optional dynamic-latency
 // contract.
@@ -165,7 +170,8 @@ int limiter_create(const FxDesc* desc, FxHandle** out, FxVTable* vt, uint32_t ra
                      .destroy = limiter_destroy,
                      .latency = limiter_latency,
                      .max_latency = limiter_max_latency,
-                     .gain_reduction_db = limiter_reduction};
+                     .gain_reduction_db = limiter_reduction,
+                     .set_reduction_trace = limiter_trace};
     *out = (FxHandle*)l;
     return 1;
 }

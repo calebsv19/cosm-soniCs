@@ -14,6 +14,10 @@ EFFECTS_SRCS := $(foreach d,$(EFFECTS_DIRS),$(wildcard $(d)/*.c))
 EFFECTS_SRCS := $(filter-out $(SRC_DIR)/effects/effects_manager.c,$(EFFECTS_SRCS))
 
 APP_SRCS := \
+	$(SRC_DIR)/engine/live_meter.c $(SRC_DIR)/engine/live_meter_host.c $(SRC_DIR)/audio/device_monitor.c $(SRC_DIR)/app/live_meters.c $(SRC_DIR)/engine/engine_gain_reduction.c $(SRC_DIR)/app/control_dynamics_feedback.c $(SRC_DIR)/app/control_live_meters.c $(SRC_DIR)/ui/live_meter_panel.c \
+	$(SRC_DIR)/engine/export_stream.c $(SRC_DIR)/app/song_export.c $(SRC_DIR)/app/control_song_export.c $(SRC_DIR)/ui/song_export_panel.c \
+	$(SRC_DIR)/engine/mixer_automation.c $(SRC_DIR)/session/session_mixer_automation.c $(SRC_DIR)/app/control_mixer_automation.c $(SRC_DIR)/ui/mixer_automation_panel.c $(SRC_DIR)/ui/ab_panel.c \
+	extern/ebur128/ebur128.c $(SRC_DIR)/app/loudness_range.c $(SRC_DIR)/app/mix_loudness.c $(SRC_DIR)/app/control_mix_loudness.c \
 	$(SDLAPP_DIR)/sdl_app_framework.c \
 	$(SDLAPP_DIR)/window_lifecycle.c \
 	$(SRC_DIR)/input/window_input.c \
@@ -25,22 +29,34 @@ APP_SRCS := \
 	$(SRC_DIR)/core/loop/daw_render_invalidation.c \
 	$(SRC_DIR)/app/daw_app_main.c \
 	$(SRC_DIR)/app/app_actions.c \
+	$(SRC_DIR)/app/automation_actions.c \
 	$(SRC_DIR)/app/midi_actions.c \
 	$(SRC_DIR)/app/midi_patterns.c \
 	$(SRC_DIR)/app/midi_expression.c \
 	$(SRC_DIR)/app/control_arrangement.c \
+	$(SRC_DIR)/app/control_automation.c \
 	$(SRC_DIR)/app/control_routing.c \
+	$(SRC_DIR)/ui/track_group_panel.c \
 	$(SRC_DIR)/app/arrangement.c \
 	$(SRC_DIR)/app/midi_regions.c \
 	$(SRC_DIR)/app/fx_actions.c \
 	$(SRC_DIR)/app/routing_actions.c \
+	$(SRC_DIR)/app/track_mix.c \
+	$(SRC_DIR)/app/track_controls.c \
+	$(SRC_DIR)/app/eq_actions.c \
+	$(SRC_DIR)/app/control_eq.c \
+	$(SRC_DIR)/app/control_track_controls.c \
 	$(SRC_DIR)/app/fx_library.c \
 	$(SRC_DIR)/app/fx_preset_actions.c \
 	$(SRC_DIR)/ui/fx_library_panel.c \
 	$(SRC_DIR)/ui/routing_panel.c \
+	$(SRC_DIR)/app/ab_comparison.c \
 	$(SRC_DIR)/app/composition.c \
+	$(SRC_DIR)/app/note_tails.c $(SRC_DIR)/app/control_note_tails.c $(SRC_DIR)/app/mix_frequency.c $(SRC_DIR)/app/control_mix_frequency.c $(SRC_DIR)/app/mix_capture_effects.c $(SRC_DIR)/app/mix_capture.c \
 	$(SRC_DIR)/app/composition_preview.c \
+	$(SRC_DIR)/app/control_ab_comparison.c \
 	$(SRC_DIR)/app/control_composition.c \
+	$(SRC_DIR)/app/control_mix_capture.c \
 	$(SRC_DIR)/app/control_fx.c \
 	$(SRC_DIR)/engine/engine_fx_chain.c \
 	$(SRC_DIR)/ui/midi_pattern_panel.c \
@@ -112,20 +128,30 @@ APP_SRCS := \
 	$(SRC_DIR)/engine/track_role.c \
 	$(SRC_DIR)/engine/midi.c \
 	$(SRC_DIR)/engine/engine_midi_audition.c \
+	$(SRC_DIR)/engine/instrument_articulation.c \
+	$(SRC_DIR)/engine/hat_choke.c \
+	$(SRC_DIR)/engine/instrument_percussion.c \
 	$(SRC_DIR)/engine/instrument_osc.c \
+	$(SRC_DIR)/engine/instrument_samples.c \
+	$(SRC_DIR)/engine/piano_expression.c \
 	$(SRC_DIR)/engine/instrument_catalog.c \
 	$(SRC_DIR)/engine/instrument_filter.c \
 	$(SRC_DIR)/engine/instrument_controls.c \
 	$(SRC_DIR)/engine/timeline_contract.c \
 	$(SRC_DIR)/engine/engine_audio.c \
+	$(SRC_DIR)/engine/engine_mix_probe.c \
+	$(SRC_DIR)/audio/device_comparison.c \
 	$(SRC_DIR)/engine/engine_preview.c \
 	$(SRC_DIR)/engine/engine_routing.c \
+	$(SRC_DIR)/engine/groups.c \
+	$(SRC_DIR)/engine/group_mix.c \
 	$(SRC_DIR)/engine/engine_meter.c \
 	$(SRC_DIR)/engine/engine_scope_host.c \
 	$(SRC_DIR)/engine/engine_eq.c \
 	$(SRC_DIR)/engine/engine_spectrum.c \
 	$(SRC_DIR)/engine/engine_spectrogram.c \
 	$(SRC_DIR)/engine/automation.c \
+	$(SRC_DIR)/engine/automation_semantics.c \
 	$(SRC_DIR)/engine/graph.c \
 	$(SRC_DIR)/engine/buffer_pool.c \
 	$(SRC_DIR)/time/tempo.c \
@@ -138,6 +164,7 @@ APP_SRCS := \
 	$(SRC_DIR)/session/session_io_write.c \
 	$(SRC_DIR)/session/session_io_read.c \
 	$(SRC_DIR)/session/session_io_json.c \
+	$(SRC_DIR)/session/session_json_string.c \
 	$(SRC_DIR)/session/session_io_read_parse.c \
 	$(SRC_DIR)/session/session_io_read_parse_document.c \
 	$(SRC_DIR)/session/session_io_read_parse_engine.c \
@@ -146,7 +173,9 @@ APP_SRCS := \
 	$(SRC_DIR)/session/session_io_read_parse_track_clips.c \
 	$(SRC_DIR)/session/session_io_read_parse_track_fx.c \
 	$(SRC_DIR)/session/session_apply.c \
+	$(SRC_DIR)/session/session_automation.c \
 	$(SRC_DIR)/session/project_manager.c \
+	$(SRC_DIR)/session/project_collections.c \
 	$(SRC_DIR)/undo/undo_manager.c \
 	$(SRC_DIR)/undo/undo_manager_clone.c \
 	$(SRC_DIR)/undo/undo_manager_stack.c \
@@ -169,8 +198,12 @@ APP_SRCS := \
 	$(SRC_DIR)/ui/beat_grid.c \
 	$(SRC_DIR)/ui/time_grid.c \
 	$(SRC_DIR)/ui/timeline_view.c \
+	$(SRC_DIR)/ui/automation_status.c \
+	$(SRC_DIR)/ui/automation_menu.c \
 	$(SRC_DIR)/ui/overlay/timeline_view_overlays.c \
 	$(SRC_DIR)/ui/timeline_view_clip_pass.c \
+	$(SRC_DIR)/ui/timeline_track_header.c \
+	$(SRC_DIR)/ui/timeline_group_overview.c \
 	$(SRC_DIR)/ui/timeline_midi_clip_preview.c \
 	$(SRC_DIR)/ui/timeline_view_grid.c \
 	$(SRC_DIR)/ui/timeline_view_controls.c \
@@ -217,6 +250,7 @@ APP_SRCS := \
 	$(SRC_DIR)/input/input_manager.c \
 	$(SRC_DIR)/input/library_input.c \
 	$(SRC_DIR)/input/project_modal_input.c \
+	$(SRC_DIR)/input/track_header_mixer.c \
 	$(SRC_DIR)/input/timeline/timeline_clipboard.c \
 	$(SRC_DIR)/input/timeline/timeline_drop.c \
 	$(SRC_DIR)/input/timeline/timeline_geometry.c \
@@ -236,6 +270,7 @@ APP_SRCS := \
 	$(SRC_DIR)/input/timeline/timeline_selection.c \
 	$(SRC_DIR)/input/timeline/timeline_drag.c \
 	$(SRC_DIR)/input/automation_input.c \
+	$(SRC_DIR)/input/automation_keyboard.c \
 	$(SRC_DIR)/input/tempo_overlay_input.c \
 	$(SRC_DIR)/input/inspector_input.c \
 	$(SRC_DIR)/input/inspector_input_numeric_edit.c \
@@ -244,6 +279,7 @@ APP_SRCS := \
 	$(SRC_DIR)/input/midi_editor_input_selection.c \
 	$(SRC_DIR)/input/midi_editor_input_timing.c \
 	$(SRC_DIR)/input/midi_editor_input_commands.c \
+	$(SRC_DIR)/input/midi_editor_input_velocity.c \
 	$(SRC_DIR)/input/midi_editor_input_qwerty.c \
 	$(SRC_DIR)/input/midi_editor_input_gestures.c \
 	$(SRC_DIR)/input/midi_instrument_panel_input.c \

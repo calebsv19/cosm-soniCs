@@ -57,7 +57,8 @@ async def check(fixture: str, path: str, write: bool, prior_instance: str | None
                                   "request_status", "undo_instrument", "redo_instrument", "list_presets", "get_preset",
                                   "save_preset", "apply_preset", "preview_preset", "analyze_instrument", "analyze_preset", "get_midi_region", "set_midi_notes",
                                   "create_midi_pattern", "undo_midi", "redo_midi", "get_midi_layout", "create_midi_region",
-                                  "extend_midi_region", "undo_midi_region", "redo_midi_region", "list_effects", "get_effect_chain", "edit_effect_chain", "undo_effect_chain", "redo_effect_chain", "analyze_composition", "preview_composition", "list_effect_presets", "get_effect_preset", "save_effect_preset", "apply_effect_preset", "transform_midi", "get_arrangement", "arrange_regions", "undo_arrangement", "redo_arrangement", "get_routing", "create_return", "edit_routing", "undo_routing", "redo_routing"}
+                                  "extend_midi_region", "undo_midi_region", "redo_midi_region", "list_effects", "get_effect_chain", "edit_effect_chain", "undo_effect_chain", "redo_effect_chain", "analyze_composition", "preview_composition", "list_effect_presets", "get_effect_preset", "save_effect_preset", "apply_effect_preset", "transform_midi", "get_arrangement", "arrange_regions", "undo_arrangement", "redo_arrangement", "get_routing", "create_return", "create_group", "edit_routing", "undo_routing", "redo_routing", "get_automation", "set_automation", "undo_automation", "redo_automation",
+                                  "cancel_song_export", "capture_ab", "capture_mix", "edit_eq", "get_ab_comparison", "get_eq", "get_live_meters", "get_mix_capture", "get_mix_snapshot", "get_song_export", "get_track_controls", "listen_ab", "redo_eq", "redo_track_control", "set_monitor_mode", "set_track_control", "start_song_export", "stop_ab", "undo_eq", "undo_track_control"}
                 assert {tool.name for tool in tools.tools} == expected_tools
                 assert next(tool for tool in tools.tools if tool.name == "set_instrument").inputSchema["properties"]["target"]
 
@@ -72,7 +73,7 @@ async def check(fixture: str, path: str, write: bool, prior_instance: str | None
                 if prior_instance:
                     assert cap["instance"] != prior_instance
                     assert (await call("request_status", instance=prior_instance, request_id="old-request"))["code"] == "stale_instance"
-                assert len(cap["presets"]) == 18 and len(cap["parameters"]) == 18
+                assert len(cap["presets"]) == 39 and len(cap["parameters"]) == 32
                 presets = {preset["id"]: preset for preset in cap["presets"]}
                 assert set(presets["pure_sine"]["visible_parameters"]) == {"level", "tone", "attack_ms", "decay_ms", "sustain", "release_ms"}
                 assert len(presets["synth_lab"]["visible_parameters"]) == 12
@@ -198,6 +199,7 @@ async def main(fixture: str) -> None:
         os.chmod(directory, 0o700)
         unsafe = Path(directory) / "unsafe"
         unsafe.mkdir(mode=0o755)
+        os.chmod(unsafe, 0o755)  # Keep the refusal fixture unsafe even under a private process umask.
         refused = subprocess.run([fixture, str(unsafe / "control.sock"), "write"], capture_output=True, timeout=10)
         assert refused.returncode == 3 and not (unsafe / "control.sock").exists()
         path = str(Path(directory) / "control.sock")

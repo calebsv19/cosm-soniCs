@@ -1,5 +1,7 @@
 # MIDI expression
 
+Current behavior: see [agent music capabilities](agent_music_capabilities.md). Tool counts, initial scope and later-slice forecasts below describe their dated implementation checkpoint; region creation, expression, arrangement, effects, routing and percussion have since been adopted.
+
 ## 1. Shared editing behavior
 
 `daw_action_transform_midi` transforms all notes in one untrimmed MIDI region against a complete copied state. It reuses the common MIDI owner, busy checks, full note/bounds/tempo precondition, history reservation and atomic publication. It never resizes the region or changes note durations. A boundary crossing or duplicate resulting pitch/start/duration refuses the entire edit. No-ops create no history. Velocity outputs explicitly saturate to 0–1.
@@ -31,3 +33,5 @@ Omit unrelated settings, even when zero. The result contains accepted notes and 
 This extends expression. Region duplication/movement/trim/delete, compound arrangement edits, arbitrary automation and sends/buses remain separate work in the active roadmap. No session schema, shared dependency, VERSION, installed app, global MCP registration or release change is implied.
 
 Actual native App_Run qualification also performs velocity variation and history, effects-chain Save As/recall/history, composition analysis/WAV publication, normal SDL shutdown/save and real reopening after deleting the private chain document. Notes, effect settings, captured metrics/plots and WAV bytes match after restart. This exposed the session writer's previous six-decimal float rounding; it now writes `FLT_DECIMAL_DIG` significant digits without collapsing small values. Focused serialization tests preserve adjacent float velocities and values below 1e-6 exactly. Session schema and reader compatibility remain unchanged.
+
+Piano expression extension: [piano_expression.md](piano_expression.md) describes the three piano-only controls, binary region/live sustain, 88 string modes, recorded key/pedal mechanics, 32-field v6 presets and session v25. Older preset versions 1–5 and session v24 remain readable; existing non-piano voices keep their behavior.

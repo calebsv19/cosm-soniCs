@@ -37,3 +37,7 @@ Live/private offline plans own their return buffers and destination maps. Separa
 Actual native App_Run acceptance also creates a return and connects its send through MCP, configures and undoes return effects, verifies independent dry/wet ratios, then performs normal save and real restart with exact routing/metrics/plots/WAV parity. Source music is fixture-authored. Native routing authoring is covered by the focused form test and actual native input/painter harness. Listening acceptance and installed/global client adoption remain separate. Bus-to-bus routing, pre-fader sends and external sidechain source selection are not exposed by this initial routing graph.
 
 `test-routing-ui` covers native creation from both populated and empty projects, shared percentage text, unpublished staging, one-step application, stale/busy/invalid/duplicate-destination refusal, mismatched releases, compact forms and focus cleanup. The native Vulkan harness opens Routing through the Effects header, creates a return, types and applies a 50% source send, and paints source/return views with enclosing clip preservation and clean validation.
+
+## Nested groups
+
+[Track groups](track_groups.md) extend the initial return graph with exclusive parent routing, nested bus effects, visible hierarchy, format-26 persistence and guarded group history. MCP adds `create_group` plus group/parent/fold/order `edit_routing` operations; reacquire runtime targets after reopening. Earlier return-only restrictions describe that initial slice; returns still cannot feed groups or returns.

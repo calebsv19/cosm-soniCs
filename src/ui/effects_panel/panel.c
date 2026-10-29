@@ -87,6 +87,7 @@ static void compute_list_layout(EffectsPanelState* panel,
                                 int content_w,
                                 int content_h,
                                 int header_h,
+                                int list_header_extra,
                                 int list_row_h,
                                 int list_row_gap,
                                 EffectsPanelLayout* layout) {
@@ -134,7 +135,7 @@ static void compute_list_layout(EffectsPanelState* panel,
     int detail_w = content_w - list_w - gap;
     if (detail_w < 0) detail_w = 0;
 
-    layout->list_rect = (SDL_Rect){content_x, body_y, list_w, body_h};
+    layout->list_rect = (SDL_Rect){content_x, body_y + list_header_extra, list_w, max_int(0, body_h - list_header_extra)};
     layout->detail_rect = (SDL_Rect){content_x + list_w + gap, body_y, detail_w, body_h};
 
     layout->list_row_count = 0;
@@ -620,7 +621,20 @@ void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* lay
     layout->library_button_rect=(SDL_Rect){preview_x+preview_w+button_gap,button_y,library_w,button_h};
     int routing_w=fx_panel_button_width("Routing",button_scale);
     layout->routing_button_rect=(SDL_Rect){layout->library_button_rect.x+library_w+button_gap,button_y,routing_w,button_h};
-    int target_min_x = layout->routing_button_rect.x + routing_w + button_gap;
+    int auto_w=fx_panel_button_width("FX Auto",button_scale);
+    layout->automation_button_rect=(SDL_Rect){layout->routing_button_rect.x+routing_w+button_gap,button_y,auto_w,button_h};
+    int comparison_w=fx_panel_button_width("A/B",button_scale);layout->comparison_button_rect=(SDL_Rect){layout->automation_button_rect.x+auto_w+button_gap,button_y,comparison_w,button_h};
+    int export_w=fx_panel_button_width("Export",button_scale);layout->export_button_rect=(SDL_Rect){layout->comparison_button_rect.x+comparison_w+button_gap,button_y,export_w,button_h};
+    int live_w=fx_panel_button_width("Mono Monitor",button_scale);layout->live_meter_button_rect=(SDL_Rect){layout->export_button_rect.x+export_w+button_gap,button_y,live_w,button_h};
+    int toolbar_extra = 0;
+    int target_min_x = layout->live_meter_button_rect.x + live_w + button_gap;
+    /* Keep the target title readable by moving monitoring to its own row. */
+    if (target_min_x + target_w > content_x + content_w) {
+        toolbar_extra = button_h + button_gap;
+        layout->live_meter_button_rect.x = content_x;
+        layout->live_meter_button_rect.y = content_y + header_h;
+        target_min_x = layout->export_button_rect.x + export_w + button_gap;
+    }
     if (target_x < target_min_x) {
         target_x = target_min_x;
         target_w = content_x + content_w - target_x;
@@ -631,8 +645,8 @@ void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* lay
     int target_y = content_y + (header_h - target_h) / 2;
     layout->target_label_rect = (SDL_Rect){target_x, target_y, target_w, target_h};
 
-    int body_y = content_y + header_h;
-    int body_h = content_h - header_h;
+    int body_y = content_y + header_h + toolbar_extra;
+    int body_h = content_h - header_h - toolbar_extra;
     if (body_h <= 0) {
         body_h = content_h / 2;
     }
@@ -646,9 +660,13 @@ void effects_panel_compute_layout(const AppState* state, EffectsPanelLayout* lay
                             content_w,
                             content_h,
                             header_h,
+                            toolbar_extra,
                             list_row_h,
                             list_row_gap,
                             layout);
+        if (toolbar_extra && layout->live_meter_button_rect.w > layout->list_rect.w) {
+            layout->live_meter_button_rect.w = layout->list_rect.w;
+        }
     } else {
         int column_count = panel->chain_count;
         layout->column_count = column_count;
@@ -753,6 +771,10 @@ void effects_panel_render(SDL_Renderer* renderer, const AppState* state, const E
     draw_button(renderer, &layout->spec_toggle_rect, panel->spec_panel_enabled, "Spec", FX_PANEL_BUTTON_SCALE, &theme);
     draw_button(renderer,&layout->library_button_rect,false,"Chains",FX_PANEL_BUTTON_SCALE,&theme);
     draw_button(renderer,&layout->routing_button_rect,false,"Routing",FX_PANEL_BUTTON_SCALE,&theme);
+    draw_button(renderer,&layout->automation_button_rect,false,"FX Auto",FX_PANEL_BUTTON_SCALE,&theme);
+    draw_button(renderer,&layout->comparison_button_rect,false,"A/B",FX_PANEL_BUTTON_SCALE,&theme);
+    draw_button(renderer,&layout->export_button_rect,false,"Export",FX_PANEL_BUTTON_SCALE,&theme);
+    draw_button(renderer,&layout->live_meter_button_rect,false,daw_live_meter_toolbar_label((AppState*)state),FX_PANEL_BUTTON_SCALE,&theme);
     bool button_active = (panel->overlay_layer != FX_PANEL_OVERLAY_CLOSED);
     draw_button(renderer, &layout->dropdown_button_rect, button_active, "Add FX", FX_PANEL_BUTTON_SCALE, &theme);
     draw_button(renderer, &layout->preview_toggle_rect, panel->preview_toggle_hovered, "Preview", FX_PANEL_BUTTON_SCALE, &theme);

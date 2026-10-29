@@ -117,6 +117,8 @@ static void midi(AppState* s) {
     SDL_Rect edit=control(s,12,1); pointer(s,SDL_MOUSEBUTTONDOWN,edit);
     assert(s->midi_editor_ui.panel_mode==MIDI_REGION_PANEL_EDITOR);
     pointer(s,SDL_MOUSEBUTTONUP,edit); assert(s->midi_editor_ui.panel_mode==MIDI_REGION_PANEL_INSTRUMENT);
+    assert(engine_clip_midi_set_instrument_state(s->engine,0,clip,ENGINE_INSTRUMENT_PRESET_SYNTH_LAB,
+        engine_instrument_default_params(ENGINE_INSTRUMENT_PRESET_SYNTH_LAB),false));
     MidiInstrumentPanelLayout instrument; midi_instrument_panel_compute_layout(s,&instrument);
     SDL_Rect tab=control(s,13,11); int group=s->midi_editor_ui.instrument_active_group;
     pointer(s,SDL_MOUSEBUTTONDOWN,tab); assert(s->midi_editor_ui.instrument_active_group==group);

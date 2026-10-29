@@ -436,10 +436,25 @@ void midi_editor_render(SDL_Renderer* renderer, const AppState* state, const Mid
     double duration_seconds = (double)selection.clip->duration_frames / (double)sample_rate;
     int note_count = engine_clip_midi_note_count(selection.clip);
     int selected_count = midi_editor_selected_note_count(state, &selection, note_count);
+    char velocity_label[40];
+    if (selected_count > 0) {
+        float low = 1.0f, high = 0.0f;
+        const EngineMidiNote* selected_notes = engine_clip_midi_notes(selection.clip);
+        for (int i = 0; selected_notes && i < note_count; ++i) {
+            if (!midi_editor_render_selection_matches_ui(state, &selection) ||
+                (!state->midi_editor_ui.selected_note_indices[i] && state->midi_editor_ui.selected_note_index != i)) continue;
+            if (selected_notes[i].velocity < low) low = selected_notes[i].velocity;
+            if (selected_notes[i].velocity > high) high = selected_notes[i].velocity;
+        }
+        snprintf(velocity_label, sizeof(velocity_label), "Selected Vel %.0f-%.0f%%", low * 100, high * 100);
+    } else {
+        snprintf(velocity_label, sizeof(velocity_label), "New Vel %.0f%%",
+                 (state->midi_editor_ui.default_velocity > 0 ? state->midi_editor_ui.default_velocity : .8f) * 100);
+    }
     char summary[224];
     snprintf(summary,
              sizeof(summary),
-             "%s  Track %d  Start %.2fs  Length %.2fs  Notes %d  Sel %d  %s  Oct %+d  Vel %.0f%%  %s",
+             "%s  Track %d  Start %.2fs  Length %.2fs  Notes %d  Sel %d  %s  Oct %+d  %s  %s",
              selection.clip->name[0] ? selection.clip->name : "MIDI Region",
              selection.track_index + 1,
              start_seconds,
@@ -448,9 +463,7 @@ void midi_editor_render(SDL_Renderer* renderer, const AppState* state, const Mid
              selected_count,
              midi_editor_quantize_label(state),
              state->midi_editor_ui.qwerty_octave_offset,
-             (state->midi_editor_ui.default_velocity > 0.0f
-                  ? state->midi_editor_ui.default_velocity
-                  : 0.80f) * 100.0f,
+             velocity_label,
              state->midi_editor_ui.qwerty_record_armed ? "QWERTY REC" :
              (state->midi_editor_ui.qwerty_test_enabled ? "QWERTY TEST" : "R to arm"));
     ui_draw_text_clipped(renderer,
@@ -554,18 +567,41 @@ void midi_editor_render(SDL_Renderer* renderer, const AppState* state, const Mid
                               velocity_border,
                               selected || marquee_preview,
                               hovered);
+        if (hovered || selected) {
+            SDL_Rect rect = {0};
+            if (midi_editor_note_rect(layout, &notes[i], clip_frames, &rect)) {
+                int edge = midi_editor_note_edge_width(rect.w);
+                SDL_Rect left = {rect.x, rect.y, edge, rect.h};
+                SDL_Rect right = {rect.x + rect.w - edge, rect.y, edge, rect.h};
+                midi_editor_draw_rect(renderer, left, theme.text_primary, false);
+                midi_editor_draw_rect(renderer, right, theme.text_primary, false);
+                if (hovered && (state->midi_editor_ui.hover_note_part == MIDI_EDITOR_NOTE_HIT_LEFT_EDGE ||
+                                state->midi_editor_ui.hover_note_part == MIDI_EDITOR_NOTE_HIT_RIGHT_EDGE)) {
+                    midi_editor_draw_rect(renderer,
+                        state->midi_editor_ui.hover_note_part == MIDI_EDITOR_NOTE_HIT_LEFT_EDGE ? left : right,
+                        theme.accent_primary, true);
+                }
+            }
+        }
     }
     midi_editor_draw_marquee(renderer, state, &theme);
 
     if (midi_editor_rect_valid(&layout->footer_rect)) {
-        char footer[128];
+        char footer[256];
         char low_label[8];
         char high_label[8];
         snprintf(low_label, sizeof(low_label), "%s%d", midi_editor_pitch_label(layout->lowest_note), layout->lowest_note / 12 - 1);
         snprintf(high_label, sizeof(high_label), "%s%d", midi_editor_pitch_label(layout->highest_note), layout->highest_note / 12 - 1);
         snprintf(footer,
                  sizeof(footer),
-                 "Visible %s-%s  Q quantize, Q-/Q+ grid, [ ] octave, -/+ velocity  View %llu-%llu / %llu frames",
+                 "%s  Alt/Option: free timing  Shift: select / velocity  Q: quantize  -/+: velocity  %s-%s  View %llu-%llu / %llu",
+                 state->midi_editor_ui.drag_active
+                     ? (state->midi_editor_ui.drag_mode == MIDI_EDITOR_DRAG_RESIZE_LEFT ? "Resize start" :
+                        state->midi_editor_ui.drag_mode == MIDI_EDITOR_DRAG_RESIZE_RIGHT ? "Resize end" : "Drag note")
+                     : (state->midi_editor_ui.hover_note_valid
+                         ? (state->midi_editor_ui.hover_note_part == MIDI_EDITOR_NOTE_HIT_LEFT_EDGE ? "Resize start" :
+                            state->midi_editor_ui.hover_note_part == MIDI_EDITOR_NOTE_HIT_RIGHT_EDGE ? "Resize end" : "Move note")
+                         : "Click: add note"),
                  low_label,
                  high_label,
                  (unsigned long long)layout->view_start_frame,

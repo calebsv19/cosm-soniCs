@@ -1,5 +1,10 @@
 # Directory: tests
 
+- `make test-track-hat-choke` checks track-local cross-region routing, tail spill, ordering, edits, export boundaries and seek/block/loop parity. `make test-mcp-track-hat-choke` verifies adjacent-region authoring, exact rendered undo/redo and project reopen through the real SDK. The production renderer test is included in `test-stable`.
+- `make test-instrument-articulation` checks independent pitch integration, mono selection, hat choke, export boundaries and seek/block consistency. `make test-mcp-articulation` verifies real SDK control, saved sounds and exact undo/redo/reopen audio; the renderer test is in `test-stable`.
+
+- `percussion_render_test.c` (`make test-percussion-render`, included in `test-stable`) checks all five new voices, short-trigger tails, seek/block parity, physical pitch sweep and parameter effects. `make test-mcp-percussion` exercises all five through the real SDK, saves presets and verifies exact rendered undo/redo and project reopen.
+
 Purpose: Lightweight smoke/integration checks for DAW subsystems. Coverage now
 spans session persistence, media cache behavior, MIDI regions/instruments,
 audio capture, audio recording, package contracts, layout, tracing, and shared
@@ -108,3 +113,67 @@ Routing persistence extends session serialization/transaction tests with fixed-s
 Instrument checks now include independent filter motion, all eighteen preset render/preview parity, explicit MCP modulation history, complete eighteen-parameter user presets and exact project storage. Serialization links the production catalog to avoid metadata drift in engine stubs.
 
 `test-audio-preview` checks immutable PCM copying, exact frame partitions, final padding/completion, refusal preservation and callback lock exclusion. `test-audio-output-device` checks captured samples through the actual SDL trampoline. `test-sound-inspection` exercises native current/reference listening with a paused private dummy endpoint and verifies transport/close cancellation.
+
+`make test-midi-note-editing` verifies real matched-release velocity buttons, selected-only changes, saturation, keyboard parity, undo/redo, grab-offset movement, Alt/Option snap bypass, returning a group to its baseline, edge hover targets, and endpoint-preserving left resize. The MIDI shell suite also checks movement and right resize on the first press.
+
+- `make test-automation-model`: legacy/physical units, curves, point collisions, stable undo, session roundtrip, and production gain/balance rendering.
+- `make test-mcp-automation`: official SDK automation reads/writes, exact replay, stale state, shared history, paging, audio and MIDI targets, read-only admission, and save/reopen sound parity.
+
+`test-sampled-violin` covers actual multiroot assets, long held notes, releases, recorded timbre and block-independent expression. `test-mcp-sampled-violin` covers SDK discovery, guarded changes, presets, dynamics lanes and project recall.
+
+Violin stabilization additionally checks zero-time protected onset/release, early note-off continuity and live retirement of the four-ms protective release; instrument lifecycle checks cover prepared retriggers and bounded voices.
+
+test-sampled-winds and test-mcp-sampled-winds cover actual trumpet/clarinet banks, all supported pitches/rates, three-layer continuity, long holds, gates, Dynamics, presets and project recall. The stabilized violin demo is byte-regressed separately.
+
+
+`test-sampled-winds` also verifies a smooth clarinet middle-layer timbre slope and exact protected release endpoints across both instruments’ complete pitch ranges.
+
+
+`test-sampled-saxophone` covers all three wind banks; `test-mcp-sampled-saxophone` checks the appended saxophone voice, actual capabilities, Dynamics, presets, previews and project recall.
+
+
+The wind sampler test additionally bounds sax midpoint blend energy over every supported pitch and held-note windows, catching cancellation and correlated-layer gain bulges.
+
+`test-sampled-flute-cello` extends the acoustic harness to both new voices; `test-mcp-sampled-flute-cello` checks metadata, voice-aware automation and preset/project round trips. Packaging validates 44 additional original CC0 recordings.
+
+Flute/cello checks now tighten sustained blend RMS bounds, exercise long-loop callback partition invariance with overlapping/retriggered notes, and require release tails to reach silence. The package validator checks generated energy curves, covariance bounds and matching wrap endpoints.
+
+Sampled Oboe and French Horn extend the existing acoustic sampler with paired recorded dynamics and held-note expression. Complete audition chords follow each bank's playable range. See `docs/sampled_oboe_horn.md` for ranges, provenance, preparation and verification.
+
+Oboe/French horn stabilization refines five qualified common loops and regenerates their bounded layer-energy curves; tighter all-pitch blend and note-transition checks cover the existing sampler. See `docs/sampled_oboe_horn.md`.
+
+Sampled Bassoon and Tenor Trombone add two paired-layer recorded sustain banks through the existing sampler, supported controls and guarded preset/automation tools. See `docs/sampled_bassoon_trombone.md` for ranges, source provenance and verification.
+
+Sampled Acoustic Piano, Viola Section, Double Bass and Violin Section extend the acoustic palette. Piano has finite velocity-selected strikes and voice-specific automation; bowed strings reuse sustain/dynamics playback. Audition notes follow each recorded range. See `docs/sampled_piano_strings.md`.
+
+- `timeline_navigation_test.c` (`make test-timeline-navigation`) checks 32-track reachability across row heights/window sizes, wheel axes/direction/precision, anchored zoom, height-button release, scrollbar bounds/capture, selection visibility and track-count shrink. An optional capture prefix produces three validation-clean native timeline frames.
+
+Nested/collapsible audio bus groups, common history and MCP support are described in [track groups](../../docs/track_groups.md). Engine group projection/mixing and the native group panel have focused signal, persistence, rollback and SDL/Vulkan tests.
+
+[Collection-scoped Load/Save](../../docs/project_collections.md) now isolates folder lists, previews monotonically versioned checkpoints and preserves exact current-project save paths. Native collection and publication tests cover the shared modal geometry and atomic no-replace writer.
+
+[Compact track UI](../../docs/compact_track_ui.md) provides aligned headers/meters/FX access, derived descendant MIDI/audio overviews and fold-only playback-safe selection/history. New `timeline_track_header` and `timeline_group_overview` modules share production geometry and source preview components.
+
+[Header mixer and lane density](../../docs/header_mixer.md) adds guarded gain/pan scalar history, standard relative gestures, exact-value inspector synchronization, smaller gutters and subtle persistent lane tints. The application mixer/history boundary and input gesture owner are separate small modules.
+
+`make test-mcp-track-controls` qualifies SDK discovery, sampled violin/clarinet under nested buses, base mixer factors/stereo balance, names/IDs and exact audio Save/Load, native/MCP history interleavings, stale values/lifetimes, token expiry, receipts and read-only refusal through task-owned fixtures.
+
+`test-eq-meter` calibrates known sine amplitude, mono/stereo asymmetry, silence and exact full-scale/overload thresholds; verifies Unicode decoding and independent production EQ DSP/history parity. `test-mcp-eq` qualifies private SDK native/MCP EQ interleavings, target scope/receipts, sampled voices, captured channel numbers and raw/escaped saved-session/audio parity.
+
+- `make test-text-cache-lifetime` (included in `test-stable`) exercises the production clipped-text path with real TTF rasterization and a safe descriptor-lifetime model: 648 distinct labels, repeated dense playback frames, font address reuse, renderer ownership, Retina density and in-frame reset. It submits no invalid GPU work.
+- `make build-dense-text-native`, followed by the resulting `dense_text_native_test <capture-prefix>`, renders repeated production panes with 15 tracks and 240 named MIDI regions in a hidden native Vulkan window. A separate 640-label eviction case compares unchanged control pixels and requires clean Vulkan validation. On the local Mac, add `/opt/homebrew/lib` to `DYLD_LIBRARY_PATH` for the installed validation layer. The fixture uses a synthetic engine and dummy audio, never the active project or app.
+
+`make test-mix-capture` (stable lane) checks calibrated in-context child/group/return/master levels, time buckets, latency, exact production parity, mute/solo and state preservation with private sine/sampled fixtures. `make test-mcp-mix-capture` checks ordinary read-only SDK capture and immutable paging; see [schema and boundaries](../docs/mix_diagnostics.md).
+
+Mix diagnostic insert pages now expose per-insert input/output levels and actual
+per-channel Compressor/Limiter attenuation with output-latency alignment; see
+`docs/mix_diagnostics.md` for paging, calibration and remaining measurement limits.
+
+Immutable mix capture schema v3 adds per-channel spectral windows for processed
+child/group/return/master outputs. `get_mix_capture` independently pages
+`frequency_window` and `frequency_channel`; see `docs/mix_diagnostics.md` for
+calibration, window coverage and remaining loudness/true-peak limits.
+
+Immutable mix captures now include prepared note-ending controls/fences and
+threshold-qualified aggregate MIDI source tails. `get_mix_capture` independently
+pages eight note rows with `note_offset`; see `docs/mix_diagnostics.md` section 7.

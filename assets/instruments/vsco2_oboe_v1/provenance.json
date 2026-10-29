@@ -1,0 +1,115 @@
+{
+  "library": "VSCO 2 Community Edition",
+  "license": "CC0-1.0",
+  "upstream_commit": "440300901dfe9275fd84e0b7763af1f8443ae62e",
+  "files": [
+    {
+      "file": "Oboe_Sus_A#2_v1_Main.wav",
+      "bytes": 4783096,
+      "sha256": "6f943c1e5d87d6782e9ff12e4b79c6cae9a396ffa1def8d10d975adfe6050df2",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_A%232_v1_Main.wav"
+    },
+    {
+      "file": "Oboe_Sus_A#2_v3_Main.wav",
+      "bytes": 2377080,
+      "sha256": "78333824a35f1187a8d30e039ca1965113ee194cd9710afe2c3a1e9eb5a486b6",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_A%232_v3_Main.wav"
+    },
+    {
+      "file": "Oboe_Sus_A#3_v1_Main.wav",
+      "bytes": 1899732,
+      "sha256": "07a36bd18290315aee1a98221c4d40935f1d926c85ba6f29017e59f7b450444a",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_A%233_v1_Main.wav"
+    },
+    {
+      "file": "Oboe_Sus_A#3_v3_Main.wav",
+      "bytes": 1793592,
+      "sha256": "fcd9b2165297d50d1968bea121226450f78838b9d18087f3925ce92b6e9798b9",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_A%233_v3_Main.wav"
+    },
+    {
+      "file": "Oboe_Sus_A#4_v1_Main.wav",
+      "bytes": 1855232,
+      "sha256": "b22a4feac3fb400fa5cd8454f9c45b3ca008b7ac22bdbbe18616161c3235a928",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_A%234_v1_Main.wav"
+    },
+    {
+      "file": "Oboe_Sus_A#4_v3_Main.wav",
+      "bytes": 1546676,
+      "sha256": "dc9a1faae5ccaea8aea2b67438b9efde2c1b1b7f422c97b70d493445e07009e8",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_A%234_v3_Main.wav"
+    },
+    {
+      "file": "Oboe_Sus_D3_v1_Main.wav",
+      "bytes": 1966552,
+      "sha256": "a9ebaf19502bde43fe8409debddf8d326c0843980598f978e521ce3526750350",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_D3_v1_Main.wav"
+    },
+    {
+      "file": "Oboe_Sus_D3_v3_Main.wav",
+      "bytes": 2219916,
+      "sha256": "8016596d214a18c814bd19e9c9c61a4e902f6d067ddeeeaa7b5e4e2ff2238a7c",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_D3_v3_Main.wav"
+    },
+    {
+      "file": "Oboe_Sus_D4_v1_Main.wav",
+      "bytes": 1747332,
+      "sha256": "cbc9cdf1b6ca5765ec67918cd4a19669f792f9c6f755837ab807d3b8e0f3dfa9",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_D4_v1_Main.wav"
+    },
+    {
+      "file": "Oboe_Sus_D4_v3_Main.wav",
+      "bytes": 1699340,
+      "sha256": "d8ffaa22803a6238ae8c9d4664e9659e717916d70a2f2c48742f3eb519815497",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_D4_v3_Main.wav"
+    },
+    {
+      "file": "Oboe_Sus_D5_v1_Main.wav",
+      "bytes": 1564292,
+      "sha256": "e276fa641f2074b97da41289e1cc99caf6facfec83225fd8b086295b9f14f3a0",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_D5_v1_Main.wav"
+    },
+    {
+      "file": "Oboe_Sus_D5_v3_Main.wav",
+      "bytes": 1650952,
+      "sha256": "13fb1986bbde4d6e61c13c39d0fb18eec4d0bbffd2f8c9fcda11d9874f5cbe92",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_D5_v3_Main.wav"
+    },
+    {
+      "file": "Oboe_Sus_F3_v1_Main.wav",
+      "bytes": 1542764,
+      "sha256": "cae24d6d4c5733067dca85203c2cec5c2eaabfcb210e3a71d9e88b5810fef9f0",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_F3_v1_Main.wav"
+    },
+    {
+      "file": "Oboe_Sus_F3_v3_Main.wav",
+      "bytes": 1717152,
+      "sha256": "58d69a9cb3cd71dae917b83afe2efc3dbee1ab6c1d330fe2c3faf89b269f673c",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_F3_v3_Main.wav"
+    },
+    {
+      "file": "Oboe_Sus_F4_v1_Main.wav",
+      "bytes": 1666300,
+      "sha256": "e4d1bf4166f77f42ad1f113f23c758db109e860c4764d5dd19705c70917a7c43",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_F4_v1_Main.wav"
+    },
+    {
+      "file": "Oboe_Sus_F4_v3_Main.wav",
+      "bytes": 1452368,
+      "sha256": "ff2d3e89da82b3fa184e0a6a1ebe817f73879f5e01833e44f9ee6c0991632bae",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_F4_v3_Main.wav"
+    },
+    {
+      "file": "Oboe_Sus_F5_v1_Main.wav",
+      "bytes": 1652712,
+      "sha256": "4b9f2e24f15aafa331c43040967bc8238988a201dae23006819c190dea397a16",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_F5_v1_Main.wav"
+    },
+    {
+      "file": "Oboe_Sus_F5_v3_Main.wav",
+      "bytes": 1722672,
+      "sha256": "9c24e524a1c8fdaf82a5874c944db46de26ff8ce4a0eb209d3e12fd65634e2f3",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Oboe/Sus/Oboe_Sus_F5_v3_Main.wav"
+    }
+  ]
+}

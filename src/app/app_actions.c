@@ -103,7 +103,7 @@ bool daw_instrument_restore(AppState* state, DawActionTarget target, const DawIn
 // Validates a partial patch and prepares all authored scalar fields before publication.
 static bool prepare_instrument(const DawInstrumentSnapshot* snapshot, const DawInstrumentRequest* request,
                                DawInstrumentState* desired) {
-    if (!request || (request->parameter_mask >> ENGINE_INSTRUMENT_PARAM_COUNT) != 0 ||
+    if (!request || ((uint64_t)request->parameter_mask >> ENGINE_INSTRUMENT_PARAM_COUNT) != 0 ||
         (request->set_preset && (request->preset < 0 || request->preset >= ENGINE_INSTRUMENT_PRESET_COUNT))) return false;
     *desired = snapshot->stored;
     if (!request->set_preset && !request->parameter_mask) return true;
@@ -119,7 +119,7 @@ static bool prepare_instrument(const DawInstrumentSnapshot* snapshot, const DawI
     desired->inherits_track = false;
     desired->enabled = request->target.kind == DAW_ACTION_TARGET_TRACK;
     for (int i = 0; i < ENGINE_INSTRUMENT_PARAM_COUNT; ++i) {
-        if (!(request->parameter_mask & (UINT32_C(1) << i))) continue;
+        if (!(request->parameter_mask & (UINT64_C(1) << i))) continue;
         EngineInstrumentParamSpec spec;
         engine_instrument_param_spec((EngineInstrumentParamId)i, &spec);
         float value = engine_instrument_params_get(request->params, (EngineInstrumentParamId)i);

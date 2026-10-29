@@ -2,6 +2,13 @@
 
 Purpose: Focused helpers that keep timeline interaction code small and modular.
 
+## Navigation
+
+`timeline_geometry.c` owns the shared vertical viewport, row offset, bounds,
+selection reveal and anchored height changes. `timeline_input_mouse_scroll.c`
+owns precise two-axis wheel movement and exclusive scrollbar capture. See
+[behavior and verification](../../../docs/timeline_navigation.md).
+
 ## Files
 - `timeline_input.c`
   - `timeline_input_init`: Reset timeline selection/drag state and hover bookkeeping.

@@ -1,3 +1,4 @@
+#include "daw/eq_actions.h"
 #include "input/effects_panel_eq_detail_input.h"
 
 #include "app_state.h"
@@ -41,28 +42,11 @@ static void eq_curve_to_session(const EqCurveState* src, SessionEqCurve* dst) {
     }
 }
 
-static bool session_eq_equal(const SessionEqCurve* a, const SessionEqCurve* b) {
-    if (!a || !b) {
-        return true;
-    }
-    if (a->low_cut.enabled != b->low_cut.enabled ||
-        a->high_cut.enabled != b->high_cut.enabled) {
-        return false;
-    }
-    if (fabsf(a->low_cut.freq_hz - b->low_cut.freq_hz) > 0.001f ||
-        fabsf(a->high_cut.freq_hz - b->high_cut.freq_hz) > 0.001f) {
-        return false;
-    }
-    for (int i = 0; i < 4; ++i) {
-        if (a->bands[i].enabled != b->bands[i].enabled) {
-            return false;
-        }
-        if (fabsf(a->bands[i].freq_hz - b->bands[i].freq_hz) > 0.001f ||
-            fabsf(a->bands[i].gain_db - b->bands[i].gain_db) > 0.001f ||
-            fabsf(a->bands[i].q_width - b->bands[i].q_width) > 0.001f) {
-            return false;
-        }
-    }
+// Compares every meaningful accepted scalar exactly so fine native edits retain their undo step.
+static bool session_eq_equal(const SessionEqCurve* a,const SessionEqCurve* b) {
+    if(!a || !b)return false;
+    if(a->low_cut.enabled!=b->low_cut.enabled || a->low_cut.freq_hz!=b->low_cut.freq_hz || a->high_cut.enabled!=b->high_cut.enabled || a->high_cut.freq_hz!=b->high_cut.freq_hz)return false;
+    for(int i=0;i<ENGINE_EQ_BANDS;++i)if(a->bands[i].enabled!=b->bands[i].enabled || a->bands[i].freq_hz!=b->bands[i].freq_hz || a->bands[i].gain_db!=b->bands[i].gain_db || a->bands[i].q_width!=b->bands[i].q_width)return false;
     return true;
 }
 
@@ -139,8 +123,16 @@ static void eq_detail_apply_curve(AppState* state) {
     eq_curve_to_engine(&panel->eq_curve, &curve);
     int track = panel->eq_detail.view_mode == EQ_DETAIL_VIEW_TRACK &&
         panel->target == FX_PANEL_TARGET_TRACK ? panel->target_track_index : -1;
-    bool accepted = track >= 0 ? engine_set_track_eq_curve(state->engine, track, &curve) :
-                                engine_set_master_eq_curve(state->engine, &curve);
+    if(!state->undo.active_drag_valid || state->undo.active_drag.type!=UNDO_CMD_EQ_CURVE || panel->eq_detail.history_serial!=state->undo.drag_serial)return;
+    UndoEqCurveEdit* edit=&state->undo.active_drag.data.eq_curve_edit;
+    EngineEqCurve previous_curve;EqCurveState previous_ui={0};
+    previous_ui.low_cut.enabled=edit->after.low_cut.enabled;previous_ui.low_cut.freq_hz=edit->after.low_cut.freq_hz;
+    previous_ui.high_cut.enabled=edit->after.high_cut.enabled;previous_ui.high_cut.freq_hz=edit->after.high_cut.freq_hz;
+    for(int i=0;i<ENGINE_EQ_BANDS;++i){previous_ui.bands[i].enabled=edit->after.bands[i].enabled;previous_ui.bands[i].freq_hz=edit->after.bands[i].freq_hz;previous_ui.bands[i].gain_db=edit->after.bands[i].gain_db;previous_ui.bands[i].q_width=edit->after.bands[i].q_width;}
+    eq_curve_to_engine(&previous_ui,&previous_curve);
+    DawEqSnapshot expected={edit->generation,edit->is_master ? 0 : edit->track_runtime_id,previous_curve};
+    bool accepted=state->undo.active_drag_valid && state->undo.active_drag.type==UNDO_CMD_EQ_CURVE &&
+        panel->eq_detail.history_serial==state->undo.drag_serial && daw_eq_write(state,&expected,&curve);
     bool owns_history = state->undo.active_drag_valid &&
         panel->eq_detail.history_serial == state->undo.drag_serial && state->undo.active_drag.type == UNDO_CMD_EQ_CURVE;
     if (!accepted && owns_history) {

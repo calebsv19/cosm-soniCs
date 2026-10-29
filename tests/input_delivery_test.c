@@ -138,6 +138,7 @@ int main(void) {
     snprintf(state->data_paths.output_root, sizeof(state->data_paths.output_root), "%s/config", root);
     ProjectInfo entries[8]; int count = 0;
     assert(project_manager_list(state, entries, 8, &count) && count == 1);
+    assert(rename("config/projects","config/projects-unavailable") == 0);
     file = fopen("blocked", "w"); assert(file); fclose(file);
     snprintf(state->data_paths.output_root, sizeof(state->data_paths.output_root), "%s/blocked", root);
     project_modal_input_open_save_prompt(state);

@@ -81,6 +81,35 @@ Project float serialization now preserves complete authored float values through
 
 Guarded arrangement is documented in [arrangement](../../docs/arrangement.md). The common action, MCP adapter and native MIDI duplicate/delete share exact content guards and one-step batch history; native Arrange fields and actual-window acceptance now pass; advanced routing remains pending.
 
-`routing_actions.c` owns common exact-state routing edits and scoped history. It validates the complete routing graph, refuses busy/foreign/stale requests, reserves independent before/after metadata and publishes once. Routing restoration preserves unrelated mixer, regions and processors. The corresponding native/MCP routing adapters remain pending.
+`routing_actions.c` owns common exact-state routing edits and scoped history. It validates the complete routing graph, refuses busy/foreign/stale requests, reserves independent before/after metadata and publishes once. Routing restoration preserves unrelated mixer, regions and processors. Native routing controls and `control_routing.c` adopt the common guarded action/history path.
 
-Common routing now includes one-publication return creation from an empty project with stable-identity redo and created-lane later-edit guards. `control_routing.c` adopts reads, creation, atomic role/send batches and scoped history behind four copied tokens and the existing immutable receipt/write admission contract. Native routing controls remain pending.
+Common routing now includes one-publication return creation from an empty project with stable-identity redo and created-lane later-edit guards. `control_routing.c` adopts reads, creation, atomic role/send batches and scoped history behind four copied tokens and the existing immutable receipt/write admission contract. Native routing controls and nested group management are implemented; see `docs/routing.md` and `docs/track_groups.md`.
+
+`automation_actions.c` prepares complete automation snapshots before engine publication and shares region point commands with graphical input and MCP adapters.
+
+Sampled Oboe and French Horn extend the existing acoustic sampler with paired recorded dynamics and held-note expression. Complete audition chords follow each bank's playable range. See `docs/sampled_oboe_horn.md` for ranges, provenance, preparation and verification.
+
+[Header mixer and lane density](../../docs/header_mixer.md) adds guarded gain/pan scalar history, standard relative gestures, exact-value inspector synchronization, smaller gutters and subtle persistent lane tints. The application mixer/history boundary and input gesture owner are separate small modules.
+
+`track_controls.c` owns copied header state, field-scoped guarded writes and stable-label/scalar history; `control_track_controls.c` adapts the existing endpoint tokens/receipt admission. Native rename and MCP label edits share reservation before publication.
+
+`eq_actions.c` owns copied dedicated curves, exact lifetime/value publication guards and native/MCP shared history; `control_eq.c` adopts bounded tokens and existing receipt admission. `daw_composition_measure` adds bounded independent channel calibration without changing source audio.
+
+`mix_capture.c` owns exact common project guards and bounded immutable per-channel graph measurements; `control_mix_capture.c` provides read-only guard/capture/page tools. See [mix diagnostics](../../docs/mix_diagnostics.md) for stages, units, context and capability limits.
+
+Mix diagnostic insert pages now expose per-insert input/output levels and actual
+per-channel Compressor/Limiter attenuation with output-latency alignment; see
+`docs/mix_diagnostics.md` for paging, calibration and remaining measurement limits.
+
+Immutable mix capture schema v3 adds per-channel spectral windows for processed
+child/group/return/master outputs. `get_mix_capture` independently pages
+`frequency_window` and `frequency_channel`; see `docs/mix_diagnostics.md` for
+calibration, window coverage and remaining loudness/true-peak limits.
+
+Immutable mix captures now include prepared note-ending controls/fences and
+threshold-qualified aggregate MIDI source tails. `get_mix_capture` independently
+pages eight note rows with `note_offset`; see `docs/mix_diagnostics.md` section 7.
+
+Asynchronous whole-song WAV export now uses a captured production graph and shared worker, with native/MCP format/tail choices, progress, cancellation and verified no-overwrite output. See [export contracts](../../docs/song_export.md).
+
+Qualified live 400 ms per-channel/stereo/mono compatibility windows now cover child/group/return/master output, with native scope controls and guarded output-only stereo/mono monitoring. The approximate live LUFS view is hidden behind an explicit qualification notice; offline validated LUFS remains available. See [live metering contracts](../../docs/live_stereo_metering.md).

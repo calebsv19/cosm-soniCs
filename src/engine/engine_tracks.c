@@ -15,8 +15,10 @@ void engine_track_init(EngineTrack* track) {
         return;
     }
     track->is_return = false;
-    memset(track->sends, 0, sizeof(track->sends));
+    track->is_group = false; track->parent_id = 0; track->folded = false; track->sibling_order = 0;
+    memset(track->sends, 0, sizeof(track->sends));memset(&track->volume_automation,0,sizeof(track->volume_automation));
     track->runtime_id = atomic_fetch_add_explicit(&next_track_runtime_id, 1, memory_order_relaxed);
+    track->persistent_id = track->runtime_id;
     track->clips = NULL;
     track->clip_count = 0;
     track->clip_capacity = 0;
@@ -188,7 +190,7 @@ int engine_add_track(Engine* engine) {
 }
 
 // Publishes an inserted track and remapped effects together, restoring all editable ownership on failure.
-static bool engine_insert_track_configured(Engine* engine, int track_index, bool is_return, uint64_t identity) {
+static bool engine_insert_track_configured(Engine* engine, int track_index, bool is_return, bool is_group, const char* name, uint64_t identity) {
     if (!engine || SDL_ThreadID() != engine->control_thread_id) return false;
     if (track_index < 0) track_index = 0;
     if (track_index > engine->track_count) track_index = engine->track_count;
@@ -210,8 +212,10 @@ static bool engine_insert_track_configured(Engine* engine, int track_index, bool
     engine_eq_init(&added->track_eq, (float)engine->config.sample_rate, engine_graph_get_channels(engine->graph));
     added->active = false;
     added->is_return = is_return;
-    if (identity) added->runtime_id = identity;
+    added->is_group = is_group;
+    if (identity) added->runtime_id = added->persistent_id = identity;
     snprintf(added->name, sizeof(added->name), is_return ? "Return %d" : "Track %d", track_index + 1);
+    if (name) SDL_strlcpy(added->name, name, sizeof(added->name));
     ++engine->track_count;
     engine->fxm = candidate_fx;
     int armed = atomic_load(&engine->record_armed_track_index);
@@ -235,7 +239,7 @@ static bool engine_insert_track_configured(Engine* engine, int track_index, bool
 
 // Retains ordinary insertion behavior through the shared prepared topology publication path.
 bool engine_insert_track(Engine* engine, int track_index) {
-    return engine_insert_track_configured(engine, track_index, false, 0);
+    return engine_insert_track_configured(engine, track_index, false, false, NULL, 0);
 }
 
 // Appends one empty return with independent DSP ownership and optionally restores a retained identity.
@@ -248,7 +252,19 @@ bool engine_append_return(Engine* engine, uint64_t identity, uint64_t* out_id) {
     }
     if (returns >= ENGINE_RETURN_CAP) return false;
     int index = engine->track_count;
-    if (!engine_insert_track_configured(engine, index, true, identity)) return false;
+    if (!engine_insert_track_configured(engine, index, true, false, NULL, identity)) return false;
+    *out_id = engine->tracks[index].runtime_id;
+    return true;
+}
+
+// Publishes one named empty group without an intermediate ordinary source lane.
+bool engine_append_group(Engine* engine, uint64_t identity, const char* name, uint64_t* out_id) {
+    if (!engine || !out_id || !name || !name[0] || strlen(name) >= ENGINE_CLIP_NAME_MAX ||
+        !engine_is_control_thread(engine) || engine->track_count >= ENGINE_ROUTING_TRACK_CAP) return false;
+    for (int t = 0; t < engine->track_count; ++t)
+        if (identity && engine->tracks[t].runtime_id == identity) return false;
+    int index = engine->track_count;
+    if (!engine_insert_track_configured(engine, index, false, true, name, identity)) return false;
     *out_id = engine->tracks[index].runtime_id;
     return true;
 }
@@ -337,8 +353,9 @@ bool engine_track_midi_set_instrument_automation_lanes(Engine* engine, int track
     if (!engine || SDL_ThreadID() != engine->control_thread_id || track_index < 0 || track_index >= engine->track_count ||
         lane_count < 0 || (lane_count > 0 && !lanes)) return false;
     for (int i = 0; i < lane_count; ++i) {
-        if (!engine_automation_target_is_instrument_param(lanes[i].target) || lanes[i].point_count < 0 ||
-            (lanes[i].point_count > 0 && !lanes[i].points)) return false;
+        if (!engine_automation_target_is_instrument_param(lanes[i].target) ||
+            !engine_automation_lane_validate(&lanes[i], UINT64_MAX)) return false;
+        for (int j = 0; j < i; ++j) if (lanes[j].target == lanes[i].target) return false;
         for (int j = 0; j < lanes[i].point_count; ++j) if (!isfinite(lanes[i].points[j].value)) return false;
     }
     EngineTrack candidate = {0};
@@ -432,6 +449,7 @@ bool engine_track_set_solo(Engine* engine, int track_index, bool solo) {
 // Commits recording isolation only when a matching source revision is ready for adoption.
 bool engine_set_record_armed_track(Engine* engine, int track_index) {
     if (!engine || SDL_ThreadID() != engine->control_thread_id || track_index >= engine->track_count) return false;
+    if(track_index>=0 && engine->tracks[track_index].is_group)return false;
     if (track_index < 0) track_index = -1;
     int previous = atomic_load_explicit(&engine->record_armed_track_index, memory_order_acquire);
     atomic_store_explicit(&engine->record_armed_track_index, track_index, memory_order_release);
@@ -448,6 +466,7 @@ bool engine_track_set_settings(Engine* engine, int track_index, const EngineTrac
     for (int i = 0; i < ENGINE_INSTRUMENT_PARAM_COUNT; ++i)
         if (!isfinite(engine_instrument_params_get(settings->instrument_params, (EngineInstrumentParamId)i))) return false;
     EngineTrack* track = &engine->tracks[track_index];
+    if(settings->instrument_enabled && (track->is_group || track->is_return))return false;
     EngineTrack previous = *track;
     track->gain = settings->gain;
     track->pan = settings->pan;
@@ -531,5 +550,22 @@ bool engine_is_control_thread(const Engine* engine) {
 bool engine_get_eq_curve(const Engine* engine, int track_index, EngineEqCurve* out_curve) {
     if (!engine_is_control_thread(engine) || !out_curve || track_index >= engine->track_count) return false;
     *out_curve = track_index < 0 ? engine->master_eq.curve : engine->tracks[track_index].track_eq.curve;
+    return true;
+}
+
+// Assigns validated saved identities atomically to the private session candidate.
+bool engine_restore_persistent_ids(Engine* engine,const uint64_t* ids,int count) {
+    if(!engine || !ids || count!=engine->track_count || !engine_is_control_thread(engine))return false;
+    uint64_t maximum=0;for(int t=0;t<count;++t){if(ids[t]>INT64_MAX)return false;if(ids[t]>maximum)maximum=ids[t];}
+    uint64_t old=atomic_load_explicit(&next_track_runtime_id,memory_order_relaxed);
+    while(old<=maximum && !atomic_compare_exchange_weak_explicit(&next_track_runtime_id,&old,maximum+1,memory_order_relaxed,memory_order_relaxed)){}
+    for(int t=0;t<count;++t)for(int p=0;ids[t] && p<t;++p)if(ids[t]==ids[p])return false;
+    for(int t=0;t<count;++t)if(ids[t])engine->tracks[t].persistent_id=ids[t];
+    for(int t=0;t<count;++t)if(!ids[t]) {
+        bool unique=false;while(!unique) { unique=true;
+            for(int p=0;p<count;++p)if(p!=t && engine->tracks[p].persistent_id==engine->tracks[t].persistent_id)unique=false;
+            if(!unique)engine->tracks[t].persistent_id=atomic_fetch_add_explicit(&next_track_runtime_id,1,memory_order_relaxed);
+        }
+    }
     return true;
 }

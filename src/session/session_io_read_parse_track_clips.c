@@ -1,3 +1,4 @@
+#include <math.h>
 #include "session_io_read_internal.h"
 
 #include <stdlib.h>
@@ -76,6 +77,8 @@ static bool parse_session_instrument_params(JsonReader* r, SessionClip* clip) {
         return false;
     }
     EngineInstrumentParams params = clip->instrument_params;
+    // Missing appended fields preserve older authored piano sounds; explicit values override below.
+    params.sustain_pedal = params.string_resonance = params.release_noise = 0;
     while (true) {
         json_skip_whitespace(r);
         if (r->pos < r->length && r->data[r->pos] == '}') {
@@ -250,6 +253,7 @@ static bool parse_session_automation_points(JsonReader* r, SessionAutomationLane
         }
         uint64_t frame = 0;
         float value = 0.0f;
+        EngineAutomationCurve curve = ENGINE_AUTOMATION_CURVE_LINEAR;
         while (true) {
             json_skip_whitespace(r);
             if (r->pos < r->length && r->data[r->pos] == '}') {
@@ -268,13 +272,19 @@ static bool parse_session_automation_points(JsonReader* r, SessionAutomationLane
                 if (!json_parse_number(r, &val)) {
                     return false;
                 }
-                frame = (uint64_t)(val < 0 ? 0 : val);
+                if (!isfinite(val) || val < 0 || val >= 18446744073709551616.0 || floor(val) != val) return false;
+                frame = (uint64_t)val;
             } else if (strcmp(point_key, "value") == 0) {
                 double val;
                 if (!json_parse_number(r, &val)) {
                     return false;
                 }
                 value = (float)val;
+                if (!isfinite(value)) return false;
+            } else if (strcmp(point_key, "curve") == 0) {
+                double val;
+                if (!json_parse_number(r, &val) || val < 0 || val >= ENGINE_AUTOMATION_CURVE_COUNT || floor(val) != val) return false;
+                curve = (EngineAutomationCurve)val;
             } else {
                 if (!json_skip_value(r)) {
                     return false;
@@ -292,6 +302,7 @@ static bool parse_session_automation_points(JsonReader* r, SessionAutomationLane
         if (!session_lane_append_point(lane, frame, value)) {
             return false;
         }
+        lane->points[lane->point_count - 1].curve = curve;
         json_skip_whitespace(r);
         if (r->pos < r->length && r->data[r->pos] == ',') {
             ++r->pos;
@@ -350,6 +361,13 @@ bool parse_session_automation_lanes(JsonReader* r, SessionAutomationLane** out_l
                     return false;
                 }
                 lane->target = (EngineAutomationTarget)val;
+            } else if (strcmp(lane_key, "domain") == 0 || strcmp(lane_key, "before") == 0 || strcmp(lane_key, "after") == 0) {
+                double val;
+                int limit = strcmp(lane_key, "domain") == 0 ? ENGINE_AUTOMATION_DOMAIN_COUNT : ENGINE_AUTOMATION_BOUNDARY_COUNT;
+                if (!json_parse_number(r, &val) || val < 0 || val >= limit || floor(val) != val) return false;
+                if (strcmp(lane_key, "domain") == 0) lane->domain = (EngineAutomationDomain)val;
+                else if (strcmp(lane_key, "before") == 0) lane->before = (EngineAutomationBoundary)val;
+                else lane->after = (EngineAutomationBoundary)val;
             } else if (strcmp(lane_key, "points") == 0) {
                 if (!parse_session_automation_points(r, lane)) {
                     return false;

@@ -2,6 +2,7 @@
 #include "ui/editor_controls.h"
 #include "ui/layout.h"
 #include "ui/effects_panel.h"
+#include "ui/effects_panel_meter_detail.h"
 #include "input/effects_panel_input.h"
 #include "input/effects_panel_input_helpers.h"
 #include "input/timeline/timeline_input_mouse_click.h"
@@ -101,15 +102,16 @@ static void equalizer(AppState* state) {
     KitUiSurface* surface = &state->editor_controls.surface;
     for (unsigned i = 0; i < surface->count; ++i) {
         KitUiSurfaceKey key = surface->keys[i];
-        // Specialized EQ has no ordinary effect-detail enable/remove/preview buttons.
-        assert(key.domain != 14 || key.value < 8 || key.value >= 1000 || key.value % 16 == 11);
+        // Specialized EQ retains toolbar A/B but has no ordinary effect-detail buttons.
+        assert(key.domain != 14 || key.value < 11 || key.value >= 1000 || key.value % 16 == 11);
     }
 }
 // Checks meter modes and rack palettes against accepted parameter readback and undo.
 static void meters(AppState* state) {
     state->effects_panel.track_snapshot.eq_open = false;
-    const unsigned types[] = {102,104,105};
-    for (unsigned t = 0; t < 3; ++t) {
+    SDL_Rect detail={0,0,500,300},a,b,c;effects_panel_meter_detail_compute_lufs_toggle_rects(&detail,&a,&b,&c);assert(!a.w && !b.w && !c.w);
+    const unsigned types[] = {102,105};
+    for (unsigned t = 0; t < 2; ++t) {
         FxInstId id = undo_manager_add_effect(state, 0, types[t]); assert(id);
         effects_panel_sync_from_engine(state);
         int index = state->effects_panel.chain_count - 1;

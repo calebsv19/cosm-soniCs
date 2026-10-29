@@ -57,43 +57,42 @@ void ui_render_project_prompt_overlay(SDL_Renderer* renderer, AppState* state) {
     SDL_Color text_col = {0};
     SDL_Color caret_fill = {0};
     resolve_modal_theme(&modal_fill, &modal_border, &input_fill, &input_border, &text_col, &caret_fill, NULL, NULL);
-    int width = state->window_width > 0 ? state->window_width : 800;
-    int height = state->window_height > 0 ? state->window_height : 600;
-    int box_w = 480;
-    int box_h = 180;
-    SDL_Rect modal = {
-        (width - box_w) / 2,
-        (height - box_h) / 2,
-        box_w,
-        box_h
-    };
+    DawProjectModalLayout layout;daw_project_modal_layout(state,&layout);
+    SDL_Rect modal=layout.box;
     SDL_SetRenderDrawColor(renderer, modal_fill.r, modal_fill.g, modal_fill.b, 220);
     SDL_RenderFillRect(renderer, &modal);
     SDL_SetRenderDrawColor(renderer, modal_border.r, modal_border.g, modal_border.b, modal_border.a);
     SDL_RenderDrawRect(renderer, &modal);
 
-    const char* title = "Save Project As";
+    const char* title = state->project_prompt.folder_mode ? "Collections folder" : "Save Project";
     int title_w = ui_measure_text_width(title, 2);
     ui_draw_text(renderer, modal.x + (modal.w - title_w) / 2, modal.y + 12, title, text_col, 2);
 
-    const char* hint = state->project_prompt.error[0] ? state->project_prompt.error : "Type a name and press Enter. Esc to cancel.";
-    ui_draw_text(renderer, modal.x + 16, modal.y + modal.h - 32, hint, text_col, 1);
-
-    SDL_Rect input_box = {
-        modal.x + 16,
-        modal.y + 60,
-        modal.w - 32,
-        44
-    };
+    const char* hint=state->project_prompt.error[0] ? state->project_prompt.error :
+        state->project_prompt.folder_mode ? "Enter the folder containing your collections." : "Enter saves a new version. Update current replaces only the current file.";
+    ui_draw_text_clipped(renderer,modal.x+16,modal.y+modal.h-78,hint,text_col,1,modal.w-32);
+    SDL_Rect input_box=layout.field;
+    char preview[SESSION_PATH_MAX]={0};
+    if(!state->project_prompt.folder_mode) {
+        project_collections_next_path(state,state->project_prompt.buffer,preview,sizeof(preview));
+        const char* base=strrchr(preview,'/');
+        char next_name[SESSION_NAME_MAX+16];snprintf(next_name,sizeof(next_name),"Next: %s",preview[0] ? (base ? base+1 : preview) : "Choose a collection folder");
+        ui_draw_text_clipped(renderer,modal.x+16,modal.y+84,next_name,text_col,1,modal.w-32);
+        if(state->project_collections.count)ui_draw_text_clipped(renderer,modal.x+16,modal.y+164,
+            state->project_collections.items[state->project_collections.selected].directory,text_col,1,modal.w-32);
+    }
     SDL_SetRenderDrawColor(renderer, input_fill.r, input_fill.g, input_fill.b, input_fill.a);
     SDL_RenderFillRect(renderer, &input_box);
     SDL_SetRenderDrawColor(renderer, input_border.r, input_border.g, input_border.b, input_border.a);
     SDL_RenderDrawRect(renderer, &input_box);
 
+    if(!state->project_prompt.folder_mode && state->project.has_name)
+        ui_draw_text_clipped(renderer,modal.x+16,modal.y+180,state->project.path,text_col,1,modal.w-32);
     SDL_Rect text_view = {input_box.x + 8, input_box.y + 2, input_box.w - 16, input_box.h - 4};
     daw_text_edit_draw(renderer, &state->project_prompt.text_edit, state->project_prompt.buffer,
         sizeof(state->project_prompt.buffer), state->project_prompt.cursor, text_view,
-        text_col, caret_fill, 2);
+        text_col, caret_fill, 1);
+    daw_project_modal_controls_draw(renderer,state);
 
 }
 
@@ -118,37 +117,21 @@ void ui_render_project_load_overlay(SDL_Renderer* renderer, AppState* state) {
                         &selection_fill,
                         &button_fill,
                         &button_fill_alt);
-    int width = state->window_width > 0 ? state->window_width : 800;
-    int height = state->window_height > 0 ? state->window_height : 600;
-    SDL_Rect modal = {
-        (width - 720) / 2,
-        (height - 420) / 2,
-        720,
-        420
-    };
+    DawProjectModalLayout layout;daw_project_modal_layout(state,&layout);
+    SDL_Rect modal=layout.box;
     SDL_SetRenderDrawColor(renderer, modal_fill.r, modal_fill.g, modal_fill.b, 240);
     SDL_RenderFillRect(renderer, &modal);
     SDL_SetRenderDrawColor(renderer, modal_border.r, modal_border.g, modal_border.b, modal_border.a);
     SDL_RenderDrawRect(renderer, &modal);
 
     if (state->project_load.error[0])
-        ui_draw_text(renderer, modal.x + 16, modal.y + 36, state->project_load.error, text_col, 1);
+        ui_draw_text(renderer, modal.x + 16, modal.y + 94, state->project_load.error, text_col, 1);
     const char* title = "Load Project";
     ui_draw_text(renderer, modal.x + 16, modal.y + 12, title, text_col, 2);
 
-    SDL_Rect list_rect = {
-        modal.x + 16,
-        modal.y + 56,
-        modal.w / 2 - 32,
-        modal.h - 96
-    };
-    SDL_Rect info_rect = {
-        modal.x + modal.w / 2 + 8,
-        modal.y + 56,
-        modal.w / 2 - 24,
-        modal.h - 126
-    };
-
+    SDL_Rect list_rect=layout.list,info_rect=layout.info;
+    if(state->project_collections.count)ui_draw_text_clipped(renderer,modal.x+16,modal.y+84,
+        state->project_collections.items[state->project_collections.selected].directory,text_col,1,modal.w-32);
 
     SDL_SetRenderDrawColor(renderer, input_fill.r, input_fill.g, input_fill.b, input_fill.a);
     SDL_RenderFillRect(renderer, &list_rect);
@@ -189,7 +172,7 @@ void ui_render_project_load_overlay(SDL_Renderer* renderer, AppState* state) {
         SDL_RenderDrawRect(renderer, &row);
 
         const char* name = state->project_load.entries[i].name[0] ? state->project_load.entries[i].name : "project";
-        ui_draw_text(renderer, row.x + 8, row.y + 4, name, text_col, 1.2f);
+        ui_draw_text_clipped(renderer, row.x + 8, row.y + 4, name, text_col, 1.0f,row.w-20);
     }
     ui_set_clip_rect(renderer,had_clip ? &previous_clip : NULL);
 
@@ -209,9 +192,9 @@ void ui_render_project_load_overlay(SDL_Renderer* renderer, AppState* state) {
     if (sel >= 0 && sel < state->project_load.count) {
         const ProjectInfo* info = &state->project_load.entries[sel];
         char line[256];
-        ui_draw_text(renderer, info_rect.x + 8, info_rect.y + 8, info->name, text_col, 2);
+        ui_draw_text_clipped(renderer, info_rect.x + 8, info_rect.y + 8, info->name, text_col, 1,info_rect.w-16);
         snprintf(line, sizeof(line), "Path: %s", info->path);
-        ui_draw_text(renderer, info_rect.x + 8, info_rect.y + 34, line, text_col, 1.2f);
+        ui_draw_text_clipped(renderer, info_rect.x + 8, info_rect.y + 34, line, text_col, 1,info_rect.w-16);
         if (info->modified_ms > 0) {
             time_t sec = (time_t)(info->modified_ms / 1000LL);
             struct tm* tminfo = localtime(&sec);

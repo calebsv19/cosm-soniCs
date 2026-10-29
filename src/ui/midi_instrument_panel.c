@@ -1,4 +1,6 @@
 #include "ui/midi_instrument_panel.h"
+#include "engine/instrument_percussion.h"
+#include "engine/instrument_samples.h"
 
 #include "app_state.h"
 #include "ui/daw_ui_button.h"
@@ -486,11 +488,16 @@ static void instrument_panel_draw_preview(SDL_Renderer* renderer,
     int width = (inner.w - 12) / 2;
     SDL_Rect envelope = {inner.x, inner.y + caption_h, width, inner.h - caption_h};
     SDL_Rect wave = {inner.x + width + 12, envelope.y, width, envelope.h};
-    ui_draw_text_clipped(renderer, envelope.x, inner.y, "ADSR | gate 500 ms", theme->text_muted, 0.7f, width);
-    ui_draw_text_clipped(renderer, wave.x, inner.y, "C4 held | 20 ms | +/-1", theme->text_muted, 0.7f, width);
+    bool percussion = engine_instrument_percussion_preset(preset);
+    ui_draw_text_clipped(renderer, envelope.x, inner.y, percussion ? "Body / noise decay" : "ADSR | gate 500 ms", theme->text_muted, 0.7f, width);
+    ui_draw_text_clipped(renderer, wave.x, inner.y, preset == ENGINE_INSTRUMENT_PRESET_HAT_KIT ? "Open hat | 20 ms | +/-1" : percussion ? "C2 onset | 20 ms | +/-1" : "Held note | 20 ms | +/-1", theme->text_muted, 0.7f, width);
     uint64_t gate = (uint64_t)rate / 2;
     uint64_t end = gate + (uint64_t)llround((double)params.release_ms * rate / 1000.0) + (uint64_t)rate / 20;
     uint64_t wave_start = (uint64_t)llround((double)(params.attack_ms + params.decay_ms + 50) * rate / 1000.0);
+    if (percussion) {
+        wave_start = 0;
+        end = engine_instrument_percussion_one_shot(preset) ? (uint64_t)(fmaxf(params.body_decay_ms, params.noise_decay_ms) * rate / 1000) : end;
+    }
     uint64_t wave_length = (uint64_t)rate / 50;
     SDL_Color guide = instrument_panel_color_mix(theme->grid_minor, theme->text_muted, 3, 1);
     SDL_SetRenderDrawColor(renderer, guide.r, guide.g, guide.b, guide.a);
@@ -505,8 +512,8 @@ static void instrument_panel_draw_preview(SDL_Renderer* renderer,
     static struct { EngineInstrumentParams params; EngineInstrumentPresetId preset; int rate, points; float samples[512]; bool valid; } cache;
     if (!cache.valid || cache.preset != preset || cache.rate != rate || cache.points != points ||
         memcmp(&cache.params, &params, sizeof(params)) != 0) {
-        cache.valid = engine_instrument_note_waveform(preset, params, 60, 1, rate,
-            wave_start, wave_length, wave_start + wave_length + 1, cache.samples, points);
+        cache.valid = engine_instrument_note_waveform(preset, params, preset == ENGINE_INSTRUMENT_PRESET_HAT_KIT ? 46 : percussion ? 36 : engine_instrument_preview_note(preset), 1, rate,
+            wave_start, wave_length, percussion ? gate : wave_start + wave_length + 1, cache.samples, points);
         cache.params = params; cache.preset = preset; cache.rate = rate; cache.points = points;
     }
     int previous_x = envelope.x, previous_y = envelope.y + envelope.h - 1;
@@ -514,7 +521,7 @@ static void instrument_panel_draw_preview(SDL_Renderer* renderer,
     for (int i = 0; i < points; ++i) {
         double position = points > 1 ? (double)i / (points - 1) : 0;
         uint64_t frame = (uint64_t)llround(position * end);
-        float level = engine_instrument_envelope_level(params, rate, frame, gate);
+        float level = percussion ? engine_instrument_percussion_envelope(preset == ENGINE_INSTRUMENT_PRESET_HAT_KIT ? ENGINE_INSTRUMENT_PRESET_OPEN_HAT : preset, params, rate, frame, gate) : engine_instrument_sampled_preset(preset) ? engine_instrument_samples_envelope(params,rate,frame,gate) : engine_instrument_envelope_level(params, rate, frame, gate);
         int x = envelope.x + (int)llround(position * (width - 1));
         int y = envelope.y + envelope.h - 1 - (int)lroundf(level * (envelope.h - 1));
         float sample = cache.valid ? cache.samples[i] : 0;

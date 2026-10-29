@@ -37,6 +37,12 @@ static void gain_set_param(FxHandle* handle, uint32_t index, float value) {
         fx_sample_ramp_reset(&gain->gain, linear);
 }
 
+// Sets exact authored dB curves without retargeting the static-edit ramp.
+static void gain_set_automated(FxHandle* handle,uint32_t index,float value) {
+    if(index || !isfinite(value))return;
+    fx_sample_ramp_reset(&((FxGain*)handle)->gain,powf(10,fminf(24,fmaxf(-96,value))*.05f));
+}
+
 // Snaps to the accepted target for deterministic initialization or transport reset.
 static void gain_reset(FxHandle* handle) {
     FxGain* gain = (FxGain*)handle;
@@ -76,7 +82,7 @@ int gain_create(const FxDesc* desc, FxHandle** out, FxVTable* vt, uint32_t rate,
     gain->ramp_samples = (uint32_t)fmax(1, round(rate * .020));
     fx_sample_ramp_reset(&gain->gain, 1);
     *vt = (FxVTable){
-        .process = gain_process, .set_param = gain_set_param, .reset = gain_reset, .destroy = gain_destroy};
+        .process = gain_process, .set_param = gain_set_param, .set_param_automated = gain_set_automated, .reset = gain_reset, .destroy = gain_destroy};
     *out = (FxHandle*)gain;
     return 1;
 }

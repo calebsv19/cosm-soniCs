@@ -24,3 +24,5 @@ The effects manager can now mark chains as source or return stages before render
 This is DSP groundwork for the active shared-return routing stage. Engine send/return buffers now adopt this compensation in live/offline source plans. Authored routing now survives project save/reopen. Guarded application/MCP actions and native bus controls remain pending. Do not advertise shared buses from the effects-chain tools alone.
 
 `test-fx-return-alignment` independently delays real impulse samples through two source tracks, two returns and a master. It verifies exact dry/wet alignment, stereo output, single-sample partitions, revision-history transfer, reset, legacy latency and zero production render allocation calls. Existing effects-revision and export failure/latency tests remain required.
+
+Compressor/Limiter controls now have qualified non-consuming live gain-reduction feedback in native headers and `get_effect_chain.dynamics_feedback`, separate from authored edit tokens. Compressor detection remains independent by channel; Limiter is sample-peak, not true-peak. See [dynamics controls and feedback](../../docs/dynamics_feedback.md).

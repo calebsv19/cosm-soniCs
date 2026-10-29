@@ -74,7 +74,7 @@ static DawControlArrangementState* find(DawControlBridge* bridge, const char* to
     return NULL;
 }
 // Reuses exact current captures and bounds independently owned content to four states.
-static DawControlArrangementState* remember(DawControlBridge* bridge, AppState* state) {
+DawControlArrangementState* daw_control_arrangement_capture(DawControlBridge* bridge, AppState* state) {
     for (int i=0; i<DAW_CONTROL_ARRANGEMENT_STATES; ++i)
         if (daw_arrangement_snapshot_current(state,bridge->arrangement_states[i].snapshot)) return &bridge->arrangement_states[i];
     if (bridge->arrangement_sequence==UINT64_MAX) return NULL;
@@ -111,7 +111,7 @@ cJSON* daw_control_arrangement(DawControlBridge* bridge, AppState* state, const 
     const char* operation=text(request,"op"); bool read=!strcmp(operation,"get_arrangement");
     const char* expected=text(request,"expected_arrangement"); DawControlArrangementState* entry=find(bridge,expected);
     if ((!read || cJSON_GetObjectItemCaseSensitive(request,"expected_arrangement")) && (!entry || !daw_arrangement_snapshot_current(state,entry->snapshot))) return reply(false,"state_conflict");
-    if (read) { if (!entry) entry=remember(bridge,state); if (!entry) return reply(false,"capture_unavailable"); cJSON* out=reply(true,"arrangement"); page(out,entry); return out; }
+    if (read) { if (!entry) entry=daw_control_arrangement_capture(bridge,state); if (!entry) return reply(false,"capture_unavailable"); cJSON* out=reply(true,"arrangement"); page(out,entry); return out; }
     cJSON* out=NULL;
     if (!strcmp(operation,"arrange_regions")) {
         const cJSON* array=cJSON_GetObjectItemCaseSensitive(request,"edits"); int count=cJSON_GetArraySize(array);
@@ -132,7 +132,7 @@ cJSON* daw_control_arrangement(DawControlBridge* bridge, AppState* state, const 
         out=reply(*changed,*changed?"applied":"history_conflict");
     }
     if (cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(out,"ok"))) {
-        entry=remember(bridge,state); if (entry) page(out,entry); else cJSON_AddBoolToObject(out,"readback_required",true);
+        entry=daw_control_arrangement_capture(bridge,state); if (entry) page(out,entry); else cJSON_AddBoolToObject(out,"readback_required",true);
     }
     return out;
 }

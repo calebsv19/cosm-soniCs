@@ -1,7 +1,10 @@
+#include "ui/automation_status.h"
 #include "ui/timeline_view.h"
 
 #include "app_state.h"
 #include "engine/engine.h"
+#include "engine/groups.h"
+#include "ui/timeline_track_header.h"
 #include "engine/sampler.h"
 #include "audio/media_registry.h"
 #include "ui/font.h"
@@ -79,8 +82,8 @@ static void resolve_timeline_theme(TimelineTheme* out_theme) {
         out_theme->playhead = theme.accent_error;
         out_theme->toggle_active_loop = theme.accent_warning;
         out_theme->toggle_active_snap = theme.accent_primary;
-        out_theme->toggle_active_auto = theme.control_active_fill;
-        out_theme->toggle_active_tempo = theme.control_active_fill;
+        out_theme->toggle_active_auto = theme.accent_primary;
+        out_theme->toggle_active_tempo = theme.accent_primary;
         out_theme->toggle_active_label = theme.slider_handle;
         return;
     }
@@ -129,12 +132,6 @@ static void resolve_timeline_theme(TimelineTheme* out_theme) {
 #define WAVEFORM_COLOR_G 140
 #define WAVEFORM_COLOR_B 170
 
-static inline float clamp_float(float value, float min, float max) {
-    if (value < min) return min;
-    if (value > max) return max;
-    return value;
-}
-
 void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState* state) {
     TimelineTheme theme = {0};
     if (!renderer || !rect || !state || !state->engine) {
@@ -145,30 +142,21 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
     SDL_SetRenderDrawColor(renderer, theme.bg.r, theme.bg.g, theme.bg.b, theme.bg.a);
     SDL_RenderFillRect(renderer, rect);
 
-    float visible_seconds = clamp_float(state->timeline_visible_seconds, TIMELINE_MIN_VISIBLE_SECONDS, TIMELINE_MAX_VISIBLE_SECONDS);
-    float vertical_scale = clamp_float(state->timeline_vertical_scale, TIMELINE_MIN_VERTICAL_SCALE, TIMELINE_MAX_VERTICAL_SCALE);
-    float min_window_start = 0.0f;
-    float max_window_start = 0.0f;
-    timeline_get_scroll_bounds(state, visible_seconds, &min_window_start, &max_window_start);
-    float window_start = clamp_float(state->timeline_window_start_seconds, min_window_start, max_window_start);
+    Pane pane = {.rect = *rect};
+    TimelineGeometry geometry;
+    if (!timeline_compute_geometry(state, &pane, &geometry)) return;
+    state->timeline_vertical_scroll = geometry.vertical_scroll;
+    float visible_seconds = geometry.visible_seconds;
+    float window_start = geometry.window_start_seconds;
     float window_end = window_start + visible_seconds;
-
     const int controls_height = timeline_view_controls_height_for_width(rect->w);
     const int ruler_height = timeline_view_ruler_height();
-    const int track_top_offset = controls_height + ruler_height;
-    const int track_y = rect->y + track_top_offset;
-    int track_height = (int)(TIMELINE_BASE_TRACK_HEIGHT * vertical_scale);
-    if (track_height < 32) {
-        track_height = 32;
-    }
-    const int track_spacing = 12;
-    const int header_width = timeline_view_track_header_width();
-    const int content_left = rect->x + header_width + TIMELINE_BORDER_MARGIN;
-    const int content_right = rect->x + rect->w - TIMELINE_BORDER_MARGIN;
-    const int content_width = content_right - content_left;
-    if (content_width <= 0) {
-        return;
-    }
+    const int track_y = geometry.track_top;
+    const int track_height = geometry.track_height;
+    const int track_spacing = geometry.track_spacing;
+    const int header_width = geometry.header_width;
+    const int content_left = geometry.content_left;
+    const int content_width = geometry.content_width;
 
     const Engine* engine = state->engine;
     const EngineTrack* tracks = engine_get_tracks(engine);
@@ -192,15 +180,30 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
     timeline_view_draw_button(renderer, &controls->loop_toggle_rect, "LOOP", controls->loop_toggle_hovered, true, &theme,state->loop_enabled ? &theme.toggle_active_loop : NULL);
     timeline_view_draw_button(renderer, &controls->snap_toggle_rect, "SNAP", controls->snap_toggle_hovered, true, &theme,state->timeline_snap_enabled ? &theme.toggle_active_snap : NULL);
     timeline_view_draw_button(renderer, &controls->automation_toggle_rect, "AUTO", controls->automation_toggle_hovered, true, &theme,state->timeline_automation_mode ? &theme.toggle_active_auto : NULL);
-    const char* target_label = engine_automation_target_display_label(state->automation_ui.target);
+    snprintf(controls->target_label, sizeof(controls->target_label), "%s v", engine_automation_target_display_label(state->automation_ui.target));
+    const char* target_label = controls->target_label;
     timeline_view_draw_button(renderer, &controls->automation_target_rect, target_label, controls->automation_target_hovered, true, &theme,NULL);
     timeline_view_draw_button(renderer, &controls->tempo_toggle_rect, "TEMPO", controls->tempo_toggle_hovered, true, &theme,state->timeline_tempo_overlay_enabled ? &theme.toggle_active_tempo : NULL);
     timeline_view_draw_button(renderer, &controls->automation_label_toggle_rect, "VAL", controls->automation_label_toggle_hovered, true, &theme,state->timeline_automation_labels_enabled ? &theme.toggle_active_label : NULL);
+    timeline_view_draw_button(renderer, &controls->height_down_rect, "Height -", controls->height_down_hovered,
+        state->timeline_vertical_scale > TIMELINE_MIN_VERTICAL_SCALE, &theme, NULL);
+    timeline_view_draw_button(renderer, &controls->height_up_rect, "Height +", controls->height_up_hovered,
+        state->timeline_vertical_scale < TIMELINE_MAX_VERTICAL_SCALE, &theme, NULL);
+    timeline_view_draw_button(renderer,&controls->groups_rect,"Groups",controls->groups_hovered,true,&theme,NULL);
     controls->loop_start_rect = (SDL_Rect){0,0,0,0};
     controls->loop_end_rect = (SDL_Rect){0,0,0,0};
 
     const float pixels_per_second = (float)content_width / visible_seconds;
-    int grid_lanes = track_count > 0 ? track_count : 1;
+    int visible_rows=engine_group_visible_count(tracks,track_count);
+    int grid_lanes = visible_rows > 0 ? visible_rows : 1;
+    // Paint row tints before loop/grid/regions, using the same visible hierarchy and viewport.
+    for(int row=0;row<visible_rows;++row) {
+        int t=engine_group_visible_track(tracks,track_count,row);if(t<0)continue;
+        SDL_Rect lane={rect->x,track_y+row*(track_height+track_spacing),geometry.viewport.w,track_height},visible;
+        if(!SDL_IntersectRect(&lane,&geometry.viewport,&visible))continue;
+        SDL_Color color=timeline_track_lane_color(state,t,&theme);
+        SDL_SetRenderDrawColor(renderer,color.r,color.g,color.b,color.a);SDL_RenderFillRect(renderer,&visible);
+    }
 
     bool have_loop_controls = state->loop_enabled && sample_rate > 0 && state->loop_end_frame > state->loop_start_frame;
     bool have_loop_region = false;
@@ -259,6 +262,10 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
         SDL_RenderDrawRect(renderer, &loop_region_rect);
     }
 
+    SDL_Rect previous_clip;
+    bool had_clip = SDL_RenderIsClipEnabled(renderer);
+    ui_get_clip_rect(renderer, &previous_clip);
+    ui_set_content_clip_rect(renderer, &geometry.viewport);
     state->tempo_map.sample_rate = (double)sample_rate;
     BeatGridCache beat_cache;
     TimeGridCache time_cache;
@@ -367,7 +374,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
         if (tracks && track_count > 0 && sample_rate > 0) {
             for (int t = 0; t < track_count; ++t) {
                 const EngineTrack* track = &tracks[t];
-                int lane_top = track_y + t * (track_height + track_spacing);
+                int lane_top = timeline_track_lane_y(state, t, track_y, track_height, track_spacing);
                 if (!track || track->clip_count <= 0) {
                     continue;
                 }
@@ -421,6 +428,7 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
         }
     }
 
+    ui_set_clip_rect(renderer, had_clip ? &previous_clip : NULL);
     if (have_loop_controls) {
         SDL_Color start_color = controls->adjusting_loop_start ? theme.text : theme.loop_handle_start;
         SDL_Color end_color = controls->adjusting_loop_end ? theme.text : theme.loop_handle_end;
@@ -488,6 +496,8 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
         ui_draw_text(renderer, end_x, label_y, end_label, loop_label_color, label_scale);
     }
 
+    automation_status_draw(renderer, rect, state);
+    ui_set_content_clip_rect(renderer, &geometry.viewport);
     timeline_view_render_runtime_overlays(renderer,
                                           rect,
                                           state,
@@ -504,4 +514,11 @@ void timeline_view_render(SDL_Renderer* renderer, const SDL_Rect* rect, AppState
                                           track_count,
                                           header_width,
                                           pixels_per_second);
+    ui_set_clip_rect(renderer, had_clip ? &previous_clip : NULL);
+    if (geometry.vertical_max > 0.0f) {
+        SDL_SetRenderDrawColor(renderer, theme.header_fill.r, theme.header_fill.g, theme.header_fill.b, 255);
+        SDL_RenderFillRect(renderer, &geometry.scrollbar);
+        SDL_SetRenderDrawColor(renderer, theme.text_muted.r, theme.text_muted.g, theme.text_muted.b, 255);
+        SDL_RenderFillRect(renderer, &geometry.scroll_thumb);
+    }
 }

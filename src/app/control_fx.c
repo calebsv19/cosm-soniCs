@@ -1,6 +1,7 @@
 #include "control_bridge_internal.h"
 #include "app_state.h"
 #include "daw/fx_actions.h"
+#include "daw/mixer_automation_wire.h"
 #include "daw/fx_library.h"
 #include <stdlib.h>
 #include "effects/param_utils.h"
@@ -38,6 +39,7 @@ void daw_control_fx_values_json(cJSON* r, const FxMasterSnapshot* chain) {
     for (int i = 0; i < chain->count; ++i) {
         const FxMasterInstanceInfo* item = &chain->items[i]; cJSON* e = cJSON_CreateObject(); cJSON_AddItemToArray(effects, e);
         cJSON_AddNumberToObject(e, "effect_id", item->id); cJSON_AddNumberToObject(e, "type_id", item->type); cJSON_AddBoolToObject(e, "enabled", item->enabled);
+        if(item->automation.count)daw_mixer_automation_json(cJSON_AddObjectToObject(e,"automation"),&item->automation);else cJSON_AddNullToObject(e,"automation");
         cJSON* parameters = cJSON_AddArrayToObject(e, "parameters");
         for (uint32_t p = 0; p < item->param_count; ++p) {
             cJSON* v = cJSON_CreateObject(); cJSON_AddItemToArray(parameters, v);
@@ -73,6 +75,7 @@ static cJSON* catalog(AppState* state, const cJSON* request) {
             static const char* types[] = {"float", "integer", "boolean", "enum"};
             cJSON_AddStringToObject(v, "unit", units[spec->unit]); cJSON_AddStringToObject(v, "type", types[spec->type]);
             cJSON_AddNumberToObject(v, "minimum", spec->min_value); cJSON_AddNumberToObject(v, "maximum", spec->max_value); cJSON_AddNumberToObject(v, "default", spec->default_value);
+            float lo,hi;cJSON_AddBoolToObject(v,"automation_supported",fx_parameter_automation_range(entries[i].id,p,&lo,&hi));
             cJSON_AddBoolToObject(v, "tempo_sync", (spec->flags & FX_PARAM_FLAG_TEMPO_SYNC_CAPABLE) != 0);
             cJSON_AddBoolToObject(v, "read_only", (spec->flags & FX_PARAM_FLAG_READ_ONLY_METER) != 0);
             cJSON* labels = cJSON_AddArrayToObject(v, "enum_labels");
@@ -120,7 +123,7 @@ cJSON* daw_control_fx(DawControlBridge* bridge, AppState* state, const cJSON* re
     if (got != DAW_ACTION_UNCHANGED) return reply(false, got == DAW_ACTION_STALE_TARGET ? "stale_target" : "engine_rejected");
     if (!strcmp(op, "get_effect_chain")) {
         DawControlFxState* entry = remember(bridge, &current); cJSON* r = reply(entry != NULL, entry ? "effect_chain" : "state_capacity");
-        if (entry) chain_json(r, entry); return r;
+        if (entry) { chain_json(r, entry); daw_control_dynamics_feedback(r, state, &current); } return r;
     }
     const char* token = text(request, "expected_state"); DawControlFxState* entry = NULL;
     for (int i = 0; token && i < DAW_CONTROL_FX_STATES; ++i) if (!strcmp(token, bridge->fx_states[i].token)) entry = &bridge->fx_states[i];
@@ -156,6 +159,7 @@ cJSON* daw_control_fx(DawControlBridge* bridge, AppState* state, const cJSON* re
                            (strcmp(action, "add") && !strcmp(k, "effect_id")) ||
                            (!strcmp(action, "reorder") && !strcmp(k, "position")) ||
                            (!strcmp(action, "enable") && !strcmp(k, "enabled")) ||
+                           (!strcmp(action,"automation") && (!strcmp(k,"parameter") || !strcmp(k,"automation"))) ||
                            (!strcmp(action, "parameter") && (!strcmp(k, "parameter") || !strcmp(k, "value") || !strcmp(k, "mode") || !strcmp(k, "beats")));
             if (!common && !allowed) return reply(false, "invalid_request");
         }
@@ -165,6 +169,8 @@ cJSON* daw_control_fx(DawControlBridge* bridge, AppState* state, const cJSON* re
             if (!strcmp(action, "remove")) edit.op = ENGINE_FX_CHAIN_REMOVE;
             else if (!strcmp(action, "reorder")) { uint32_t p; edit.op = ENGINE_FX_CHAIN_REORDER; if (!number(request, "position", &p) || p >= FX_MASTER_MAX) return reply(false, "invalid_request"); edit.position = (int)p; }
             else if (!strcmp(action, "enable")) { edit.op = ENGINE_FX_CHAIN_ENABLE; const cJSON* v = cJSON_GetObjectItemCaseSensitive(request, "enabled"); if (!cJSON_IsBool(v)) return reply(false, "invalid_request"); edit.enabled = cJSON_IsTrue(v); }
+            else if(!strcmp(action,"automation")){edit.op=ENGINE_FX_CHAIN_AUTOMATION;float lo,hi;FxTypeId type=0;for(int i=0;i<current.chain.count;++i)if(current.chain.items[i].id==edit.id)type=current.chain.items[i].type;
+                if(!number(request,"parameter",&edit.parameter) || !fx_parameter_automation_range(type,edit.parameter,&lo,&hi) || !daw_parameter_automation_parse(cJSON_GetObjectItemCaseSensitive(request,"automation"),&edit.automation,lo,hi))return reply(false,"invalid_request");}
             else if (!strcmp(action, "parameter")) {
                 edit.op = ENGINE_FX_CHAIN_PARAM; const cJSON* v = cJSON_GetObjectItemCaseSensitive(request, "value");
                 if (!number(request, "parameter", &edit.parameter) || (v && (!cJSON_IsNumber(v) || !isfinite(v->valuedouble)))) return reply(false, "invalid_request");

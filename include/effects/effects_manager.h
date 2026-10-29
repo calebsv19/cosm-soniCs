@@ -20,6 +20,7 @@ void fxm_reset_render_state(EffectsManager* fm);
 typedef uint32_t FxTypeId;   // registry id (static table for now)
 typedef uint32_t FxInstId;   // per-track or master instance id
 
+#include "effects/parameter_automation.h"
 #define FX_MASTER_MAX 16
 
 typedef enum {
@@ -33,6 +34,7 @@ typedef struct {
     FxTypeId  type;
     bool      enabled;
     uint32_t  param_count;
+    EngineMixerAutomation automation; // Owns parameter-zero curves on qualified Gain/Pan inserts.
     float     params[FX_MAX_PARAMS];
     FxParamMode param_mode[FX_MAX_PARAMS];
     float     param_beats[FX_MAX_PARAMS];
@@ -42,6 +44,13 @@ typedef struct {
     int                  count;
     FxMasterInstanceInfo items[FX_MASTER_MAX];
 } FxMasterSnapshot;
+
+// Returns compensated source-stage latency for flat post-fader return inputs.
+uint64_t fxm_source_processing_latency(const EffectsManager*);
+// Sets a complete physical curve on an exclusively owned candidate manager.
+bool fxm_set_parameter_automation(EffectsManager*, int track, FxInstId, const EngineMixerAutomation*);
+// Supplies the render block clock and incoming signal latency before one serial chain.
+void fxm_set_automation_clock(EffectsManager*, uint64_t start, uint64_t incoming_latency);
 
 // Receives metering taps for FX instances at render time.
 typedef void (*FxMeterTapCallback)(void* user,
@@ -103,6 +112,8 @@ bool fxm_set_track_return(EffectsManager* fm, int track, bool is_return);
 bool fxm_track_is_return(const EffectsManager* fm, int track);
 // Delays the source-stage dry sum by the longest return stage before adding processed returns.
 void fxm_align_dry(EffectsManager* fm, float* io, int frames, int channels);
+// Returns one serial chain latency for dependency-aware app routing.
+uint32_t fxm_track_processing_latency(const EffectsManager*, int track, bool maximum);
 // Returns source-stage plus return-stage plus master latency from the owning render thread.
 uint64_t fxm_processing_latency(const EffectsManager* fm);
 
@@ -194,6 +205,11 @@ bool fxm_master_snapshot(const EffectsManager* fm, FxMasterSnapshot* out);
 
 // Restores a complete instance into an unpublished candidate; discard the candidate on failure.
 bool fxm_restore_instance(EffectsManager* candidate, int track_index, int position, const FxMasterInstanceInfo* instance);
+
+// Observes a serial insert boundary with cumulative chain delay and optional actual pre-makeup gain dB.
+typedef void (*FxDiagnosticCallback)(void*, int track, int position, FxInstId, bool after, uint64_t latency, const float* audio, const float* reduction_db, int frames, int channels);
+// Prepares trace storage on a detached manager; live managers leave this observer unset.
+bool fxm_set_diagnostic_callback(EffectsManager*, FxDiagnosticCallback, void*);
 
 #ifdef __cplusplus
 } // extern "C"

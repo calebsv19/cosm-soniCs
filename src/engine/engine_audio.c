@@ -1,6 +1,8 @@
 #include "engine/engine_internal.h"
 
 #include "engine/graph.h"
+#include "engine/groups.h"
+#include "engine/mix_probe.h"
 #include "engine/instrument.h"
 #include "core_time.h"
 
@@ -113,8 +115,9 @@ static bool routing_begin(EngineMixState* mix, int frames, int channels) {
     return true;
 }
 // Accumulates post-fader/pan/insert signals into independently prepared shared return inputs.
-static void routing_send(EngineMixState* mix, int track, const float* source, int frames, int channels) {
+static void routing_send(EngineMixState* mix, int track, const float* source, int frames, int channels,uint64_t start) {
     if (!mix->return_count || mix->bypass_returns) return;
+    uint64_t latency=0;for(int t=0;t<mix->track_count;++t)if(!mix->tracks[t].is_return){uint64_t delay=fxm_track_processing_latency(mix->fxm,t,false);if(delay>latency)latency=delay;}
     for (int send = 0; send < ENGINE_SEND_CAP; ++send) {
         int destination = mix->send_destinations[track * ENGINE_SEND_CAP + send];
         if (destination < 0) continue;
@@ -122,6 +125,8 @@ static void routing_send(EngineMixState* mix, int track, const float* source, in
         FxSampleRamp* ramp = &mix->send_ramps[track * ENGINE_SEND_CAP + send];
         for (int frame = 0; frame < frames; ++frame) {
             float gain = fx_sample_ramp_next(ramp);
+            const EngineMixerAutomation* a=&mix->tracks[track].sends[send].automation;
+            if(a->count)gain=start+(uint64_t)frame>=latency?engine_mixer_automation_eval(a,start+(uint64_t)frame-latency,mix->tracks[track].sends[send].gain):0;
             for (int ch = 0; ch < channels; ++ch) out[frame * channels + ch] += source[frame * channels + ch] * gain;
         }
     }
@@ -136,18 +141,23 @@ static bool routing_dry_enabled(const EngineMixState* mix) {
     return true;
 }
 // Processes each shared return once and aligns the dry and wet paths before the master stage.
-static void routing_returns(Engine* engine, EngineMixState* mix, float* out, int frames, int channels, int hold_blocks) {
+static void routing_returns(Engine* engine, EngineMixState* mix, float* out, int frames, int channels, int hold_blocks, uint64_t start) {
     if (mix->bypass_returns || !mix->return_count) return;
     if (mix->fxm) fxm_align_dry(mix->fxm, out, frames, channels);
     for (int b = 0; b < mix->return_count; ++b) {
         int track = mix->return_tracks[b]; float* buffer = mix->return_buffers + b * mix->return_buffer_samples;
-        if (mix->fxm) fxm_render_track(mix->fxm, track, buffer, frames, channels);
+        engine_mix_probe_emit(mix,track,ENGINE_MIX_INPUT,start,buffer,frames,channels);
+        if (mix->fxm) { fxm_set_automation_clock(mix->fxm,start,fxm_source_processing_latency(mix->fxm));
+            fxm_render_track(mix->fxm, track, buffer, frames, channels); }
         engine_eq_process(&mix->tracks[track].track_eq, buffer, frames, channels);
+        engine_mix_probe_emit(mix,track,ENGINE_MIX_INSERTS_EQ,start,buffer,frames,channels);
         for (int frame = 0; frame < frames; ++frame) {
             float gain = fx_sample_ramp_next(&mix->audition_gain_ramps[track]);
             for (int ch = 0; ch < channels; ++ch) buffer[frame * channels + ch] *= gain;
         }
         apply_track_pan(&mix->track_pan_ramps[track], buffer, frames, channels);
+        engine_mix_probe_emit(mix,track,ENGINE_MIX_OUTPUT,start,buffer,frames,channels);
+        engine_live_meter_observe(engine,mix,track,start,buffer,frames,channels);
         if (mix->fxm) fxm_align_track(mix->fxm, track, buffer, frames, channels);
         if (engine) {
             engine_spectrum_update_track(engine, track, buffer, frames, channels);
@@ -158,6 +168,46 @@ static void routing_returns(Engine* engine, EngineMixState* mix, float* out, int
     }
 }
 
+// Processes dependency-ordered child, group and return chains once before the master sum.
+static bool mix_groups(Engine* engine,EngineGraph* graph,EngineMixState* mix,uint64_t start,int frames,float* out,int channels,int hold,bool audition) {
+    mix->automation_frame=start;
+    if(!engine_group_mix_begin(mix->group_mix,mix,frames,channels))return false;
+    if(engine)atomic_store(&engine->diag_processing_latency,engine_group_mix_latency(mix->group_mix,mix));
+    for(int p=0;p<mix->track_count;++p) {
+        int t=engine_group_mix_track(mix->group_mix,p);float* buffer=engine_group_mix_buffer(mix->group_mix,t);
+        const EngineTrack* row=&mix->tracks[t];
+        if(!row->is_group && !row->is_return) {
+            if(!audition)engine_graph_render_track(graph,buffer,frames,start,t);
+            else if(t==engine->midi_audition_track_index) {
+                engine_instrument_source_render(engine->midi_audition_source,buffer,frames,start);
+                for(int f=0;f<frames;++f){float gain=fx_sample_ramp_next(&mix->audition_gain_ramps[t]);
+                    for(int ch=0;ch<channels;++ch)buffer[f*channels+ch]*=gain;}
+            }
+        }
+        engine_mix_probe_emit(mix,t,ENGINE_MIX_INPUT,start,buffer,frames,channels);
+        if(mix->fxm){fxm_set_automation_clock(mix->fxm,start,engine_group_mix_input_latency(mix->group_mix,t));fxm_render_track(mix->fxm,t,buffer,frames,channels);}
+        engine_eq_process(&mix->tracks[t].track_eq,buffer,frames,channels);
+        engine_mix_probe_emit(mix,t,ENGINE_MIX_INSERTS_EQ,start,buffer,frames,channels);
+        bool enabled=row->volume_automation.count && engine_group_enabled(mix->tracks,mix->track_count,t);
+        uint64_t latency=engine_group_mix_input_latency(mix->group_mix,t)+fxm_track_processing_latency(mix->fxm,t,false);
+        if(row->is_group || row->is_return)for(int f=0;f<frames;++f) {
+            float gain=fx_sample_ramp_next(&mix->audition_gain_ramps[t]);
+            if(row->is_group && row->volume_automation.count)gain=enabled && start+(uint64_t)f>=latency?engine_mixer_automation_eval(&row->volume_automation,start+(uint64_t)f-latency,row->gain):0;
+            for(int ch=0;ch<channels;++ch)buffer[f*channels+ch]*=gain;
+        }
+        apply_track_pan(&mix->track_pan_ramps[t],buffer,frames,channels);
+        engine_mix_probe_emit(mix,t,ENGINE_MIX_OUTPUT,start,buffer,frames,channels);
+        engine_live_meter_observe(engine,mix,t,start,buffer,frames,channels);
+        if(engine) {
+            engine_spectrum_update_track(engine,t,buffer,frames,channels);
+            float peak,rms;compute_peak_rms(buffer,frames,channels,&peak,&rms);
+            update_meter_state(&mix->track_meters[t],peak,rms,hold);
+        }
+        engine_group_mix_forward(mix->group_mix,mix,t,out,frames,channels);
+    }
+    return true;
+}
+
 // Shares the serial source/FX/EQ/pan/compensation path between live and independently owned export plans.
 bool engine_mix_prepared(Engine* engine, EngineGraph* graph, EngineMixState* mix,
                          uint64_t start_frame, int frames, float* out, float* track_buffer, int channels) {
@@ -165,7 +215,9 @@ bool engine_mix_prepared(Engine* engine, EngineGraph* graph, EngineMixState* mix
     memset(out, 0, (size_t)frames * (size_t)channels * sizeof(float));
 
     if (!routing_begin(mix, frames, channels)) return false;
+    mix->automation_frame=start_frame;
     bool dry_enabled = routing_dry_enabled(mix);
+    if(mix->probe)mix->probe->block_start=start_frame;
     if (mix->fxm) fxm_begin_render_block(mix->fxm, frames);
     if (engine) atomic_store(&engine->diag_processing_latency, fxm_processing_latency(mix->fxm));
     int tcount = mix->track_count;
@@ -173,7 +225,9 @@ bool engine_mix_prepared(Engine* engine, EngineGraph* graph, EngineMixState* mix
     if (hold_blocks < 1) {
         hold_blocks = 1;
     }
-    for (int t = 0; t < tcount; ++t) {
+    if(mix->group_mix) {
+        if(!mix_groups(engine,graph,mix,start_frame,frames,out,channels,hold_blocks,false))return false;
+    } else for (int t = 0; t < tcount; ++t) {
         if (mix->tracks[t].is_return) continue;
         memset(track_buffer, 0, (size_t)frames * (size_t)channels * sizeof(float));
         engine_graph_render_track(graph,
@@ -181,12 +235,17 @@ bool engine_mix_prepared(Engine* engine, EngineGraph* graph, EngineMixState* mix
                                   frames,
                                   start_frame,
                                   t);
+        engine_mix_probe_emit(mix,t,ENGINE_MIX_INPUT,start_frame,track_buffer,frames,channels);
         if (mix->fxm) {
+            fxm_set_automation_clock(mix->fxm,start_frame,0);
             fxm_render_track(mix->fxm, t, track_buffer, frames, channels);
         }
         engine_eq_process(&mix->tracks[t].track_eq, track_buffer, frames, channels);
+        engine_mix_probe_emit(mix,t,ENGINE_MIX_INSERTS_EQ,start_frame,track_buffer,frames,channels);
         if (engine) engine_spectrum_update_track(engine, t, track_buffer, frames, channels);
         apply_track_pan(&mix->track_pan_ramps[t], track_buffer, frames, channels);
+        engine_mix_probe_emit(mix,t,ENGINE_MIX_OUTPUT,start_frame,track_buffer,frames,channels);
+        engine_live_meter_observe(engine,mix,t,start_frame,track_buffer,frames,channels);
         if (mix->fxm) fxm_align_track(mix->fxm, t, track_buffer, frames, channels);
         if (engine && mix->track_meters && t < mix->track_count) {
             float peak = 0.0f;
@@ -195,27 +254,35 @@ bool engine_mix_prepared(Engine* engine, EngineGraph* graph, EngineMixState* mix
             update_meter_state(&mix->track_meters[t], peak, rms, hold_blocks);
 
         }
-        routing_send(mix, t, track_buffer, frames, channels);
+        routing_send(mix, t, track_buffer, frames, channels,start_frame);
         if (dry_enabled) for (int s = 0; s < frames * channels; ++s) {
             out[s] += track_buffer[s];
         }
     }
 
-    routing_returns(engine, mix, out, frames, channels, hold_blocks);
+    if(!mix->group_mix)routing_returns(engine, mix, out, frames, channels, hold_blocks, start_frame);
+    engine_mix_probe_emit(mix,-1,ENGINE_MIX_INPUT,start_frame,out,frames,channels);
     engine_eq_process(&mix->master_eq, out, frames, channels);
+    engine_mix_probe_emit(mix,-1,ENGINE_MIX_INSERTS_EQ,start_frame,out,frames,channels);
     if (mix->fxm) {
+        fxm_set_automation_clock(mix->fxm,start_frame,(mix->group_mix?engine_group_mix_latency(mix->group_mix,mix):fxm_processing_latency(mix->fxm))-fxm_track_processing_latency(mix->fxm,-1,false));
         fxm_render_master(mix->fxm, out, frames, channels);
     }
 
+    engine_mix_probe_emit(mix,-1,ENGINE_MIX_OUTPUT,start_frame,out,frames,channels);
+    if (mix->probe && mix->probe->failed) return false;
     if (!engine) for (size_t i = 0; i < (size_t)frames * channels; ++i)
         if (!isfinite(out[i]) || fabsf(out[i]) > 64) return false;
     engine_sanitize_block(out, (size_t)frames * (size_t)channels);
+    engine_mix_probe_emit(mix,-1,ENGINE_MIX_SANITIZED,start_frame,out,frames,channels);
+    if (mix->probe && mix->probe->failed) return false;
     if (engine && mix->track_meters) {
         float peak = 0.0f;
         float rms = 0.0f;
         compute_peak_rms(out, frames, channels, &peak, &rms);
         update_meter_state(&mix->master_meter, peak, rms, hold_blocks);
     }
+    if (engine) engine_live_meter_observe(engine,mix,-1,start_frame,out,frames,channels);
     if (engine) engine_publish_mix_meters(mix);
     return true;
 }
@@ -248,7 +315,7 @@ void engine_mix_midi_audition_only(Engine* engine,
     }
     if (!engine->midi_audition_source ||
         (engine->midi_audition_notes.note_count <= 0 && !engine->midi_audition_tail_until) ||
-        track_index < 0 || track_index >= mix->track_count || mix->tracks[track_index].is_return) {
+        track_index < 0 || track_index >= mix->track_count || (mix->tracks[track_index].is_return || mix->tracks[track_index].is_group)) {
         return;
     }
 
@@ -257,6 +324,10 @@ void engine_mix_midi_audition_only(Engine* engine,
         hold_blocks = 1;
     }
 
+    if(mix->group_mix) {
+        if(mix->fxm)fxm_begin_render_block(mix->fxm,frames);
+        if(!mix_groups(engine,engine_render_source_graph(engine),mix,start_frame,frames,out,channels,hold_blocks,true))return;
+    } else {
     memset(track_buffer, 0, (size_t)frames * (size_t)channels * sizeof(float));
     engine_instrument_source_render(engine->midi_audition_source, track_buffer, frames, start_frame);
 
@@ -267,12 +338,14 @@ void engine_mix_midi_audition_only(Engine* engine,
     if (mix->fxm) {
         fxm_begin_render_block(mix->fxm, frames);
         atomic_store(&engine->diag_processing_latency, fxm_processing_latency(mix->fxm));
+        fxm_set_automation_clock(mix->fxm,start_frame,0);
         fxm_render_track(mix->fxm, track_index, track_buffer, frames, channels);
     }
     engine_eq_process(&mix->tracks[track_index].track_eq, track_buffer, frames, channels);
     engine_spectrum_update_track(engine, track_index, track_buffer, frames, channels);
     apply_track_pan(&mix->track_pan_ramps[track_index], track_buffer, frames, channels);
     if (mix->fxm) fxm_align_track(mix->fxm, track_index, track_buffer, frames, channels);
+    engine_live_meter_observe(engine,mix,track_index,start_frame,track_buffer,frames,channels);
     if (mix->track_meters && track_index < mix->track_count) {
         float peak = 0.0f;
         float rms = 0.0f;
@@ -280,12 +353,15 @@ void engine_mix_midi_audition_only(Engine* engine,
         update_meter_state(&mix->track_meters[track_index], peak, rms, hold_blocks);
 
     }
-    routing_send(mix, track_index, track_buffer, frames, channels);
+    routing_send(mix, track_index, track_buffer, frames, channels,start_frame);
     if (routing_dry_enabled(mix)) memcpy(out, track_buffer, (size_t)frames * (size_t)channels * sizeof(float));
-    routing_returns(engine, mix, out, frames, channels, hold_blocks);
+    routing_returns(engine, mix, out, frames, channels, hold_blocks, start_frame);
+
+    }
 
     engine_eq_process(&mix->master_eq, out, frames, channels);
     if (mix->fxm) {
+        fxm_set_automation_clock(mix->fxm,start_frame,(mix->group_mix?engine_group_mix_latency(mix->group_mix,mix):fxm_processing_latency(mix->fxm))-fxm_track_processing_latency(mix->fxm,-1,false));
         fxm_render_master(mix->fxm, out, frames, channels);
     }
 
@@ -306,5 +382,6 @@ void engine_mix_midi_audition_only(Engine* engine,
         compute_peak_rms(out, frames, channels, &peak, &rms);
         update_meter_state(&mix->master_meter, peak, rms, hold_blocks);
     }
+    engine_live_meter_observe(engine,mix,-1,start_frame,out,frames,channels);
     engine_publish_mix_meters(mix);
 }

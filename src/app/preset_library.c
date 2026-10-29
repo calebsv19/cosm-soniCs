@@ -107,7 +107,7 @@ static DawPresetStatus decode(const char* bytes, DawUserPreset* out) {
     const cJSON* synthesis = cJSON_GetObjectItemCaseSensitive(j, "synthesis_version");
     if (!format || strcmp(format, "sonics-instrument-preset") || !cJSON_IsNumber(version) ||
         !cJSON_IsNumber(synthesis)) goto done;
-    if ((version->valuedouble != 1 && version->valuedouble != 2) || synthesis->valuedouble != 1) { status = DAW_PRESET_UNSUPPORTED; goto done; }
+    if ((version->valuedouble != 1 && version->valuedouble != 2 && version->valuedouble != 3 && version->valuedouble != 4 && version->valuedouble != 5 && version->valuedouble != 6) || synthesis->valuedouble != 1) { status = DAW_PRESET_UNSUPPORTED; goto done; }
     const char *id = text(j, "id"), *revision = text(j, "revision"), *name = text(j, "name");
     DawUserPreset candidate = {0};
     if (!daw_preset_id_valid(id) || !daw_preset_id_valid(revision) || !daw_preset_name_valid(name) ||
@@ -116,9 +116,14 @@ static DawPresetStatus decode(const char* bytes, DawUserPreset* out) {
     const char* category = text(j, "category");
     if (!category || strcmp(category, engine_instrument_preset_category_display_name(engine_instrument_preset_category(candidate.base)))) goto done;
     const cJSON* p = cJSON_GetObjectItemCaseSensitive(j, "parameters");
-    int count = version->valuedouble == 1 ? 14 : ENGINE_INSTRUMENT_PARAM_COUNT;
+    if (version->valuedouble < 3 && candidate.base >= ENGINE_INSTRUMENT_PRESET_KICK_DRUM) goto done;
+    if (version->valuedouble < 4 && candidate.base >= ENGINE_INSTRUMENT_PRESET_OPEN_HAT) goto done;
+    if (version->valuedouble < 5 && candidate.base >= ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLIN) goto done;
+    int count = version->valuedouble == 1 ? 14 : version->valuedouble == 2 ? 18 : version->valuedouble == 3 ? 24 : version->valuedouble == 4 ? 27 : version->valuedouble == 5 ? 29 : ENGINE_INSTRUMENT_PARAM_COUNT;
     if (!cJSON_IsObject(p) || cJSON_GetArraySize(p) != count) goto done;
     candidate.params = engine_instrument_default_params(candidate.base);
+    // Older sounds have no piano expression fields and retain their dry foundation.
+    if (version->valuedouble < 6) candidate.params.sustain_pedal = candidate.params.string_resonance = candidate.params.release_noise = 0;
     for (int i = 0; i < count; ++i) {
         EngineInstrumentParamSpec spec; engine_instrument_param_spec(i, &spec);
         const cJSON* value = cJSON_GetObjectItemCaseSensitive(p, spec.id);
@@ -198,7 +203,7 @@ static bool new_id(char out[33]) {
 static char* encode(const DawUserPreset* preset) {
     cJSON* j = cJSON_CreateObject();
     cJSON_AddStringToObject(j, "format", "sonics-instrument-preset");
-    cJSON_AddNumberToObject(j, "version", 2); cJSON_AddNumberToObject(j, "synthesis_version", 1);
+    cJSON_AddNumberToObject(j, "version", 6); cJSON_AddNumberToObject(j, "synthesis_version", 1);
     cJSON_AddStringToObject(j, "id", preset->id); cJSON_AddStringToObject(j, "revision", preset->revision);
     cJSON_AddStringToObject(j, "name", preset->name);
     cJSON_AddStringToObject(j, "base_voice", engine_instrument_preset_id_string(preset->base));

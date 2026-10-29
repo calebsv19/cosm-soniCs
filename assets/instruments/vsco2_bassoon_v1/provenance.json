@@ -1,0 +1,151 @@
+{
+  "library": "VSCO 2 Community Edition",
+  "license": "CC0-1.0",
+  "upstream_commit": "440300901dfe9275fd84e0b7763af1f8443ae62e",
+  "files": [
+    {
+      "file": "PSBassoon_A#0_v1_1.wav",
+      "bytes": 1604336,
+      "sha256": "266347f2ffdd2c6efbda0a1067520c630b906e70a572a82c02569b78327128a1",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_A%230_v1_1.wav"
+    },
+    {
+      "file": "PSBassoon_A#0_v2_1.wav",
+      "bytes": 1277208,
+      "sha256": "6d3a270be26862e40c1689111c0f91ef0ff9439ecb9805db344f1aba6ff7fff5",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_A%230_v2_1.wav"
+    },
+    {
+      "file": "PSBassoon_A#1_v1_1.wav",
+      "bytes": 1305956,
+      "sha256": "2e0fc56aacb70e26631a3979069b5c379ae18fb6a48dc944ea0e48f2d332127d",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_A%231_v1_1.wav"
+    },
+    {
+      "file": "PSBassoon_A#1_v2_1.wav",
+      "bytes": 1139172,
+      "sha256": "c6f682ed7117316525b21bf33be5e4a9562eb2abbe1c421bc9305a2b967602f3",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_A%231_v2_1.wav"
+    },
+    {
+      "file": "PSBassoon_A1_v1_1.wav",
+      "bytes": 1590160,
+      "sha256": "6d123ad58cd31d085d0d6c16f498e5ef9305f7fd0f25b1788968de6e00089c26",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_A1_v1_1.wav"
+    },
+    {
+      "file": "PSBassoon_A1_v2_1.wav",
+      "bytes": 1272168,
+      "sha256": "b954f1115c3c937ed9f793b1727a3ede0498d246045e4410111d5b620494cb41",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_A1_v2_1.wav"
+    },
+    {
+      "file": "PSBassoon_A3_v1_1.wav",
+      "bytes": 1713280,
+      "sha256": "a029039844afafbf1aff59870d47401fd3a253b9edb47f35122651f6140b9a63",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_A3_v1_1.wav"
+    },
+    {
+      "file": "PSBassoon_A3_v2_1.wav",
+      "bytes": 1711380,
+      "sha256": "f3d5c76d885236a006ef184bae4ba9f3d94cadbcf40fb157964349a8db6eedc8",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_A3_v2_1.wav"
+    },
+    {
+      "file": "PSBassoon_C#1_v1_1.wav",
+      "bytes": 1090836,
+      "sha256": "fa4a7503610fa847815e8369d30eb14e99dccbcbf3a5948dab79055dddca9140",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_C%231_v1_1.wav"
+    },
+    {
+      "file": "PSBassoon_C#1_v2_1.wav",
+      "bytes": 1053324,
+      "sha256": "b92996681196177fd90af2baf0b3fe1f58b52b085bf292da1fefef83dd0ec94f",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_C%231_v2_1.wav"
+    },
+    {
+      "file": "PSBassoon_C2_v1_1.wav",
+      "bytes": 1121404,
+      "sha256": "709401175aa7010b579e3bd1b5b9709797e489cbfdb9b5c4a8ab504098a61239",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_C2_v1_1.wav"
+    },
+    {
+      "file": "PSBassoon_C2_v2_1.wav",
+      "bytes": 1118832,
+      "sha256": "836cda0976c44922375cf2cad0ac280c4638d8b943f44cadb1c3a75259bd22cf",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_C2_v2_1.wav"
+    },
+    {
+      "file": "PSBassoon_C3_v1_1.wav",
+      "bytes": 1540544,
+      "sha256": "facb567a76b81e7859253f0bf2dc750e05d4c4170f70824ce48887547ca9aaf3",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_C3_v1_1.wav"
+    },
+    {
+      "file": "PSBassoon_C3_v2_1.wav",
+      "bytes": 1394452,
+      "sha256": "c1162eee63c6334ee60c7add58ce0e2f8d87b427c7a7cb64930f3bd63494e121",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_C3_v2_1.wav"
+    },
+    {
+      "file": "PSBassoon_C4_v1_1.wav",
+      "bytes": 1969476,
+      "sha256": "d5b66ec79aacc7563620ace09f7e20610b48040ad08aff2fec7b0146aaa00748",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_C4_v1_1.wav"
+    },
+    {
+      "file": "PSBassoon_C4_v2_1.wav",
+      "bytes": 1737168,
+      "sha256": "5609028197a4ab16724398b17618b08704bf27fd0ae6e9e3cdd3bcee88f8e438",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_C4_v2_1.wav"
+    },
+    {
+      "file": "PSBassoon_D#3_v1_1.wav",
+      "bytes": 1524036,
+      "sha256": "b615ff978c0e61ed49eaff82178b2a3cb87398d561ac3a83355ba745529f8cc8",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_D%233_v1_1.wav"
+    },
+    {
+      "file": "PSBassoon_D#3_v2_1.wav",
+      "bytes": 1111204,
+      "sha256": "25b80a0a842290c24a15bde363528254bc611a556af4e517150769c253fb126b",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_D%233_v2_1.wav"
+    },
+    {
+      "file": "PSBassoon_F1_v1_1.wav",
+      "bytes": 1751604,
+      "sha256": "608e46b7b18cee5ebfe6a8d385eb57038cc3ef89f408c1448ded53e1cc123a29",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_F1_v1_1.wav"
+    },
+    {
+      "file": "PSBassoon_F1_v2_1.wav",
+      "bytes": 1418740,
+      "sha256": "e510329bca3889d1a6e826f4ca1644c8347567e1dcc751eee6f6a2143935d0bc",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_F1_v2_1.wav"
+    },
+    {
+      "file": "PSBassoon_G#3_v1_1.wav",
+      "bytes": 1405324,
+      "sha256": "64cb998236ef9ae04c8a3d6048db551f1f1e02918ffc4a60db163193ab9da10f",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_G%233_v1_1.wav"
+    },
+    {
+      "file": "PSBassoon_G#3_v2_1.wav",
+      "bytes": 1271796,
+      "sha256": "0fdc30b08b1836e444c0f6f6bc2bec485973c28d4bfeb110572038777558984a",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_G%233_v2_1.wav"
+    },
+    {
+      "file": "PSBassoon_G2_v1_1.wav",
+      "bytes": 1509644,
+      "sha256": "ab779b251e22d0e39dfacd9b760d032ab9c3381eda89c86236c28ae14cfbfcf4",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_G2_v1_1.wav"
+    },
+    {
+      "file": "PSBassoon_G2_v2_1.wav",
+      "bytes": 1273248,
+      "sha256": "74f59f6ad00584ed709b16c58769f099b64e4886c3af1bb74f2626719611f35c",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Woodwinds/Bassoon/sus/PSBassoon_G2_v2_1.wav"
+    }
+  ]
+}

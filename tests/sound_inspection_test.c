@@ -8,6 +8,7 @@
 #include "ui/midi_instrument_panel.h"
 #include "engine/engine_internal.h"
 #include "engine/analysis_math.h"
+#include "engine/instrument_samples.h"
 #include "test_midi_editor_harness.h"
 #include "test_assert.h"
 #include <SDL2/SDL_ttf.h>
@@ -128,4 +129,15 @@ static void composition_ui(void) {
     daw_midi_editor_test_state_destroy(state);free(state);unsetenv("SDL_AUDIODRIVER");
 }
 // Runs calibrated private-signal and common UI/engine owner tests without personal data or audio devices.
-int main(void){CHECK(!SDL_Init(SDL_INIT_EVENTS) && !TTF_Init(),"test runtime");calibration();production_parity();comparison();composition_ui();ui_font_shutdown();TTF_Quit();SDL_Quit();puts("sound_inspection_test: success (calibration, source parity, windows, clipping, immutable reference and finite auditions)");return 0;}
+// Checks complete audition chords remain inside every recorded bank's range.
+static void sampled_preview_ranges(void) {
+    const EngineInstrumentPresetId voices[]={ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLIN,ENGINE_INSTRUMENT_PRESET_SAMPLED_TRUMPET,ENGINE_INSTRUMENT_PRESET_SAMPLED_CLARINET,ENGINE_INSTRUMENT_PRESET_SAMPLED_SAXOPHONE,ENGINE_INSTRUMENT_PRESET_SAMPLED_FLUTE,ENGINE_INSTRUMENT_PRESET_SAMPLED_CELLO_SECTION,ENGINE_INSTRUMENT_PRESET_SAMPLED_OBOE,ENGINE_INSTRUMENT_PRESET_SAMPLED_FRENCH_HORN,ENGINE_INSTRUMENT_PRESET_SAMPLED_BASSOON,ENGINE_INSTRUMENT_PRESET_SAMPLED_TENOR_TROMBONE,ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO,ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLA_SECTION,ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLIN_SECTION,ENGINE_INSTRUMENT_PRESET_SAMPLED_DOUBLE_BASS};
+    for(size_t v=0;v<sizeof(voices)/sizeof(voices[0]);++v) {
+        EngineSampleBankInfo bank;CHECK(engine_instrument_sample_bank_info(voices[v],&bank),"preview bank");
+        uint8_t pitches[4];DawSoundSpec spec={voices[v],engine_instrument_default_params(voices[v]),true};
+        CHECK(daw_sound_preview_notes(spec,pitches)==4,"complete chord");
+        for(int i=0;i<4;++i)CHECK(pitches[i]>=bank.minimum_note && pitches[i]<=bank.maximum_note,"in-range chord voice");
+        CHECK(pitches[1]-pitches[0]==7 && pitches[2]-pitches[0]==12 && pitches[3]-pitches[0]==16,"preserved C-major voicing");
+    }
+}
+int main(void){CHECK(!SDL_Init(SDL_INIT_EVENTS) && !TTF_Init(),"test runtime");calibration();sampled_preview_ranges();production_parity();comparison();composition_ui();ui_font_shutdown();TTF_Quit();SDL_Quit();puts("sound_inspection_test: success (calibration, source parity, windows, clipping, immutable reference and finite auditions)");return 0;}

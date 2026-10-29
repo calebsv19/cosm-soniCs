@@ -1,4 +1,5 @@
 #include "engine/instrument.h"
+#include "engine/instrument_samples.h"
 #include "engine/instrument_filter.h"
 #include <math.h>
 #include <string.h>
@@ -13,6 +14,27 @@ EngineInstrumentPresetId engine_instrument_preset_clamp(EngineInstrumentPresetId
 
 const char* engine_instrument_preset_id_string(EngineInstrumentPresetId preset) {
     switch (engine_instrument_preset_clamp(preset)) {
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_TRUMPET: return "sampled_trumpet";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_CLARINET: return "sampled_clarinet";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_SAXOPHONE: return "sampled_saxophone";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_FLUTE: return "sampled_flute";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_OBOE: return "sampled_oboe";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_BASSOON: return "sampled_bassoon";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO: return "sampled_acoustic_piano";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLA_SECTION: return "sampled_viola_section";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_DOUBLE_BASS: return "sampled_double_bass";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLIN_SECTION: return "sampled_violin_section";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_TENOR_TROMBONE: return "sampled_tenor_trombone";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_FRENCH_HORN: return "sampled_french_horn";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_CELLO_SECTION: return "sampled_cello_section";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLIN: return "sampled_violin";
+    case ENGINE_INSTRUMENT_PRESET_OPEN_HAT: return "open_hat";
+    case ENGINE_INSTRUMENT_PRESET_HAT_KIT: return "hat_kit";
+    case ENGINE_INSTRUMENT_PRESET_KICK_DRUM: return "kick_drum";
+    case ENGINE_INSTRUMENT_PRESET_SNARE_DRUM: return "snare_drum";
+    case ENGINE_INSTRUMENT_PRESET_CLOSED_HAT: return "closed_hat";
+    case ENGINE_INSTRUMENT_PRESET_SUB_808: return "sub_808";
+    case ENGINE_INSTRUMENT_PRESET_DRIVEN_808: return "driven_808";
     case ENGINE_INSTRUMENT_PRESET_SWEEP_BASS: return "sweep_bass";
     case ENGINE_INSTRUMENT_PRESET_FILTER_PLUCK: return "filter_pluck";
     case ENGINE_INSTRUMENT_PRESET_MOVING_PAD: return "moving_pad";
@@ -52,6 +74,27 @@ const char* engine_instrument_preset_id_string(EngineInstrumentPresetId preset) 
 
 const char* engine_instrument_preset_display_name(EngineInstrumentPresetId preset) {
     switch (engine_instrument_preset_clamp(preset)) {
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_TRUMPET: return "Sampled Trumpet";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_CLARINET: return "Sampled Clarinet";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_SAXOPHONE: return "Sampled Tenor Saxophone";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_FLUTE: return "Sampled Flute";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_OBOE: return "Sampled Oboe";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_BASSOON: return "Sampled Bassoon";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO: return "Sampled Acoustic Piano";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLA_SECTION: return "Sampled Viola Section";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_DOUBLE_BASS: return "Sampled Double Bass";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLIN_SECTION: return "Sampled Violin Section";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_TENOR_TROMBONE: return "Sampled Tenor Trombone";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_FRENCH_HORN: return "Sampled French Horn";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_CELLO_SECTION: return "Sampled Cello Section";
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLIN: return "Sampled Solo Violin";
+    case ENGINE_INSTRUMENT_PRESET_OPEN_HAT: return "Open Hat";
+    case ENGINE_INSTRUMENT_PRESET_HAT_KIT: return "Hat Kit";
+    case ENGINE_INSTRUMENT_PRESET_KICK_DRUM: return "Kick Drum";
+    case ENGINE_INSTRUMENT_PRESET_SNARE_DRUM: return "Snare Drum";
+    case ENGINE_INSTRUMENT_PRESET_CLOSED_HAT: return "Closed Hat";
+    case ENGINE_INSTRUMENT_PRESET_SUB_808: return "Sub 808";
+    case ENGINE_INSTRUMENT_PRESET_DRIVEN_808: return "Driven 808";
     case ENGINE_INSTRUMENT_PRESET_SWEEP_BASS: return "Sweep Bass";
     case ENGINE_INSTRUMENT_PRESET_FILTER_PLUCK: return "Filter Pluck";
     case ENGINE_INSTRUMENT_PRESET_MOVING_PAD: return "Moving Pad";
@@ -91,6 +134,29 @@ const char* engine_instrument_preset_display_name(EngineInstrumentPresetId prese
 
 EngineInstrumentPresetCategoryId engine_instrument_preset_category(EngineInstrumentPresetId preset) {
     switch (engine_instrument_preset_clamp(preset)) {
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_TRUMPET: return ENGINE_INSTRUMENT_PRESET_CATEGORY_BRASS;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_CLARINET: return ENGINE_INSTRUMENT_PRESET_CATEGORY_WOODWINDS;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_SAXOPHONE: return ENGINE_INSTRUMENT_PRESET_CATEGORY_WOODWINDS;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_OBOE: return ENGINE_INSTRUMENT_PRESET_CATEGORY_WOODWINDS;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_BASSOON: return ENGINE_INSTRUMENT_PRESET_CATEGORY_WOODWINDS;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO: return ENGINE_INSTRUMENT_PRESET_CATEGORY_KEYS;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLA_SECTION: return ENGINE_INSTRUMENT_PRESET_CATEGORY_STRINGS;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_DOUBLE_BASS: return ENGINE_INSTRUMENT_PRESET_CATEGORY_STRINGS;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLIN_SECTION: return ENGINE_INSTRUMENT_PRESET_CATEGORY_STRINGS;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_TENOR_TROMBONE: return ENGINE_INSTRUMENT_PRESET_CATEGORY_BRASS;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_FRENCH_HORN: return ENGINE_INSTRUMENT_PRESET_CATEGORY_BRASS;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_FLUTE: return ENGINE_INSTRUMENT_PRESET_CATEGORY_WOODWINDS;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_CELLO_SECTION: return ENGINE_INSTRUMENT_PRESET_CATEGORY_STRINGS;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLIN: return ENGINE_INSTRUMENT_PRESET_CATEGORY_STRINGS;
+    case ENGINE_INSTRUMENT_PRESET_KICK_DRUM:
+    case ENGINE_INSTRUMENT_PRESET_SNARE_DRUM:
+    case ENGINE_INSTRUMENT_PRESET_CLOSED_HAT:
+    case ENGINE_INSTRUMENT_PRESET_OPEN_HAT:
+    case ENGINE_INSTRUMENT_PRESET_HAT_KIT:
+        return ENGINE_INSTRUMENT_PRESET_CATEGORY_DRUMS;
+    case ENGINE_INSTRUMENT_PRESET_SUB_808:
+    case ENGINE_INSTRUMENT_PRESET_DRIVEN_808:
+        return ENGINE_INSTRUMENT_PRESET_CATEGORY_BASS;
     case ENGINE_INSTRUMENT_PRESET_SWEEP_BASS: return ENGINE_INSTRUMENT_PRESET_CATEGORY_BASS;
     case ENGINE_INSTRUMENT_PRESET_FILTER_PLUCK: return ENGINE_INSTRUMENT_PRESET_CATEGORY_PLUCK;
     case ENGINE_INSTRUMENT_PRESET_MOVING_PAD: return ENGINE_INSTRUMENT_PRESET_CATEGORY_PADS;
@@ -133,6 +199,10 @@ const char* engine_instrument_preset_category_display_name(EngineInstrumentPrese
         return "Pads";
     case ENGINE_INSTRUMENT_PRESET_CATEGORY_PLUCK:
         return "Pluck";
+    case ENGINE_INSTRUMENT_PRESET_CATEGORY_DRUMS: return "Drums";
+    case ENGINE_INSTRUMENT_PRESET_CATEGORY_STRINGS: return "Strings";
+    case ENGINE_INSTRUMENT_PRESET_CATEGORY_BRASS: return "Brass";
+    case ENGINE_INSTRUMENT_PRESET_CATEGORY_WOODWINDS: return "Woodwinds";
     case ENGINE_INSTRUMENT_PRESET_CATEGORY_COUNT:
     default:
         return "";
@@ -260,6 +330,48 @@ bool engine_instrument_param_spec(EngineInstrumentParamId param, EngineInstrumen
     case ENGINE_INSTRUMENT_PARAM_FILTER_LFO_OCTAVES:
         *out_spec = (EngineInstrumentParamSpec){"filter_lfo_octaves", "LFO Depth", "oct", 0, 3, 0, ENGINE_INSTRUMENT_PARAM_GROUP_MOD, 3, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
         return true;
+    case ENGINE_INSTRUMENT_PARAM_BODY_DECAY_MS:
+        *out_spec = (EngineInstrumentParamSpec){"body_decay_ms", "Body Decay", "ms", 5, 4000, 500, ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE, 4, ENGINE_INSTRUMENT_PARAM_SCALE_LOG_TIME};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_PITCH_ENV_SEMITONES:
+        *out_spec = (EngineInstrumentParamSpec){"pitch_env_semitones", "Pitch Drop", "st", 0, 48, 0, ENGINE_INSTRUMENT_PARAM_GROUP_MOD, 4, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_PITCH_DECAY_MS:
+        *out_spec = (EngineInstrumentParamSpec){"pitch_decay_ms", "Pitch Decay", "ms", 1, 500, 35, ENGINE_INSTRUMENT_PARAM_GROUP_MOD, 5, ENGINE_INSTRUMENT_PARAM_SCALE_LOG_TIME};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_NOISE_MIX:
+        *out_spec = (EngineInstrumentParamSpec){"noise_mix", "Noise Mix", "", 0, 1, 0, ENGINE_INSTRUMENT_PARAM_GROUP_OSCILLATOR, 3, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_NOISE_DECAY_MS:
+        *out_spec = (EngineInstrumentParamSpec){"noise_decay_ms", "Noise Decay", "ms", 5, 1500, 150, ENGINE_INSTRUMENT_PARAM_GROUP_ENVELOPE, 5, ENGINE_INSTRUMENT_PARAM_SCALE_LOG_TIME};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_CLICK_MIX:
+        *out_spec = (EngineInstrumentParamSpec){"click_mix", "Click", "", 0, 1, 0, ENGINE_INSTRUMENT_PARAM_GROUP_TONE, 4, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_MONO:
+        *out_spec = (EngineInstrumentParamSpec){"mono", "Mono", "", 0, 1, 0, ENGINE_INSTRUMENT_PARAM_GROUP_MOD, 6, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_GLIDE_MS:
+        *out_spec = (EngineInstrumentParamSpec){"glide_ms", "Glide", "ms", 0, 1000, 0, ENGINE_INSTRUMENT_PARAM_GROUP_MOD, 7, ENGINE_INSTRUMENT_PARAM_SCALE_LOG_TIME};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_HAT_CHOKE:
+        *out_spec = (EngineInstrumentParamSpec){"hat_choke", "Hat Choke", "", 0, 1, 0, ENGINE_INSTRUMENT_PARAM_GROUP_TONE, 5, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_DYNAMICS:
+        *out_spec = (EngineInstrumentParamSpec){"dynamics", "Dynamics", "", 0, 1, .5f, ENGINE_INSTRUMENT_PARAM_GROUP_MOD, 8, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH:
+        *out_spec = (EngineInstrumentParamSpec){"velocity_depth", "Velocity Timbre", "", 0, 1, 1, ENGINE_INSTRUMENT_PARAM_GROUP_MOD, 9, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_SUSTAIN_PEDAL:
+        *out_spec = (EngineInstrumentParamSpec){"sustain_pedal", "Sustain Pedal", "", 0, 1, 0, ENGINE_INSTRUMENT_PARAM_GROUP_MOD, 10, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_STRING_RESONANCE:
+        *out_spec = (EngineInstrumentParamSpec){"string_resonance", "String Resonance", "", 0, 1, 0, ENGINE_INSTRUMENT_PARAM_GROUP_MOD, 11, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
+        return true;
+    case ENGINE_INSTRUMENT_PARAM_RELEASE_NOISE:
+        *out_spec = (EngineInstrumentParamSpec){"release_noise", "Release Noise", "", 0, 1, 0, ENGINE_INSTRUMENT_PARAM_GROUP_MOD, 12, ENGINE_INSTRUMENT_PARAM_SCALE_LINEAR};
+        return true;
     case ENGINE_INSTRUMENT_PARAM_COUNT:
     default:
         return false;
@@ -325,9 +437,78 @@ EngineInstrumentParams engine_instrument_default_params(EngineInstrumentPresetId
         .sub_mix = 0.0f,
         .drive = 0.0f,
         .vibrato_rate = 5.2f,
+        .dynamics = .5f, .velocity_depth = 1,
         .vibrato_depth = 0.0f, .cutoff_hz = 12000, .resonance_q = .707f
     };
     switch (engine_instrument_preset_clamp(preset)) {
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_OBOE:
+        params.level=.75f; params.attack_ms=8; params.release_ms=160; params.sustain=1;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_BASSOON:
+        params.level=.8f; params.attack_ms=10; params.release_ms=180; params.sustain=1;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO:
+        params.level=.8f; params.attack_ms=3; params.release_ms=180; params.sustain=1;
+        params.string_resonance=.25f; params.release_noise=.35f;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLA_SECTION:
+        params.level=.8f; params.attack_ms=18; params.release_ms=260; params.sustain=1;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_DOUBLE_BASS:
+        params.level=.8f; params.attack_ms=18; params.release_ms=280; params.sustain=1;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLIN_SECTION:
+        params.level=.8f; params.attack_ms=16; params.release_ms=240; params.sustain=1;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_TENOR_TROMBONE:
+        params.level=.8f; params.attack_ms=8; params.release_ms=200; params.sustain=1;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_FRENCH_HORN:
+        params.level=.8f; params.attack_ms=12; params.release_ms=220; params.sustain=1;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_FLUTE:
+        params.level=.75f; params.attack_ms=6; params.release_ms=140; params.sustain=1;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_CELLO_SECTION:
+        params.level=.8f; params.attack_ms=20; params.release_ms=280; params.sustain=1;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_SAXOPHONE:
+        params.level=.75f; params.attack_ms=8; params.release_ms=180; params.sustain=1;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_TRUMPET:
+        params.level=.75f; params.attack_ms=5; params.release_ms=140; params.sustain=1;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_CLARINET:
+        params.level=.8f; params.attack_ms=10; params.release_ms=180; params.sustain=1;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLIN:
+        params.level=.8f; params.attack_ms=8; params.release_ms=220; params.sustain=1;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_KICK_DRUM:
+        params.level=1; params.tone=.2f; params.attack_ms=.5f;
+        params.body_decay_ms=520; params.pitch_env_semitones=28; params.pitch_decay_ms=25;
+        params.click_mix=.13f; params.drive=.12f;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SNARE_DRUM:
+        params.level=.85f; params.tone=.65f; params.attack_ms=.4f;
+        params.body_decay_ms=160; params.pitch_env_semitones=7; params.pitch_decay_ms=14;
+        params.noise_mix=.76f; params.noise_decay_ms=220; params.click_mix=.08f; params.drive=.1f;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_OPEN_HAT:
+    case ENGINE_INSTRUMENT_PRESET_HAT_KIT:
+        params.level=.62f; params.tone=.92f; params.attack_ms=.2f;
+        params.noise_mix=1; params.noise_decay_ms=650; params.hat_choke=1;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_CLOSED_HAT:
+        params.level=.62f; params.tone=.92f; params.attack_ms=.2f;
+        params.noise_mix=1; params.noise_decay_ms=80;
+        break;
+    case ENGINE_INSTRUMENT_PRESET_SUB_808:
+    case ENGINE_INSTRUMENT_PRESET_DRIVEN_808:
+        params.level=.9f; params.tone=.15f; params.attack_ms=2; params.release_ms=180;
+        params.body_decay_ms=2600; params.pitch_env_semitones=12; params.pitch_decay_ms=28;
+        params.click_mix=.03f; params.drive=preset==ENGINE_INSTRUMENT_PRESET_DRIVEN_808 ? .75f : .05f;
+        break;
     case ENGINE_INSTRUMENT_PRESET_SOFT_SQUARE:
         params.tone = 0.62f;
         params.attack_ms = 3.0f;
@@ -499,6 +680,21 @@ EngineInstrumentParams engine_instrument_params_sanitize(EngineInstrumentPresetI
     params.filter_lfo_hz = instrument_clamp_float(params.filter_lfo_hz, 0.05, 12);
     params.filter_lfo_octaves = instrument_clamp_float(params.filter_lfo_octaves, 0, 3);
 
+    params.body_decay_ms = instrument_clamp_float(params.body_decay_ms, 5, 4000);
+    params.pitch_env_semitones = instrument_clamp_float(params.pitch_env_semitones, 0, 48);
+    params.pitch_decay_ms = instrument_clamp_float(params.pitch_decay_ms, 1, 500);
+    params.noise_mix = instrument_clamp_float(params.noise_mix, 0, 1);
+    params.noise_decay_ms = instrument_clamp_float(params.noise_decay_ms, 5, 1500);
+    params.click_mix = instrument_clamp_float(params.click_mix, 0, 1);
+    params.mono = instrument_clamp_float(params.mono, 0, 1) >= .5f ? 1 : 0;
+    params.glide_ms = instrument_clamp_float(params.glide_ms, 0, 1000);
+    params.hat_choke = instrument_clamp_float(params.hat_choke, 0, 1) >= .5f ? 1 : 0;
+    params.dynamics = instrument_clamp_float(params.dynamics, 0, 1);
+    params.velocity_depth = instrument_clamp_float(params.velocity_depth, 0, 1);
+    params.sustain_pedal = instrument_clamp_float(params.sustain_pedal, 0, 1);
+    params.string_resonance = instrument_clamp_float(params.string_resonance, 0, 1);
+    params.release_noise = instrument_clamp_float(params.release_noise, 0, 1);
+
     return params;
 }
 
@@ -540,6 +736,22 @@ float engine_instrument_params_get(EngineInstrumentParams params, EngineInstrume
         return params.filter_lfo_hz;
     case ENGINE_INSTRUMENT_PARAM_FILTER_LFO_OCTAVES:
         return params.filter_lfo_octaves;
+    case ENGINE_INSTRUMENT_PARAM_BODY_DECAY_MS: return params.body_decay_ms;
+    case ENGINE_INSTRUMENT_PARAM_PITCH_ENV_SEMITONES: return params.pitch_env_semitones;
+    case ENGINE_INSTRUMENT_PARAM_PITCH_DECAY_MS: return params.pitch_decay_ms;
+    case ENGINE_INSTRUMENT_PARAM_NOISE_MIX: return params.noise_mix;
+    case ENGINE_INSTRUMENT_PARAM_NOISE_DECAY_MS: return params.noise_decay_ms;
+    case ENGINE_INSTRUMENT_PARAM_CLICK_MIX: return params.click_mix;
+    case ENGINE_INSTRUMENT_PARAM_MONO: return params.mono;
+    case ENGINE_INSTRUMENT_PARAM_GLIDE_MS: return params.glide_ms;
+    case ENGINE_INSTRUMENT_PARAM_HAT_CHOKE: return params.hat_choke;
+    case ENGINE_INSTRUMENT_PARAM_DYNAMICS: return params.dynamics;
+    case ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH: return params.velocity_depth;
+    case ENGINE_INSTRUMENT_PARAM_SUSTAIN_PEDAL: return params.sustain_pedal;
+    case ENGINE_INSTRUMENT_PARAM_STRING_RESONANCE: return params.string_resonance;
+    case ENGINE_INSTRUMENT_PARAM_RELEASE_NOISE: return params.release_noise;
+
+
     case ENGINE_INSTRUMENT_PARAM_COUNT:
     default:
         return 0.0f;
@@ -601,6 +813,22 @@ EngineInstrumentParams engine_instrument_params_set(EngineInstrumentPresetId pre
         params.filter_lfo_hz = value; break;
     case ENGINE_INSTRUMENT_PARAM_FILTER_LFO_OCTAVES:
         params.filter_lfo_octaves = value; break;
+    case ENGINE_INSTRUMENT_PARAM_BODY_DECAY_MS: params.body_decay_ms = value; break;
+    case ENGINE_INSTRUMENT_PARAM_PITCH_ENV_SEMITONES: params.pitch_env_semitones = value; break;
+    case ENGINE_INSTRUMENT_PARAM_PITCH_DECAY_MS: params.pitch_decay_ms = value; break;
+    case ENGINE_INSTRUMENT_PARAM_NOISE_MIX: params.noise_mix = value; break;
+    case ENGINE_INSTRUMENT_PARAM_NOISE_DECAY_MS: params.noise_decay_ms = value; break;
+    case ENGINE_INSTRUMENT_PARAM_CLICK_MIX: params.click_mix = value; break;
+    case ENGINE_INSTRUMENT_PARAM_MONO: params.mono = value; break;
+    case ENGINE_INSTRUMENT_PARAM_GLIDE_MS: params.glide_ms = value; break;
+    case ENGINE_INSTRUMENT_PARAM_HAT_CHOKE: params.hat_choke = value; break;
+    case ENGINE_INSTRUMENT_PARAM_DYNAMICS: params.dynamics = value; break;
+    case ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH: params.velocity_depth = value; break;
+    case ENGINE_INSTRUMENT_PARAM_SUSTAIN_PEDAL: params.sustain_pedal = value; break;
+    case ENGINE_INSTRUMENT_PARAM_STRING_RESONANCE: params.string_resonance = value; break;
+    case ENGINE_INSTRUMENT_PARAM_RELEASE_NOISE: params.release_noise = value; break;
+
+
     case ENGINE_INSTRUMENT_PARAM_COUNT:
     default:
         break;
@@ -613,6 +841,11 @@ bool engine_instrument_param_from_automation_target(EngineAutomationTarget targe
     if (!out_param || !engine_automation_target_is_instrument_param(target)) {
         return false;
     }
+    if (target == ENGINE_AUTOMATION_TARGET_INSTRUMENT_DYNAMICS) { *out_param = ENGINE_INSTRUMENT_PARAM_DYNAMICS; return true; }
+    if (target == ENGINE_AUTOMATION_TARGET_INSTRUMENT_VELOCITY_DEPTH) { *out_param = ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH; return true; }
+    if (target == ENGINE_AUTOMATION_TARGET_INSTRUMENT_SUSTAIN_PEDAL) { *out_param = ENGINE_INSTRUMENT_PARAM_SUSTAIN_PEDAL; return true; }
+    if (target == ENGINE_AUTOMATION_TARGET_INSTRUMENT_STRING_RESONANCE) { *out_param = ENGINE_INSTRUMENT_PARAM_STRING_RESONANCE; return true; }
+    if (target == ENGINE_AUTOMATION_TARGET_INSTRUMENT_RELEASE_NOISE) { *out_param = ENGINE_INSTRUMENT_PARAM_RELEASE_NOISE; return true; }
     int param = (int)target - (int)ENGINE_AUTOMATION_TARGET_INSTRUMENT_LEVEL;
     if (param < 0 || param >= ENGINE_INSTRUMENT_PARAM_COUNT) {
         return false;
@@ -622,7 +855,12 @@ bool engine_instrument_param_from_automation_target(EngineAutomationTarget targe
 }
 
 EngineAutomationTarget engine_instrument_param_automation_target(EngineInstrumentParamId param) {
-    if (param < 0 || param >= ENGINE_INSTRUMENT_PARAM_COUNT) {
+    if (param == ENGINE_INSTRUMENT_PARAM_DYNAMICS) return ENGINE_AUTOMATION_TARGET_INSTRUMENT_DYNAMICS;
+    if (param == ENGINE_INSTRUMENT_PARAM_VELOCITY_DEPTH) return ENGINE_AUTOMATION_TARGET_INSTRUMENT_VELOCITY_DEPTH;
+    if (param == ENGINE_INSTRUMENT_PARAM_SUSTAIN_PEDAL) return ENGINE_AUTOMATION_TARGET_INSTRUMENT_SUSTAIN_PEDAL;
+    if (param == ENGINE_INSTRUMENT_PARAM_STRING_RESONANCE) return ENGINE_AUTOMATION_TARGET_INSTRUMENT_STRING_RESONANCE;
+    if (param == ENGINE_INSTRUMENT_PARAM_RELEASE_NOISE) return ENGINE_AUTOMATION_TARGET_INSTRUMENT_RELEASE_NOISE;
+    if (param < 0 || param >= ENGINE_INSTRUMENT_PARAM_MONO) {
         return ENGINE_AUTOMATION_TARGET_COUNT;
     }
     return (EngineAutomationTarget)((int)ENGINE_AUTOMATION_TARGET_INSTRUMENT_LEVEL + (int)param);
@@ -650,4 +888,9 @@ EngineInstrumentParams engine_instrument_params_apply_automation_delta(EngineIns
     if (normalized < 0.0f) normalized = 0.0f;
     if (normalized > 1.0f) normalized = 1.0f;
     return engine_instrument_params_set(preset, params, param, spec.min_value + normalized * range);
+}
+
+// Identifies the acoustic sample voices without adding decoder dependencies to metadata clients.
+bool engine_instrument_sampled_preset(EngineInstrumentPresetId preset) {
+    return preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO || preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLA_SECTION || preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_DOUBLE_BASS || preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLIN_SECTION || preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_TENOR_TROMBONE || preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_BASSOON || preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_VIOLIN || preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_TRUMPET || preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_CLARINET || preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_SAXOPHONE || preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_FLUTE || preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_CELLO_SECTION || preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_OBOE || preset==ENGINE_INSTRUMENT_PRESET_SAMPLED_FRENCH_HORN;
 }

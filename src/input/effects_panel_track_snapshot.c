@@ -1,4 +1,5 @@
 #include "input/effects_panel_track_snapshot.h"
+#include "ui/knob_drag.h"
 
 #include "app_state.h"
 #include "engine/engine.h"
@@ -105,26 +106,8 @@ static bool resolve_target_track(const AppState* state, int* out_track_index) {
     return true;
 }
 
-static float gain_db_from_mouse(const SDL_Rect* rect, int mouse_x) {
-    if (!rect || rect->w <= 0) {
-        return 0.0f;
-    }
-    float t = (float)(mouse_x - rect->x) / (float)rect->w;
-    t = clampf(t, 0.0f, 1.0f);
-    return -20.0f + t * 40.0f;
-}
-
 static float gain_linear_from_db(float db) {
     return powf(10.0f, db / 20.0f);
-}
-
-static float pan_from_mouse(const SDL_Rect* rect, int mouse_x) {
-    if (!rect || rect->w <= 0) {
-        return 0.0f;
-    }
-    float t = (float)(mouse_x - rect->x) / (float)rect->w;
-    t = clampf(t, 0.0f, 1.0f);
-    return -1.0f + t * 2.0f;
 }
 
 static void apply_gain(AppState* state, float gain_db) {
@@ -201,7 +184,7 @@ static bool snapshot_state_equal(const UndoTrackSnapshotEdit* edit) {
     if (!edit) {
         return true;
     }
-    return fabsf(edit->gain_before - edit->gain_after) < 0.0001f &&
+    return fabsf(edit->gain_before - edit->gain_after) < 0.0000001f &&
            fabsf(edit->pan_before - edit->pan_after) < 0.0001f &&
            edit->muted_before == edit->muted_after &&
            edit->solo_before == edit->solo_after &&
@@ -297,8 +280,9 @@ bool effects_panel_track_snapshot_handle_mouse_down(AppState* state,
         snap_state->history_serial = state->undo.drag_serial;
         snap_state->dragging = true;
         snap_state->active_control = FX_SNAPSHOT_CONTROL_GAIN;
-        float gain_db = gain_db_from_mouse(&snap->gain_hit_rect, event->button.x);
-        apply_gain(state, gain_db);
+        snap_state->drag_start_y = event->button.y;
+        snap_state->drag_start_position = (20.0f * log10f(fmaxf(snap_state->gain, 0.000001f)) + 20.0f) / 40.0f;
+        snap_state->drag_scale = (SDL_GetModState() & KMOD_SHIFT) ? 0.1f : 1.0f;
         return true;
     }
 
@@ -311,8 +295,9 @@ bool effects_panel_track_snapshot_handle_mouse_down(AppState* state,
         snap_state->history_serial = state->undo.drag_serial;
         snap_state->dragging = true;
         snap_state->active_control = FX_SNAPSHOT_CONTROL_PAN;
-        float pan = pan_from_mouse(&snap->pan_hit_rect, event->button.x);
-        apply_pan(state, pan);
+        snap_state->drag_start_y = event->button.y;
+        snap_state->drag_start_position = (snap_state->pan + 1.0f) * 0.5f;
+        snap_state->drag_scale = (SDL_GetModState() & KMOD_SHIFT) ? 0.1f : 1.0f;
         return true;
     }
 
@@ -397,12 +382,12 @@ bool effects_panel_track_snapshot_handle_mouse_motion(AppState* state,
         return false;
     }
     if (snap_state->active_control == FX_SNAPSHOT_CONTROL_GAIN) {
-        float gain_db = gain_db_from_mouse(&snap->gain_hit_rect, event->motion.x);
+        float gain_db = -20.0f + 40.0f * daw_knob_drag_position(snap_state->drag_start_position, snap_state->drag_start_y, event->motion.y, snap_state->drag_scale);
         apply_gain(state, gain_db);
         return true;
     }
     if (snap_state->active_control == FX_SNAPSHOT_CONTROL_PAN) {
-        float pan = pan_from_mouse(&snap->pan_hit_rect, event->motion.x);
+        float pan = -1.0f + 2.0f * daw_knob_drag_position(snap_state->drag_start_position, snap_state->drag_start_y, event->motion.y, snap_state->drag_scale);
         apply_pan(state, pan);
         return true;
     }

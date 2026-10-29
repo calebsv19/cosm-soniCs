@@ -1,5 +1,6 @@
 #include "control_bridge_internal.h"
 #include "app_state.h"
+#include "engine/instrument_samples.h"
 #include "daw/app_actions.h"
 #include "cJSON.h"
 #include <errno.h>
@@ -129,12 +130,29 @@ static cJSON* capabilities(DawControlBridge* bridge) {
     cJSON_AddStringToObject(result, "precondition_scope", "exact target instrument state including effective inheritance; not project revision");
     cJSON_AddNumberToObject(result, "receipt_capacity", DAW_CONTROL_RECEIPTS);
     cJSON_AddNumberToObject(result, "receipts_used", bridge->receipt_count);
+    cJSON* dynamics=cJSON_AddObjectToObject(result,"dynamics_feedback");cJSON_AddStringToObject(dynamics,"read","get_effect_chain.dynamics_feedback");cJSON_AddStringToObject(dynamics,"controls","edit_effect_chain with expected_state; native insert controls share history");cJSON_AddNumberToObject(dynamics,"stale_after_ms",1000);cJSON_AddStringToObject(dynamics,"qualified","Compressor independent peak/RMS detectors; linked sample-peak Limiter, not true peak");
+    cJSON* lm=cJSON_AddObjectToObject(result,"live_meters");cJSON_AddNumberToObject(lm,"window_ms",400);cJSON_AddNumberToObject(lm,"stale_after_ms",1000);cJSON_AddBoolToObject(lm,"qualified_live_lufs",false);cJSON_AddStringToObject(lm,"monitor","ephemeral output-only stereo/mono; 5 ms callback transition; production meters before fold, captured previews excluded");
+    cJSON* ex=cJSON_AddObjectToObject(result,"song_export");cJSON_AddNumberToObject(ex,"material_seconds",3600);cJSON_AddNumberToObject(ex,"tail_seconds",60);cJSON_AddNumberToObject(ex,"active_jobs",1);cJSON_AddNumberToObject(ex,"retained_jobs",8);cJSON_AddStringToObject(ex,"formats","pcm16, float32 WAV at captured project rate/stereo; no resampling, no automatic insertion");
+    cJSON* ab=cJSON_AddObjectToObject(result,"ab_comparison");cJSON_AddNumberToObject(ab,"material_seconds",10);cJSON_AddNumberToObject(ab,"tail_seconds",5);cJSON_AddNumberToObject(ab,"preceding_context_seconds",60);cJSON_AddNumberToObject(ab,"pair_bytes",67108864);cJSON_AddStringToObject(ab,"matching","attenuation-only all-channel RMS; listening-only original/matched modes; immutable captured pairs, 5 ms shared-cursor crossfade");
+    cJSON* eq=cJSON_AddObjectToObject(result,"dedicated_eq");
+    cJSON_AddNumberToObject(eq,"state_capacity",DAW_CONTROL_EQ_STATES);cJSON_AddNumberToObject(eq,"bands",4);
+    cJSON_AddStringToObject(eq,"units","frequency Hz 20..20000; enabled frequency also <=0.45*sample rate; gain dB -20..20; bandwidth octaves 0.1..4; fixed 12 dB/oct cuts");
+    cJSON_AddStringToObject(eq,"scope","master or stable track/child/group/return; complete stored curve including disabled controls; separate from inserts; stopped exact guarded writes/history");
+    cJSON* controls=cJSON_AddObjectToObject(result,"track_controls");
+    cJSON_AddNumberToObject(controls,"state_capacity",DAW_CONTROL_TRACK_STATES);
+    cJSON_AddNumberToObject(controls,"name_max_utf8_bytes",ENGINE_CLIP_NAME_MAX-1);
+    cJSON_AddStringToObject(controls,"gain_unit","linear amplitude; 0 silence, 1 unity, maximum 10 (+20 dB)");
+    cJSON_AddNumberToObject(controls,"gain_min",0);cJSON_AddNumberToObject(controls,"gain_max",10);
+    cJSON_AddStringToObject(controls,"pan_unit","stereo balance; -1 left, 0 center, +1 right");
+    cJSON_AddNumberToObject(controls,"pan_min",-1);cJSON_AddNumberToObject(controls,"pan_max",1);
+    cJSON_AddStringToObject(controls,"scope","track/child/group/return base name, gain or pan; one field/undo step; token checks addressed field and lifetime only; mute/solo read-only; playback allowed, recording/competing edits refused");
     cJSON* routing = cJSON_AddObjectToObject(result, "routing");
     cJSON_AddNumberToObject(routing, "state_capacity", DAW_CONTROL_ROUTING_STATES);
     cJSON_AddNumberToObject(routing, "return_capacity", ENGINE_RETURN_CAP);
     cJSON_AddNumberToObject(routing, "send_capacity", ENGINE_SEND_CAP);
     cJSON_AddNumberToObject(routing, "track_capacity", ENGINE_ROUTING_TRACK_CAP);
     cJSON_AddNumberToObject(routing, "batch_capacity", 16);
+    cJSON_AddNumberToObject(routing,"automation_points_per_lane",ENGINE_MIX_AUTOMATION_POINTS);cJSON_AddNumberToObject(routing,"automation_points_total",ENGINE_MIX_AUTOMATION_TOTAL);cJSON_AddStringToObject(routing,"automation_units","absolute project frames; group linear gain0..10; bound send linear gain0..1; curves0linear,1hold,2smooth; boundaries0static baseline,1hold");
     cJSON_AddStringToObject(routing, "scope", "post-fader source-to-return only; linear sends 0..1; no feedback; stopped guarded writes; creation supports an empty project");
     cJSON* arrangement = cJSON_AddObjectToObject(result, "arrangement");
     cJSON_AddNumberToObject(arrangement, "state_capacity", DAW_CONTROL_ARRANGEMENT_STATES);
@@ -143,6 +161,20 @@ static cJSON* capabilities(DawControlBridge* bridge) {
     cJSON_AddNumberToObject(arrangement, "note_capacity", DAW_ARRANGEMENT_NOTE_CAP);
     cJSON_AddNumberToObject(arrangement, "automation_point_capacity", DAW_ARRANGEMENT_POINT_CAP);
     cJSON_AddStringToObject(arrangement, "scope", "exact full layout/tempo and authored clips/track sound; existing MIDI regions; right-edge trim refuses discarded notes; serial track effects remain destination-owned");
+    cJSON* automation = cJSON_AddObjectToObject(result, "automation");
+    cJSON_AddStringToObject(automation, "scope", "audio and MIDI regions; local sample frames; volume dB and stereo balance or legacy offsets");
+    cJSON_AddNumberToObject(automation, "point_page", 128);
+    cJSON_AddNumberToObject(automation, "write_point_limit", 128);
+    cJSON_AddBoolToObject(automation, "shared_history", true);
+
+    cJSON* mix=cJSON_AddObjectToObject(result,"mix_diagnostics");
+    cJSON_AddStringToObject(mix,"schema","sonics_mix_capture_v3");
+    cJSON_AddNumberToObject(mix,"track_capacity",DAW_MIX_TRACKS);cJSON_AddNumberToObject(mix,"source_capacity",DAW_ARRANGEMENT_CLIP_CAP);cJSON_AddNumberToObject(mix,"channel_capacity",DAW_MIX_CHANNELS);cJSON_AddNumberToObject(mix,"time_bins",DAW_MIX_BINS);cJSON_AddNumberToObject(mix,"retained_capture_capacity",DAW_CONTROL_MIX_STATES);cJSON_AddNumberToObject(mix,"range_seconds",DAW_MIX_RANGE_SECONDS);cJSON_AddNumberToObject(mix,"full_context_seconds",DAW_MIX_CONTEXT_SECONDS);
+    cJSON_AddBoolToObject(mix,"whole_song_lufs_lra",true);cJSON_AddNumberToObject(mix,"song_seconds",DAW_LOUDNESS_PROGRAM_SECONDS);cJSON_AddNumberToObject(mix,"song_tail_seconds",DAW_LOUDNESS_TAIL_SECONDS);
+    cJSON_AddBoolToObject(mix,"passage_lufs_true_peak",true);cJSON_AddNumberToObject(mix,"loudness_max_history_points",DAW_LOUDNESS_POINTS);
+    cJSON_AddNumberToObject(mix,"frequency_windows",DAW_FREQUENCY_WINDOWS);cJSON_AddNumberToObject(mix,"frequency_fft_size",DAW_FREQUENCY_FFT);cJSON_AddNumberToObject(mix,"frequency_channels_per_page",1);
+    cJSON_AddNumberToObject(mix,"note_page",8);cJSON_AddNumberToObject(mix,"activity_threshold_dbfs",-80);
+    cJSON_AddStringToObject(mix,"semantics","read-only synchronous private production graph; exact guard; full cold context from frame zero; per-tap latency; immutable paged channel sample-peak/RMS; immutable insert levels and native dynamics reduction; 32 per-channel output spectral windows; selected-passage M/S/I LUFS and per-channel true peak at explicitly mapped mono/stereo 44.1/48/96 kHz; not isolated stems or whole-programme loudness");
     cJSON* composition = cJSON_AddObjectToObject(result, "composition");
     cJSON_AddNumberToObject(composition, "render_capacity", DAW_CONTROL_COMPOSITION_STATES);
     cJSON_AddNumberToObject(composition, "retained_audio_bytes", DAW_CONTROL_COMPOSITION_BYTES);
@@ -150,6 +182,8 @@ static cJSON* capabilities(DawControlBridge* bridge) {
     int retained_renders = 0;
     for (int i = 0; i < DAW_CONTROL_COMPOSITION_STATES; ++i) if (bridge->composition_states[i].render) ++retained_renders;
     cJSON_AddNumberToObject(composition, "current_render_count", retained_renders);
+    cJSON_AddNumberToObject(composition,"channel_meter_capacity",DAW_COMPOSITION_CHANNELS);
+    cJSON_AddStringToObject(composition,"metering_scope","immutable captured samples; per-channel sample peak/RMS, dBFS (null for silence), abs>=1 full-scale and abs>1 overload counts; not live, LUFS or true-peak");
     cJSON_AddNumberToObject(composition, "range_seconds", DAW_COMPOSITION_SECONDS);
     cJSON_AddNumberToObject(composition, "tail_seconds", DAW_COMPOSITION_TAIL_SECONDS);
     cJSON_AddStringToObject(composition, "scope", "immutable original-level production project/track/region audio; dry excludes FX/EQ; preview publishes captured audio through receipts");
@@ -186,6 +220,21 @@ static cJSON* capabilities(DawControlBridge* bridge) {
         cJSON_AddStringToObject(object, "id", engine_instrument_preset_id_string(preset));
         cJSON_AddStringToObject(object, "name", engine_instrument_preset_display_name(preset));
         cJSON_AddItemToObject(object, "defaults", params_json(engine_instrument_default_params(preset)));
+        EngineSampleBankInfo bank;
+        if (engine_instrument_sample_bank_info(preset,&bank)) {
+            cJSON_AddStringToObject(object,"sample_bank",bank.id);
+            cJSON_AddNumberToObject(object,"minimum_note",bank.minimum_note);
+            cJSON_AddNumberToObject(object,"maximum_note",bank.maximum_note);
+            cJSON_AddNumberToObject(object,"recorded_pitches",bank.recorded_pitches);
+            cJSON_AddNumberToObject(object,"dynamic_layers",bank.layers);
+            if (preset == ENGINE_INSTRUMENT_PRESET_SAMPLED_ACOUSTIC_PIANO) {
+                cJSON_AddStringToObject(object,"sustain_mode","binary pedal; region automation and live semicolon audition");
+                cJSON_AddStringToObject(object,"resonance_model","88 damped string modes driven by recorded strikes");
+                cJSON_AddNumberToObject(object,"key_release_recordings",88);
+                cJSON_AddNumberToObject(object,"pedal_recordings",4);
+            }
+            cJSON_AddStringToObject(object,"articulation",bank.articulation);
+        }
         cJSON* visible = cJSON_AddArrayToObject(object, "visible_parameters");
         for (int j = 0; j < engine_instrument_preset_param_count(preset); ++j) {
             EngineInstrumentParamId id;
@@ -257,8 +306,8 @@ static bool parse_patch(const cJSON* request, DawInstrumentRequest* patch) {
         if (!cJSON_IsNumber(item) || !engine_instrument_param_from_id_string(item->string, &id)) return false;
         engine_instrument_param_spec(id, &spec);
         if (!isfinite(item->valuedouble) || item->valuedouble < spec.min_value || item->valuedouble > spec.max_value ||
-            (patch->parameter_mask & (UINT32_C(1) << id))) return false;
-        patch->parameter_mask |= UINT32_C(1) << id;
+            (patch->parameter_mask & (UINT64_C(1) << id))) return false;
+        patch->parameter_mask |= UINT64_C(1) << id;
         patch->params = engine_instrument_params_set(ENGINE_INSTRUMENT_PRESET_SYNTH_LAB, patch->params, id, (float)item->valuedouble);
     }
     return true;
@@ -316,7 +365,7 @@ static cJSON* instrument_history(DawControlBridge* bridge, AppState* state, cons
 // Routes strict requests and reserves immutable receipt storage before any mutation.
 char* daw_control_dispatch(DawControlBridge* bridge, AppState* state, const char* raw, bool* changed) {
     *changed = false;
-    static const char* const fields[] = {"op", "offset", "target", "instance", "request_id", "expected_state", "preset", "parameters", "search", "name", "preset_id", "preset_revision", "mode", "window", "tempo_offset", "notes", "pattern", "root_note", "start_beat", "velocity", "expected_layout", "start_frame", "duration_frames", "clip_offset", "action", "type_id", "effect_id", "parameter", "value", "beats", "position", "enabled", "end_frame", "tail_frames", "window_frame", "dry", "render_id", "operation", "grid_beats", "strength", "swing", "velocity_scale", "timing_ms", "velocity_amount", "seed", "expected_arrangement", "expected_routing", "edits", NULL};
+    static const char* const fields[] = {"op", "offset", "target", "instance", "request_id", "expected_state", "preset", "parameters", "search", "name", "preset_id", "preset_revision", "mode", "window", "tempo_offset", "notes", "pattern", "root_note", "start_beat", "velocity", "expected_layout", "start_frame", "duration_frames", "clip_offset", "action", "type_id", "effect_id", "parameter", "value", "beats", "position", "enabled", "end_frame", "tail_frames", "window_frame", "dry", "render_id", "operation", "grid_beats", "strength", "swing", "velocity_scale", "timing_ms", "velocity_amount", "seed", "expected_arrangement", "expected_routing", "edits", "lane_target", "domain", "before", "after", "points", "control", "curve", "expected_mix", "capture_id", "node_offset", "source_offset", "effect_offset", "frequency_window", "frequency_channel", "note_offset", "whole_song", "automation", "expected_comparison", "side", "matched", "restart", "clear", "job_id", "format", "normalize", "expected_monitor", NULL};
     const char* end = NULL;
     cJSON* request = cJSON_ParseWithOpts(raw, &end, true);
     cJSON* result = NULL;
@@ -344,11 +393,23 @@ char* daw_control_dispatch(DawControlBridge* bridge, AppState* state, const char
     static const char* const region_create_fields[] = {"op", "instance", "request_id", "target", "expected_layout", "start_frame", "duration_frames", NULL};
     static const char* const region_extend_fields[] = {"op", "instance", "request_id", "target", "expected_state", "duration_frames", NULL};
     static const char* const region_history_fields[] = {"op", "instance", "request_id", "target", "expected_layout", NULL};
-    static const char* const fx_fields[] = {"op", "instance", "request_id", "target", "expected_state", "action", "type_id", "effect_id", "parameter", "value", "mode", "beats", "position", "enabled", NULL};
+    static const char* const fx_fields[] = {"op", "instance", "request_id", "target", "expected_state", "action", "type_id", "effect_id", "parameter", "value", "mode", "beats", "position", "enabled", "automation", NULL};
     static const char* const fx_get_fields[] = {"op", "target", NULL};
+    static const char* const mix_capture_fields[]={"op","expected_mix","start_frame","end_frame","whole_song","tail_frames",NULL};
+    static const char* const mix_read_fields[]={"op","capture_id","node_offset","source_offset","effect_offset","frequency_window","frequency_channel","note_offset",NULL};
     static const char* const composition_fields[] = {"op", "target", "start_frame", "end_frame", "tail_frames", "window_frame", "dry", NULL};
     static const char* const composition_preview_fields[] = {"op", "instance", "request_id", "render_id", NULL};
-    bool routing_write = !strcmp(op,"create_return") || !strcmp(op,"edit_routing") || !strcmp(op,"undo_routing") || !strcmp(op,"redo_routing");
+    bool automation_write = !strcmp(op, "set_automation") || !strcmp(op, "undo_automation") || !strcmp(op, "redo_automation");
+    static const char* const automation_get_fields[] = {"op", "target", "lane_target", "offset", "expected_arrangement", NULL};
+    static const char* const automation_set_fields[] = {"op", "instance", "request_id", "target", "lane_target", "expected_arrangement", "domain", "before", "after", "points", NULL};
+    static const char* const automation_history_fields[] = {"op", "instance", "request_id", "target", "lane_target", "expected_arrangement", NULL};
+    bool eq_write=!strcmp(op,"edit_eq") || !strcmp(op,"undo_eq") || !strcmp(op,"redo_eq");
+    static const char* const eq_set_fields[]={"op","instance","request_id","target","expected_state","curve",NULL};
+    bool track_write=!strcmp(op,"set_track_control") || !strcmp(op,"undo_track_control") || !strcmp(op,"redo_track_control");
+    static const char* const track_set_fields[]={"op","instance","request_id","target","expected_state","control","value",NULL};
+    static const char* const track_history_fields[]={"op","instance","request_id","target","expected_state","control",NULL};
+    bool routing_write = !strcmp(op,"create_group") || !strcmp(op,"create_return") || !strcmp(op,"edit_routing") || !strcmp(op,"undo_routing") || !strcmp(op,"redo_routing");
+    static const char* const group_create_fields[]={"op","instance","request_id","expected_routing","name",NULL};
     static const char* const routing_edit_fields[]={"op","instance","request_id","expected_routing","edits",NULL};
     static const char* const routing_history_fields[]={"op","instance","request_id","expected_routing",NULL};
     bool arrangement_write = !strcmp(op,"arrange_regions") || !strcmp(op,"undo_arrangement") || !strcmp(op,"redo_arrangement");
@@ -360,6 +421,17 @@ char* daw_control_dispatch(DawControlBridge* bridge, AppState* state, const char
     bool fx_write = !strcmp(op, "edit_effect_chain") || !strcmp(op, "undo_effect_chain") || !strcmp(op, "redo_effect_chain");
     bool region_write = !strcmp(op, "create_midi_region") || !strcmp(op, "undo_midi_region") || !strcmp(op, "redo_midi_region");
     static const char* const expression_fields[]={"op","instance","request_id","target","expected_state","operation","grid_beats","strength","swing","velocity_scale","timing_ms","velocity_amount","seed",NULL};
+    bool monitor_write=!strcmp(op,"set_monitor_mode");
+    static const char* const monitor_fields[]={"op","instance","request_id","expected_monitor","mode",NULL};
+    static const char* const live_fields[]={"op","target",NULL};
+    bool export_write=!strcmp(op,"start_song_export") || !strcmp(op,"cancel_song_export");
+    static const char* const export_start_fields[]={"op","instance","request_id","expected_mix","format","tail_frames","normalize",NULL};
+    static const char* const export_cancel_fields[]={"op","instance","request_id","job_id",NULL};
+    static const char* const export_read_fields[]={"op","job_id",NULL};
+    bool ab_write=!strcmp(op,"capture_ab") || !strcmp(op,"listen_ab") || !strcmp(op,"stop_ab");
+    static const char* const ab_capture_fields[]={"op","instance","request_id","expected_comparison","expected_mix","side","start_frame","end_frame","tail_frames","dry","target",NULL};
+    static const char* const ab_listen_fields[]={"op","instance","request_id","expected_comparison","side","matched","restart",NULL};
+    static const char* const ab_stop_fields[]={"op","instance","request_id","expected_comparison","clear",NULL};
     bool midi_write = !strcmp(op,"transform_midi") || !strcmp(op, "extend_midi_region") || !strcmp(op, "set_midi_notes") || !strcmp(op, "create_midi_pattern") || !strcmp(op, "undo_midi") || !strcmp(op, "redo_midi");
     const char* const* operation_fields = fields;
     if (!strcmp(op, "get_midi_layout")) operation_fields = layout_fields;
@@ -395,9 +467,26 @@ char* daw_control_dispatch(DawControlBridge* bridge, AppState* state, const char
     if (!strcmp(op,"get_arrangement")) operation_fields=arrangement_get_fields;
     else if (arrangement_write) operation_fields=!strcmp(op,"arrange_regions")?arrangement_edit_fields:arrangement_history_fields;
     if (!strcmp(op,"get_routing")) operation_fields=read_fields;
-    else if (routing_write) operation_fields=!strcmp(op,"edit_routing")?routing_edit_fields:routing_history_fields;
+    else if (routing_write) operation_fields=!strcmp(op,"create_group") ? group_create_fields : (!strcmp(op,"edit_routing")?routing_edit_fields:routing_history_fields);
+    if (!strcmp(op, "get_automation")) operation_fields = automation_get_fields;
+    else if (automation_write) operation_fields = !strcmp(op, "set_automation") ? automation_set_fields : automation_history_fields;
+    if(!strcmp(op,"get_eq"))operation_fields=get_fields;
+    else if(eq_write)operation_fields=!strcmp(op,"edit_eq") ? eq_set_fields : history_fields;
+    if (!strcmp(op,"get_track_controls")) operation_fields=get_fields;
+    else if(track_write)operation_fields=!strcmp(op,"set_track_control") ? track_set_fields : track_history_fields;
+    if(!strcmp(op,"get_mix_snapshot"))operation_fields=read_fields;
+    else if(!strcmp(op,"capture_mix"))operation_fields=mix_capture_fields;
+    else if(!strcmp(op,"get_mix_capture"))operation_fields=mix_read_fields;
+    if(!strcmp(op,"get_live_meters"))operation_fields=live_fields;else if(monitor_write)operation_fields=monitor_fields;else if(!strcmp(op,"get_song_export"))operation_fields=export_read_fields;else if(export_write)operation_fields=!strcmp(op,"start_song_export")?export_start_fields:export_cancel_fields;else if(!strcmp(op,"get_ab_comparison"))operation_fields=read_fields;else if(ab_write)operation_fields=!strcmp(op,"capture_ab")?ab_capture_fields:!strcmp(op,"listen_ab")?ab_listen_fields:ab_stop_fields;
     if (!fields_valid(request, operation_fields)) { result = reply(false, "invalid_request"); goto done; }
     if (strcmp(op, "capabilities") == 0) { result = capabilities(bridge); goto done; }
+    if(!strcmp(op,"get_live_meters")){result=daw_control_live_meters(bridge,state,request);goto done;}
+    if(!strcmp(op,"get_song_export")){result=daw_control_song_export(bridge,state,request);goto done;}
+    if(!strcmp(op,"get_ab_comparison")){result=daw_control_ab_comparison(bridge,state,request);goto done;}
+    if(!strcmp(op,"get_mix_snapshot") || !strcmp(op,"capture_mix") || !strcmp(op,"get_mix_capture")){result=daw_control_mix_capture(bridge,state,request);goto done;}
+    if (!strcmp(op, "get_automation")) { result = daw_control_automation(bridge, state, request, changed); goto done; }
+    if(!strcmp(op,"get_eq")){result=daw_control_eq(bridge,state,request,changed);goto done;}
+    if (!strcmp(op,"get_track_controls")) { result=daw_control_track_controls(bridge,state,request,raw,changed); goto done; }
     if (!strcmp(op,"get_routing")) { result=daw_control_routing(bridge,state,request,changed); goto done; }
     if (!strcmp(op,"get_arrangement")) { result=daw_control_arrangement(bridge,state,request,changed); goto done; }
     if (!strcmp(op, "get_midi_layout")) { result = daw_control_regions(bridge, state, request, NULL, changed); goto done; }
@@ -449,7 +538,7 @@ char* daw_control_dispatch(DawControlBridge* bridge, AppState* state, const char
         goto done;
     }
     if (strcmp(op, "request_status") == 0) { result = reply(false, "unknown_request"); goto done; }
-    if (!routing_write && !arrangement_write && !composition_write && !fx_library_write && !fx_write && !region_write && !midi_write && strcmp(op, "set_instrument") != 0 && strcmp(op, "undo_instrument") != 0 && strcmp(op, "redo_instrument") != 0 && strcmp(op, "save_preset") != 0 && strcmp(op, "apply_preset") != 0 && strcmp(op, "preview_preset") != 0) { result = reply(false, "unknown_operation"); goto done; }
+    if (!monitor_write && !export_write && !ab_write && !eq_write && !track_write && !automation_write && !routing_write && !arrangement_write && !composition_write && !fx_library_write && !fx_write && !region_write && !midi_write && strcmp(op, "set_instrument") != 0 && strcmp(op, "undo_instrument") != 0 && strcmp(op, "redo_instrument") != 0 && strcmp(op, "save_preset") != 0 && strcmp(op, "apply_preset") != 0 && strcmp(op, "preview_preset") != 0) { result = reply(false, "unknown_operation"); goto done; }
     if (!bridge->allow_write) { result = reply(false, "read_only"); goto done; }
     if (bridge->receipt_count >= DAW_CONTROL_RECEIPTS) { result = reply(false, "receipt_capacity_reached"); goto done; }
     receipt = &bridge->receipts[bridge->receipt_count];
@@ -465,7 +554,13 @@ char* daw_control_dispatch(DawControlBridge* bridge, AppState* state, const char
     strcpy(receipt->id, id);
     strcpy(receipt->response, "{\"ok\":false,\"code\":\"result_unavailable\",\"may_have_applied\":true}");
     ++bridge->receipt_count;
+    if(monitor_write){result=daw_control_live_meters(bridge,state,request);goto done;}
+    if(export_write){result=daw_control_song_export(bridge,state,request);goto done;}
+    if(ab_write){result=daw_control_ab_comparison(bridge,state,request);goto done;}
     if (composition_write) { result = daw_control_composition(bridge, state, request, NULL); goto done; }
+    if (automation_write) { result = daw_control_automation(bridge, state, request, changed); goto done; }
+    if(eq_write){result=daw_control_eq(bridge,state,request,changed);goto done;}
+    if (track_write) { result=daw_control_track_controls(bridge,state,request,raw,changed); goto done; }
     if (routing_write) { result=daw_control_routing(bridge,state,request,changed); goto done; }
     if (arrangement_write) { result=daw_control_arrangement(bridge,state,request,changed); goto done; }
     if (fx_write || fx_library_write) {

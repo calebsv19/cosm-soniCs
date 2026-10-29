@@ -517,33 +517,37 @@ bool midi_editor_hit_test_note(const MidiEditorLayout* layout,
     int note_count = engine_clip_midi_note_count(clip);
     uint64_t clip_frames = clip->duration_frames > 0 ? clip->duration_frames : 1u;
     SDL_Point point = {x, y};
-    for (int i = note_count - 1; notes && i >= 0; --i) {
-        SDL_Rect rect = {0, 0, 0, 0};
-        if (!midi_editor_note_rect(layout, &notes[i], clip_frames, &rect)) {
-            continue;
+    for (int pass = 0; pass < 2; ++pass) {
+        for (int i = note_count - 1; notes && i >= 0; --i) {
+            SDL_Rect rect = {0, 0, 0, 0};
+            if (!midi_editor_note_rect(layout, &notes[i], clip_frames, &rect)) {
+                continue;
+            }
+            SDL_Rect hit_rect = {
+                rect.x - 3,
+                rect.y - 2,
+                rect.w + 6,
+                rect.h + 4
+            };
+            if (!SDL_PointInRect(&point, pass == 0 ? &rect : &hit_rect)) {
+                continue;
+            }
+            MidiEditorNoteHitPart part = MIDI_EDITOR_NOTE_HIT_BODY;
+            int edge_w = midi_editor_note_edge_width(rect.w);
+            if (rect.w <= 2 && SDL_PointInRect(&point, &rect)) {
+                part = MIDI_EDITOR_NOTE_HIT_BODY;
+            } else if (x < rect.x + edge_w) {
+                part = MIDI_EDITOR_NOTE_HIT_LEFT_EDGE;
+            } else if (x >= rect.x + rect.w - edge_w) {
+                part = MIDI_EDITOR_NOTE_HIT_RIGHT_EDGE;
+            }
+            if (out_hit) {
+                out_hit->note_index = i;
+                out_hit->rect = rect;
+                out_hit->part = part;
+            }
+            return true;
         }
-        SDL_Rect hit_rect = {
-            rect.x - 3,
-            rect.y - 2,
-            rect.w + 6,
-            rect.h + 4
-        };
-        if (!SDL_PointInRect(&point, &hit_rect)) {
-            continue;
-        }
-        MidiEditorNoteHitPart part = MIDI_EDITOR_NOTE_HIT_BODY;
-        int edge_w = rect.w < 16 ? 4 : 6;
-        if (x <= rect.x + edge_w) {
-            part = MIDI_EDITOR_NOTE_HIT_LEFT_EDGE;
-        } else if (x >= rect.x + rect.w - edge_w) {
-            part = MIDI_EDITOR_NOTE_HIT_RIGHT_EDGE;
-        }
-        if (out_hit) {
-            out_hit->note_index = i;
-            out_hit->rect = rect;
-            out_hit->part = part;
-        }
-        return true;
     }
     return false;
 }

@@ -21,6 +21,7 @@ typedef struct FxInstance {
     FxDesc    desc;
     bool      enabled;
     bool      rendered;
+    EngineMixerAutomation automation;
     FxSampleRamp bypass;
     FxInstId  id;
     FxTypeId  type;
@@ -45,6 +46,7 @@ typedef struct FxChain {
 } FxChain;
 
 struct EffectsManager {
+    uint64_t automation_start, automation_latency;
     int sample_rate;
     int max_block;
     int max_channels;
@@ -79,6 +81,9 @@ struct EffectsManager {
     void* meter_cb_user;
     FxScopeTapCallback scope_cb;
     void* scope_cb_user;
+    FxDiagnosticCallback diagnostic;
+    void* diagnostic_user;
+    float* diagnostic_trace;
 };
 
 // -------------------------------
@@ -334,6 +339,7 @@ void fxm_set_scope_tap_callback(EffectsManager* fm, FxScopeTapCallback cb, void*
 }
 
 void fxm_destroy(EffectsManager* fm) {
+    if (fm) free(fm->diagnostic_trace);
     if (!fm) return;
     chain_free(&fm->master);
     if (fm->tracks) {
@@ -438,6 +444,7 @@ static bool chain_clone_for_render(EffectsManager* destination, FxChain* output,
         *slot = instance;
         slot->id = source->id;
         slot->enabled = source->enabled;
+        slot->automation = source->automation;
         for (uint32_t p = 0; p < slot->param_count; ++p) {
             slot->param_values[p] = source->param_values[p];
             slot->param_current[p] = source->param_values[p];
@@ -507,6 +514,7 @@ static void chain_transfer_render_state(FxChain* prepared, FxChain* previous) {
         FxInstance* next = &prepared->items[i];
         for (int j = 0; j < previous->count; ++j) {
             FxInstance* old = &previous->items[j];
+            if (!engine_mixer_automation_equal(&next->automation,&old->automation)) continue;
             if (next->id != old->id || next->type != old->type || next->param_count != old->param_count) continue;
             if (next->vt.process != old->vt.process || next->vt.destroy != old->vt.destroy ||
                 next->vt.set_param != old->vt.set_param) continue;
@@ -536,6 +544,12 @@ static uint32_t chain_latency(const FxChain* chain, bool maximum) {
         else if (inst->desc.flags & FX_FLAG_HAS_LATENCY) total += inst->desc.latency_samples;
     }
     return total >= UINT32_MAX ? UINT32_MAX : (uint32_t)total;
+}
+
+// Exposes serial chain delay independently of legacy parallel compensation groups.
+uint32_t fxm_track_processing_latency(const EffectsManager* fm,int track,bool maximum) {
+    if(!fm || track>=fm->track_count)return 0;
+    return chain_latency(track<0 ? &fm->master : &fm->tracks[track],maximum);
 }
 
 // Allocates compensation rings off the render thread for every possible current-chain delay.
@@ -854,6 +868,7 @@ bool fxm_master_snapshot(const EffectsManager* fm, FxMasterSnapshot* out) {
         info.id = inst->id;
         info.type = inst->type;
         info.enabled = inst->enabled;
+        info.automation = inst->automation;
         uint32_t pc = inst->desc.num_params;
         if (pc > FX_MAX_PARAMS) {
             pc = FX_MAX_PARAMS;
@@ -974,6 +989,7 @@ bool fxm_track_snapshot(const EffectsManager* fm, int track_index, FxMasterSnaps
         info.id = inst->id;
         info.type = inst->type;
         info.enabled = inst->enabled;
+        info.automation = inst->automation;
         uint32_t pc = inst->desc.num_params;
         if (pc > FX_MAX_PARAMS) pc = FX_MAX_PARAMS;
         info.param_count = pc;
@@ -1122,8 +1138,11 @@ static void fxm_render_chain(EffectsManager* fm, FxChain* chain, bool master, in
                              float* io, int frames, int channels) {
     if (!io || frames <= 0 || channels <= 0 || frames > fm->max_block || channels > fm->max_channels) return;
     size_t samples = (size_t)frames * channels;
+    uint64_t diagnostic_latency = 0;
+    uint64_t automation_latency = fm->automation_latency;
     for (int i = 0; i < chain->count; ++i) {
         FxInstance* inst = &chain->items[i];
+        if (fm->diagnostic) fm->diagnostic(fm->diagnostic_user,track,i,inst->id,false,diagnostic_latency,io,NULL,frames,channels);
         bool has_latency = inst->vt.max_latency ? inst->vt.max_latency(inst->handle) > 0 :
             ((inst->desc.flags & FX_FLAG_HAS_LATENCY) && inst->desc.latency_samples > 0);
         float target = inst->enabled ? 1 : 0;
@@ -1136,11 +1155,16 @@ static void fxm_render_chain(EffectsManager* fm, FxChain* chain, bool master, in
             inst->rendered = true;
             if (fm->scope_cb && inst->vt.gain_reduction_db)
                 fm->scope_cb(fm->scope_cb_user, master, track, inst->id, inst->type, 0);
+            if (fm->diagnostic) {
+                memset(fm->diagnostic_trace,0,samples*sizeof(float));
+                fm->diagnostic(fm->diagnostic_user,track,i,inst->id,true,diagnostic_latency,io,inst->vt.set_reduction_trace ? fm->diagnostic_trace : NULL,frames,channels);
+            }
             continue;
         }
         if (inst->type >= 100u && inst->type <= 109u) {
             if (inst->enabled && fm->meter_cb)
                 fm->meter_cb(fm->meter_cb_user, master, track, inst->id, inst->type, io, frames, channels);
+            if (fm->diagnostic) fm->diagnostic(fm->diagnostic_user,track,i,inst->id,true,diagnostic_latency,io,NULL,frames,channels);
             continue;
         }
         if (!inst->handle || !inst->vt.process) continue;
@@ -1149,11 +1173,14 @@ static void fxm_render_chain(EffectsManager* fm, FxChain* chain, bool master, in
         float before = emit && !inst->vt.gain_reduction_db ? fxm_compute_rms(io, frames, channels) : 0;
         bool blend = inst->bypass.remaining || inst->bypass.current != 1;
         if (blend) memcpy(fm->bypass_dry, io, samples * sizeof(float));
-        if (inst->desc.flags & FX_FLAG_INPLACE_OK) inst->vt.process(inst->handle, io, io, frames, channels);
+        if (fm->diagnostic && inst->vt.set_reduction_trace) inst->vt.set_reduction_trace(inst->handle,fm->diagnostic_trace);
+        if(inst->automation.count) fx_parameter_automation_process(&inst->vt,inst->handle,&inst->automation,inst->param_values[0],io,frames,channels,fm->automation_start,automation_latency);
+        else if (inst->desc.flags & FX_FLAG_INPLACE_OK) inst->vt.process(inst->handle, io, io, frames, channels);
         else {
             inst->vt.process(inst->handle, io, fm->scratch, frames, channels);
             memcpy(io, fm->scratch, samples * sizeof(float));
         }
+        if (inst->vt.set_reduction_trace && fm->diagnostic) inst->vt.set_reduction_trace(inst->handle,NULL);
         inst->rendered = true;
         if (emit) {
             float value = inst->vt.gain_reduction_db ? inst->vt.gain_reduction_db(inst->handle) :
@@ -1167,7 +1194,22 @@ static void fxm_render_chain(EffectsManager* fm, FxChain* chain, bool master, in
                 io[n] = fm->bypass_dry[n] * (1 - wet) + io[n] * wet;
             }
         }
+        automation_latency += inst->enabled ? (inst->vt.latency ? inst->vt.latency(inst->handle) : (inst->desc.flags & FX_FLAG_HAS_LATENCY) ? inst->desc.latency_samples : 0) : 0;
+        if (fm->diagnostic) {
+            diagnostic_latency += inst->enabled ? (inst->vt.latency ? inst->vt.latency(inst->handle) : (inst->desc.flags & FX_FLAG_HAS_LATENCY) ? inst->desc.latency_samples : 0) : 0;
+            fm->diagnostic(fm->diagnostic_user,track,i,inst->id,true,diagnostic_latency,io,inst->vt.set_reduction_trace ? fm->diagnostic_trace : NULL,frames,channels);
+        }
     }
+}
+
+// Prepares a borrowed diagnostic sink before detached rendering begins.
+bool fxm_set_diagnostic_callback(EffectsManager* fm,FxDiagnosticCallback callback,void* user) {
+    if(!fm)return false;
+    if(callback && !fm->diagnostic_trace) {
+        fm->diagnostic_trace=calloc((size_t)fm->max_block*fm->max_channels,sizeof(float));
+        if(!fm->diagnostic_trace)return false;
+    }
+    fm->diagnostic=callback;fm->diagnostic_user=user;return true;
 }
 
 // Processes the master and closes the block's shared parameter-update boundary.
@@ -1225,6 +1267,7 @@ bool fxm_restore_instance(EffectsManager* fm, int track_index, int position, con
     FxInstance* added = &chain->items[chain->count - 1];
     if (added->param_count != info->param_count) return false;
     added->id = info->id;
+    if(!fxm_set_parameter_automation(fm,track_index,info->id,&info->automation))return false;
     if (fm->next_inst_id <= info->id) fm->next_inst_id = info->id + 1;
     for (uint32_t p = 0; p < info->param_count; ++p) {
         bool ok = track_index < 0 ?
@@ -1236,3 +1279,18 @@ bool fxm_restore_instance(EffectsManager* fm, int track_index, int position, con
         fxm_master_set_enabled(fm, info->id, info->enabled) && fxm_master_reorder(fm, info->id, position) :
         fxm_track_set_enabled(fm, track_index, info->id, info->enabled) && fxm_track_reorder(fm, track_index, info->id, position);
 }
+
+// Returns the source-stage maximum established during preparation.
+uint64_t fxm_source_processing_latency(const EffectsManager* fm) {return fm?fm->track_latency:0;}
+
+// Copies validated authored points on the control candidate before publication.
+bool fxm_set_parameter_automation(EffectsManager* fm,int track,FxInstId id,const EngineMixerAutomation* a) {
+    if(!fm || !a || track< -1 || track>=fm->track_count)return false;
+    FxChain* chain=track<0?&fm->master:&fm->tracks[track];FxInstance* destination=NULL;int points=0;
+    for(int t=-1;t<fm->track_count;++t){FxChain* c=t<0?&fm->master:&fm->tracks[t];for(int i=0;i<c->count;++i)points+=c->items[i].automation.count;}
+    for(int i=0;i<chain->count;++i)if(chain->items[i].id==id)destination=&chain->items[i];
+    if(!destination || !fx_parameter_automation_valid(destination->type,a) || points-destination->automation.count+a->count>FX_AUTOMATION_TOTAL_POINTS)return false;
+    destination->automation=*a;return true;
+}
+// Changes only the render-owned signal clock, never persistent parameter targets.
+void fxm_set_automation_clock(EffectsManager* fm,uint64_t start,uint64_t latency) {if(fm){fm->automation_start=start;fm->automation_latency=latency;}}

@@ -1,6 +1,12 @@
 # soniCs Docs Index
 
+- [Percussion and 808 instruments](percussion_synth.md): one-shot drums, pitched bass, physical controls, compatibility and native MCP verification.
+
 Start here for soniCs public documentation.
+
+- [Timeline navigation](timeline_navigation.md): vertical track scrolling, height controls, fixed toolbar, pointer ownership and verification.
+
+- [Current agent music capabilities](agent_music_capabilities.md): authoritative current Main Edit creative surfaces, MCP limits and musical-authoring skill orientation.
 
 - [Instrument controls and musical loop](instrument_controls.md): preset applicability, physical-time knob mapping, engine-derived plots and rendered MCP acceptance.
 - [Application control foundation](application_control.md): common instrument actions, reserved history, generation-bound targeting and the initial local MCP instrument surface.
@@ -55,7 +61,7 @@ Repository and source-level identifiers still use `daw`.
 - Manual packaged-app microphone validation remains outside automated gates;
   the latest live proof plus S24 follow-through leaves audio recording in a
   solid current state. Hard track typing, durable record-arm controls,
-  input-device picker UI, user preset storage, and external MIDI input are
+  input-device picker UI and external MIDI input are
   future fresh-slice work.
 - Security posture remains trusted local desktop use with R4 local path and
   package-artifact hardening; see `../SECURITY.md` for the current boundary
@@ -114,4 +120,35 @@ Guarded arrangement is documented in [arrangement](arrangement.md). The common a
 
 - [Guarded shared returns](routing.md): complete routing storage, common creation/edit/history and five additive MCP tools; native routing controls remain pending.
 
-The five-stage creative-control development sequence is covered by [effects/composition/library](effect_chains.md), [MIDI expression](midi_expression.md), [arrangement](arrangement.md), [routing](routing.md) and [filtered modulation/presets](filtered_synth.md). Current native and MCP qualification remains separate from installed/client adoption.
+The five-stage creative-control development sequence is covered by [effects/composition/library](effect_chains.md), [MIDI expression](midi_expression.md), [arrangement](arrangement.md), [routing](routing.md) and [filtered modulation/presets](filtered_synth.md). The current Main Edit adapter registers 50 tools. Installed preset acceptance and voice-aware region automation are complete; see [user presets](user_presets.md) and [automation](automation.md). Public release and physical listening acceptance remain separate.
+
+- [Automation model and editing](automation.md) — current Main Edit semantics and shared command behavior.
+
+- [Sampled Solo Violin](sampled_violin.md): bundled CC0 multisamples, held-note dynamics, range and verification.
+
+[Sampled trumpet and clarinet](sampled_winds.md): shared acoustic sample banks, measured pitch mapping, dynamics and verification.
+
+
+- [Sampled tenor saxophone](sampled_saxophone.md): bank, playing controls, provenance and verification.
+
+- [Sampled flute and cello section](sampled_flute_cello.md): ranges, dynamics, loop preparation, provenance and verification.
+
+Sampled Oboe and French Horn extend the existing acoustic sampler with paired recorded dynamics and held-note expression. Complete audition chords follow each bank's playable range. See `sampled_oboe_horn.md` for ranges, provenance, preparation and verification.
+
+Sampled Bassoon and Tenor Trombone add two paired-layer recorded sustain banks through the existing sampler, supported controls and guarded preset/automation tools. See `sampled_bassoon_trombone.md` for ranges, source provenance and verification.
+
+Sampled Acoustic Piano, Viola Section, Double Bass and Violin Section extend the acoustic palette. Piano has finite velocity-selected strikes and voice-specific automation; bowed strings reuse sustain/dynamics playback. Audition notes follow each recorded range. See `sampled_piano_strings.md`.
+
+Piano expression extension: [piano_expression.md](piano_expression.md) describes the three piano-only controls, binary region/live sustain, 88 string modes, recorded key/pedal mechanics, 32-field v6 presets and session v25. Older preset versions 1–5 and session v24 remain readable; existing non-piano voices keep their behavior.
+
+Nested/collapsible audio bus groups, common history and MCP support are described in [track groups](track_groups.md). Engine group projection/mixing and the native group panel have focused signal, persistence, rollback and SDL/Vulkan tests.
+
+[Collection-scoped Load/Save](project_collections.md) now isolates folder lists, previews monotonically versioned checkpoints and preserves exact current-project save paths. Native collection and publication tests cover the shared modal geometry and atomic no-replace writer.
+
+[Compact track UI](compact_track_ui.md) provides aligned headers/meters/FX access, derived descendant MIDI/audio overviews and fold-only playback-safe selection/history. New `timeline_track_header` and `timeline_group_overview` modules share production geometry and source preview components.
+
+[Header mixer and lane density](header_mixer.md) adds guarded gain/pan scalar history, standard relative gestures, exact-value inspector synchronization, smaller gutters and subtle persistent lane tints. The application mixer/history boundary and input gesture owner are separate small modules.
+
+- [Dedicated EQ MCP and captured channel measurements](dedicated_eq_mcp.md) — exact curve/lifetime history guards, physical units, offline calibration and Unicode persistence.
+
+- [Immutable production mix diagnostics](mix_diagnostics.md): exact guards, in-context graph stages, calibrated channel/time measurements, source provenance, ordinary SDK usage and explicit unavailable metrics.

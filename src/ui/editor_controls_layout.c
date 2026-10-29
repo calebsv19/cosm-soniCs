@@ -48,9 +48,12 @@ static void collect(AppState* state, KitUiSurface* surface) {
         TimelineControlsUI* c = &state->timeline_controls;
         SDL_Rect buttons[] = {c->add_rect,c->remove_rect,c->midi_region_rect,c->loop_toggle_rect,
             c->snap_toggle_rect,c->automation_toggle_rect,c->automation_target_rect,c->tempo_toggle_rect,
-            c->automation_label_toggle_rect};
+            c->automation_label_toggle_rect,c->height_down_rect,c->height_up_rect,c->groups_rect};
         for (unsigned i = 0; i < sizeof(buttons)/sizeof(buttons[0]); ++i)
-            daw_editor_control_add(surface,11,i,buttons[i],content,(i!=1 && i!=2) || engine_get_track_count(state->engine)>0);
+            daw_editor_control_add(surface,11,i,buttons[i],content,
+                ((i!=1 && i!=2) || engine_get_track_count(state->engine)>0) &&
+                (i!=9 || state->timeline_vertical_scale>TIMELINE_MIN_VERTICAL_SCALE) &&
+                (i!=10 || state->timeline_vertical_scale<TIMELINE_MAX_VERTICAL_SCALE));
     }
     daw_editor_track_controls_collect(state, surface);
     const Pane* mixer = ui_layout_get_pane(state,2);
@@ -85,12 +88,18 @@ static void collect(AppState* state, KitUiSurface* surface) {
             for(unsigned i=0;i<sizeof(buttons)/sizeof(buttons[0]);++i) daw_editor_control_add(surface,12,i+1,buttons[i],layout.panel_rect,true);
         }
     } else if (!state->inspector.visible) {
+        if(state->ab_ui.open || state->export_ui.open || state->live_meter_ui.open)return;
         EffectsPanelLayout layout; effects_panel_compute_layout(state,&layout);
         EffectsPanelState* panel=&state->effects_panel;
         SDL_Rect buttons[]={layout.view_toggle_rect,layout.spec_toggle_rect,layout.preview_toggle_rect,layout.dropdown_button_rect};
         for(unsigned i=0;i<4;++i) daw_editor_control_add(surface,14,i,buttons[i],layout.panel_rect,true);
         if(!layout.overlay_visible)daw_editor_control_add(surface,14,5,layout.library_button_rect,layout.panel_rect,true);
         if(!layout.overlay_visible)daw_editor_control_add(surface,14,6,layout.routing_button_rect,layout.panel_rect,true);
+        bool effect_auto=false;for(int i=0;i<state->effects_panel.chain_count;++i){float lo,hi;if(fx_parameter_automation_range(state->effects_panel.chain[i].type_id,0,&lo,&hi))effect_auto=true;}
+        if(!layout.overlay_visible)daw_editor_control_add(surface,14,7,layout.automation_button_rect,layout.panel_rect,effect_auto);
+        if(!layout.overlay_visible)daw_editor_control_add(surface,14,8,layout.comparison_button_rect,layout.panel_rect,true);
+        if(!layout.overlay_visible)daw_editor_control_add(surface,14,9,layout.export_button_rect,layout.panel_rect,true);
+        if(!layout.overlay_visible)daw_editor_control_add(surface,14,10,layout.live_meter_button_rect,layout.panel_rect,true);
         if (layout.overlay_visible) {
             daw_editor_control_add(surface,14,4,layout.overlay_back_rect,layout.overlay_rect,true);
             for(int i=0;i<layout.overlay_item_count;++i) daw_editor_control_add(surface,14,1000+layout.overlay_item_order[i],layout.overlay_item_rects[i],layout.overlay_rect,true);
@@ -121,7 +130,7 @@ static void collect(AppState* state, KitUiSurface* surface) {
 void daw_editor_controls_sync(AppState* state) {
     if (!state) return;
     DawEditorControls* ui=&state->editor_controls;
-    bool unavailable=state->fx_library_ui.open || state->midi_arrangement_ui.open || state->midi_pattern_ui.open || state->sound_ui.open || state->preset_ui.editing || state->preset_ui.save_open || !state->engine || state->bounce_active || project_modal_input_active(state) ||
+    bool unavailable=state->fx_library_ui.open || state->midi_arrangement_ui.open || state->midi_pattern_ui.open || state->sound_ui.open || state->preset_ui.editing || state->preset_ui.save_open || !state->engine || state->bounce_active || (project_modal_input_active(state) || state->group_panel.open) ||
         state->tempo_ui.editing || state->track_name_editor.editing || library_input_is_editing(state) ||
         inspector_input_has_text_focus(state) || state->undo.active_drag_valid || state->layout_runtime.drag.active ||
         daw_workspace_authoring_host_active(&state->workspace_authoring);
@@ -143,7 +152,7 @@ void daw_editor_controls_sync(AppState* state) {
     if(state->engine) {
         int n=engine_get_track_count(state->engine); hash=mix(hash,n);
         const EngineTrack* tracks=engine_get_tracks(state->engine);
-        for(int i=0;i<n;++i) hash=mix(hash,tracks[i].runtime_id);
+        for(int i=0;i<n;++i) {hash=mix(hash,tracks[i].runtime_id);hash=mix(hash,tracks[i].folded);hash=mix(hash,tracks[i].parent_id);hash=mix(hash,tracks[i].sibling_order);}
         if(state->selected_track_index>=0 && state->selected_track_index<n) {
             const EngineTrack* track=&tracks[state->selected_track_index];
             if(state->selected_clip_index>=0 && state->selected_clip_index<track->clip_count)

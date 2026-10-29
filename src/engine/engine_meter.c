@@ -568,14 +568,14 @@ void engine_publish_mix_meters(EngineMixState* mix) {
     int index = engine_meter_write_index(engine);
     engine->master_meter_snapshots[index] = (EngineMeterSnapshot){
         .peak = mix->master_meter.peak, .rms = mix->master_meter.rms,
-        .clipped = mix->master_meter.clip_hold > 0};
+        .clipped = mix->master_meter.clip_hold > 0,.live=mix->master_meter.live.result};
     copy_meter_bank(&engine->master_fx_meter_snapshots[index], &mix->master_fx_meters, 0);
     int count = mix->track_count < engine->track_meter_capacity ? mix->track_count : engine->track_meter_capacity;
     for (int t = 0; t < count; ++t) {
         EngineMeterState* meter = &mix->track_meters[t];
         engine->track_meter_snapshots[(size_t)index * engine->track_meter_capacity + t] = (EngineMeterSnapshot){
             .peak = meter->peak, .rms = meter->rms, .clipped = meter->clip_hold > 0,
-            .runtime_id = mix->tracks[t].runtime_id};
+            .runtime_id = mix->tracks[t].runtime_id,.live=meter->live.result};
         if (t < engine->track_fx_meter_capacity)
             copy_meter_bank(&engine->track_fx_meter_snapshots[(size_t)index * engine->track_fx_meter_capacity + t],
                             &mix->track_fx_meters[t], mix->tracks[t].runtime_id);

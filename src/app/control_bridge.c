@@ -193,6 +193,10 @@ void daw_control_bridge_stop(DawControlBridge* bridge) {
         free(bridge->receipts[i].request);
         free(bridge->receipts[i].response);
     }
+    for (int i=0;i<DAW_CONTROL_MIX_STATES;++i) {
+        daw_mix_snapshot_free(bridge->mix_guards[i].snapshot);
+        daw_mix_capture_free(bridge->mix_captures[i].capture);
+    }
     for (int i = 0; i < DAW_CONTROL_COMPOSITION_STATES; ++i) {
         if (bridge->composition_states[i].render) {
             daw_composition_render_free(bridge->composition_states[i].render);

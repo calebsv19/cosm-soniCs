@@ -280,7 +280,7 @@ static uint32_t daw_loop_compute_wait_timeout_ms(AppContext* ctx) {
             timeout_ms = until_timer_ms;
         }
     }
-    if (state && timeout_ms > 16 && daw_media_import_stats(state).jobs.admitted) timeout_ms = 16;
+    if (state && timeout_ms > 16 && (state->export_ui.open || state->live_meter_ui.open || daw_media_import_stats(state).jobs.admitted)) timeout_ms = 16;
     return timeout_ms;
 }
 
@@ -365,6 +365,8 @@ static void daw_loop_background_tick(AppContext* ctx, uint64_t now_ns) {
     }
 
     if (state && !state->bounce_active) {
+        daw_song_export_poll(state);
+        if(state->export_ui.open || state->live_meter_ui.open)producer_ui_changed=true;
         (void)daw_media_import_init(state);
         if (daw_media_import_poll(state)) {
             producer_ui_changed = true;
@@ -957,9 +959,12 @@ int daw_app_main_legacy(void) {
     }
 
     App_Run(&ctx, &callbacks);
+    daw_track_header_mixer_finish(&state,false);
     daw_routing_panel_release(&state);
     daw_midi_arrangement_release(&state);
     daw_fx_library_panel_release(&state);
+    daw_song_export_shutdown(&state);
+    daw_ab_release(&state);
     daw_sound_panel_release(&state);
     daw_control_bridge_stop(state.control_bridge);
     state.control_bridge = NULL;

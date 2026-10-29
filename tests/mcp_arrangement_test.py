@@ -31,7 +31,7 @@ async def check(fixture, output):
                 async with ClientSession(r, w) as session:
                     await session.initialize()
                     tools = {t.name: t for t in (await session.list_tools()).tools}
-                    assert len(tools) == 45
+                    assert len(tools) == 70
                     assert tools["get_arrangement"].annotations.readOnlyHint
 
                     async def call(name, **args):

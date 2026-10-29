@@ -26,6 +26,9 @@ bool engine_fx_chain_transaction(Engine* engine, int track, const EngineFxChainR
             ok = master ? fxm_master_set_param_with_mode(candidate, request->id, request->parameter, request->value, request->mode, request->beats)
                         : fxm_track_set_param_with_mode(candidate, track, request->id, request->parameter, request->value, request->mode, request->beats);
             break;
+        case ENGINE_FX_CHAIN_AUTOMATION:
+            ok=request->parameter==0 && fxm_set_parameter_automation(candidate,track,request->id,&request->automation);
+            break;
         case ENGINE_FX_CHAIN_REPLACE:
         case ENGINE_FX_CHAIN_RESTORE: {
             FxMasterSnapshot current = {0};
@@ -44,6 +47,7 @@ bool engine_fx_chain_transaction(Engine* engine, int track, const EngineFxChainR
                     ok=ok && specs && count==value->param_count;
                     for(uint32_t p=0;ok && p<count;++p)if(!(specs[p].flags & FX_PARAM_FLAG_READ_ONLY_METER))
                         ok=master?fxm_master_set_param_with_mode(candidate,id,p,value->params[p],value->param_mode[p],value->param_beats[p]):fxm_track_set_param_with_mode(candidate,track,id,p,value->params[p],value->param_mode[p],value->param_beats[p]);
+                    if(ok)ok=fxm_set_parameter_automation(candidate,track,id,&value->automation);
                     if(ok)ok=master?fxm_master_set_enabled(candidate,id,value->enabled):fxm_track_set_enabled(candidate,track,id,value->enabled);
                 }
             }

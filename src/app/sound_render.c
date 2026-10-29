@@ -1,4 +1,5 @@
 #include "daw/sound_inspection.h"
+#include "engine/instrument_samples.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,6 +13,19 @@ bool daw_sound_spec_valid(DawSoundSpec sound) {
     }
     return true;
 }
+// Places the complete C-major preview within a recorded bank's playable range.
+int daw_sound_preview_notes(DawSoundSpec sound, uint8_t pitches[4]) {
+    if (!sound.chord) { pitches[0]=engine_instrument_preview_note(sound.base); return 1; }
+    int shift=0;
+    EngineSampleBankInfo bank;
+    if (engine_instrument_sample_bank_info(sound.base,&bank)) {
+        while (48+shift<bank.minimum_note) shift+=12;
+        while (64+shift>bank.maximum_note) shift-=12;
+    }
+    const int base[]={48,55,60,64};
+    for (int i=0;i<4;++i) pitches[i]=(uint8_t)(base[i]+shift);
+    return 4;
+}
 // Builds one bounded private production render shared by WAV publication and sound inspection.
 bool daw_sound_render(DawSoundSpec sound, DawSoundRender* out) {
     if (!out || !daw_sound_spec_valid(sound)) return false;
@@ -21,8 +35,9 @@ bool daw_sound_render(DawSoundSpec sound, DawSoundRender* out) {
     out->samples=calloc(DAW_SOUND_FRAMES*2,sizeof(float));
     if (!out->samples) { engine_instrument_source_destroy(source); return false; }
     EngineMidiNote notes[]={{0,DAW_SOUND_GATE,48,.5f},{0,DAW_SOUND_GATE,55,.5f},{0,DAW_SOUND_GATE,60,.5f},{0,DAW_SOUND_GATE,64,.5f}};
-    if (!sound.chord) notes[0].note=60;
-    bool ok=engine_instrument_source_set_midi_clip(source,0,DAW_SOUND_FRAMES,sound.base,sound.params,notes,sound.chord?4:1,NULL,0,NULL,0);
+    uint8_t pitches[4]; int note_count=daw_sound_preview_notes(sound,pitches);
+    for (int i=0;i<note_count;++i) notes[i].note=pitches[i];
+    bool ok=engine_instrument_source_set_midi_clip(source,0,DAW_SOUND_FRAMES,sound.base,sound.params,notes,note_count,NULL,0,NULL,0);
     if (ok) {
         engine_instrument_source_reset(source,DAW_SOUND_RATE,2);
         for (int frame=0;frame<DAW_SOUND_FRAMES;frame+=256) {

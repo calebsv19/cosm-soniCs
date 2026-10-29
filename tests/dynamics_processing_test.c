@@ -175,38 +175,41 @@ static float reference_reduction(float input_db, float knee) {
 // Checks steady transfer, knee endpoints, detector modes, makeup exclusion, and
 // independent channels.
 static void compressor_behavior(void) {
-    Processor p = processor(false, 48000, 2);
-    parameter(&p, 2, .1f);
-    parameter(&p, 4, 6);
-    float data[2048];
-    const float levels[] = {-30, -21.001f, -21, -18, -15, -14.999f, -6};
-    for (int mode = 0; mode < 2; ++mode)
-        for (int knee = 0; knee <= 6; knee += 6)
-            for (unsigned level = 0; level < sizeof(levels) / sizeof(levels[0]); ++level) {
-                parameter(&p, 6, mode);
-                parameter(&p, 5, knee);
-                reset_processor(&p);
-                float x = powf(10, levels[level] / 20);
-                for (int block = 0; block < 8; ++block) {
-                    for (int n = 0; n < 1024; ++n) {
-                        data[2 * n] = x;
-                        data[2 * n + 1] = .001f;
+    const unsigned rates[] = {44100, 48000, 96000};
+    for (int rate = 0; rate < 3; ++rate) {
+        Processor p = processor(false, rates[rate], 2);
+        parameter(&p, 2, .1f);
+        parameter(&p, 4, 6);
+        float data[2048];
+        const float levels[] = {-30, -21.001f, -21, -18, -15, -14.999f, -6};
+        for (int mode = 0; mode < 2; ++mode)
+            for (int knee = 0; knee <= 6; knee += 6)
+                for (unsigned level = 0; level < sizeof(levels) / sizeof(levels[0]); ++level) {
+                    parameter(&p, 6, mode);
+                    parameter(&p, 5, knee);
+                    reset_processor(&p);
+                    float x = powf(10, levels[level] / 20);
+                    for (int block = 0; block < 8; ++block) {
+                        for (int n = 0; n < 1024; ++n) {
+                            data[2 * n] = x;
+                            data[2 * n + 1] = .001f;
+                        }
+                        process(&p, data, data, 1024, 2, 1024);
                     }
-                    process(&p, data, data, 1024, 2, 1024);
+                    float gr = reference_reduction(levels[level], knee);
+                    assert(fabsf(20 * log10f(data[2046] / x) - (gr + 6)) < .002f);
+                    assert(fabsf(p.vt.gain_reduction_db(p.handle) - gr) < .002f);
+                    assert(fabsf(data[2047] - .001f * powf(10, .3f)) < 1e-7f);
                 }
-                float gr = reference_reduction(levels[level], knee);
-                assert(fabsf(20 * log10f(data[2046] / x) - (gr + 6)) < .002f);
-                assert(fabsf(p.vt.gain_reduction_db(p.handle) - gr) < .002f);
-                assert(fabsf(data[2047] - .001f * powf(10, .3f)) < 1e-7f);
-            }
-    parameter(&p, 1, 1);
-    parameter(&p, 4, 0);
-    reset_processor(&p);
-    for (int n = 0; n < 2048; ++n)
-        data[n] = .5f;
-    process(&p, data, data, 1024, 2, 23);
-    assert(data[2047] == .5f && p.vt.gain_reduction_db(p.handle) == 0);
-    p.vt.destroy(p.handle);
+        parameter(&p, 1, 1);
+        parameter(&p, 4, 0);
+        reset_processor(&p);
+        for (int n = 0; n < 2048; ++n)
+            data[n] = .5f;
+        process(&p, data, data, 1024, 2, 23);
+        assert(data[2047] == .5f && p.vt.gain_reduction_db(p.handle) == 0);
+        p.vt.destroy(p.handle);
+    }
 }
 
 // Checks the existing sidechain-capable fallback and explicit-key API against
@@ -504,9 +507,52 @@ static void engine_integration(void) {
     assert(unlink(path) == 0);
 }
 
+// Compares attack/release observations with independent one-pole equations across project rates.
+static void dynamics_time_constants(void) {
+    const unsigned rates[] = {44100, 48000, 96000};
+    for (int rate_index = 0; rate_index < 3; ++rate_index) {
+        int rate = rates[rate_index], attack = rate / 100, release = rate / 20;
+        float* pcm = calloc(release, sizeof(float));
+        float* output = calloc(release, sizeof(float));
+        float* trace = calloc(release, sizeof(float));
+        assert(pcm && output && trace);
+        for (int mode = 0; mode < 2; ++mode) {
+            Processor p = processor(false, rate, 1);
+            parameter(&p, 0, -60);parameter(&p, 2, 10);parameter(&p, 3, 50);
+            parameter(&p, 5, 0);parameter(&p, 6, mode);
+            p.vt.set_reduction_trace(p.handle, trace);
+            for (int n = 0; n < attack; ++n) pcm[n] = 1;
+            process(&p, pcm, output, attack, 1, attack);
+            double energy = 1 - exp(-1.0);
+            double envelope = mode ? sqrt(energy) : energy;
+            double expected = -.75 * (20 * log10(envelope) + 60);
+            assert(fabs(trace[attack - 1] - expected) < .03);
+            assert(fabs(20 * log10(output[attack - 1]) - expected) < .03);
+            memset(pcm, 0, (size_t)release * sizeof(float));
+            process(&p, pcm, output, release, 1, release);
+            double released = mode ? sqrt(energy * exp(-1.0)) : energy * exp(-1.0);
+            expected = -.75 * (20 * log10(released) + 60);
+            assert(fabs(trace[release - 1] - expected) < .03);
+            p.vt.set_reduction_trace(p.handle, NULL);p.vt.destroy(p.handle);
+        }
+        Processor l = processor(true, rate, 1);
+        parameter(&l, 0, -6);parameter(&l, 1, 0);parameter(&l, 2, 50);
+        l.vt.set_reduction_trace(l.handle, trace);
+        pcm[0] = 1;process(&l, pcm, output, 1, 1, 1);
+        double ceiling = pow(10, -.3);
+        assert(fabs(output[0] - ceiling) < 1e-6);
+        pcm[0] = 0;process(&l, pcm, output, release, 1, release);
+        double expected_gain = 1 - (1 - ceiling) * exp(-1.0);
+        assert(fabs(pow(10, trace[release - 1] / 20.0) - expected_gain) < .0001);
+        l.vt.set_reduction_trace(l.handle, NULL);l.vt.destroy(l.handle);
+        free(pcm);free(output);free(trace);
+    }
+}
+
 // Runs deterministic production DSP and manager contracts without an audio
 // device.
 int main(void) {
+    dynamics_time_constants();
     limiter_delay();
     limiter_behavior();
     compressor_behavior();

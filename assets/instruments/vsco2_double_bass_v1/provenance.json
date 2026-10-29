@@ -1,0 +1,175 @@
+{
+  "library": "VSCO 2 Community Edition",
+  "license": "CC0-1.0",
+  "upstream_commit": "440300901dfe9275fd84e0b7763af1f8443ae62e",
+  "files": [
+    {
+      "file": "BKCtbss_SusNV_A#0_v1_rr1.wav",
+      "bytes": 1861432,
+      "sha256": "b3800588b7aeff8f0c81998bdc4bfe47b3fc3e621f166de3df68f614a9f53afd",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_A%230_v1_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_A#0_v3_rr1.wav",
+      "bytes": 1786876,
+      "sha256": "3a8ba2d2cf631a9b4732a1ca717a7059d20b71a9db576ae4fa5346d024cd17e8",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_A%230_v3_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_A1_v1_rr1.wav",
+      "bytes": 1249496,
+      "sha256": "06057880075d08c3f5a9df78bb7ec07f4cd41bd26e09a69f7a2e92cc66f308d9",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_A1_v1_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_A1_v3_rr1.wav",
+      "bytes": 2383056,
+      "sha256": "993b0f67c4050225d3d45cdc50c3362ec6026956b765a946498419541aa6e8c4",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_A1_v3_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_B2_v1_rr1.wav",
+      "bytes": 1596108,
+      "sha256": "75e9119ac1c1e0d60fdd28ae88c3628a40a21d4ef91731cbd890b0cd29b08ce0",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_B2_v1_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_B2_v3_rr1.wav",
+      "bytes": 1375120,
+      "sha256": "e38aaa840cef00b48cb12fe3ae20098890a4a22d58741c860c633c65f9537f1f",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_B2_v3_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_C#2_v1_rr1.wav",
+      "bytes": 1162724,
+      "sha256": "2bbc1f013bf4725dc45dde12d1a83c71bf6681920824932059799c1d4c7e1a4b",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_C%232_v1_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_C#2_v3_rr1.wav",
+      "bytes": 1752396,
+      "sha256": "b2e8f4ca464b44e3f73a0f8a360ad369d546fb2d2f03e369235fc403f543b1f0",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_C%232_v3_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_C1_v1_rr1.wav",
+      "bytes": 1458252,
+      "sha256": "c930941735e707b109878f4734110412ebe26b983c2b3e300510175aedf5e61c",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_C1_v1_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_C1_v3_rr1.wav",
+      "bytes": 1843084,
+      "sha256": "220043ee46c072d1aef3e8c16f4531d0e3e4d7369dfbbf0869c75b11663cb792",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_C1_v3_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_D1_v1_rr1.wav",
+      "bytes": 2548840,
+      "sha256": "d07634bec7bb0d736375bfb0c514f3d7586d9a625c4f56f4936556e247b33812",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_D1_v1_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_D1_v3_rr1.wav",
+      "bytes": 3209708,
+      "sha256": "da9f42632d703a139d051b4c0de3f8c5fbcece5242f06e397e910c2e3f57c1a9",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_D1_v3_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_E0_v1_rr1.wav",
+      "bytes": 2852456,
+      "sha256": "b510c6c2eb4fb0acba5eaaaa703ebe19025cad3749f645c41f883e4217b338fa",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_E0_v1_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_E0_v3_rr1.wav",
+      "bytes": 2341236,
+      "sha256": "a40e0ee5f4bd31ed6c097b382ce916140e2175b34969f32b0f3162051bdc268f",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_E0_v3_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_E1_v1_rr1.wav",
+      "bytes": 2824612,
+      "sha256": "90428ce30d89c2eab94187a2d2c589758bc7027b8f0c8d3e2cce165972f60e21",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_E1_v1_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_E1_v3_rr1.wav",
+      "bytes": 2356332,
+      "sha256": "1f122393a2b0e771d3e9d17b122c1f4f0a5872c342d46743103250946b7dda55",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_E1_v3_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_E2_v1_rr1.wav",
+      "bytes": 1356572,
+      "sha256": "1b9d36042135c2eda513881612fb550a1b2669caddf70a7a514caeb4725fbbf2",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_E2_v1_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_E2_v3_rr1.wav",
+      "bytes": 1277060,
+      "sha256": "fb300e271ef6ebf42b9e049a180209a4ab80c9b8f750c32a22257838bb82f7ab",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_E2_v3_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_F#0_v1_rr1.wav",
+      "bytes": 2224156,
+      "sha256": "416f46ccdf1c27cc15767c1f1053a2246a690e8e1b150fc8f08da4548e7f2ca4",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_F%230_v1_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_F#0_v3_rr1.wav",
+      "bytes": 2295924,
+      "sha256": "a6e1d3a1a3ba9b5025c4c67d916409bca8b4931518778fff6ae4aeef32c1fa2e",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_F%230_v3_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_F#1_v1_rr1.wav",
+      "bytes": 1322048,
+      "sha256": "a678ba2e2399b7da502628962575e904127d5f5a2a68a6ab6c4237c7281dee4b",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_F%231_v1_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_F#1_v3_rr1.wav",
+      "bytes": 1619688,
+      "sha256": "165cce5739a5a80c33336a2f667fc1a7ed5541bba74dfae7e3f122a70b0a0418",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_F%231_v3_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_G#1_v1_rr1.wav",
+      "bytes": 1342128,
+      "sha256": "c7adf9c807d5425e3ce88246a5ad716fdfa573b6b1185540052a5b5cf8118ac8",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_G%231_v1_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_G#1_v3_rr1.wav",
+      "bytes": 1722468,
+      "sha256": "f61ea9d3b6b11720752dc1d94101cdd49a9dafcb444527657c89e9312bc98842",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_G%231_v3_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_G#2_v1_rr1.wav",
+      "bytes": 1630016,
+      "sha256": "cfa576d12284ab9fad6e6f300cd2bd682a80b331673105c1b5d208f04230460d",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_G%232_v1_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_G#2_v3_rr1.wav",
+      "bytes": 1585864,
+      "sha256": "7043a9ce6142a2fd6b9882778f15618ed2d10ebea408edd617d160afec83f8da",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_G%232_v3_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_G0_v1_rr1.wav",
+      "bytes": 1881520,
+      "sha256": "d363b0e026cae6e86dcb60e353672fbec2f1bab9e8ee4c95903d9fa83fd47606",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_G0_v1_rr1.wav"
+    },
+    {
+      "file": "BKCtbss_SusNV_G0_v3_rr1.wav",
+      "bytes": 1934328,
+      "sha256": "129f188021438e2c103d709a550db59ba9aba9eb771a1763fdb2f57b188040fe",
+      "source": "https://raw.githubusercontent.com/sgossner/VSCO-2-CE/440300901dfe9275fd84e0b7763af1f8443ae62e/Strings/Solo%20Contrabass/SusNV/BKCtbss_SusNV_G0_v3_rr1.wav"
+    }
+  ]
+}

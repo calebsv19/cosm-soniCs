@@ -2,11 +2,11 @@
 
 ## 1. Library and project ownership
 
-The custom-preset sequence is implemented in persistent DAW Main Edit. The personal library stores reusable sounds; every project stores its own complete instrument values through the existing session contract. Loading a user preset copies its base voice and all fourteen physical parameters into the selected MIDI region or track using the common instrument action. Library changes, rename or deletion do not change existing projects. There is no automatic link or sync back to a library sound.
+The custom-preset sequence is implemented in persistent DAW Main Edit. The personal library stores reusable sounds; every project stores its own complete instrument values through the existing session contract. Loading a user preset copies its base voice and all twenty-seven physical parameters into the selected MIDI region or track using the common instrument action. Library changes, rename or deletion do not change existing projects. There is no automatic link or sync back to a library sound.
 
 By default, files live at `$HOME/Music/soniCs/User Library/Presets`. Set `DAW_PRESET_LIBRARY` to an absolute directory to use an alternate library, including a private test library. Read-only listing does not create directories. The initial browser keeps at most 128 entries, scans at most 4096 directory entries, and reports invalid files and truncation. A directly addressed valid preset remains available through MCP even if outside the cached list. Search covers names and derived categories, with ASCII-insensitive matching; Unicode names are preserved.
 
-Each `<opaque-id>.sonics-preset.json` contains format version 2, synthesis version 1, a stable ID, a revision, a printable UTF-8 name of at most 95 bytes, base voice, derived category and every parameter, including dormant values. Version-one files with fourteen complete parameters remain readable with disabled filter modulation; version two stores all eighteen values. Names are labels, so duplicate names and slashes are supported. Importing these portable files means copying them into the library with their original ID filename. Renaming the file alone is invalid. Unsupported future formats/voices are rejected instead of falling back to a different sound. This is complete parameter recall for the current engine; it does not freeze an executable or promise bit-identical sound across future DSP changes. A synthesis-version migration policy must accompany incompatible future behavior.
+Each `<opaque-id>.sonics-preset.json` contains format version 5, synthesis version 1, a stable ID, a revision, a printable UTF-8 name of at most 95 bytes, base voice, derived category and every parameter, including dormant values. Version-one files with fourteen complete parameters remain readable with disabled filter modulation; version two stores all eighteen values; version three stores all twenty-four values, including percussion controls; version four stores all twenty-seven values including articulation settings; version five stores all twenty-nine values including sampled-instrument dynamics. Missing fields in older formats use factory defaults. Older formats cannot claim the appended percussion voices. Names are labels, so duplicate names and slashes are supported. Importing these portable files means copying them into the library with their original ID filename. Renaming the file alone is invalid. Unsupported future formats/voices are rejected instead of falling back to a different sound. This is complete parameter recall for the current engine; it does not freeze an executable or promise bit-identical sound across future DSP changes. A synthesis-version migration policy must accompany incompatible future behavior.
 
 Library publication reuses the app's checked atomic save facade. Explicit Update requires the current ID and revision, preserves one `.previous` file, then publishes a new revision. Cooperating writers use a nonblocking per-library lock. A stale update leaves the current sound untouched. The previous document can be recovered by copying it back to its original ID filename while writers are stopped; automatic recovery UI is future work. Publication with unavailable directory sync is reported as accepted but not fully durable, so callers must not blindly retry it under a new request ID. Library updates are external file operations and do not enter project undo history. The current safety contract coordinates application writers, rather than providing a transactional compare-and-swap against arbitrary manual file editors.
 
@@ -26,7 +26,7 @@ The loaded label/modified comparison is editor metadata. Projects currently pers
 
 ## 3. MCP adoption and standardized WAVs
 
-The existing private owner-thread bridge now exposes twelve SDK tools. Five additions adopt the preset workflow:
+The existing private owner-thread bridge now exposes forty-nine SDK tools, including the five preset tools described below. Five additions adopt the preset workflow:
 
 | Tool | Admission and effect |
 | --- | --- |
@@ -50,4 +50,29 @@ Native qualification exercises actual product painters and Vulkan clip containme
 
 Physical listening quality and sustained real-device performance remain human/device acceptance. No commit, release, installed app replacement or global MCP configuration is part of this slice. This feature merits a minor-version review in a later authorized release; VERSION remains 0.4.0 here. Next work can focus on bounded signal analysis, then transactional MIDI authoring and its MCP adoption.
 
-The following [sound-inspection slice](sound_inspection.md) now shares the preview renderer with calibrated analysis, reference comparisons and two read-only MCP tools. Discovery is fourteen tools; project render and MIDI authoring remain separate.
+The following [sound-inspection slice](sound_inspection.md) now shares the preview renderer with calibrated analysis, reference comparisons and two read-only MCP tools. That historical checkpoint had fourteen tools; current discovery has 49, including composition capture and MIDI authoring.
+
+## Current packaged closeout (2026-10-11)
+
+The preset workflow is included in the normal `soniCs Main Edit.app` package.
+The current adapter registers 49 tools, including the five preset operations,
+sound analysis, musical authoring, and four region-automation operations.
+Earlier delivery exclusions above describe the original qualification checkpoint.
+Current package checks use a private project/library to exercise save, explicit
+update, apply, standardized WAV preview, instrument undo/redo and native save/reopen.
+Preset labels/library provenance remain editor metadata; complete sound settings
+persist independently. Sampled instruments and sample-asset packaging are the next
+separate development lane, not part of parameter-preset completion.
+
+Final installed-package acceptance passed: 49-tool discovery, list/get, save/update,
+immutable replay/receipt recovery, note/chord PCM preview, apply/undo/redo, native
+Save, normal quit, and exact sound reopen after removing the private library.
+The normal Night Pocket project remained byte-for-byte unchanged. Compact proof:
+`/Users/calebsv/Desktop/CodeWork/daw/artifacts/preset-closeout/20261011/`.
+The parameter-preset MCP lane is complete; sampled violin work is subsequent.
+
+## Sampled violin extension (2026-10-11)
+
+Preset format v5 appends Dynamics and Velocity Timbre (29 parameters). Formats v1–v4 keep their original 14/18/24/27 parameter counts. The `sampled_violin` voice recalls the fixed bundled `vsco2_solo_violin_v1` bank; user presets do not copy WAV assets. See [sampled violin](sampled_violin.md).
+
+Piano expression extension: [piano_expression.md](piano_expression.md) describes the three piano-only controls, binary region/live sustain, 88 string modes, recorded key/pedal mechanics, 32-field v6 presets and session v25. Older preset versions 1–5 and session v24 remain readable; existing non-piano voices keep their behavior.

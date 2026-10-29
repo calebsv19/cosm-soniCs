@@ -1,3 +1,4 @@
+#include "engine/groups.h"
 #include "ui/control_chrome.h"
 #include "input/transport_input.h"
 
@@ -459,11 +460,7 @@ void transport_input_activate_control(AppState* state, DawTransportAction action
 
     }
     if (action==DAW_TRANSPORT_SAVE) {
-        if (state->project.has_name) {
-            project_manager_save(state, state->project.name, true);
-        } else {
-            project_modal_input_open_save_prompt(state);
-        }
+        project_modal_input_open_save_prompt(state);
         return;
 
     }
@@ -503,22 +500,27 @@ void transport_input_activate_control(AppState* state, DawTransportAction action
     }
     if (action==DAW_TRANSPORT_FIT_HEIGHT) {
         const Pane* timeline = ui_layout_get_pane(state, 1);
-        int track_count = engine_get_track_count(state->engine);
+        int track_count = engine_group_visible_count(engine_get_tracks(state->engine),engine_get_track_count(state->engine));
         if (timeline && track_count > 0) {
-            float header_padding = 20.0f + (float)(track_count - 1) * 12.0f + 24.0f;
-            float available = (float)timeline->rect.h - header_padding;
-            if (available < (float)track_count * 32.0f) {
-                available = (float)track_count * 32.0f;
-            }
-            float per_track = available / (float)track_count;
-            float target_scale = per_track / (float)TIMELINE_BASE_TRACK_HEIGHT;
-            target_scale = clamp_scalar(target_scale, TIMELINE_MIN_VERTICAL_SCALE, TIMELINE_MAX_VERTICAL_SCALE);
-            state->timeline_vertical_scale = target_scale;
+            TimelineGeometry geom;
+            if (!timeline_compute_geometry(state, timeline, &geom)) return;
+            float available = (float)geom.viewport.h - (float)(track_count - 1) * geom.track_spacing;
+            float target_scale = available / ((float)track_count * TIMELINE_BASE_TRACK_HEIGHT);
+            state->timeline_vertical_scale = clamp_scalar(target_scale, TIMELINE_MIN_VERTICAL_SCALE, TIMELINE_MAX_VERTICAL_SCALE);
+            timeline_set_vertical_scroll(state, 0.0f);
             transport_ui_sync(transport, state);
         }
         return;
 
     }
+}
+
+// Keeps transport row-height dragging anchored to the visible timeline center.
+static void transport_zoom_rows(AppState* state, float scale) {
+    const Pane* pane = ui_layout_get_pane(state, 1);
+    TimelineGeometry geom;
+    if (pane && timeline_compute_geometry(state, pane, &geom))
+        timeline_zoom_rows(state, scale, geom.viewport.y + geom.viewport.h / 2);
 }
 
 void transport_input_handle_event(InputManager* manager, AppState* state, const SDL_Event* event) {
@@ -619,8 +621,8 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
                 manager->prev_vert_slider_down = true;
                 float t = (float)(p.x - transport->vert_track_rect.x) / (float)transport->vert_track_rect.w;
                 t = clamp_scalar(t, 0.0f, 1.0f);
-                state->timeline_vertical_scale = TIMELINE_MIN_VERTICAL_SCALE +
-                    t * (TIMELINE_MAX_VERTICAL_SCALE - TIMELINE_MIN_VERTICAL_SCALE);
+                transport_zoom_rows(state, TIMELINE_MIN_VERTICAL_SCALE +
+                    t * (TIMELINE_MAX_VERTICAL_SCALE - TIMELINE_MIN_VERTICAL_SCALE));
                 transport_ui_sync(transport, state);
             }
         }
@@ -656,8 +658,8 @@ void transport_input_handle_event(InputManager* manager, AppState* state, const 
         if (manager->prev_vert_slider_down && transport->vert_track_rect.w > 0) {
             float t = (float)(event->motion.x - transport->vert_track_rect.x) / (float)transport->vert_track_rect.w;
             t = clamp_scalar(t, 0.0f, 1.0f);
-            state->timeline_vertical_scale = TIMELINE_MIN_VERTICAL_SCALE +
-                t * (TIMELINE_MAX_VERTICAL_SCALE - TIMELINE_MIN_VERTICAL_SCALE);
+            transport_zoom_rows(state, TIMELINE_MIN_VERTICAL_SCALE +
+                t * (TIMELINE_MAX_VERTICAL_SCALE - TIMELINE_MIN_VERTICAL_SCALE));
             transport_ui_sync(transport, state);
         }
         if (transport->adjusting_seek && transport->seek_track_rect.w > 0) {
@@ -746,8 +748,8 @@ void transport_input_update(InputManager* manager, AppState* state) {
         if (manager->prev_vert_slider_down && transport->vert_track_rect.w > 0) {
             float t = (float)(mouse_x - transport->vert_track_rect.x) / (float)transport->vert_track_rect.w;
             t = clamp_scalar(t, 0.0f, 1.0f);
-            state->timeline_vertical_scale = TIMELINE_MIN_VERTICAL_SCALE +
-                t * (TIMELINE_MAX_VERTICAL_SCALE - TIMELINE_MIN_VERTICAL_SCALE);
+            transport_zoom_rows(state, TIMELINE_MIN_VERTICAL_SCALE +
+                t * (TIMELINE_MAX_VERTICAL_SCALE - TIMELINE_MIN_VERTICAL_SCALE));
             transport_ui_sync(transport, state);
         }
         if (transport->adjusting_seek && transport->seek_track_rect.w > 0) {

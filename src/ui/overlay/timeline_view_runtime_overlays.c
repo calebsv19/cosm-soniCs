@@ -1,3 +1,5 @@
+#include "engine/groups.h"
+#include "input/timeline/timeline_geometry.h"
 #include "ui/timeline_view_runtime_overlays.h"
 
 #include "app/audio_recording.h"
@@ -173,7 +175,7 @@ static void timeline_view_draw_audio_recording_preview(SDL_Renderer* renderer,
         return;
     }
 
-    int lane_top = track_y + target_track * (track_height + track_spacing);
+    int lane_top = timeline_track_lane_y(state, target_track, track_y, track_height, track_spacing);
     SDL_Rect preview_rect = {0, 0, 0, 0};
     timeline_view_compute_lane_clip_rect(lane_top, track_height, clip_x, clip_w, &preview_rect);
     if (preview_rect.w <= 0 || preview_rect.h <= 0) {
@@ -300,8 +302,9 @@ void timeline_view_render_runtime_overlays(SDL_Renderer* renderer,
     float playhead_offset = (float)((transport_sec - window_start) / visible_seconds) * (float)content_width;
     playhead_offset = clamp_float(playhead_offset, 0.0f, (float)content_width);
     int playhead_x = content_left + (int)roundf(playhead_offset);
-    int timeline_bottom = track_y + (track_count > 0
-                                      ? (track_count * (track_height + track_spacing)) - track_spacing
+    int visible_count=engine_group_visible_count(engine_get_tracks(state->engine),track_count);
+    int timeline_bottom = track_y + (visible_count > 0
+                                      ? (visible_count * (track_height + track_spacing)) - track_spacing
                                       : track_height);
     timeline_view_draw_audio_recording_status(renderer,
                                               rect,
@@ -349,7 +352,7 @@ void timeline_view_render_runtime_overlays(SDL_Renderer* renderer,
             if (ghost_w < 4) {
                 ghost_w = 4;
             }
-            int lane_top = track_y + dest_track * (track_height + track_spacing);
+            int lane_top = timeline_track_lane_y(state, dest_track, track_y, track_height, track_spacing);
             SDL_Rect ghost_rect = {0, 0, 0, 0};
             timeline_view_compute_lane_clip_rect(lane_top,
                                                  track_height,
@@ -445,7 +448,7 @@ void timeline_view_render_runtime_overlays(SDL_Renderer* renderer,
         if (track_count == 0) {
             drop_track = 0;
         }
-        int lane_top = track_y + drop_track * (track_height + track_spacing);
+        int lane_top = timeline_track_lane_y(state, drop_track, track_y, track_height, track_spacing);
         bool is_preview_track = (track_count == 0) || (drop_track >= track_count);
         if (is_preview_track) {
             TimelineTrackHeaderLayout preview_header = {0};

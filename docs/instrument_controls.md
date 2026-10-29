@@ -1,5 +1,7 @@
 # Instrument controls and exercised creative loop
 
+Current behavior: see [agent music capabilities](agent_music_capabilities.md). Tool counts, initial scope and later-slice forecasts below describe their dated implementation checkpoint; region creation, expression, arrangement, effects, routing and percussion have since been adopted.
+
 ## 1. Implementation slice
 
 1. Identify supported controls from the DSP dependency of each preset.
@@ -140,3 +142,11 @@ This is source/build, isolated MCP/engine and native renderer evidence. It does
 not establish physical-device listening, human pointer acceptance, a refreshed
 installed application, or autonomous remote MIDI authoring/rendering. The
 fixture owns the phrase and exports; MCP owns the tested instrument edits.
+
+## Relative knob adjustment
+
+Pressing effects or instrument knobs preserves the current value. Drag upward to increase and downward to decrease; 1000 pixels covers the normalized range, independent of knob size; dB knobs instead use a consistent 0.04 dB per pixel. Hold Shift before pressing for tenfold finer adjustment. Release and drag again to continue from the new value. Gain readouts show three decimal places in dB. Track snapshot gain and pan use the same vertical gesture. Existing parameter limits and beat-sync quantization still apply.
+
+The MIDI editor claims sampled timeline presses over its surface; hidden track clips and headers cannot receive those clicks. Pane dividers claim the event press and retain it through release, using a 10-pixel border hit band.
+
+Piano expression extension: [piano_expression.md](piano_expression.md) describes the three piano-only controls, binary region/live sustain, 88 string modes, recorded key/pedal mechanics, 32-field v6 presets and session v25. Older preset versions 1–5 and session v24 remain readable; existing non-piano voices keep their behavior.

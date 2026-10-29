@@ -433,6 +433,11 @@ uint64_t midi_editor_snap_relative_frame(const AppState* state,
     return midi_editor_quantize_relative_frame(state, clip, frame, false);
 }
 
+// Bypasses only pointer timing snap while the precision-placement modifier is held.
+uint64_t midi_editor_snap_gesture_frame(const AppState* state, const EngineClip* clip, uint64_t frame) {
+    return (SDL_GetModState() & KMOD_ALT) ? frame : midi_editor_snap_relative_frame(state, clip, frame);
+}
+
 bool midi_editor_transport_relative_frame(const AppState* state,
                                           const EngineClip* clip,
                                           bool clamp_to_region,

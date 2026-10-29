@@ -9,6 +9,7 @@
 #define FX_PANEL_PREVIEW_GAP 6
 
 typedef struct {
+    char reduction_label[64]; // Keeps queued per-slot feedback text alive through the frame.
     float scroll;
     float scroll_max;
     bool dragging;
