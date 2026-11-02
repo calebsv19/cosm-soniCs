@@ -29,3 +29,6 @@ int daw_text_draw_utf8_clipped(SDL_Renderer* renderer,
                                int y,
                                SDL_Color color,
                                int max_width);
+
+/* Bind the current native output before measuring layout or editable text. */
+void daw_text_bind_renderer(SDL_Renderer *renderer);

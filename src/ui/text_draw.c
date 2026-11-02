@@ -280,39 +280,26 @@ static TTF_Font* daw_text_get_rasterized_font(TTF_Font* font,
     return open_slot->raster_font;
 }
 
-static VkFilter daw_text_upload_filter(float raster_scale) {
-    if (isfinite(raster_scale) && raster_scale > 1.0f) {
-        return VK_FILTER_NEAREST;
-    }
-    return VK_FILTER_LINEAR;
+/* Resolve physical output density independently of rounded font point size. */
+static void daw_text_density(SDL_Renderer *renderer,float *sx,float *sy) {
+    VkRenderer *vk=(VkRenderer*)renderer;
+    *sx=vk->draw_state.logical_size[0]>0?vk->context.swapchain.extent.width/vk->draw_state.logical_size[0]:1;
+    *sy=vk->draw_state.logical_size[1]>0?vk->context.swapchain.extent.height/vk->draw_state.logical_size[1]:1;
+    if(!isfinite(*sx)||*sx<=0)*sx=1;if(!isfinite(*sy)||*sy<=0)*sy=1;
 }
 
-static int daw_text_measure_with_ttf(TTF_Font* font,
-                                     const char* text,
-                                     int* out_w,
-                                     int* out_h) {
-    int width = 0;
-    int height = 0;
-
-    if (out_w) *out_w = 0;
-    if (out_h) *out_h = 0;
-    if (!font || !text) {
-        return 0;
-    }
-    if (text[0] == '\0') {
-        height = TTF_FontHeight(font);
-        if (height <= 0) {
-            return 0;
-        }
-        if (out_h) *out_h = height;
-        return 1;
-    }
-    if (TTF_SizeUTF8(font, text, &width, &height) != 0) {
-        return 0;
-    }
-    if (out_w) *out_w = width;
-    if (out_h) *out_h = height;
-    return 1;
+/* Preserve every raster texel and intersect a destination clip without resampling its source. */
+static int daw_text_draw_native(SDL_Renderer *renderer,const VkRendererTexture *texture,
+    int x,int y,int max_width,int height) {
+    VkRenderer *vk=(VkRenderer*)renderer;float sx,sy;daw_text_density(renderer,&sx,&sy);
+    SDL_Rect previous,clip={x,y,max_width,height};
+    int had=vk_renderer_is_clip_enabled(vk);vk_renderer_get_clip_rect(vk,&previous);
+    if(had && !SDL_IntersectRect(&clip,&previous,&clip))return 1;
+    vk_renderer_set_clip_rect(vk,&clip);
+    SDL_FRect dst={roundf(x*sx)/sx,roundf(y*sy)/sy,texture->width/sx,texture->height/sy};
+    const float uv0[2]={0,0},uv1[2]={1,1},white[4]={1,1,1,1};
+    VkResult result=vk_renderer_draw_textured_quad(vk,texture,&dst,uv0,uv1,white);
+    vk_renderer_set_clip_rect(vk,had?&previous:NULL);return result==VK_SUCCESS;
 }
 
 static int daw_text_render_local(SDL_Renderer* renderer,
@@ -339,14 +326,12 @@ static int daw_text_render_local(SDL_Renderer* renderer,
     if (!surface) {
         return 0;
     }
-    if (!daw_text_measure_with_ttf(font, text, &width, &height)) {
-        width = (int)lroundf((float)surface->w / raster_scale);
-        height = (int)lroundf((float)surface->h / raster_scale);
-    }
+    float sx,sy;daw_text_density(renderer,&sx,&sy);
+    width=(int)ceilf(surface->w/sx);height=(int)ceilf(surface->h/sy);
     if (vk_renderer_upload_sdl_surface_with_filter((VkRenderer*)renderer,
                                                    surface,
                                                    out_texture,
-                                                   daw_text_upload_filter(raster_scale)) != VK_SUCCESS) {
+                                                   VK_FILTER_NEAREST) != VK_SUCCESS) {
         SDL_FreeSurface(surface);
         return 0;
     }
@@ -390,7 +375,7 @@ void daw_text_register_font_source(TTF_Font* font,
             slot->path[0] = '\0';
         }
     }
-    kit_render_external_text_register_font_source(font,
+    kit_render_external_text_register_font_source_native_pixels(font,
                                                   path,
                                                   logical_point_size,
                                                   loaded_point_size,
@@ -448,7 +433,8 @@ int daw_text_measure_utf8(SDL_Renderer* renderer,
                           const char* text,
                           int* out_w,
                           int* out_h) {
-    return kit_render_external_text_measure_utf8(renderer, font, text, out_w, out_h);
+    return kit_render_external_text_measure_utf8(renderer?renderer:g_clipped_cache_renderer,
+                                                font, text, out_w, out_h);
 }
 
 int daw_text_draw_utf8_at(SDL_Renderer* renderer,
@@ -470,8 +456,6 @@ int daw_text_draw_utf8_clipped(SDL_Renderer* renderer,
                                int max_width) {
     DawClippedTextCacheEntry* entry = NULL;
     int clip_w = 0;
-    SDL_Rect src = {0};
-    SDL_Rect dst = {0};
 
     if (!renderer || !font || !text || max_width <= 0) {
         return 0;
@@ -486,18 +470,9 @@ int daw_text_draw_utf8_clipped(SDL_Renderer* renderer,
             return 0;
         }
         clip_w = width < max_width ? width : max_width;
-        src = (SDL_Rect){0, 0, clip_w, height};
-        dst = (SDL_Rect){x, y, clip_w, height};
-        if (width > 0) {
-            src.w = (int)lroundf((float)clip_w * ((float)texture.width / (float)width));
-            if (src.w < 1) {
-                src.w = 1;
-            }
-        }
-        src.h = (int)texture.height;
-        vk_renderer_draw_texture((VkRenderer*)renderer, &texture, &src, &dst);
+        int drawn=daw_text_draw_native(renderer,&texture,x,y,clip_w,height);
         vk_renderer_queue_texture_destroy((VkRenderer*)renderer, &texture);
-        return 1;
+        return drawn;
     }
 
     entry = daw_text_cache_find(renderer, daw_text_vulkan_raster_scale(renderer), font, text, color);
@@ -531,15 +506,8 @@ int daw_text_draw_utf8_clipped(SDL_Renderer* renderer,
 
     entry->stamp = ++g_clipped_cache_stamp;
     clip_w = entry->width < max_width ? entry->width : max_width;
-    src = (SDL_Rect){0, 0, clip_w, entry->height};
-    dst = (SDL_Rect){x, y, clip_w, entry->height};
-    if (entry->width > 0) {
-        src.w = (int)lroundf((float)clip_w * ((float)entry->texture.width / (float)entry->width));
-        if (src.w < 1) {
-            src.w = 1;
-        }
-    }
-    src.h = (int)entry->texture.height;
-    vk_renderer_draw_texture((VkRenderer*)renderer, &entry->texture, &src, &dst);
-    return 1;
+    return daw_text_draw_native(renderer,&entry->texture,x,y,clip_w,entry->height);
 }
+
+/* Bind output geometry before any measure-only UI layout or pointer hit pass. */
+void daw_text_bind_renderer(SDL_Renderer *renderer) {daw_text_ensure_renderer(renderer);}

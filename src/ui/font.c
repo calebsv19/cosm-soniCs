@@ -2,16 +2,29 @@
 
 #include "ui/font_bridge.h"
 #include "ui/text_draw.h"
+#include "ui/shared_theme_font_adapter.h"
 
 bool ui_font_set(const char* path, int base_point_size) {
     bool ok = false;
 
-    daw_text_shutdown();
     ok = daw_font_bridge_set_active(path, base_point_size);
+    if (ok) {
+        DawFontRuntimeHooks hooks={ui_font_set,daw_font_bridge_preview_begin,daw_font_bridge_preview_end};
+        daw_shared_font_bind_runtime(&hooks);
+    }
     return ok;
 }
 
+/* Prepare startup fonts using the same selected-role policy as the settings owner. */
+bool ui_font_load_shared(void) {
+    char path[256];int point_size=9;
+    if(daw_shared_font_resolve_ui_regular(path,sizeof(path),&point_size))
+        return ui_font_set(path,point_size);
+    return ui_font_set("include/fonts/Montserrat/Montserrat-Regular.ttf",9);
+}
+
 void ui_font_shutdown(void) {
+    daw_shared_font_bind_runtime(NULL);
     daw_text_shutdown();
     daw_font_bridge_shutdown();
 }

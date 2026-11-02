@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <math.h>
 
 // Models descriptor reuse without submitting invalid work to the GPU used by the active app.
 typedef struct Resource { bool alive; unsigned version; VkRenderer* owner; } Resource;
@@ -31,6 +32,20 @@ void vk_renderer_draw_texture(VkRenderer* renderer,const VkRendererTexture* text
     (void)src;unsigned id=(unsigned)(uintptr_t)texture->descriptor_set;assert(id && resources[id].alive && bound_count<4096);
     if(resources[id].owner!=renderer)++cross_owner;bindings[bound_count++]=(Binding){id,resources[id].version};last_width=texture->width;last_height=dst->h;
 }
+// Exercise native float placement while preserving the existing descriptor lifetime model.
+VkResult vk_renderer_draw_textured_quad(VkRenderer* r,const VkRendererTexture* texture,
+ const SDL_FRect* dst,const float a[2],const float b[2],const float c[4]) {
+ (void)a;(void)b;(void)c;SDL_Rect rect={(int)dst->x,(int)dst->y,(int)ceilf(dst->w),(int)ceilf(dst->h)};
+ vk_renderer_draw_texture(r,texture,NULL,&rect);return VK_SUCCESS;
+}
+// Preserve enclosing clipping in the modeled renderer just as the native adapter does.
+int vk_renderer_set_clip_rect(VkRenderer* r,const SDL_Rect* clip){r->draw_state.clip_enabled=clip!=NULL;if(clip)r->draw_state.clip_rect=*clip;return 0;}
+// Read the modeled clip without borrowing mutable stack storage.
+void vk_renderer_get_clip_rect(VkRenderer* r,SDL_Rect* clip){*clip=r->draw_state.clip_rect;}
+// Report the clip owner to the production native-pixel helper.
+SDL_bool vk_renderer_is_clip_enabled(VkRenderer* r){return r->draw_state.clip_enabled?SDL_TRUE:SDL_FALSE;}
+// Keep the optional native source registration inert in this isolated ownership model.
+void kit_render_external_text_register_font_source_native_pixels(TTF_Font* f,const char* p,int l,int r,int k){(void)f;(void)p;(void)l;(void)r;(void)k;}
 // Settles earlier modeled GPU bindings before out-of-frame invalidation frees resources.
 void vk_renderer_wait_idle(VkRenderer* renderer){(void)renderer;bound_count=0;for(int i=0;i<pending_count;++i)resources[pending[i]].alive=false;pending_count=0;}
 // Keeps shared registrations inert so this harness exclusively tests the app's production clipped path.

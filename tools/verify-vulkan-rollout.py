@@ -9,6 +9,7 @@ import struct
 import subprocess
 from pathlib import Path
 
+EXPECTED_TEXT_COMMIT = "683068aa3c89c3570f719880b12f738c23d4b3d5"
 EXPECTED_SHARED_COMMIT = "09ff89a0a32d80981010b15a7d45a2cdf8e5fd9f"
 
 
@@ -33,22 +34,21 @@ def digest(path: Path) -> str:
 def verify_shared_source(root: Path, canonical: Path) -> None:
     # Inspect immutable Git objects, never require the unrelated live shared HEAD
     # or dirty worktree to match this application's deliberately pinned adoption.
-    commit = command_output(["git", "rev-parse", EXPECTED_SHARED_COMMIT + "^{commit}"], canonical)
-    tracked = command_output(["git", "ls-tree", "-r", "--name-only", commit,
-                              "--", "vk_runtime", "vk_renderer"], canonical).splitlines()
-    if not tracked:
-        raise SystemExit("accepted shared snapshot has no Vulkan sources")
     mismatches = []
-    for relative in tracked:
-        expected = subprocess.run(["git", "show", commit + ":" + relative],
-                                  cwd=canonical, check=True, stdout=subprocess.PIPE).stdout
-        adopted_path = root / relative
-        if not adopted_path.is_file():
-            mismatches.append("missing " + relative)
-        elif digest(adopted_path) != hashlib.sha256(expected).hexdigest():
-            mismatches.append("digest " + relative)
+    for selected, modules in [(EXPECTED_SHARED_COMMIT, ["vk_runtime", "vk_renderer"]),
+                              (EXPECTED_TEXT_COMMIT, ["kit/kit_render"])]:
+        commit = command_output(["git", "rev-parse", selected + "^{commit}"], canonical)
+        tracked = command_output(["git", "ls-tree", "-r", "--name-only", commit,
+                                  "--", *modules], canonical).splitlines()
+        if not tracked:
+            raise SystemExit("accepted shared snapshot has no declared sources")
+        for relative in tracked:
+            expected = subprocess.check_output(["git", "show", commit + ":" + relative], cwd=canonical)
+            adopted_path = root / relative
+            if not adopted_path.is_file() or digest(adopted_path) != hashlib.sha256(expected).hexdigest():
+                mismatches.append("digest " + relative)
     if mismatches:
-        raise SystemExit("adopted Vulkan source differs from accepted snapshot: " +
+        raise SystemExit("adopted Vulkan/text source differs from accepted snapshots: " +
                          ", ".join(mismatches[:12]))
 
 
@@ -144,6 +144,9 @@ def main() -> int:
         raise SystemExit(f"vk_runtime 0.6.0 required, found {runtime}")
     if renderer != (1, 7, 0):
         raise SystemExit(f"vk_renderer 1.7.0 required, found {renderer}")
+
+    if read_version(root / "kit/kit_render/VERSION") != (0, 16, 0):
+        raise SystemExit("kit_render 0.16.0 required")
 
     if args.app:
         if not args.initial_capture or not args.resized_capture or not args.log:

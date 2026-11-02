@@ -1,6 +1,7 @@
 #include "ui/text_edit.h"
 #include "kit_ui_text_presentation.h"
 #include "ui/font.h"
+#include "ui/text_draw.h"
 #include "ui/render_utils.h"
 
 // Holds synchronous native painter state; no queued text borrows stack storage.
@@ -43,6 +44,7 @@ void daw_text_edit_draw(SDL_Renderer* renderer, const KitUiTextEdit* stored,
     if (cursor < 0 || (size_t)cursor != edit.cursor)
         (void)kit_ui_text_position(&edit, cursor < 0 ? 0 : (size_t)cursor,
                                    cursor < 0 ? 0 : (size_t)cursor);
+    daw_text_bind_renderer(renderer);
     DawTextPainter native = {renderer, ink, scale};
     KitUiTextPresentation presentation;
     KitUiTextPresentationOptions options = {0};

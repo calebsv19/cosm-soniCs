@@ -13,3 +13,8 @@ typedef struct DawResolvedFont {
 bool daw_font_bridge_set_active(const char* path, int base_point_size);
 void daw_font_bridge_shutdown(void);
 bool daw_font_bridge_acquire(float scale, DawResolvedFont* out_font);
+
+/* Begin retaining the entry working set for authoring. */
+void daw_font_bridge_preview_begin(void);
+/* Finish preview by retaining accepted fonts or restoring the entry handles. */
+void daw_font_bridge_preview_end(bool accept);

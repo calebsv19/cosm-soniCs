@@ -52,3 +52,18 @@ bool daw_shared_font_step_by(int delta);
 bool daw_shared_font_reset_zoom_step(void);
 bool daw_shared_font_zoom_load_persisted(void);
 bool daw_shared_font_zoom_save_persisted(void);
+
+/* Connect app font ownership to semantic settings after native font startup. */
+typedef struct DawFontRuntimeHooks {
+    bool (*apply)(const char *path, int point_size);
+    void (*begin_preview)(void);
+    void (*end_preview)(bool accept);
+} DawFontRuntimeHooks;
+/* Bind optional native ownership; unbound semantic tests remain renderer-free. */
+void daw_shared_font_bind_runtime(const DawFontRuntimeHooks *hooks);
+/* Start retaining the authoring font baseline. */
+void daw_shared_font_preview_begin(void);
+/* Accept and release the retained authoring font baseline. */
+void daw_shared_font_preview_commit(void);
+/* Restore semantic identity and retained handles together without file I/O. */
+void daw_shared_font_preview_cancel(const char *preset, int zoom);

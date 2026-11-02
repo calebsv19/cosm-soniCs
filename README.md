@@ -382,3 +382,9 @@ Asynchronous whole-song WAV export now uses a captured production graph and shar
 Qualified live 400 ms per-channel/stereo/mono compatibility windows now cover child/group/return/master output, with native scope controls and guarded output-only stereo/mono monitoring. The approximate live LUFS view is hidden behind an explicit qualification notice; offline validated LUFS remains available. See [live metering contracts](docs/live_stereo_metering.md).
 
 Compressor/Limiter controls now have qualified non-consuming live gain-reduction feedback in native headers and `get_effect_chain.dynamics_feedback`, separate from authored edit tokens. Compressor detection remains independent by channel; Limiter is sample-peak, not true-peak. See [dynamics controls and feedback](docs/dynamics_feedback.md).
+
+### Main Edit text refinement (2026-10-31)
+
+The current development slice qualifies transactional font changes, retained
+authoring Cancel and native-pixel text. See [text unification](docs/text_unification.md)
+for exact dependency pins, verification and remaining acceptance boundaries.

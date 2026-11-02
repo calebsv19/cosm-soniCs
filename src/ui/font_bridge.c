@@ -1,133 +1,95 @@
 #include "ui/font_bridge.h"
-
 #include "ui/text_draw.h"
-
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_ttf.h>
 #include <math.h>
 #include <string.h>
 
-typedef struct DawFontCacheEntry {
-    int logical_point_size;
-    TTF_Font* font;
-} DawFontCacheEntry;
+/* Retains a font's requested layout scale independently of rounded point size. */
+typedef struct DawFontEntry { int point_size; float scale; TTF_Font *font; } DawFontEntry;
+/* Owns one complete active or pinned font working set. */
+typedef struct DawFontBank { char path[256]; int base; int count; int scale_count; float scales[64]; DawFontEntry entries[16]; } DawFontBank;
+static DawFontBank active = { .path="include/fonts/Montserrat/Montserrat-Regular.ttf", .base=14 };
+static DawFontBank baseline;
+static bool preview, pinned;
 
-static char g_font_path[256] = "include/fonts/Montserrat/Montserrat-Regular.ttf";
-static int g_base_point_size = 14;
-static DawFontCacheEntry g_font_cache[12];
-static int g_font_cache_count = 0;
-
-static void daw_font_bridge_reset_slot(DawFontCacheEntry* entry) {
-    if (!entry || !entry->font) {
-        return;
-    }
-    daw_text_unregister_font_source(entry->font);
-    TTF_CloseFont(entry->font);
-    entry->font = NULL;
-    entry->logical_point_size = 0;
+/* Resolve one requested UI scale under the existing point-size policy. */
+static int point_size(int base, float scale) {
+    if (!isfinite(scale) || scale <= 0) scale=1;
+    int size=(int)lroundf(base*scale);return size<4?4:size;
 }
-
-static void daw_font_bridge_clear_cache(void) {
-    int i = 0;
-    for (i = 0; i < g_font_cache_count; ++i) {
-        daw_font_bridge_reset_slot(&g_font_cache[i]);
+/* Release only this bank's fonts and their registered text resources. */
+static void release(DawFontBank *bank, bool registered) {
+    for(int i=0;i<bank->count;i++) if(bank->entries[i].font) {
+        if(registered)daw_text_unregister_font_source(bank->entries[i].font);
+        TTF_CloseFont(bank->entries[i].font);
     }
-    g_font_cache_count = 0;
+    memset(bank,0,sizeof(*bank));
 }
-
-static void daw_font_bridge_copy_path(const char* path) {
-    if (!path || !path[0]) {
-        return;
-    }
-    strncpy(g_font_path, path, sizeof(g_font_path) - 1);
-    g_font_path[sizeof(g_font_path) - 1] = '\0';
+/* Retain distinct requested scales even when they currently round to the same size. */
+static bool track_scale(DawFontBank *bank,float scale) {
+    if(!isfinite(scale)||scale<=0)scale=1;
+    for(int i=0;i<bank->scale_count;i++)if(bank->scales[i]==scale)return true;
+    if(bank->scale_count==64)return false;
+    bank->scales[bank->scale_count++]=scale;return true;
 }
-
-static int daw_font_bridge_resolve_point_size(float scale) {
-    int point_size = 0;
-
-    if (!isfinite(scale) || scale <= 0.0f) {
-        scale = 1.0f;
-    }
-    point_size = (int)lroundf((float)g_base_point_size * scale);
-    if (point_size < 4) {
-        point_size = 4;
-    }
-    return point_size;
+/* Load into a candidate before evicting any last-good font. */
+static bool load(DawFontBank *bank,float scale) {
+    int size=point_size(bank->base,scale);
+    if(!track_scale(bank,scale))return false;
+    for(int i=0;i<bank->count;i++)if(bank->entries[i].point_size==size)return true;
+    if(bank->count==16)return false;
+    TTF_Font *font=TTF_OpenFont(bank->path,size);if(!font)return false;
+    TTF_SetFontStyle(font,TTF_STYLE_NORMAL);TTF_SetFontHinting(font,TTF_HINTING_LIGHT);TTF_SetFontKerning(font,1);
+    bank->entries[bank->count++]=(DawFontEntry){size,scale,font};return true;
 }
-
-static TTF_Font* daw_font_bridge_open_font(int logical_point_size) {
-    TTF_Font* font = NULL;
-
-    font = TTF_OpenFont(g_font_path, logical_point_size);
-    if (!font) {
-        SDL_Log("Failed to load font %s @ %d: %s", g_font_path, logical_point_size, TTF_GetError());
-        return NULL;
-    }
-    TTF_SetFontStyle(font, TTF_STYLE_NORMAL);
-    TTF_SetFontHinting(font, TTF_HINTING_LIGHT);
-    TTF_SetFontKerning(font, 1);
-    daw_text_register_font_source(font,
-                                  g_font_path,
-                                  logical_point_size,
-                                  logical_point_size,
-                                  1);
-    return font;
+/* Register a successfully loaded bank only after old registrations are released. */
+static void register_bank(DawFontBank *bank) {
+    for(int i=0;i<bank->count;i++)daw_text_register_font_source(bank->entries[i].font,
+        bank->path,bank->entries[i].point_size,bank->entries[i].point_size,1);
 }
-
-bool daw_font_bridge_set_active(const char* path, int base_point_size) {
-    if (base_point_size > 0) {
-        g_base_point_size = base_point_size;
-    }
-    daw_font_bridge_copy_path(path);
-    daw_font_bridge_clear_cache();
-    return true;
+/* Prepare the base and every currently used scale, then exchange ownership atomically. */
+bool daw_font_bridge_set_active(const char *path,int base) {
+    if(!path || !path[0] || strlen(path)>=sizeof(active.path) || base<=0)return false;
+    if(active.count && active.base==base && !strcmp(active.path,path))return true;
+    DawFontBank next={0};strcpy(next.path,path);next.base=base;
+    if(!load(&next,1))return false;
+    for(int i=0;i<active.scale_count;i++)if(!load(&next,active.scales[i])) {release(&next,false);return false;}
+    if(preview && !pinned) {baseline=active;pinned=true;}
+    else release(&active,true);
+    active=next;register_bank(&active);return true;
 }
-
+/* Pin lazily on the first accepted preview replacement. */
+void daw_font_bridge_preview_begin(void) {preview=true;}
+/* Restore the exact entry handles on Cancel, or release the pin on Apply. */
+void daw_font_bridge_preview_end(bool accept) {
+    if(pinned) {
+        if(accept)release(&baseline,true);
+        else {release(&active,true);active=baseline;memset(&baseline,0,sizeof(baseline));}
+    }
+    preview=false;pinned=false;
+}
+/* Release both ownership banks during app shutdown. */
 void daw_font_bridge_shutdown(void) {
-    daw_font_bridge_clear_cache();
+    release(&active,true);release(&baseline,true);preview=false;pinned=false;
+    strcpy(active.path,"include/fonts/Montserrat/Montserrat-Regular.ttf");active.base=14;
 }
-
-bool daw_font_bridge_acquire(float scale, DawResolvedFont* out_font) {
-    int logical_point_size = 0;
-    int i = 0;
-    TTF_Font* font = NULL;
-
-    if (!out_font) {
-        return false;
+/* Acquire a font without destroying cached last-good resources on load failure. */
+bool daw_font_bridge_acquire(float scale,DawResolvedFont *out) {
+    if(!out)return false;memset(out,0,sizeof(*out));
+    int size=point_size(active.base,scale);
+    for(int i=0;i<active.count;i++)if(active.entries[i].point_size==size) {
+        if(!track_scale(&active,scale))return false;
+        *out=(DawResolvedFont){active.entries[i].font,active.path,size,1};return true;
     }
-    memset(out_font, 0, sizeof(*out_font));
-
-    logical_point_size = daw_font_bridge_resolve_point_size(scale);
-    for (i = 0; i < g_font_cache_count; ++i) {
-        if (g_font_cache[i].font && g_font_cache[i].logical_point_size == logical_point_size) {
-            out_font->font = g_font_cache[i].font;
-            out_font->path = g_font_path;
-            out_font->logical_point_size = logical_point_size;
-            out_font->kerning_enabled = 1;
-            return true;
-        }
+    if(!track_scale(&active,scale))return false;
+    /* Build the new handle before evicting the oldest slot. */
+    TTF_Font *font=TTF_OpenFont(active.path,size);if(!font)return false;
+    TTF_SetFontStyle(font,TTF_STYLE_NORMAL);TTF_SetFontHinting(font,TTF_HINTING_LIGHT);TTF_SetFontKerning(font,1);
+    if(active.count==16) {
+        daw_text_unregister_font_source(active.entries[0].font);TTF_CloseFont(active.entries[0].font);
+        memmove(active.entries,active.entries+1,15*sizeof(active.entries[0]));--active.count;
     }
-
-    if (g_font_cache_count >= (int)(sizeof(g_font_cache) / sizeof(g_font_cache[0]))) {
-        daw_font_bridge_reset_slot(&g_font_cache[0]);
-        memmove(&g_font_cache[0],
-                &g_font_cache[1],
-                (size_t)(g_font_cache_count - 1) * sizeof(g_font_cache[0]));
-        g_font_cache_count -= 1;
-    }
-
-    font = daw_font_bridge_open_font(logical_point_size);
-    if (!font) {
-        return false;
-    }
-    g_font_cache[g_font_cache_count].logical_point_size = logical_point_size;
-    g_font_cache[g_font_cache_count].font = font;
-    g_font_cache_count += 1;
-
-    out_font->font = font;
-    out_font->path = g_font_path;
-    out_font->logical_point_size = logical_point_size;
-    out_font->kerning_enabled = 1;
-    return true;
+    active.entries[active.count++]=(DawFontEntry){size,scale,font};
+    daw_text_register_font_source(font,active.path,size,size,1);
+    *out=(DawResolvedFont){font,active.path,size,1};return true;
 }

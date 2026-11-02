@@ -84,6 +84,7 @@ static void daw_workspace_authoring_host_capture_baseline(DawWorkspaceAuthoringH
     }
     host->baseline_font_zoom_step = daw_shared_font_zoom_step();
     host->font_theme_baseline_valid = 1u;
+    daw_shared_font_preview_begin();
 }
 
 static void daw_workspace_authoring_host_restore_baseline(DawWorkspaceAuthoringHostState *host) {
@@ -92,11 +93,7 @@ static void daw_workspace_authoring_host_restore_baseline(DawWorkspaceAuthoringH
         (void)daw_shared_theme_set_preset(host->baseline_theme_preset);
         host->font_theme_theme_dirty = 1u;
     }
-    if (host->baseline_font_preset[0]) {
-        (void)daw_shared_font_set_preset(host->baseline_font_preset);
-        host->font_theme_font_dirty = 1u;
-    }
-    (void)daw_shared_font_set_zoom_step(host->baseline_font_zoom_step);
+    daw_shared_font_preview_cancel(host->baseline_font_preset,host->baseline_font_zoom_step);
     host->font_theme_font_dirty = 1u;
     host->font_theme_pending_changes = 0u;
 }
@@ -122,6 +119,7 @@ static CoreWorkspaceAuthoringSessionHookResult daw_workspace_authoring_session_v
 static CoreWorkspaceAuthoringSessionHookResult daw_workspace_authoring_session_apply(void *context) {
     DawWorkspaceAuthoringHostState *host = context;
     if (!host) return CORE_WORKSPACE_AUTHORING_SESSION_HOOK_FAILED;
+    daw_shared_font_preview_commit();
     host->active = 0u;
     host->apply_count += 1u;
     host->last_event_accepted = 1u;
@@ -279,23 +277,35 @@ int daw_workspace_authoring_host_apply_font_theme_button(DawWorkspaceAuthoringHo
 
     switch (action.type) {
         case KIT_WORKSPACE_AUTHORING_FONT_THEME_ACTION_TEXT_SIZE_DEC:
-            (void)daw_shared_font_step_by(-1);
+            if (!daw_shared_font_step_by(-1)) {
+                daw_workspace_authoring_host_set_status(host,"Text size unchanged; previous fonts retained.");
+                return 1;
+            }
             host->font_theme_font_dirty = 1u;
             daw_workspace_authoring_host_set_status(host, "Text size decreased.");
             break;
         case KIT_WORKSPACE_AUTHORING_FONT_THEME_ACTION_TEXT_SIZE_INC:
-            (void)daw_shared_font_step_by(1);
+            if (!daw_shared_font_step_by(1)) {
+                daw_workspace_authoring_host_set_status(host,"Text size unchanged; previous fonts retained.");
+                return 1;
+            }
             host->font_theme_font_dirty = 1u;
             daw_workspace_authoring_host_set_status(host, "Text size increased.");
             break;
         case KIT_WORKSPACE_AUTHORING_FONT_THEME_ACTION_TEXT_SIZE_RESET:
-            (void)daw_shared_font_reset_zoom_step();
+            if (!daw_shared_font_reset_zoom_step()) {
+                daw_workspace_authoring_host_set_status(host,"Text size unchanged; previous fonts retained.");
+                return 1;
+            }
             host->font_theme_font_dirty = 1u;
             daw_workspace_authoring_host_set_status(host, "Text size reset.");
             break;
         case KIT_WORKSPACE_AUTHORING_FONT_THEME_ACTION_SET_FONT_PRESET:
             preset_name = core_font_preset_name(action.font_preset_id);
-            if (!daw_shared_font_set_preset(preset_name)) return 0;
+            if (!daw_shared_font_set_preset(preset_name)) {
+                daw_workspace_authoring_host_set_status(host,"Font preview failed; previous fonts retained.");
+                return 1;
+            }
             host->font_theme_font_dirty = 1u;
             daw_workspace_authoring_host_set_status(host, "Font preset previewed.");
             break;

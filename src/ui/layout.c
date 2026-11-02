@@ -1,4 +1,5 @@
 #include "ui/layout.h"
+#include "ui/text_draw.h"
 #include "ui/track_group_panel.h"
 #include "input/timeline/timeline_geometry.h"
 #include "ui/pane_composition.h"
@@ -472,6 +473,7 @@ bool ui_ensure_layout(AppState* state, SDL_Window* window, SDL_Renderer* rendere
 }
 
 void ui_render_panes(SDL_Renderer* renderer, const AppState* state) {
+    daw_text_bind_renderer(renderer);
     if (!renderer || !state) {
         return;
     }
@@ -537,6 +539,7 @@ void ui_render_overlays(SDL_Renderer* renderer, AppState* state) {
 }
 
 void ui_render_controls(SDL_Renderer* renderer, AppState* state) {
+    daw_text_bind_renderer(renderer);
     if (!renderer || !state) {
         return;
     }

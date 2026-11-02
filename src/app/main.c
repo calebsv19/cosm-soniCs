@@ -849,8 +849,10 @@ int daw_app_main_legacy(void) {
         SDL_Log("[LoopAdapters] Warning: kernel adapter init failed");
     }
 
-    if (TTF_Init() != 0) {
-        SDL_Log("TTF_Init failed: %s", TTF_GetError());
+    if (TTF_Init() != 0 || !ui_font_load_shared()) {
+        SDL_Log("Font initialization failed: %s", TTF_GetError());
+        ui_font_shutdown();
+        if (TTF_WasInit()) TTF_Quit();
         if (state.engine) engine_stop(state.engine);
         if (loop_wake_initialized) {
             daw_mainthread_wake_shutdown();
@@ -873,15 +875,6 @@ int daw_app_main_legacy(void) {
             state.engine = NULL;
         }
         return 1;
-    }
-    {
-        char font_path[256];
-        int font_point_size = 9;
-        if (daw_shared_font_resolve_ui_regular(font_path, sizeof(font_path), &font_point_size)) {
-            ui_font_set(font_path, font_point_size);
-        } else {
-            ui_font_set("include/fonts/Montserrat/Montserrat-Regular.ttf", 9);
-        }
     }
     timer_hud_register_backend();
     timer_hud_bind_context(&ctx);

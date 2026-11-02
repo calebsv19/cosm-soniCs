@@ -864,3 +864,14 @@ test-mixer-automation: $(TEST_BUILD_ROOT)/mixer_automation_test
 $(TEST_BUILD_ROOT)/mixer_automation_test: tests/mixer_automation_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
 	@mkdir -p "$(dir $@)"
 	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+# Build-only native font/settings and pixel proofs; callers select isolated output.
+.PHONY: build-text-settings-proof build-text-pixels-proof
+build-text-settings-proof: $(TEST_BUILD_ROOT)/font_settings_transaction_test
+build-text-pixels-proof: $(TEST_BUILD_ROOT)/text_pixels_native_test
+$(TEST_BUILD_ROOT)/font_settings_transaction_test: tests/font_settings_transaction_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+$(TEST_BUILD_ROOT)/text_pixels_native_test: tests/text_pixels_native_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)

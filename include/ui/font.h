@@ -20,3 +20,6 @@ void ui_draw_text_clipped(SDL_Renderer* renderer,
                           int max_width);
 int  ui_measure_text_width(const char* text, float scale);
 int  ui_font_line_height(float scale);
+
+/* Prepare the persisted shared choice, or the existing legacy fallback when disabled. */
+bool ui_font_load_shared(void);

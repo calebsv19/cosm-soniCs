@@ -9,6 +9,25 @@
 #include <string.h>
 #include <sys/stat.h>
 
+static DawFontRuntimeHooks font_hooks;
+static bool is_shared_toggle_enabled(const char *specific_env);
+/* Apply the tentative semantic choice through the bound native font owner. */
+static bool apply_runtime_font(void) {
+    char path[256];int point;
+    if(!font_hooks.apply)return true;
+    if(!is_shared_toggle_enabled("DAW_USE_SHARED_FONT"))
+        return font_hooks.apply("include/fonts/Montserrat/Montserrat-Regular.ttf",9);
+    return daw_shared_font_resolve_ui_regular(path,sizeof(path),&point) && font_hooks.apply(path,point);
+}
+/* Install or clear native font ownership callbacks. */
+void daw_shared_font_bind_runtime(const DawFontRuntimeHooks *hooks) {
+    font_hooks=hooks?*hooks:(DawFontRuntimeHooks){0};
+}
+/* Begin a native baseline pin when a native owner is attached. */
+void daw_shared_font_preview_begin(void) {if(font_hooks.begin_preview)font_hooks.begin_preview();}
+/* Release the native baseline after authoring acceptance. */
+void daw_shared_font_preview_commit(void) {if(font_hooks.end_preview)font_hooks.end_preview(true);}
+
 static bool g_theme_runtime_initialized = false;
 static CoreThemePresetId g_theme_runtime_preset = CORE_THEME_PRESET_DAW_DEFAULT;
 static bool g_font_runtime_initialized = false;
@@ -312,7 +331,10 @@ bool daw_shared_font_set_preset(const char* preset_name) {
     if (core_font_get_preset_by_name(preset_name, &preset).code != CORE_OK) {
         return false;
     }
+    font_runtime_init_if_needed();
+    CoreFontPresetId previous=g_font_runtime_preset;
     g_font_runtime_preset = preset.id;
+    if(!apply_runtime_font()) {g_font_runtime_preset=previous;return false;}
     g_font_runtime_initialized = true;
     return true;
 }
@@ -457,7 +479,9 @@ bool daw_shared_font_set_zoom_step(int step) {
     if (clamped == g_font_zoom_step) {
         return false;
     }
+    int previous=g_font_zoom_step;
     g_font_zoom_step = clamped;
+    if(!apply_runtime_font()) {g_font_zoom_step=previous;return false;}
     return true;
 }
 
@@ -495,8 +519,8 @@ bool daw_shared_font_zoom_load_persisted(void) {
     if (end == value) {
         return false;
     }
-    (void)daw_shared_font_set_zoom_step((int)parsed);
-    return true;
+    int target=clamp_int((int)parsed,DAW_FONT_ZOOM_STEP_MIN,DAW_FONT_ZOOM_STEP_MAX);
+    return target==daw_shared_font_zoom_step() || daw_shared_font_set_zoom_step(target);
 }
 
 bool daw_shared_font_zoom_save_persisted(void) {
@@ -564,4 +588,14 @@ bool daw_shared_font_resolve_ui_regular(char* out_path, size_t out_path_size, in
         *out_point_size = scaled;
     }
     return true;
+}
+
+/* Cancel restores both semantic values before exchanging the exact pinned bank. */
+void daw_shared_font_preview_cancel(const char *name,int zoom) {
+    CoreFontPreset preset;
+    if(core_font_get_preset_by_name(name,&preset).code!=CORE_OK)return;
+    g_font_runtime_preset=preset.id;g_font_runtime_initialized=true;
+    g_font_zoom_step=clamp_int(zoom,DAW_FONT_ZOOM_STEP_MIN,DAW_FONT_ZOOM_STEP_MAX);
+    g_font_zoom_runtime_initialized=true;
+    if(font_hooks.end_preview)font_hooks.end_preview(false);
 }

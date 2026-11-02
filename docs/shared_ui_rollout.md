@@ -1,3 +1,10 @@
+## 2026-10-31 font/text refinement
+
+Main Edit and canonical were both read at52738c4 / VERSION0.5.0 before this slice.
+The new uncommitted Main Edit refinement adopts only kit_render0.16.0 from683068a;
+other shared dependencies retain their pins. See [text unification](text_unification.md).
+The older dated rollout entries below retain their historical scope.
+
 # Sonics shared UI rollout
 
 The first adoption slice runs in the persistent Main Edit checkout. Canonical
