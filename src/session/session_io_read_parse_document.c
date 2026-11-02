@@ -1,3 +1,5 @@
+#include <limits.h>
+#include <math.h>
 #include "session_io_read_internal.h"
 
 #include <stdlib.h>
@@ -63,13 +65,15 @@ bool parse_session_document_tempo(JsonReader* r, SessionDocument* doc) {
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->tempo.ts_num = (int)val;
         } else if (strcmp(tempo_key, "ts_den") == 0) {
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->tempo.ts_den = (int)val;
-        } else if (!json_skip_value(r)) {
+        } else {
             return false;
         }
         json_skip_whitespace(r);
@@ -122,7 +126,7 @@ bool parse_session_document_tempo_map(JsonReader* r, SessionDocument* doc) {
                     return false;
                 }
                 bpm = (float)val;
-            } else if (!json_skip_value(r)) {
+            } else {
                 return false;
             }
             json_skip_whitespace(r);
@@ -188,13 +192,15 @@ bool parse_session_document_time_signature_map(JsonReader* r, SessionDocument* d
                 if (!json_parse_number(r, &val)) {
                     return false;
                 }
+                if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
                 ts_num = (int)val;
             } else if (strcmp(ts_key, "ts_den") == 0) {
                 if (!json_parse_number(r, &val)) {
                     return false;
                 }
+                if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
                 ts_den = (int)val;
-            } else if (!json_skip_value(r)) {
+            } else {
                 return false;
             }
             json_skip_whitespace(r);
@@ -243,18 +249,10 @@ bool parse_session_document_loop(JsonReader* r, SessionDocument* doc) {
                 return false;
             }
         } else if (strcmp(loop_key, "start_frame") == 0) {
-            double val;
-            if (!json_parse_number(r, &val)) {
-                return false;
-            }
-            doc->loop.start_frame = (uint64_t)(val < 0 ? 0 : val);
+            if (!json_parse_u64(r, &doc->loop.start_frame)) return false;
         } else if (strcmp(loop_key, "end_frame") == 0) {
-            double val;
-            if (!json_parse_number(r, &val)) {
-                return false;
-            }
-            doc->loop.end_frame = (uint64_t)(val < 0 ? 0 : val);
-        } else if (!json_skip_value(r)) {
+            if (!json_parse_u64(r, &doc->loop.end_frame)) return false;
+        } else {
             return false;
         }
         json_skip_whitespace(r);
@@ -329,13 +327,11 @@ bool parse_session_document_timeline(JsonReader* r, SessionDocument* doc) {
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->timeline.follow_mode = (int)val;
         } else if (strcmp(timeline_key, "playhead_frame") == 0) {
-            if (!json_parse_number(r, &val)) {
-                return false;
-            }
-            doc->timeline.playhead_frame = (uint64_t)(val < 0 ? 0 : val);
-        } else if (!json_skip_value(r)) {
+            if(!json_parse_u64(r,&doc->timeline.playhead_frame))return false;
+        } else {
             return false;
         }
         json_skip_whitespace(r);
@@ -371,18 +367,21 @@ bool parse_session_midi_editor(JsonReader* r, SessionDocument* doc) {
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->midi_editor.panel_mode = (int)val;
         } else if (strcmp(panel_key, "instrument_active_group") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->midi_editor.instrument_active_group = (int)val;
         } else if (strcmp(panel_key, "quantize_division") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->midi_editor.quantize_division = (int)val;
         } else if (strcmp(panel_key, "default_velocity") == 0) {
             double val;
@@ -395,56 +394,55 @@ bool parse_session_midi_editor(JsonReader* r, SessionDocument* doc) {
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->midi_editor.qwerty_octave_offset = (int)val;
         } else if (strcmp(panel_key, "viewport_track_index") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->midi_editor.viewport_track_index = (int)val;
         } else if (strcmp(panel_key, "viewport_clip_index") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->midi_editor.viewport_clip_index = (int)val;
         } else if (strcmp(panel_key, "viewport_start_frame") == 0) {
-            double val;
-            if (!json_parse_number(r, &val)) {
-                return false;
-            }
-            doc->midi_editor.viewport_start_frame = (uint64_t)(val < 0 ? 0 : val);
+            if (!json_parse_u64(r, &doc->midi_editor.viewport_start_frame)) return false;
         } else if (strcmp(panel_key, "viewport_span_frames") == 0) {
-            double val;
-            if (!json_parse_number(r, &val)) {
-                return false;
-            }
-            doc->midi_editor.viewport_span_frames = (uint64_t)(val < 0 ? 0 : val);
+            if (!json_parse_u64(r, &doc->midi_editor.viewport_span_frames)) return false;
         } else if (strcmp(panel_key, "pitch_viewport_track_index") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->midi_editor.pitch_viewport_track_index = (int)val;
         } else if (strcmp(panel_key, "pitch_viewport_clip_index") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->midi_editor.pitch_viewport_clip_index = (int)val;
         } else if (strcmp(panel_key, "pitch_viewport_top_note") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->midi_editor.pitch_viewport_top_note = (int)val;
         } else if (strcmp(panel_key, "pitch_viewport_row_count") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->midi_editor.pitch_viewport_row_count = (int)val;
-        } else if (!json_skip_value(r)) {
+        } else {
             return false;
         }
         json_skip_whitespace(r);
@@ -484,12 +482,14 @@ bool parse_session_document_clip_inspector(JsonReader* r, SessionDocument* doc) 
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->clip_inspector.track_index = (int)val;
         } else if (strcmp(panel_key, "clip_index") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->clip_inspector.clip_index = (int)val;
         } else if (strcmp(panel_key, "view_source") == 0) {
             if (!json_parse_bool(r, &doc->clip_inspector.view_source)) {
@@ -507,7 +507,7 @@ bool parse_session_document_clip_inspector(JsonReader* r, SessionDocument* doc) 
                 return false;
             }
             doc->clip_inspector.scroll = (float)val;
-        } else if (!json_skip_value(r)) {
+        } else {
             return false;
         }
         json_skip_whitespace(r);
@@ -591,8 +591,10 @@ bool parse_session_document_selection(JsonReader* r, SessionDocument* doc) {
                 return false;
             }
             if (strcmp(key, "track_index") == 0) {
+                if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
                 entry.track_index = (int)val;
             } else if (strcmp(key, "clip_index") == 0) {
+                if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
                 entry.clip_index = (int)val;
             }
             json_skip_whitespace(r);
@@ -646,14 +648,16 @@ bool parse_session_document_library(JsonReader* r, SessionDocument* doc) {
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->library.selected_index = (int)val;
         } else if (strcmp(lib_key, "panel_mode") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->library.panel_mode = (int)val;
-        } else if (!json_skip_value(r)) {
+        } else {
             return false;
         }
         json_skip_whitespace(r);
@@ -698,7 +702,7 @@ bool parse_session_document_data_paths(JsonReader* r, SessionDocument* doc) {
                                    sizeof(doc->data_paths.library_copy_root))) {
                 return false;
             }
-        } else if (!json_skip_value(r)) {
+        } else {
             return false;
         }
         json_skip_whitespace(r);

@@ -1,3 +1,5 @@
+#define _POSIX_C_SOURCE 200809L
+#include <errno.h>
 #define _XOPEN_SOURCE 700
 #include "app_state.h"
 #include "ui/font.h"
@@ -11,6 +13,13 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+static int refuse_directory_sync;
+// Injects only directory acknowledgement failure while retaining actual candidate writes.
+static int proof_fsync(int fd) { struct stat st;if(refuse_directory_sync && !fstat(fd,&st)&&S_ISDIR(st.st_mode)){errno=EIO;return -1;}return fsync(fd); }
+#define fsync proof_fsync
+#include "../src/session/save_file.c"
+#undef fsync
 
 // Captures the actual native modal painters and requires clean Vulkan validation.
 static void frame(VkRenderer* r,AppState* s,const char* prefix,const char* name) {
@@ -43,10 +52,21 @@ int main(int argc,char** argv) {
     assert(project_collections_refresh(s,"music_projects"));assert(project_collections_select(s,1));
     project_modal_input_open_save_prompt(s);strcpy(s->project_prompt.buffer,"Classical_Conversations_v001_ThemeStudy");frame(&renderer,s,argv[1],"save-version");click(s,0);
     assert(strstr(s->project.path,"v001"));project_modal_input_open_save_prompt(s);click(s,0);assert(strstr(s->project.path,"v002"));
-    char path[SESSION_PATH_MAX];strcpy(path,s->project.path);assert(project_modal_input_open_load_modal(s) && s->project_load.count==2);
+    project_modal_input_open_save_prompt(s);refuse_directory_sync=1;click(s,0);refuse_directory_sync=0;
+    assert(s->project_prompt.active && s->project_prompt.publication_warning && s->project.last_save_result==DAW_SAVE_PUBLISHED);
+    assert(strstr(s->project_prompt.error,"sync unconfirmed"));
+    char published[SESSION_PATH_MAX];strcpy(published,s->project.path);click(s,0);assert(!strcmp(published,s->project.path));
+    frame(&renderer,s,argv[1],"published-warning");click(s,1);assert(!s->project_prompt.active);
+    char path[SESSION_PATH_MAX];strcpy(path,s->project.path);assert(project_modal_input_open_load_modal(s) && s->project_load.count==3);
     frame(&renderer,s,argv[1],"classical-list");click(s,3);assert(!s->project_load.count && !strcmp(path,s->project.path));frame(&renderer,s,argv[1],"empty-collection");
     click(s,4);assert(s->project_prompt.folder_mode);frame(&renderer,s,argv[1],"choose-folder");click(s,1);assert(s->project_load.active);
-    click(s,2);assert(s->project_load.count==2);s->window_width=600;s->window_height=420;frame(&renderer,s,argv[1],"compact-list");
+    click(s,2);assert(s->project_load.count==3);s->window_width=600;s->window_height=420;frame(&renderer,s,argv[1],"compact-list");
+    project_modal_input_close_load_modal(s);
+    assert(project_manager_save(s,s->project.name,true));
+    FILE* corrupt=fopen(s->project.path,"wb");assert(corrupt);fputs("{broken",corrupt);assert(!fclose(corrupt));
+    assert(project_manager_load(s,s->project.path));
+    assert(strstr(s->project.persistence_notice,"Recovered previous save"));
+    frame(&renderer,s,argv[1],"recovered-backup");
     ui_font_invalidate_cache((SDL_Renderer*)&renderer);ui_font_shutdown();engine_destroy(s->engine);undo_manager_free(&s->undo);
     tempo_map_free(&s->tempo_map);time_signature_map_free(&s->time_signature_map);free(s);vk_renderer_shutdown(&renderer);SDL_DestroyWindow(window);TTF_Quit();SDL_Quit();
     puts("project_collections_native_test: passed (actual collection/save controls, v001/v002, scoped and empty lists, folder cancel, compact geometry and clean Vulkan frames)");return 0;

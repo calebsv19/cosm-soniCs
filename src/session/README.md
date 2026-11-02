@@ -1,5 +1,7 @@
 # Directory: src/session
 
+Current guarantees, compatibility and limits: [persistence contract](../../docs/persistence_contract.md).
+
 Session persistence now uses staged, validated atomic replacement with one previous valid `.bak` recovery copy. See [S2.1 saving contract and evidence](../../docs/improvement/S2-SAVING.md). This protects session-file publication; coherent capture/application and media durability remain separate work.
 
 
@@ -22,7 +24,7 @@ Purpose: Session persistence helpers that translate between the live `AppState`/
   - `clips[]`: Per-track clips with `kind`, asset path when audio-backed, clip name, gain, start/duration/offset frames, and selection flag.
     - Each clip also persists `fade_in_frames` / `fade_out_frames` (in samples) plus `fade_in_curve` / `fade_out_curve`.
     - Each clip can include `automation` lanes, each with a `target` and a list of `{frame, value}` points.
-    - MIDI clips persist `instrument_preset`, `instrument_inherits_track`, named-key `instrument_params`, and `midi_notes[]` with `start_frame`, `duration_frames`, `note`, and normalized `velocity`; missing `kind` is treated as audio for old sessions, missing `instrument_inherits_track` defaults to explicit per-region sound, missing `instrument_preset` defaults to Pure Sine, missing params default to the selected preset, and unknown future param keys are ignored.
+    - MIDI clips persist `instrument_preset`, `instrument_inherits_track`, named-key `instrument_params`, and `midi_notes[]` with `start_frame`, `duration_frames`, `note`, and normalized `velocity`; missing `kind` is treated as audio for old sessions, missing `instrument_inherits_track` defaults to explicit per-region sound, missing `instrument_preset` defaults to Pure Sine, missing params default to the selected preset, and unknown future param keys are refused.
 
 ## Implementation
 - `session_document.c`, `session_io_write.c`, `session_io_read.c`, and `session_apply.c`: Capture, persist, and restore `AppState`/engine state. Saving is handled by `session_save_to_file` (`session_document_capture` → `session_document_write_file`), while loading goes through `session_load_from_file` (`session_document_read_recoverable` → primary or validated backup → `session_apply_document`). Individual helpers can be reused for tooling/tests.
@@ -30,7 +32,7 @@ Purpose: Session persistence helpers that translate between the live `AppState`/
 ### JSON Sketch
 ```json
 {
-  "version": 23,
+  "version": 26,
   "engine": {"sample_rate": 48000, "block_size": 128},
   "tempo": {"bpm": 120, "ts_num": 4, "ts_den": 4},
   "tempo_map": [{"beat": 0, "bpm": 120}, {"beat": 32, "bpm": 140}],

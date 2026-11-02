@@ -1,3 +1,5 @@
+#include <limits.h>
+#include <math.h>
 #include "session_io_read_internal.h"
 
 #include <string.h>
@@ -24,12 +26,14 @@ bool parse_session_document_engine(JsonReader* r, SessionDocument* doc) {
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->engine.sample_rate = (int)val;
         } else if (strcmp(eng_key, "block_size") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->engine.block_size = (int)val;
         } else if (strcmp(eng_key, "output_queue_blocks") == 0) {
             double value;
@@ -95,9 +99,7 @@ bool parse_session_document_engine(JsonReader* r, SessionDocument* doc) {
                 return false;
             }
         } else {
-            if (!json_skip_value(r)) {
-                return false;
-            }
+            return false;
         }
         json_skip_whitespace(r);
         if (r->pos < r->length && r->data[r->pos] == ',') {

@@ -1,3 +1,6 @@
+#include "daw/save_file.h"
+#include <errno.h>
+#include <limits.h>
 #include "ui/shared_theme_font_adapter.h"
 
 #include "core_font.h"
@@ -354,6 +357,24 @@ bool daw_shared_font_current_preset(char* out_name, size_t out_name_size) {
     return true;
 }
 
+// Preserves malformed existing preferences instead of replacing them with startup defaults.
+static bool preference_replace_allowed(const char* path) {
+    FILE* file=fopen(path,"rb");if(!file)return errno==ENOENT;
+    char value[64];bool ok=fgets(value,sizeof(value),file)!=NULL;
+    if(fgetc(file)!=EOF || ferror(file))ok=false;
+    if(fclose(file))ok=false;
+    if(!ok)return false;
+    trim_trailing_whitespace(value);
+    if(!strcmp(path,k_font_persist_path)) {
+        CoreFontPreset preset;return core_font_get_preset_by_name(value,&preset).code==CORE_OK;
+    }
+    if(!strcmp(path,k_theme_persist_path)) {
+        CoreThemePresetId preset;return core_theme_preset_id_from_name(value,&preset).code==CORE_OK;
+    }
+    char* end;errno=0;long zoom=strtol(value,&end,10);
+    return !errno && end!=value && !*end && zoom>=INT_MIN && zoom<=INT_MAX;
+}
+
 bool daw_shared_font_load_persisted(void) {
     FILE* file;
     char preset_name[64];
@@ -369,7 +390,8 @@ bool daw_shared_font_load_persisted(void) {
         fclose(file);
         return false;
     }
-    fclose(file);
+    int extra=fgetc(file);bool read_ok=extra==EOF && !ferror(file);if(fclose(file))read_ok=false;
+    if(!read_ok)return false;
     trim_trailing_whitespace(preset_name);
     if (!preset_name[0]) {
         return false;
@@ -377,24 +399,12 @@ bool daw_shared_font_load_persisted(void) {
     return daw_shared_font_set_preset(preset_name);
 }
 
+// Publishes only a complete accepted preference using the existing save owner.
 bool daw_shared_font_save_persisted(void) {
-    FILE* file;
-    char preset_name[64];
-    if (!daw_shared_font_current_preset(preset_name, sizeof(preset_name))) {
-        return false;
-    }
-    file = fopen(k_font_persist_path, "wb");
-    if (!file) {
-        return false;
-    }
-    if (fputs(preset_name, file) < 0 || fputc('\n', file) == EOF) {
-        fclose(file);
-        return false;
-    }
-    if (fclose(file) != 0) {
-        return false;
-    }
-    return true;
+    if(!preference_replace_allowed(k_font_persist_path))return false;
+    char name[64],body[66];if(!daw_shared_font_current_preset(name,sizeof(name)))return false;
+    int n=snprintf(body,sizeof(body),"%s\n",name);
+    return n>0 && n<(int)sizeof(body) && daw_save_file_write(k_font_persist_path,body,(size_t)n)!=DAW_SAVE_FAILED;
 }
 
 bool daw_shared_theme_load_persisted(void) {
@@ -412,7 +422,8 @@ bool daw_shared_theme_load_persisted(void) {
         fclose(file);
         return false;
     }
-    fclose(file);
+    int extra=fgetc(file);bool read_ok=extra==EOF && !ferror(file);if(fclose(file))read_ok=false;
+    if(!read_ok)return false;
     trim_trailing_whitespace(preset_name);
     if (!preset_name[0]) {
         return false;
@@ -420,24 +431,12 @@ bool daw_shared_theme_load_persisted(void) {
     return daw_shared_theme_set_preset(preset_name);
 }
 
+// Publishes only a complete accepted preference using the existing save owner.
 bool daw_shared_theme_save_persisted(void) {
-    FILE* file;
-    char preset_name[64];
-    if (!daw_shared_theme_current_preset(preset_name, sizeof(preset_name))) {
-        return false;
-    }
-    file = fopen(k_theme_persist_path, "wb");
-    if (!file) {
-        return false;
-    }
-    if (fputs(preset_name, file) < 0 || fputc('\n', file) == EOF) {
-        fclose(file);
-        return false;
-    }
-    if (fclose(file) != 0) {
-        return false;
-    }
-    return true;
+    if(!preference_replace_allowed(k_theme_persist_path))return false;
+    char name[64],body[66];if(!daw_shared_theme_current_preset(name,sizeof(name)))return false;
+    int n=snprintf(body,sizeof(body),"%s\n",name);
+    return n>0 && n<(int)sizeof(body) && daw_save_file_write(k_theme_persist_path,body,(size_t)n)!=DAW_SAVE_FAILED;
 }
 
 bool daw_shared_theme_cycle_next(void) {
@@ -510,34 +509,25 @@ bool daw_shared_font_zoom_load_persisted(void) {
         fclose(file);
         return false;
     }
-    fclose(file);
+    int extra=fgetc(file);bool read_ok=extra==EOF && !ferror(file);if(fclose(file))read_ok=false;
+    if(!read_ok)return false;
     trim_trailing_whitespace(value);
     if (!value[0]) {
         return false;
     }
-    parsed = strtol(value, &end, 10);
-    if (end == value) {
+    errno=0;parsed = strtol(value, &end, 10);
+    if (errno || end == value || *end || parsed<INT_MIN || parsed>INT_MAX) {
         return false;
     }
     int target=clamp_int((int)parsed,DAW_FONT_ZOOM_STEP_MIN,DAW_FONT_ZOOM_STEP_MAX);
     return target==daw_shared_font_zoom_step() || daw_shared_font_set_zoom_step(target);
 }
 
+// Atomically replaces the accepted zoom preference without truncating its predecessor.
 bool daw_shared_font_zoom_save_persisted(void) {
-    FILE* file;
-    int zoom_step = daw_shared_font_zoom_step();
-    file = fopen(k_font_zoom_persist_path, "wb");
-    if (!file) {
-        return false;
-    }
-    if (fprintf(file, "%d\n", zoom_step) < 0) {
-        fclose(file);
-        return false;
-    }
-    if (fclose(file) != 0) {
-        return false;
-    }
-    return true;
+    if(!preference_replace_allowed(k_font_zoom_persist_path))return false;
+    char body[32];int n=snprintf(body,sizeof(body),"%d\n",daw_shared_font_zoom_step());
+    return n>0 && daw_save_file_write(k_font_zoom_persist_path,body,(size_t)n)!=DAW_SAVE_FAILED;
 }
 
 bool daw_shared_font_resolve_ui_regular(char* out_path, size_t out_path_size, int* out_point_size) {

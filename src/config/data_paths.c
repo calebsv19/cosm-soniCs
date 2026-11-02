@@ -1,3 +1,4 @@
+#include "daw/save_file.h"
 #include "daw/data_paths.h"
 
 #include <SDL2/SDL.h>
@@ -337,16 +338,26 @@ bool daw_data_paths_load_file(const char* path, DawDataPaths* out_paths) {
         return false;
     }
     char line[SESSION_PATH_MAX * 2];
-    while (fgets(line, sizeof(line), file)) {
-        parse_key_value_line(&parsed, line);
+    unsigned seen=0;bool valid=true;
+    while(fgets(line,sizeof(line),file)) {
+        size_t n=strlen(line);char* start=trim_leading(line);
+        if(!n || (line[n-1]!='\n' && !feof(file))){valid=false;break;}
+        if(!*start || *start=='#' || *start==';' || *start=='\n')continue;
+        char* equal=strchr(start,'=');if(!equal){valid=false;break;}
+        char key[64];size_t k=(size_t)(equal-start);if(k>=sizeof(key)){valid=false;break;}
+        memcpy(key,start,k);key[k]=0;trim_trailing(key);
+        unsigned bit=!strcmp(key,"input_root")?1:!strcmp(key,"output_root")?2:!strcmp(key,"library_copy_root")?4:0;
+        if(!bit || (seen&bit) || strlen(equal+1)>=SESSION_PATH_MAX || !parse_key_value_line(&parsed,line)){valid=false;break;}
+        seen|=bit;
     }
-    fclose(file);
+    if(ferror(file))valid=false;if(fclose(file))valid=false;if(!valid)return false;
     daw_data_paths_apply_runtime_policy(&parsed);
     *out_paths = parsed;
     return true;
 }
 
 bool daw_data_paths_save_file(const char* path, const DawDataPaths* paths) {
+    if(paths && (strpbrk(paths->input_root,"\r\n#;") || strpbrk(paths->output_root,"\r\n#;") || strpbrk(paths->library_copy_root,"\r\n#;")))return false;
     if (!path || path[0] == '\0' || !paths) {
         return false;
     }
@@ -366,34 +377,32 @@ bool daw_data_paths_save_file(const char* path, const DawDataPaths* paths) {
             return false;
         }
     }
-    FILE* file = fopen(path, "wb");
-    if (!file) {
-        SDL_Log("data_paths: role=runtime_config path=%s open=write failed reason=%s", path, strerror(errno));
-        return false;
-    }
-    fprintf(file, "input_root=%s\n", paths->input_root);
-    fprintf(file, "output_root=%s\n", paths->output_root);
-    fprintf(file, "library_copy_root=%s\n", paths->library_copy_root);
-    if (fclose(file) != 0) {
-        SDL_Log("data_paths: role=runtime_config path=%s close=write failed reason=%s", path, strerror(errno));
-        return false;
-    }
-    return true;
+    DawSaveFile save;
+    if(!daw_save_file_begin(&save,path))return false;
+    fprintf(save.file,"input_root=%s\noutput_root=%s\nlibrary_copy_root=%s\n",paths->input_root,paths->output_root,paths->library_copy_root);
+    if(!daw_save_file_prepare(&save)){daw_save_file_abort(&save);return false;}
+    return daw_save_file_commit(&save)!=DAW_SAVE_FAILED;
 }
+
+// Retains malformed runtime-root bytes until the user repairs/removes that file and restarts.
+static bool runtime_roots_invalid;
 
 bool daw_data_paths_load_runtime(DawDataPaths* out_paths) {
     if (!out_paths) {
         return false;
     }
     daw_data_paths_set_defaults(out_paths);
+    struct stat existing;runtime_roots_invalid=stat(DAW_DATA_PATH_RUNTIME_CONFIG_PATH,&existing)==0;
     if (!daw_data_paths_load_file(DAW_DATA_PATH_RUNTIME_CONFIG_PATH, out_paths)) {
         daw_data_paths_apply_runtime_policy(out_paths);
         return false;
     }
+    runtime_roots_invalid=false;
     return true;
 }
 
 bool daw_data_paths_save_runtime(const DawDataPaths* paths) {
+    if(runtime_roots_invalid)return false;
     if (!paths) {
         return false;
     }

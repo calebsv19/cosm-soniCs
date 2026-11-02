@@ -38,10 +38,10 @@ static void write_config_file(const char* path) {
     FILE* file = fopen(path, "wb");
     assert(file);
     fputs("sample_rate=0\n", file);
-    fputs("block_size=256\n", file);
+    fputs("block_size=256\nblock_size=999999999999999999999\nblock_size=512oops\n", file);
     fputs("output_queue_blocks=8\noutput_queue_blocks=1\noutput_queue_blocks=33\noutput_queue_blocks=4oops\n", file);
     fputs("fade_default_in_ms=-5\n", file);
-    fputs("fade_default_out_ms=abc\n", file);
+    fputs("fade_default_out_ms=abc\nfade_default_out_ms=nan\nfade_default_out_ms=inf\n", file);
     fputs("fade_presets_ms=1, -2, nope\n", file);
     fputs("enable_engine_logs=maybe\n", file);
     fputs("unknown_key=42\n", file);

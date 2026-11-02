@@ -136,7 +136,9 @@ bool project_collections_next_path(AppState* s,const char* name,char* path,size_
 bool project_collections_save_version(AppState* s,const char* name) {
     char path[SESSION_PATH_MAX];if(!project_collections_next_path(s,name,path,sizeof(path)))return false;
     SessionDocument doc;session_document_init(&doc);
-    bool ok=session_document_capture(s,&doc) && session_document_write_file_new(&doc,path);session_document_free(&doc);
+    s->project.last_save_result=session_document_capture(s,&doc) ? session_document_write_result(&doc,path,true) : DAW_SAVE_FAILED;
+    project_manager_save_notice(s,s->project.last_save_result);
+    bool ok=s->project.last_save_result!=DAW_SAVE_FAILED;session_document_free(&doc);
     if(!ok)return false;
     SDL_strlcpy(s->project.path,path,sizeof(s->project.path));
     const char* base=strrchr(path,'/');SDL_strlcpy(s->project.name,base+1,sizeof(s->project.name));

@@ -11,6 +11,8 @@
 // Tracks the current project identity and save path.
 typedef struct {
     bool has_name;
+    char persistence_notice[128]; // Persistent product acknowledgement; never serialized as authored state.
+    DawSaveResult last_save_result; // Exact acknowledgement for the accepted project path.
     char name[SESSION_NAME_MAX];
     char path[SESSION_PATH_MAX];
 } ProjectState;
@@ -21,6 +23,7 @@ typedef struct {
     char error[128];
     char buffer[SESSION_PATH_MAX];
     bool folder_mode, resume_load;
+    bool publication_warning; // Blocks accidental repeated publication until this warning is dismissed.
     int cursor;
     KitUiTextEdit text_edit;
 } ProjectSavePrompt;

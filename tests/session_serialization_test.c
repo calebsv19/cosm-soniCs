@@ -218,54 +218,30 @@ static int run_factory_preset_session_matrix_test(void) {
     return 0;
 }
 
+// Refuses unsupported instrument identity without altering an accepted session.
 static int run_unknown_preset_fallback_test(void) {
     const char* path = "build/tests/sample_session_unknown_preset.json";
-    if (!write_replaced_file(kTestOutputPath, path, "\"saw_lead\"", "\"future_missing_preset\"")) {
-        SDL_Log("session_serialization_test: failed to write unknown preset fixture");
-        return 30;
-    }
-
+    if (!write_replaced_file(kTestOutputPath, path, "\"saw_lead\"", "\"future_missing_preset\"")) return 30;
     SessionDocument loaded;
     session_document_init(&loaded);
-    if (!session_document_read_file(path, &loaded)) {
-        SDL_Log("session_serialization_test: failed to read unknown preset fixture");
-        session_document_free(&loaded);
-        return 31;
-    }
-    if (loaded.track_count != 1 || loaded.tracks[0].clip_count != 2) {
-        SDL_Log("session_serialization_test: unknown preset fixture count mismatch");
-        session_document_free(&loaded);
-        return 32;
-    }
-    const SessionClip* clip = &loaded.tracks[0].clips[1];
-    if (clip->kind != ENGINE_CLIP_KIND_MIDI ||
-        clip->instrument_preset != ENGINE_INSTRUMENT_PRESET_PURE_SINE ||
-        fabsf(clip->instrument_params.level - 0.82f) > 0.01f ||
-        fabsf(clip->instrument_params.tone - 0.73f) > 0.01f ||
-        fabsf(clip->instrument_params.attack_ms - 12.0f) > 0.01f ||
-        fabsf(clip->instrument_params.release_ms - 120.0f) > 0.01f ||
-        clip->midi_note_count != 2 ||
-        !clip->midi_notes ||
-        clip->midi_notes[0].note != 60 ||
-        clip->midi_notes[1].note != 64) {
-        SDL_Log("session_serialization_test: unknown preset fallback mismatch");
-        session_document_free(&loaded);
-        return 33;
-    }
+    if (!session_document_read_file(kTestOutputPath,&loaded)) return 31;
+    SessionDocument before=loaded;
+    bool refused=!session_document_read_file(path,&loaded);
+    bool preserved=!memcmp(&before,&loaded,sizeof(before));
     session_document_free(&loaded);
-    return 0;
+    return refused && preserved ? 0 : 32;
 }
 
 // Distinguishes omitted legacy gain defaults from explicit silent values across a saved round trip.
 static int run_gain_defaults_test(void) {
     const char* path = "build/tests/sample_session_gain.json";
     const char* temp = "build/tests/sample_session_gain_temp.json";
-    char stored_gain[64];snprintf(stored_gain,sizeof(stored_gain),"\"gain\": %.*g",FLT_DECIMAL_DIG,(double)0.8f);
+    char stored_gain[64];snprintf(stored_gain,sizeof(stored_gain),"\"gain\": %.*g,",FLT_DECIMAL_DIG,(double)0.8f);
     for (int missing = 0; missing < 2; ++missing) {
         if (!write_replaced_file(kTestOutputPath, temp, stored_gain,
-                                 missing ? "\"unused_gain\": 0.800000" : "\"gain\": 0.000000") ||
-            !write_replaced_file(temp, path, "\"gain\": 1",
-                                 missing ? "\"unused_gain\": 1.000000" : "\"gain\": 0.000000")) return 40;
+                                 missing ? "" : "\"gain\": 0.000000,") ||
+            !write_replaced_file(temp, path, "\"gain\": 1,",
+                                 missing ? "" : "\"gain\": 0.000000,")) return 40;
         SessionDocument doc;
         session_document_init(&doc);
         if (!session_document_read_file(path, &doc)) return 41;

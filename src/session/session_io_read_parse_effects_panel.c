@@ -1,3 +1,5 @@
+#include <limits.h>
+#include <math.h>
 #include "session_io_read_internal.h"
 
 #include <string.h>
@@ -24,48 +26,56 @@ bool parse_session_document_effects_panel(JsonReader* r, SessionDocument* doc) {
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->effects_panel.view_mode = (int)val;
         } else if (strcmp(panel_key, "selected_index") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->effects_panel.selected_index = (int)val;
         } else if (strcmp(panel_key, "open_index") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->effects_panel.open_index = (int)val;
         } else if (strcmp(panel_key, "list_detail_mode") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->effects_panel.list_detail_mode = (int)val;
         } else if (strcmp(panel_key, "eq_view_mode") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->effects_panel.eq_view_mode = (int)val;
         } else if (strcmp(panel_key, "meter_scope_mode") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->effects_panel.meter_scope_mode = (int)val;
         } else if (strcmp(panel_key, "meter_lufs_mode") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->effects_panel.meter_lufs_mode = (int)val;
         } else if (strcmp(panel_key, "meter_spectrogram_mode") == 0) {
             double val;
             if (!json_parse_number(r, &val)) {
                 return false;
             }
+            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
             doc->effects_panel.meter_spectrogram_mode = (int)val;
         } else if (strcmp(panel_key, "low_cut_enabled") == 0) {
             if (!json_parse_bool(r, &doc->effects_panel.low_cut.enabled)) {
@@ -188,9 +198,7 @@ bool parse_session_document_effects_panel(JsonReader* r, SessionDocument* doc) {
             }
             doc->effects_panel.bands[3].q_width = (float)val;
         } else {
-            if (!json_skip_value(r)) {
-                return false;
-            }
+            return false;
         }
         json_skip_whitespace(r);
         if (r->pos < r->length && r->data[r->pos] == ',') {

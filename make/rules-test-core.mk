@@ -123,7 +123,7 @@ $(TEST_BIN): $(TEST_OBJS) \
 	$(APP_OBJ_DIR)/src/session/session_validation.o \
 	$(APP_OBJ_DIR)/src/session/session_io_write.o \
 	$(APP_OBJ_DIR)/src/session/session_io_read.o \
-	$(APP_OBJ_DIR)/src/session/session_io_json.o \
+	$(APP_OBJ_DIR)/src/session/session_io_json.o $(APP_OBJ_DIR)/src/session/session_json_admission.o \
 	$(APP_OBJ_DIR)/src/session/session_json_string.o \
 	$(APP_OBJ_DIR)/src/session/session_io_read_parse.o \
 	$(APP_OBJ_DIR)/src/session/session_io_read_parse_document.o \
@@ -786,7 +786,7 @@ $(TEST_BUILD_ROOT)/project_collections_test: tests/project_collections_test.c $(
 build-project-collections-native: $(TEST_BUILD_ROOT)/project_collections_native_test
 $(TEST_BUILD_ROOT)/project_collections_native_test: tests/project_collections_native_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
 	@mkdir -p "$(dir $@)"
-	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(filter-out $(APP_OBJ_DIR)/src/session/save_file.o,$(ENGINE_TEST_SUPPORT_OBJS)),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
 
 .PHONY: test-track-ui build-track-ui-native
 test-track-ui: $(TEST_BUILD_ROOT)/track_ui_test
@@ -875,3 +875,11 @@ $(TEST_BUILD_ROOT)/font_settings_transaction_test: tests/font_settings_transacti
 $(TEST_BUILD_ROOT)/text_pixels_native_test: tests/text_pixels_native_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
 	@mkdir -p "$(dir $@)"
 	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-l1-persistence
+test-l1-persistence: $(TEST_BUILD_ROOT)/l1_persistence_test
+	$(TEST_BUILD_ROOT)/l1_persistence_test
+$(TEST_BUILD_ROOT)/l1_persistence_test: tests/l1_persistence_test.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+test-stable: test-l1-persistence

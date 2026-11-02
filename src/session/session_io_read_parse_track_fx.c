@@ -1,3 +1,5 @@
+#include <limits.h>
+#include <math.h>
 #include "session_io_read_internal.h"
 
 #include <stdlib.h>
@@ -120,6 +122,7 @@ bool parse_session_track_fx(JsonReader* r, SessionTrack* track) {
                             return false;
                         }
                         if (idx < FX_MAX_PARAMS) {
+                            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
                             fx->param_mode[idx] = (FxParamMode)((int)val);
                         }
                         ++idx;
@@ -245,6 +248,7 @@ bool parse_session_track_fx(JsonReader* r, SessionTrack* track) {
                         }
                         int idx = session_fx_find_or_add_param_id(fx, id_buf);
                         if (idx >= 0) {
+                            if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
                             fx->param_modes_by_id[idx] = (FxParamMode)((int)val);
                         }
                         json_skip_whitespace(r);
@@ -298,14 +302,13 @@ bool parse_session_track_fx(JsonReader* r, SessionTrack* track) {
                 if (!json_parse_number(r, &val)) {
                     return false;
                 }
+                if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
                 fx->param_count = (uint32_t)(val < 0 ? 0 : val);
                 if (fx->param_count > FX_MAX_PARAMS) {
                     fx->param_count = FX_MAX_PARAMS;
                 }
             } else {
-                if (!json_skip_value(r)) {
-                    return false;
-                }
+                return false;
             }
             json_skip_whitespace(r);
             if (r->pos < r->length && r->data[r->pos] == ',') {

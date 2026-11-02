@@ -1,3 +1,5 @@
+#include <limits.h>
+#include <math.h>
 #include <math.h>
 #include "session_io_read_internal.h"
 
@@ -42,6 +44,7 @@ static bool parse_session_clip_kind(JsonReader* r, SessionClip* clip) {
     if (!json_parse_number(r, &val)) {
         return false;
     }
+    if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
     clip->kind = ((int)val == (int)ENGINE_CLIP_KIND_MIDI) ? ENGINE_CLIP_KIND_MIDI : ENGINE_CLIP_KIND_AUDIO;
     return true;
 }
@@ -57,6 +60,7 @@ static bool parse_session_instrument_preset(JsonReader* r, SessionClip* clip) {
             return false;
         }
         EngineInstrumentPresetId preset = ENGINE_INSTRUMENT_PRESET_PURE_SINE;
+        if (!engine_instrument_preset_from_id_string(preset_id, &preset)) return false;
         if (engine_instrument_preset_from_id_string(preset_id, &preset)) {
             clip->instrument_preset = preset;
             clip->instrument_params = engine_instrument_default_params(preset);
@@ -67,7 +71,9 @@ static bool parse_session_instrument_preset(JsonReader* r, SessionClip* clip) {
     if (!json_parse_number(r, &val)) {
         return false;
     }
-    clip->instrument_preset = engine_instrument_preset_clamp((EngineInstrumentPresetId)(int)val);
+    if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
+    if(val<0 || val>=ENGINE_INSTRUMENT_PRESET_COUNT)return false;
+    clip->instrument_preset = (EngineInstrumentPresetId)(int)val;
     clip->instrument_params = engine_instrument_default_params(clip->instrument_preset);
     return true;
 }
@@ -96,7 +102,7 @@ static bool parse_session_instrument_params(JsonReader* r, SessionClip* clip) {
                 return false;
             }
             params = engine_instrument_params_set(clip->instrument_preset, params, param, (float)val);
-        } else if (!json_skip_value(r)) {
+        } else {
             return false;
         }
         json_skip_whitespace(r);
@@ -159,17 +165,9 @@ static bool parse_session_midi_notes(JsonReader* r, SessionClip* clip) {
                 return false;
             }
             if (strcmp(note_key, "start_frame") == 0) {
-                double val;
-                if (!json_parse_number(r, &val)) {
-                    return false;
-                }
-                note.start_frame = (uint64_t)(val < 0 ? 0 : val);
+                if (!json_parse_u64(r, &note.start_frame)) return false;
             } else if (strcmp(note_key, "duration_frames") == 0) {
-                double val;
-                if (!json_parse_number(r, &val)) {
-                    return false;
-                }
-                note.duration_frames = (uint64_t)(val < 0 ? 0 : val);
+                if (!json_parse_u64(r, &note.duration_frames)) return false;
             } else if (strcmp(note_key, "note") == 0) {
                 double val;
                 if (!json_parse_number(r, &val)) {
@@ -188,9 +186,7 @@ static bool parse_session_midi_notes(JsonReader* r, SessionClip* clip) {
                 }
                 note.velocity = (float)val;
             } else {
-                if (!json_skip_value(r)) {
-                    return false;
-                }
+                return false;
             }
             json_skip_whitespace(r);
             if (r->pos < r->length && r->data[r->pos] == ',') {
@@ -268,12 +264,7 @@ static bool parse_session_automation_points(JsonReader* r, SessionAutomationLane
                 return false;
             }
             if (strcmp(point_key, "frame") == 0) {
-                double val;
-                if (!json_parse_number(r, &val)) {
-                    return false;
-                }
-                if (!isfinite(val) || val < 0 || val >= 18446744073709551616.0 || floor(val) != val) return false;
-                frame = (uint64_t)val;
+                if(!json_parse_u64(r,&frame))return false;
             } else if (strcmp(point_key, "value") == 0) {
                 double val;
                 if (!json_parse_number(r, &val)) {
@@ -286,9 +277,7 @@ static bool parse_session_automation_points(JsonReader* r, SessionAutomationLane
                 if (!json_parse_number(r, &val) || val < 0 || val >= ENGINE_AUTOMATION_CURVE_COUNT || floor(val) != val) return false;
                 curve = (EngineAutomationCurve)val;
             } else {
-                if (!json_skip_value(r)) {
-                    return false;
-                }
+                return false;
             }
             json_skip_whitespace(r);
             if (r->pos < r->length && r->data[r->pos] == ',') {
@@ -373,9 +362,7 @@ bool parse_session_automation_lanes(JsonReader* r, SessionAutomationLane** out_l
                     return false;
                 }
             } else {
-                if (!json_skip_value(r)) {
-                    return false;
-                }
+                return false;
             }
             json_skip_whitespace(r);
             if (r->pos < r->length && r->data[r->pos] == ',') {
@@ -453,40 +440,21 @@ bool parse_session_track_clips(JsonReader* r, SessionTrack* track) {
                     return false;
                 }
             } else if (strcmp(clip_key, "start_frame") == 0) {
-                double val;
-                if (!json_parse_number(r, &val)) {
-                    return false;
-                }
-                clip->start_frame = (uint64_t)(val < 0 ? 0 : val);
+                if (!json_parse_u64(r, &clip->start_frame)) return false;
             } else if (strcmp(clip_key, "duration_frames") == 0) {
-                double val;
-                if (!json_parse_number(r, &val)) {
-                    return false;
-                }
-                clip->duration_frames = (uint64_t)(val < 0 ? 0 : val);
+                if (!json_parse_u64(r, &clip->duration_frames)) return false;
             } else if (strcmp(clip_key, "offset_frames") == 0) {
-                double val;
-                if (!json_parse_number(r, &val)) {
-                    return false;
-                }
-                clip->offset_frames = (uint64_t)(val < 0 ? 0 : val);
+                if (!json_parse_u64(r, &clip->offset_frames)) return false;
             } else if (strcmp(clip_key, "fade_in_frames") == 0) {
-                double val;
-                if (!json_parse_number(r, &val)) {
-                    return false;
-                }
-                clip->fade_in_frames = (uint64_t)(val < 0 ? 0 : val);
+                if (!json_parse_u64(r, &clip->fade_in_frames)) return false;
             } else if (strcmp(clip_key, "fade_out_frames") == 0) {
-                double val;
-                if (!json_parse_number(r, &val)) {
-                    return false;
-                }
-                clip->fade_out_frames = (uint64_t)(val < 0 ? 0 : val);
+                if (!json_parse_u64(r, &clip->fade_out_frames)) return false;
             } else if (strcmp(clip_key, "fade_in_curve") == 0) {
                 double val;
                 if (!json_parse_number(r, &val)) {
                     return false;
                 }
+                if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
                 int curve = (int)val;
                 if (curve < 0 || curve >= ENGINE_FADE_CURVE_COUNT) {
                     curve = ENGINE_FADE_CURVE_LINEAR;
@@ -497,6 +465,7 @@ bool parse_session_track_clips(JsonReader* r, SessionTrack* track) {
                 if (!json_parse_number(r, &val)) {
                     return false;
                 }
+                if(!isfinite(val) || val < INT_MIN || val > INT_MAX || floor(val)!=val)return false;
                 int curve = (int)val;
                 if (curve < 0 || curve >= ENGINE_FADE_CURVE_COUNT) {
                     curve = ENGINE_FADE_CURVE_LINEAR;
@@ -533,9 +502,7 @@ bool parse_session_track_clips(JsonReader* r, SessionTrack* track) {
                     return false;
                 }
             } else {
-                if (!json_skip_value(r)) {
-                    return false;
-                }
+                return false;
             }
             json_skip_whitespace(r);
             if (r->pos < r->length && r->data[r->pos] == ',') {

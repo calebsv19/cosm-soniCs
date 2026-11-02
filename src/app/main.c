@@ -973,8 +973,12 @@ int daw_app_main_legacy(void) {
 
     if (state.project.has_name) {
         project_manager_save(&state, state.project.name, true);
-    } else if (!session_save_to_file(&state, last_session_path)) {
-        SDL_Log("Failed to save session to %s", last_session_path);
+    } else {
+        project_manager_save_notice(&state,session_save_result(&state,last_session_path));
+    }
+    if(state.project.last_save_result!=DAW_SAVE_SYNCED) {
+        SDL_Log("Shutdown save: %s",state.project.persistence_notice);
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_WARNING,"soniCs save status",state.project.persistence_notice,NULL);
     }
     if (!daw_data_paths_save_runtime(&state.data_paths)) {
         SDL_Log("data_paths: failed to persist runtime roots to %s",

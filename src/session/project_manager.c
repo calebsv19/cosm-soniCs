@@ -271,7 +271,9 @@ bool project_manager_save(AppState* state, const char* name_override, bool overw
         path[sizeof(path) - 1] = '\0';
     }
 
-    if (!session_save_to_file(state, path)) {
+    state->project.last_save_result=session_save_result(state,path);
+    project_manager_save_notice(state,state->project.last_save_result);
+    if (state->project.last_save_result==DAW_SAVE_FAILED) {
         SDL_Log("project_manager: save failed: %s", path);
         return false;
     }
@@ -354,6 +356,8 @@ bool project_manager_new(AppState* state) {
     state->project.has_name = false;
     state->project.name[0] = '\0';
     state->project.path[0] = '\0';
+    state->project.persistence_notice[0]=0;
+    state->project.last_save_result=DAW_SAVE_FAILED;
     SDL_Log("project_manager: new project created");
     return true;
 }
@@ -502,4 +506,13 @@ bool project_manager_list(AppState* state, ProjectInfo* out_items, int max_items
         *out_count = count;
     }
     return count > 0;
+}
+
+// Retains truthful save status until the next save or accepted load.
+void project_manager_save_notice(AppState* state, DawSaveResult result) {
+    state->project.last_save_result=result;
+    SDL_strlcpy(state->project.persistence_notice,
+        result==DAW_SAVE_FAILED ? "Save failed; previous file retained. Your current edits are not saved." :
+        result==DAW_SAVE_PUBLISHED ? "Last save published; disk sync unconfirmed." : "Last save published; disk sync completed.",
+        sizeof(state->project.persistence_notice));
 }

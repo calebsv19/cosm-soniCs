@@ -21,7 +21,7 @@ MEMORY_CHECK_SRCS := \
 	src/session/session_validation.c \
 	src/session/session_io_write.c \
 	src/session/session_io_read.c \
-	src/session/session_io_json.c \
+	src/session/session_io_json.c src/session/session_json_admission.c \
 	src/session/session_io_read_parse.c \
 	src/session/session_io_read_parse_document.c \
 	src/session/session_io_read_parse_engine.c \

@@ -23,6 +23,14 @@
 #include <unistd.h>
 #include <string.h>
 
+// Recognizes the historical path-only identity so old referenced sessions can migrate explicitly.
+static bool legacy_path_identity(const char* id,const char* path) {
+    uint64_t hash=UINT64_C(1469598103934665603);
+    for(const unsigned char* c=(const unsigned char*)path;*c;++c){hash^=*c;hash*=UINT64_C(1099511628211);}
+    char token[32];snprintf(token,sizeof(token),"%016llx",(unsigned long long)hash);
+    return !strcmp(id,token);
+}
+
 static void safe_copy_string(char* dst, size_t dst_len, const char* src) {
     if (!dst || dst_len == 0) {
         return;
@@ -622,8 +630,17 @@ static bool session_prepare_document(AppState* state, const SessionDocument* doc
                 const MediaRegistryEntry* entry = media_registry_find_by_id(&state->media_registry, clip_doc->media_id);
                 if (entry && entry->path[0] && access(entry->path, R_OK) == 0) resolved_path = entry->path;
             }
-            if (!resolved_path[0] || !media_registry_ensure_for_path(&state->media_registry,
-                    resolved_path, clip_doc->name, &resolved_entry)) return false;
+            // Verify referenced bytes afresh before trusting an identity or cached registry entry.
+            MediaRegistryEntry actual = {0};
+            if (!media_registry_prepare_entry(resolved_path, &actual, NULL, NULL) ||
+                (clip_doc->media_id[0] && strcmp(clip_doc->media_id, actual.id) &&
+                 !legacy_path_identity(clip_doc->media_id,clip_doc->media_path))) {
+                SDL_Log("session_apply_document: missing or changed media: %s", resolved_path);
+                return false;
+            }
+            resolved_entry=actual;
+            SDL_strlcpy(resolved_entry.name,clip_doc->name,sizeof(resolved_entry.name));
+            if(!media_registry_adopt_entry(&state->media_registry,&resolved_entry))return false;
             resolved_path = resolved_entry.path;
             resolved_id = resolved_entry.id;
             if (strcmp(clip_doc->media_id, resolved_id)) ++migrated_media_id_count;
@@ -1147,11 +1164,13 @@ bool session_load_from_file(AppState* state, const char* path) {
     }
     SessionDocument doc;
     session_document_init(&doc);
-    if (!session_document_read_recoverable(path, &doc, NULL)) {
+    bool recovered=false;
+    if (!session_document_read_recoverable(path, &doc, &recovered)) {
         session_document_free(&doc);
         return false;
     }
     bool applied = session_apply_document(state, &doc);
+    if(applied)SDL_strlcpy(state->project.persistence_notice,recovered ? "Recovered previous save (.bak); primary file remains unchanged." : "Project loaded.",sizeof(state->project.persistence_notice));
     session_document_free(&doc);
     return applied;
 }

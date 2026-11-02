@@ -20,6 +20,7 @@ void project_modal_input_open_save_prompt(AppState* state) {
     if (project_modal_input_active(state)) return;
     daw_text_cancel_composition(state);
     state->project_prompt.active = true;
+    state->project_prompt.publication_warning=false;
     state->project_prompt.error[0] = '\0';
     project_manager_init(state);
     project_collections_refresh(state,NULL);
@@ -73,6 +74,7 @@ static void choose_collection(AppState* s,int delta) {
 // Publishes the requested checkpoint or updates the exact current path after explicit activation.
 static void submit_prompt(AppState* s,bool update) {
     ProjectSavePrompt* p=&s->project_prompt;
+    if(p->publication_warning)return;
     if(p->folder_mode) {
         if(!project_collections_refresh(s,p->buffer)) {SDL_strlcpy(p->error,"Use an existing collections folder containing projects/ subfolders.",sizeof(p->error));return;}
         bool load=p->resume_load;project_modal_input_close_save_prompt(s);
@@ -80,7 +82,10 @@ static void submit_prompt(AppState* s,bool update) {
         return;
     }
     bool ok=update ? project_manager_save(s,s->project.name,true) : project_collections_save_version(s,p->buffer);
-    if(ok)project_modal_input_close_save_prompt(s);
+    if(ok && s->project.last_save_result==DAW_SAVE_PUBLISHED) {
+        p->publication_warning=true;
+        SDL_strlcpy(p->error,"Saved; disk sync unconfirmed. Close this dialog before another save.",sizeof(p->error));
+    } else if(ok)project_modal_input_close_save_prompt(s);
     else SDL_strlcpy(p->error,"Save failed; current song retained. Retry or Cancel.",sizeof(p->error));
 }
 // Handles save/path text input and release-owned collection actions in one isolated modal.

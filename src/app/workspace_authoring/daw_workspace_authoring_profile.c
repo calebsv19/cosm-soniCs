@@ -1,6 +1,8 @@
 #include "app/workspace_authoring/daw_workspace_authoring_profile.h"
 
 #include <limits.h>
+#include <sys/stat.h>
+#include "daw/save_file.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -63,15 +65,23 @@ DawWorkspaceAuthoringProfileResult daw_workspace_authoring_profile_export_file(c
     payload[4] = p->library_visible ? 1u : 0u; payload[5] = p->inspector_visible ? 1u : 0u; payload[6] = p->focus_pane; put16(payload + 8u, DAW_WAPP_REQUIREMENT_COUNT);
     put_float(payload + 12u, p->transport_ratio); put_float(payload + 16u, p->library_ratio); put_float(payload + 20u, p->mixer_ratio);
     for (i = 0; i < DAW_WAPP_REQUIREMENT_COUNT; ++i) { unsigned char *b = requirements_bytes + i * DAW_WAPP_REQUIREMENT_SIZE; put32(b, requirements[i].module_type_id); put16(b + 4u, requirements[i].min_version_major); put16(b + 6u, requirements[i].min_version_minor); put16(b + 8u, requirements[i].state_schema_major); put16(b + 10u, requirements[i].state_schema_minor); }
-    r = core_pack_writer_open(path, &writer); if (r.code != CORE_OK) return DAW_WORKSPACE_AUTHORING_PROFILE_ERR_IO;
+    DawSaveFile save;
+    if(!daw_save_file_begin(&save,path))return DAW_WORKSPACE_AUTHORING_PROFILE_ERR_IO;
+    r = core_pack_writer_open(save.temporary, &writer); if (r.code != CORE_OK) {daw_save_file_abort(&save);return DAW_WORKSPACE_AUTHORING_PROFILE_ERR_IO;}
     r = core_pack_writer_add_chunk(&writer, "DWAP", payload, sizeof(payload)); if (r.code == CORE_OK) r = core_pack_writer_add_chunk(&writer, "DMOD", requirements_bytes, sizeof(requirements_bytes));
     if (core_pack_writer_close(&writer).code != CORE_OK && r.code == CORE_OK) r.code = CORE_ERR_IO;
-    return r.code == CORE_OK ? DAW_WORKSPACE_AUTHORING_PROFILE_OK : DAW_WORKSPACE_AUTHORING_PROFILE_ERR_IO;
+    DawWorkspaceAuthoringProjection verified;
+    if(r.code!=CORE_OK || !daw_save_file_prepare(&save) || daw_workspace_authoring_profile_import_file(save.temporary,&verified)!=DAW_WORKSPACE_AUTHORING_PROFILE_OK) {
+        daw_save_file_abort(&save);return DAW_WORKSPACE_AUTHORING_PROFILE_ERR_IO;
+    }
+    return daw_save_file_commit(&save)!=DAW_SAVE_FAILED ? DAW_WORKSPACE_AUTHORING_PROFILE_OK : DAW_WORKSPACE_AUTHORING_PROFILE_ERR_IO;
 }
 
 DawWorkspaceAuthoringProfileResult daw_workspace_authoring_profile_import_file(const char *path, DawWorkspaceAuthoringProjection *out) {
     CorePackReader reader; CorePackChunkInfo a, b; unsigned char payload[DAW_WAPP_PAYLOAD_SIZE], bytes[DAW_WAPP_REQUIREMENT_COUNT * DAW_WAPP_REQUIREMENT_SIZE]; CorePaneWorkspaceProfileModuleRequirementV1 requirements[DAW_WAPP_REQUIREMENT_COUNT]; DawWorkspaceAuthoringProjection decoded = {0}; uint32_t i;
     if (!path || !out) return DAW_WORKSPACE_AUTHORING_PROFILE_ERR_INVALID_ARG;
+    struct stat info;
+    if(stat(path,&info) || !S_ISREG(info.st_mode) || info.st_size>65536)return DAW_WORKSPACE_AUTHORING_PROFILE_ERR_CONTAINER;
     if (core_pack_reader_open(path, &reader).code != CORE_OK) return DAW_WORKSPACE_AUTHORING_PROFILE_ERR_CONTAINER;
     if (core_pack_reader_chunk_count(&reader) != 2u || core_pack_reader_find_chunk(&reader, "DWAP", 0u, &a).code != CORE_OK || core_pack_reader_find_chunk(&reader, "DMOD", 0u, &b).code != CORE_OK || a.size != sizeof(payload) || b.size != sizeof(bytes) || core_pack_reader_read_chunk_data(&reader, &a, payload, sizeof(payload)).code != CORE_OK || core_pack_reader_read_chunk_data(&reader, &b, bytes, sizeof(bytes)).code != CORE_OK) { (void)core_pack_reader_close(&reader); return DAW_WORKSPACE_AUTHORING_PROFILE_ERR_CONTAINER; }
     (void)core_pack_reader_close(&reader);

@@ -2,6 +2,8 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <float.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -60,49 +62,21 @@ static bool json_parse_null(JsonReader* r) {
     return json_match_literal(r, "null");
 }
 
-bool json_parse_number(JsonReader* r, double* out_value) {
-    json_skip_whitespace(r);
-    size_t start = r->pos;
-    if (start >= r->length) {
-        return false;
+// Reads strict finite JSON numbers, retaining negative zero and refusing malformed exponents.
+bool json_parse_number(JsonReader* r,double* out_value) {
+    json_skip_whitespace(r);size_t start=r->pos;
+    if(r->pos<r->length && r->data[r->pos]=='-')++r->pos;
+    if(r->pos>=r->length)return false;
+    if(r->data[r->pos]=='0')++r->pos;
+    else {size_t begin=r->pos;while(r->pos<r->length && isdigit((unsigned char)r->data[r->pos]))++r->pos;if(begin==r->pos)return false;}
+    if(r->pos<r->length && r->data[r->pos]=='.') {size_t begin=++r->pos;while(r->pos<r->length&&isdigit((unsigned char)r->data[r->pos]))++r->pos;if(begin==r->pos)return false;}
+    if(r->pos<r->length && (r->data[r->pos]=='e'||r->data[r->pos]=='E')) {
+        ++r->pos;if(r->pos<r->length&&(r->data[r->pos]=='+'||r->data[r->pos]=='-'))++r->pos;
+        size_t begin=r->pos;while(r->pos<r->length&&isdigit((unsigned char)r->data[r->pos]))++r->pos;if(begin==r->pos)return false;
     }
-    if (r->data[r->pos] == '-' || r->data[r->pos] == '+') {
-        ++r->pos;
-    }
-    bool has_digits = false;
-    while (r->pos < r->length && isdigit((unsigned char)r->data[r->pos])) {
-        has_digits = true;
-        ++r->pos;
-    }
-    if (r->pos < r->length && r->data[r->pos] == '.') {
-        ++r->pos;
-        while (r->pos < r->length && isdigit((unsigned char)r->data[r->pos])) {
-            has_digits = true;
-            ++r->pos;
-        }
-    }
-    if (r->pos < r->length && (r->data[r->pos] == 'e' || r->data[r->pos] == 'E')) {
-        ++r->pos;
-        if (r->pos < r->length && (r->data[r->pos] == '+' || r->data[r->pos] == '-')) {
-            ++r->pos;
-        }
-        while (r->pos < r->length && isdigit((unsigned char)r->data[r->pos])) {
-            has_digits = true;
-            ++r->pos;
-        }
-    }
-    if (!has_digits) {
-        return false;
-    }
-    errno = 0;
-    double value = strtod(&r->data[start], NULL);
-    if (errno != 0) {
-        return false;
-    }
-    if (out_value) {
-        *out_value = value;
-    }
-    return true;
+    errno=0;char* end;double n=strtod(r->data+start,&end);
+    if(end!=r->data+r->pos || !isfinite(n) || fabs(n)>FLT_MAX || (errno && n==0))return false;
+    if(out_value)*out_value=n;return true;
 }
 
 static bool json_skip_string(JsonReader* r) {

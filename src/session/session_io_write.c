@@ -199,7 +199,7 @@ static const char* session_clip_kind_to_string(EngineClipKind kind) {
 
 // Serializes into an isolated candidate, validates it, and retains the previous valid save before publication.
 // Serializes one validated session, optionally requiring an unused destination.
-static bool session_document_write_mode(const SessionDocument* doc, const char* path, bool new_only) {
+DawSaveResult session_document_write_result(const SessionDocument* doc, const char* path, bool new_only) {
     char error[256] = {0};
     if (!session_document_validate(doc, error, sizeof(error))) {
         SDL_Log("session_document_write_file: invalid document: %s", error[0] ? error : "unknown error");
@@ -891,7 +891,7 @@ static bool session_document_write_mode(const SessionDocument* doc, const char* 
         return false;
     }
 
-    if (new_only) return daw_save_file_commit_new(&save) != DAW_SAVE_FAILED;
+    if (new_only) return daw_save_file_commit_new(&save);
 
     // Only a readable, valid primary may replace the retained recovery copy.
     struct stat existing;
@@ -922,19 +922,19 @@ static bool session_document_write_mode(const SessionDocument* doc, const char* 
     }
     DawSaveResult result = daw_save_file_commit(&save);
     if (result == DAW_SAVE_FAILED) SDL_Log("session_document_write_file: publication failed for %s", path);
-    return result != DAW_SAVE_FAILED;
+    return result;
 }
 
 // Retains the existing validated replacement and recovery-copy behavior.
 bool session_document_write_file(const SessionDocument* doc, const char* path) {
-    return session_document_write_mode(doc,path,false);
+    return session_document_write_result(doc,path,false)!=DAW_SAVE_FAILED;
 }
 // Uses atomic no-replace publication for versioned collection saves.
 bool session_document_write_file_new(const SessionDocument* doc, const char* path) {
-    return session_document_write_mode(doc,path,true);
+    return session_document_write_result(doc,path,true)!=DAW_SAVE_FAILED;
 }
 
-bool session_save_to_file(const AppState* state, const char* path) {
+DawSaveResult session_save_result(const AppState* state, const char* path) {
     if (!state) {
         SDL_Log("session_save_to_file: app state is null");
         return false;
@@ -946,7 +946,10 @@ bool session_save_to_file(const AppState* state, const char* path) {
         session_document_free(&doc);
         return false;
     }
-    bool wrote = session_document_write_file(&doc, path);
+    DawSaveResult wrote = session_document_write_result(&doc, path, false);
     session_document_free(&doc);
     return wrote;
 }
+
+// Compatibility boolean means published, not necessarily synced.
+bool session_save_to_file(const AppState* state,const char* path) { return session_save_result(state,path)!=DAW_SAVE_FAILED; }

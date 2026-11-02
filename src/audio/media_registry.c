@@ -1,5 +1,9 @@
 #include "audio/media_registry.h"
 #include "daw/save_file.h"
+#include "cJSON.h"
+#include "daw/json_admission.h"
+#include <math.h>
+#include <limits.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -29,12 +33,11 @@ static bool media_registry_hash_file(const char* path, char* out_id, size_t out_
     if (!fp) {
         return false;
     }
-    fseek(fp, 0, SEEK_END);
+    if (fseek(fp, 0, SEEK_END)) { fclose(fp); return false; }
     long size = ftell(fp);
-    if (size < 0) size = 0;
-    fseek(fp, 0, SEEK_SET);
+    if (size < 0 || fseek(fp, 0, SEEK_SET)) { fclose(fp); return false; }
     uint64_t hash = fnv1a64_stream(fp);
-    fclose(fp);
+    bool ok=!ferror(fp);if(fclose(fp))ok=false;if(!ok)return false;
     snprintf(out_id, out_len, "%016llx", (unsigned long long)hash);
     if (out_size) {
         *out_size = (uint64_t)size;
@@ -54,208 +57,60 @@ static bool registry_ensure_capacity(MediaRegistry* registry, int count_needed) 
     return true;
 }
 
-static void registry_write_json(FILE* file, const MediaRegistry* registry) {
-    fprintf(file, "{\n");
-    fprintf(file, "  \"type\": \"%s\",\n", MEDIA_REGISTRY_MAGIC);
-    fprintf(file, "  \"entries\": [\n");
-    for (int i = 0; i < registry->count; ++i) {
-        const MediaRegistryEntry* entry = &registry->entries[i];
-        fprintf(file, "    {\n");
-        fprintf(file, "      \"id\": \"%s\",\n", entry->id);
-        fprintf(file, "      \"path\": \"%s\",\n", entry->path);
-        fprintf(file, "      \"name\": \"%s\",\n", entry->name);
-        fprintf(file, "      \"duration\": %.6f,\n", entry->duration_seconds);
-        fprintf(file, "      \"sample_rate\": %d,\n", entry->sample_rate);
-        fprintf(file, "      \"channels\": %d,\n", entry->channels);
-        fprintf(file, "      \"file_size\": %llu\n", (unsigned long long)entry->file_size);
-        fprintf(file, "    }%s\n", (i + 1 < registry->count) ? "," : "");
+// Serializes escaped names and exact metadata numbers using the already-adopted JSON owner.
+static void registry_write_json(FILE* file,const MediaRegistry* registry) {
+    cJSON* root=cJSON_CreateObject();cJSON* entries=root?cJSON_AddArrayToObject(root,"entries"):NULL;
+    bool ok=root && entries && cJSON_AddStringToObject(root,"type",MEDIA_REGISTRY_MAGIC);
+    for(int i=0;ok && i<registry->count;++i) {
+        const MediaRegistryEntry* e=&registry->entries[i];cJSON* item=cJSON_CreateObject();
+        if(!item){ok=false;break;}cJSON_AddItemToArray(entries,item);
+        char size_token[32];snprintf(size_token,sizeof(size_token),"%llu",(unsigned long long)e->file_size);
+        ok=cJSON_AddStringToObject(item,"id",e->id)&&cJSON_AddStringToObject(item,"path",e->path)&&cJSON_AddStringToObject(item,"name",e->name)&&
+            cJSON_AddNumberToObject(item,"duration",e->duration_seconds)&&cJSON_AddNumberToObject(item,"sample_rate",e->sample_rate)&&
+            cJSON_AddNumberToObject(item,"channels",e->channels)&&e->file_size<=UINT64_C(9007199254740991)&&cJSON_AddRawToObject(item,"file_size",size_token);
     }
-    fprintf(file, "  ]\n");
-    fprintf(file, "}\n");
+    char* bytes=ok?cJSON_PrintUnformatted(root):NULL;
+    if(bytes){fputs(bytes,file);free(bytes);}cJSON_Delete(root);
+    /* Empty/failed serialization is refused by the validating save caller. */
 }
-
-static void json_skip_ws(const char* data, size_t len, size_t* pos) {
-    while (*pos < len) {
-        char ch = data[*pos];
-        if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') {
-            (*pos)++;
-        } else {
-            break;
-        }
-    }
+// Rejects unsupported and repeated semantic members in registry documents.
+static bool registry_fields(const cJSON* object,const char* const* keys) {
+    if(!cJSON_IsObject(object))return false;
+    for(const cJSON* a=object->child;a;a=a->next) {
+        bool known=false;for(int i=0;keys[i];++i)if(!strcmp(a->string,keys[i]))known=true;
+        if(!known)return false;for(const cJSON* b=a->next;b;b=b->next)if(!strcmp(a->string,b->string))return false;
+    }return true;
 }
-
-static bool json_match(const char* data, size_t len, size_t* pos, char expected) {
-    json_skip_ws(data, len, pos);
-    if (*pos >= len || data[*pos] != expected) {
-        return false;
-    }
-    (*pos)++;
-    return true;
+// Copies a complete bounded JSON string without accepting truncation.
+static bool registry_string(const cJSON* object,const char* key,char* out,size_t capacity) {
+    const cJSON* v=cJSON_GetObjectItemCaseSensitive(object,key);
+    if(!cJSON_IsString(v)||strlen(v->valuestring)>=capacity)return false;strcpy(out,v->valuestring);return true;
 }
-
-static bool json_parse_string_value(const char* data, size_t len, size_t* pos, char* dst, size_t dst_len) {
-    if (!json_match(data, len, pos, '"')) {
-        return false;
-    }
-    size_t out = 0;
-    while (*pos < len) {
-        char ch = data[(*pos)++];
-        if (ch == '"') {
-            break;
-        }
-        if (ch == '\\' && *pos < len) {
-            ch = data[(*pos)++];
-            if (ch == '"' || ch == '\\' || ch == '/') {
-                // ok
-            } else if (ch == 'n') {
-                ch = '\n';
-            } else if (ch == 't') {
-                ch = '\t';
-            } else if (ch == 'r') {
-                ch = '\r';
-            }
-        }
-        if (dst && out + 1 < dst_len) {
-            dst[out++] = ch;
-        }
-    }
-    if (dst && dst_len > 0) {
-        dst[out] = '\0';
-    }
-    return true;
+// Reads finite bounded metadata with exact integral values where required.
+static bool registry_number(const cJSON* item,const char* key,double maximum,bool integer,double* out) {
+    const cJSON* v=cJSON_GetObjectItemCaseSensitive(item,key);
+    if(!cJSON_IsNumber(v)||!isfinite(v->valuedouble)||v->valuedouble<0||v->valuedouble>maximum||(integer&&floor(v->valuedouble)!=v->valuedouble))return false;
+    *out=v->valuedouble;return true;
 }
-
-static bool json_parse_number_value(const char* data, size_t len, size_t* pos, double* out_value) {
-    json_skip_ws(data, len, pos);
-    size_t start = *pos;
-    if (start >= len) return false;
-    if (data[*pos] == '-' || data[*pos] == '+') (*pos)++;
-    bool has_digits = false;
-    while (*pos < len && data[*pos] >= '0' && data[*pos] <= '9') {
-        has_digits = true;
-        (*pos)++;
-    }
-    if (*pos < len && data[*pos] == '.') {
-        (*pos)++;
-        while (*pos < len && data[*pos] >= '0' && data[*pos] <= '9') {
-            has_digits = true;
-            (*pos)++;
-        }
-    }
-    if (!has_digits) return false;
-    char temp[64];
-    size_t span = (*pos) - start;
-    if (span >= sizeof(temp)) span = sizeof(temp) - 1;
-    memcpy(temp, data + start, span);
-    temp[span] = '\0';
-    if (out_value) {
-        *out_value = strtod(temp, NULL);
-    }
-    return true;
-}
-
-static bool registry_parse_json(MediaRegistry* registry, const char* data, size_t len) {
-    size_t pos = 0;
-    if (!json_match(data, len, &pos, '{')) {
-        return false;
-    }
-    while (pos < len) {
-        json_skip_ws(data, len, &pos);
-        if (pos < len && data[pos] == '}') {
-            pos++;
-            break;
-        }
-        char key[64] = {0};
-        if (!json_parse_string_value(data, len, &pos, key, sizeof(key))) {
-            return false;
-        }
-        if (!json_match(data, len, &pos, ':')) {
-            return false;
-        }
-        if (strcmp(key, "entries") == 0) {
-            if (!json_match(data, len, &pos, '[')) {
-                return false;
-            }
-            json_skip_ws(data, len, &pos);
-            while (pos < len && data[pos] != ']') {
-                if (!json_match(data, len, &pos, '{')) {
-                    return false;
-                }
-                MediaRegistryEntry entry = {0};
-                while (pos < len) {
-                    json_skip_ws(data, len, &pos);
-                    if (pos < len && data[pos] == '}') {
-                        pos++;
-                        break;
-                    }
-                    char ekey[64] = {0};
-                    if (!json_parse_string_value(data, len, &pos, ekey, sizeof(ekey))) {
-                        return false;
-                    }
-                    if (!json_match(data, len, &pos, ':')) {
-                        return false;
-                    }
-                    if (strcmp(ekey, "id") == 0) {
-                        if (!json_parse_string_value(data, len, &pos, entry.id, sizeof(entry.id))) return false;
-                    } else if (strcmp(ekey, "path") == 0) {
-                        if (!json_parse_string_value(data, len, &pos, entry.path, sizeof(entry.path))) return false;
-                    } else if (strcmp(ekey, "name") == 0) {
-                        if (!json_parse_string_value(data, len, &pos, entry.name, sizeof(entry.name))) return false;
-                    } else if (strcmp(ekey, "duration") == 0) {
-                        double v = 0.0;
-                        if (!json_parse_number_value(data, len, &pos, &v)) return false;
-                        entry.duration_seconds = (float)v;
-                    } else if (strcmp(ekey, "sample_rate") == 0) {
-                        double v = 0.0;
-                        if (!json_parse_number_value(data, len, &pos, &v)) return false;
-                        entry.sample_rate = (int)v;
-                    } else if (strcmp(ekey, "channels") == 0) {
-                        double v = 0.0;
-                        if (!json_parse_number_value(data, len, &pos, &v)) return false;
-                        entry.channels = (int)v;
-                    } else if (strcmp(ekey, "file_size") == 0) {
-                        double v = 0.0;
-                        if (!json_parse_number_value(data, len, &pos, &v)) return false;
-                        entry.file_size = (uint64_t)v;
-                    } else {
-                        if (!json_parse_string_value(data, len, &pos, NULL, 0)) {
-                            double v = 0.0;
-                            json_parse_number_value(data, len, &pos, &v);
-                        }
-                    }
-                    json_skip_ws(data, len, &pos);
-                    if (pos < len && data[pos] == ',') {
-                        pos++;
-                        continue;
-                    }
-                }
-                if (!registry_ensure_capacity(registry, registry->count + 1)) {
-                    return false;
-                }
-                registry->entries[registry->count++] = entry;
-                json_skip_ws(data, len, &pos);
-                if (pos < len && data[pos] == ',') {
-                    pos++;
-                    json_skip_ws(data, len, &pos);
-                }
-            }
-            if (!json_match(data, len, &pos, ']')) {
-                return false;
-            }
-        } else {
-            if (!json_parse_string_value(data, len, &pos, NULL, 0)) {
-                double v = 0.0;
-                json_parse_number_value(data, len, &pos, &v);
-            }
-        }
-        json_skip_ws(data, len, &pos);
-        if (pos < len && data[pos] == ',') {
-            pos++;
-            continue;
-        }
-    }
-    return true;
+// Parses a complete registry candidate; no partially read entries reach the live registry.
+static bool registry_parse_json(MediaRegistry* registry,const char* data,size_t len) {
+    if(!daw_json_structure_valid(data,len,"type"))return false;
+    const char* end=NULL;cJSON* root=cJSON_ParseWithLengthOpts(data,len+1,&end,1);bool ok=false;
+    const char* root_keys[]={"type","entries",NULL};const char* entry_keys[]={"id","path","name","duration","sample_rate","channels","file_size",NULL};
+    char type[32];
+    if(!root || !registry_fields(root,root_keys)||!registry_string(root,"type",type,sizeof(type))||strcmp(type,MEDIA_REGISTRY_MAGIC))goto done;
+    const cJSON* entries=cJSON_GetObjectItemCaseSensitive(root,"entries");if(!cJSON_IsArray(entries)||cJSON_GetArraySize(entries)>65536)goto done;
+    for(const cJSON* item=entries->child;item;item=item->next) {
+        MediaRegistryEntry e={0};double duration,rate,channels,size;
+        if(!registry_fields(item,entry_keys)||!registry_string(item,"id",e.id,sizeof(e.id))||!e.id[0]||
+           !registry_string(item,"path",e.path,sizeof(e.path))||!e.path[0]||!registry_string(item,"name",e.name,sizeof(e.name))||
+           !registry_number(item,"duration",3.402823466e38,false,&duration)||!registry_number(item,"sample_rate",INT_MAX,true,&rate)||
+           !registry_number(item,"channels",INT_MAX,true,&channels)||!registry_number(item,"file_size",9007199254740991.0,true,&size))goto done;
+        e.duration_seconds=(float)duration;e.sample_rate=(int)rate;e.channels=(int)channels;e.file_size=(uint64_t)size;
+        for(int i=0;i<registry->count;++i)if(!strcmp(registry->entries[i].id,e.id))goto done;
+        if(!registry_ensure_capacity(registry,registry->count+1))goto done;registry->entries[registry->count++]=e;
+    }ok=true;
+done:cJSON_Delete(root);return ok;
 }
 
 void media_registry_init(MediaRegistry* registry, const char* manifest_path) {
@@ -286,7 +141,7 @@ bool media_registry_load(MediaRegistry* registry) {
     }
     fseek(file, 0, SEEK_END);
     long size = ftell(file);
-    if (size <= 0) {
+    if (size <= 0 || size>16*1024*1024) {
         fclose(file);
         return false;
     }
@@ -297,13 +152,13 @@ bool media_registry_load(MediaRegistry* registry) {
         return false;
     }
     size_t read = fread(buffer, 1, (size_t)size, file);
-    fclose(file);
+    bool io_ok=!ferror(file);if(fclose(file))io_ok=false;
     buffer[read] = '\0';
-    registry->count = 0;
-    bool ok = registry_parse_json(registry, buffer, read);
+    MediaRegistry candidate;media_registry_init(&candidate,registry->manifest_path);
+    bool ok=io_ok && read==(size_t)size && registry_parse_json(&candidate,buffer,read);
     free(buffer);
-    registry->dirty = false;
-    return ok;
+    if(!ok){free(candidate.entries);return false;}
+    free(registry->entries);*registry=candidate;return true;
 }
 
 // Clears dirty state only after a complete manifest has been published.
@@ -316,6 +171,9 @@ bool media_registry_save(MediaRegistry* registry) {
         daw_save_file_abort(&save);
         return false;
     }
+    MediaRegistry verified;media_registry_init(&verified,save.temporary);
+    if(!media_registry_load(&verified)){free(verified.entries);daw_save_file_abort(&save);return false;}
+    free(verified.entries);
     if (daw_save_file_commit(&save) == DAW_SAVE_FAILED) return false;
     registry->dirty = false;
     return true;

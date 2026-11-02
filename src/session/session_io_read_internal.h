@@ -43,3 +43,8 @@ bool parse_session_track_clips(JsonReader* r, SessionTrack* track);
 bool parse_session_track_fx(JsonReader* r, SessionTrack* track);
 bool parse_session_tracks(JsonReader* r, SessionDocument* doc);
 bool parse_session_document(JsonReader* r, SessionDocument* doc);
+
+// Bounds syntax, object uniqueness and nesting before semantic admission.
+bool session_json_structure_valid(const char*,size_t);
+// Reads exact unsigned frame values without a double intermediate.
+bool json_parse_u64(JsonReader*,uint64_t*);

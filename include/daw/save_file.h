@@ -37,4 +37,7 @@ DawSaveResult daw_save_file_write(const char* path, const void* data, size_t siz
 // Copies an existing file into an independently prepared replacement.
 DawSaveResult daw_save_file_copy(const char* source, const char* destination);
 
+// Copies complete media with atomic create-only publication.
+DawSaveResult daw_save_file_copy_new(const char* source,const char* destination);
+
 #endif

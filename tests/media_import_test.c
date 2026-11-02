@@ -33,6 +33,7 @@ static void ready(AppState* state) {
 int main(void) {
     SDL_setenv("SDL_AUDIODRIVER","dummy",1); assert(SDL_Init(SDL_INIT_AUDIO|SDL_INIT_TIMER)==0);
     DAW_TEST_TEMP_PATH(directory, "daw_import_XXXXXX");assert(mkdtemp(directory));char path[512];snprintf(path,sizeof(path),"%s/source.wav",directory);fixture(path,44100,16384);
+    MediaRegistryEntry source_identity;assert(media_registry_prepare_entry(path,&source_identity,NULL,NULL));
     AppState* state=calloc(1,sizeof(*state));assert(state);config_set_defaults(&state->runtime_cfg);
     state->runtime_cfg.sample_rate=48000;state->runtime_cfg.block_size=128;
     state->engine=engine_create(&state->runtime_cfg);assert(state->engine);
@@ -48,7 +49,7 @@ int main(void) {
     unlink(path); int detached_index=-1;
     assert(engine_add_prepared_clip(state->engine,0,path,"detached",0,&detached,&detached_index));
     assert(!detached.samples && engine_remove_clip(state->engine,0,detached_index)); fixture(path,44100,16384);
-    assert(daw_media_import_submit(state,path,"source",0,64,AUDIO_MEDIA_JOB_LIBRARY));
+    assert(daw_media_import_submit(state,path,source_identity.id,0,64,AUDIO_MEDIA_JOB_LIBRARY));
     assert(engine_get_tracks(state->engine)[0].clip_count==0);drain(state);
     assert(daw_media_import_stats(state).inserted==1);
     assert(engine_get_tracks(state->engine)[0].clips[0].media->frame_count==48000);
@@ -56,34 +57,34 @@ int main(void) {
     assert(undo_manager_redo(&state->undo,state));assert(engine_get_tracks(state->engine)[0].clip_count==1);
     // Warm admission allocates no result samples; retirement before adoption retries on the worker.
     uint64_t submitted=daw_media_import_stats(state).jobs.submitted;
-    assert(daw_media_import_submit(state,path,"source",0,64,AUDIO_MEDIA_JOB_RECORDING));ready(state);
+    assert(daw_media_import_submit(state,path,source_identity.id,0,64,AUDIO_MEDIA_JOB_RECORDING));ready(state);
     assert(!daw_media_import_stats(state).jobs.ready_bytes);
     assert(engine_remove_clip(state->engine,0,0));drain(state);
     assert(daw_media_import_stats(state).jobs.submitted==submitted+2);
     assert(engine_get_tracks(state->engine)[0].clip_count==1);
     // A newly decoded source version coexists with already pinned media for existing clips.
     const AudioMediaClip* original=engine_get_tracks(state->engine)[0].clips[0].media;
-    fixture(path,44100,-16384);
-    assert(daw_media_import_submit(state,path,"source",0,96000,AUDIO_MEDIA_JOB_RECORDING));drain(state);
+    fixture(path,44100,-16384);assert(media_registry_prepare_entry(path,&source_identity,NULL,NULL));
+    assert(daw_media_import_submit(state,path,source_identity.id,0,96000,AUDIO_MEDIA_JOB_RECORDING));drain(state);
     const EngineTrack* tracks=engine_get_tracks(state->engine);
     assert(tracks[0].clip_count==2 && tracks[0].clips[1].media!=original);
     assert(original->samples[100]>.49f && tracks[0].clips[1].media->samples[100]<-.49f);
     int target=engine_add_track(state->engine);assert(target==1);
     uint64_t failed=daw_media_import_stats(state).failed;
-    assert(daw_media_import_submit(state,path,"source",target,0,AUDIO_MEDIA_JOB_RECORDING));ready(state);
+    assert(daw_media_import_submit(state,path,source_identity.id,target,0,AUDIO_MEDIA_JOB_RECORDING));ready(state);
     assert(engine_remove_track(state->engine,target));assert(engine_add_track(state->engine)==target);drain(state);
     assert(daw_media_import_stats(state).failed==failed+1 && engine_get_tracks(state->engine)[target].clip_count==0);
     // Removing an earlier track shifts indices but preserves the pending target identity.
-    assert(daw_media_import_submit(state,path,"source",target,0,AUDIO_MEDIA_JOB_RECORDING));ready(state);
+    assert(daw_media_import_submit(state,path,source_identity.id,target,0,AUDIO_MEDIA_JOB_RECORDING));ready(state);
     assert(engine_remove_track(state->engine,0));drain(state);assert(engine_get_tracks(state->engine)[0].clip_count==1);
     int count=engine_get_track_count(state->engine);
-    assert(daw_media_import_submit(state,path,"source",count,0,AUDIO_MEDIA_JOB_BOUNCE));ready(state);daw_media_import_cancel(state);drain(state);
+    assert(daw_media_import_submit(state,path,source_identity.id,count,0,AUDIO_MEDIA_JOB_BOUNCE));ready(state);daw_media_import_cancel(state);drain(state);
     assert(engine_get_track_count(state->engine)==count && access(path,F_OK)==0);
-    assert(daw_media_import_submit(state,path,"source",count,0,AUDIO_MEDIA_JOB_BOUNCE));drain(state);
+    assert(daw_media_import_submit(state,path,source_identity.id,count,0,AUDIO_MEDIA_JOB_BOUNCE));drain(state);
     assert(engine_get_track_count(state->engine)==count+1 && !strcmp(engine_get_tracks(state->engine)[count].name,"Bounce"));
     // Failed restore preserves admitted work; successful restore invalidates it before retiring the old engine.
     SessionDocument doc;session_document_init(&doc);assert(session_document_capture(state,&doc));
-    assert(daw_media_import_submit(state,path,"source",0,192000,AUDIO_MEDIA_JOB_RECORDING));ready(state);
+    assert(daw_media_import_submit(state,path,source_identity.id,0,192000,AUDIO_MEDIA_JOB_RECORDING));ready(state);
     uint64_t generation=daw_media_import_stats(state).generation;
     int old_rate=doc.engine.sample_rate; doc.engine.sample_rate=0;assert(!session_apply_document(state,&doc));doc.engine.sample_rate=old_rate;
     assert(daw_media_import_stats(state).generation==generation);

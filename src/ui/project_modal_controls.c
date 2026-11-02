@@ -44,6 +44,7 @@ void daw_project_modal_controls_sync(AppState* s) {
             if(i>=2 && i<=4)enabled=active!=3 && s->project_collections.count>0;
             if(i==4)enabled=active!=3;
             if(i==5)enabled=active==2 && s->project.has_name && s->project.path[0];
+            if(active==2 && s->project_prompt.publication_warning && i!=1)enabled=false;
             SDL_Rect r=l.buttons[i];
             (void)kit_ui_surface_register(&ui->surface,(KitUiSurfaceKey){2,i+1},
                 (KitRenderRect){r.x,r.y,r.w,r.h},NULL,enabled,NULL);
@@ -67,7 +68,7 @@ void daw_project_modal_controls_draw(SDL_Renderer* renderer,AppState* s) {
     DawProjectModalLayout l;daw_project_modal_layout(s,&l);
     bool folder=s->project_prompt.active && s->project_prompt.folder_mode;
     const char* label=s->project_collections.count ? s->project_collections.items[s->project_collections.selected].label : "Choose collections folder";
-    const char* labels[]={s->project_load.active?"Load":folder?"Use folder":"Save new version","Cancel","<",">",label,"Update current"};
+    const char* labels[]={s->project_load.active?"Load":folder?"Use folder":"Save new version",s->project_prompt.active && s->project_prompt.publication_warning?"Close":"Cancel","<",">",label,"Update current"};
     KitUiSurface* surface=&s->project_modal_controls.surface;
     for(int i=0;i<6;++i) {
         if((folder && i>=2) || (s->project_load.active && i==5))continue;

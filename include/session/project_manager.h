@@ -1,4 +1,5 @@
 #pragma once
+#include "daw/save_file.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -28,3 +29,6 @@ bool project_manager_list(struct AppState* state, ProjectInfo* out_items, int ma
 bool project_manager_get_info(const char* path, ProjectInfo* out_info);
 bool project_manager_last_project_path(const struct AppState* state, char* out_path, size_t out_len);
 bool project_manager_last_session_path(const struct AppState* state, char* out_path, size_t out_len);
+
+// Records the publication outcome for native save and shutdown callers.
+void project_manager_save_notice(struct AppState* state, DawSaveResult result);

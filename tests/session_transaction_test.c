@@ -86,7 +86,7 @@ static AppState* create_fixture(const char* directory, const char* audio_path) {
     SDL_strlcpy(state->data_paths.library_copy_root, directory, sizeof(state->data_paths.library_copy_root));
     media_registry_init(&state->media_registry, NULL);
     CHECK(media_registry_ensure_for_path(&state->media_registry, audio_path, "tone", NULL), "fixture registry");
-    CHECK(engine_add_clip_to_track(state->engine, 0, audio_path, 64, NULL), "fixture audio");
+    CHECK(engine_add_clip_to_track_with_id(state->engine, 0, audio_path, state->media_registry.entries[0].id, 64, NULL), "fixture audio");
     CHECK(engine_clip_set_gain(state->engine, 0, 0, 0.25f), "fixture gain");
     CHECK(engine_add_track(state->engine) == 1, "fixture MIDI track");
     CHECK(engine_add_midi_clip_to_track(state->engine, 1, 128, 512, NULL), "fixture MIDI clip");
@@ -194,6 +194,12 @@ int main(void) {
           "missing media replaced old project");
     SDL_strlcpy(captured.tracks[0].clips[0].media_path, saved_path, sizeof(captured.tracks[0].clips[0].media_path));
     SDL_strlcpy(captured.tracks[0].clips[0].media_id, original_media_id, sizeof(captured.tracks[0].clips[0].media_id));
+    audio[0] = 0.5f;
+    CHECK(wav_write_f32(audio_path, audio, 1024, 2, 48000), "changed media fixture");
+    CHECK(!session_apply_document(state, &captured) && state->engine == original_engine && state->undo.undo_count == 1,
+          "changed referenced media replaced accepted project");
+    audio[0] = 0.25f;
+    CHECK(wav_write_f32(audio_path, audio, 1024, 2, 48000), "restore media fixture");
     SDL_Thread* wrong = SDL_CreateThread(wrong_thread, "session_wrong_owner", state);
     int result = -1;
     CHECK(wrong != NULL, "wrong owner fixture");

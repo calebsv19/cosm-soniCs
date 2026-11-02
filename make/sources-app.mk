@@ -164,6 +164,7 @@ APP_SRCS := \
 	$(SRC_DIR)/session/session_io_write.c \
 	$(SRC_DIR)/session/session_io_read.c \
 	$(SRC_DIR)/session/session_io_json.c \
+	$(SRC_DIR)/session/session_json_admission.c \
 	$(SRC_DIR)/session/session_json_string.c \
 	$(SRC_DIR)/session/session_io_read_parse.c \
 	$(SRC_DIR)/session/session_io_read_parse_document.c \

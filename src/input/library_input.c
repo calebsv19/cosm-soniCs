@@ -3,6 +3,7 @@
 #include "app_state.h"
 #include "ui/text_edit.h"
 #include "daw/data_paths.h"
+#include "daw/save_file.h"
 #include "ui/library_browser.h"
 #include "ui/layout.h"
 #include "ui/font.h"
@@ -113,35 +114,9 @@ static void library_input_path_stem_and_ext(const char* file_name,
     snprintf(out_stem, out_stem_cap, "%s", file_name);
 }
 
-static bool library_input_copy_file_binary(const char* source_path, const char* dest_path) {
-    FILE* in = NULL;
-    FILE* out = NULL;
-    char buffer[64 * 1024];
-    size_t n = 0;
-    if (!source_path || !dest_path) {
-        return false;
-    }
-    in = fopen(source_path, "rb");
-    if (!in) {
-        return false;
-    }
-    out = fopen(dest_path, "wb");
-    if (!out) {
-        fclose(in);
-        return false;
-    }
-    while ((n = fread(buffer, 1, sizeof(buffer), in)) > 0) {
-        if (fwrite(buffer, 1, n, out) != n) {
-            fclose(in);
-            fclose(out);
-            return false;
-        }
-    }
-    fclose(in);
-    if (fclose(out) != 0) {
-        return false;
-    }
-    return true;
+// Publishes a complete owned copy without racing an existing destination.
+static bool library_input_copy_file_binary(const char* source_path,const char* dest_path) {
+    return source_path && dest_path && daw_save_file_copy_new(source_path,dest_path)!=DAW_SAVE_FAILED;
 }
 
 static bool library_input_file_exists(const char* path) {

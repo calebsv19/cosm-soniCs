@@ -46,6 +46,11 @@ static void resolve_modal_theme(SDL_Color* modal_fill,
 }
 
 void ui_render_project_prompt_overlay(SDL_Renderer* renderer, AppState* state) {
+    if(renderer && state && state->project.persistence_notice[0]) {
+        SDL_Rect banner={8,state->window_height-28,state->window_width-16,24};
+        SDL_SetRenderDrawColor(renderer,22,22,30,245);SDL_RenderFillRect(renderer,&banner);
+        ui_draw_text_clipped(renderer,banner.x+6,banner.y+5,state->project.persistence_notice,(SDL_Color){245,225,180,255},1,banner.w-12);
+    }
     if (!renderer || !state || !state->project_prompt.active) {
         return;
     }

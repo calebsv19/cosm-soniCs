@@ -4,6 +4,8 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <math.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -86,19 +88,25 @@ void config_set_defaults(EngineRuntimeConfig* cfg) {
     cfg->enable_timing_logs = false;
 }
 
+// Reads a complete positive integer without overflow or prefix acceptance.
+static int positive_integer(const char* value) {
+    char* end=NULL;errno=0;long number=strtol(value,&end,10);
+    return errno || end==value || *end || number<=0 || number>INT_MAX ? 0 : (int)number;
+}
+
 static void apply_entry(EngineRuntimeConfig* cfg, const char* key, const char* value, const char* path, int line_number) {
     if (!cfg || !key || !value) {
         return;
     }
     if (strcmp(key, "sample_rate") == 0) {
-        int rate = atoi(value);
+        int rate = positive_integer(value);
         if (rate > 0) {
             cfg->sample_rate = rate;
         } else {
             log_config_diag(path, line_number, key, "ignored invalid positive integer; keeping default/current value", value);
         }
     } else if (strcmp(key, "block_size") == 0) {
-        int block = atoi(value);
+        int block = positive_integer(value);
         if (block > 0) {
             cfg->block_size = block;
         } else {
@@ -113,7 +121,7 @@ static void apply_entry(EngineRuntimeConfig* cfg, const char* key, const char* v
     } else if (strcmp(key, "fade_default_in_ms") == 0) {
         char* end = NULL;
         float val = strtof(value, &end);
-        if (end != value) {
+        if (end != value && isfinite(val)) {
             if (end && *end != '\0') {
                 log_config_diag(path, line_number, key, "accepted numeric prefix and ignored trailing characters", value);
             }
@@ -128,7 +136,7 @@ static void apply_entry(EngineRuntimeConfig* cfg, const char* key, const char* v
     } else if (strcmp(key, "fade_default_out_ms") == 0) {
         char* end = NULL;
         float val = strtof(value, &end);
-        if (end != value) {
+        if (end != value && isfinite(val)) {
             if (end && *end != '\0') {
                 log_config_diag(path, line_number, key, "accepted numeric prefix and ignored trailing characters", value);
             }
@@ -153,7 +161,7 @@ static void apply_entry(EngineRuntimeConfig* cfg, const char* key, const char* v
             }
             char* end = NULL;
             float val = strtof(cursor, &end);
-            if (cursor == end) {
+            if (cursor == end || !isfinite(val)) {
                 log_config_diag(path, line_number, key, "stopped parsing at invalid fade preset token", cursor);
                 break;
             }

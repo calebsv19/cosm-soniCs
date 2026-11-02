@@ -168,9 +168,10 @@ static void input_manager_save_authoring_accepted_preferences(AppState* state) {
     if (!state || !state->workspace_authoring.last_event_accepted) {
         return;
     }
-    (void)daw_shared_theme_save_persisted();
-    (void)daw_shared_font_save_persisted();
-    (void)daw_shared_font_zoom_save_persisted();
+    bool theme=daw_shared_theme_save_persisted();
+    bool font=daw_shared_font_save_persisted();
+    bool zoom=daw_shared_font_zoom_save_persisted();
+    if(!theme || !font || !zoom)SDL_strlcpy(state->project.persistence_notice,"Appearance applied; some preferences could not be saved.",sizeof(state->project.persistence_notice));
 }
 
 static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
@@ -301,7 +302,9 @@ static void handle_keyboard_shortcuts(InputManager* manager, AppState* state) {
     } else if (s_now && !manager->previous_s) {
         char session_path[SESSION_PATH_MAX];
         project_manager_last_session_path(state, session_path, sizeof(session_path));
-        if (!session_save_to_file(state, session_path)) {
+        DawSaveResult save_result=session_save_result(state,session_path);
+        project_manager_save_notice(state,save_result);
+        if (save_result==DAW_SAVE_FAILED) {
             SDL_Log("Save failed to %s", session_path);
         } else {
             SDL_Log("Session saved to %s", session_path);

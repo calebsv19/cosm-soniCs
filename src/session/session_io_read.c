@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-bool session_document_read_file(const char* path, SessionDocument* out_doc) {
+static bool read_candidate(const char* path, SessionDocument* out_doc) {
     if (!out_doc) {
         return false;
     }
@@ -29,7 +29,7 @@ bool session_document_read_file(const char* path, SessionDocument* out_doc) {
         return false;
     }
     long size = ftell(file);
-    if (size < 0) {
+    if (size < 0 || size > 16*1024*1024) {
         SDL_Log("session_document_read_file: failed to ftell %s", path);
         fclose(file);
         return false;
@@ -46,8 +46,8 @@ bool session_document_read_file(const char* path, SessionDocument* out_doc) {
         return false;
     }
     size_t read = fread(buffer, 1, (size_t)size, file);
-    fclose(file);
-    if (read != (size_t)size) {
+    bool io_ok=!ferror(file); if(fclose(file)!=0)io_ok=false;
+    if (!io_ok || read != (size_t)size) {
         SDL_Log("session_document_read_file: read mismatch for %s", path);
         free(buffer);
         return false;
@@ -56,7 +56,7 @@ bool session_document_read_file(const char* path, SessionDocument* out_doc) {
 
     JsonReader reader;
     json_reader_init(&reader, buffer, (size_t)size);
-    bool ok = parse_session_document(&reader, out_doc);
+    bool ok = session_json_structure_valid(buffer,(size_t)size) && parse_session_document(&reader, out_doc);
     json_skip_whitespace(&reader);
     ok = ok && reader.pos == reader.length;
     free(buffer);
@@ -75,6 +75,14 @@ bool session_document_read_file(const char* path, SessionDocument* out_doc) {
     return true;
 }
 
+
+// Admits the complete validated candidate without clearing the caller on refusal.
+bool session_document_read_file(const char* path,SessionDocument* out) {
+    if(!out)return false;
+    SessionDocument candidate;session_document_init(&candidate);
+    if(!read_candidate(path,&candidate)){session_document_free(&candidate);return false;}
+    session_document_free(out);*out=candidate;return true;
+}
 
 // Recovers a validated previous save only when the primary cannot be read and validated.
 bool session_document_read_recoverable(const char* path, SessionDocument* out_doc, bool* recovered) {

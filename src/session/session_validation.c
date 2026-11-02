@@ -31,18 +31,18 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
         session_set_error(error_message, error_message_len, "document is null");
         return false;
     }
-    if(doc->track_count<0 || (doc->track_count && !doc->tracks))return false;
+    if(doc->track_count<0 || doc->track_count>1024 || (doc->track_count && !doc->tracks))return false;
     int effect_points=0;
     for(int t=-1;t<doc->track_count;++t){int count=t<0?doc->master_fx_count:doc->tracks[t].fx_count;const SessionFxInstance* effects=t<0?doc->master_fx:doc->tracks[t].fx;
         if(count<0 || count>FX_MASTER_MAX || (count && !effects))return false;
         for(int i=0;i<count;++i){if(!fx_parameter_automation_valid(effects[i].type,&effects[i].automation))return false;effect_points+=effects[i].automation.count;}
     }
     if(effect_points>FX_AUTOMATION_TOTAL_POINTS)return false;
-    if (doc->version == 0) {
-        session_set_error(error_message, error_message_len, "version is 0");
+    if (doc->version == 0 || doc->version > SESSION_DOCUMENT_VERSION) {
+        session_set_error(error_message, error_message_len, "unsupported session version");
         return false;
     }
-    if (doc->engine.sample_rate <= 0) {
+    if (doc->engine.sample_rate <= 0 || doc->engine.sample_rate > 768000) {
         session_set_error(error_message, error_message_len, "invalid sample rate: %d", doc->engine.sample_rate);
         return false;
     }
@@ -51,7 +51,7 @@ bool session_document_validate(const SessionDocument* doc, char* error_message, 
         session_set_error(error_message, error_message_len, "invalid output queue blocks: %d", doc->engine.output_queue_blocks);
         return false;
     }
-    if (doc->engine.block_size <= 0) {
+    if (doc->engine.block_size <= 0 || doc->engine.block_size > 65536) {
         session_set_error(error_message, error_message_len, "invalid block size: %d", doc->engine.block_size);
         return false;
     }

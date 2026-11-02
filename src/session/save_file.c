@@ -116,7 +116,7 @@ DawSaveResult daw_save_file_write(const char* path, const void* data, size_t siz
 }
 
 // Streams a prior valid file into a separately synced backup without modifying the source.
-DawSaveResult daw_save_file_copy(const char* source, const char* destination) {
+static DawSaveResult copy_file(const char* source, const char* destination, bool new_only) {
     FILE* input = fopen(source, "rb");
     if (!input) return DAW_SAVE_FAILED;
     DawSaveFile save;
@@ -136,7 +136,16 @@ DawSaveResult daw_save_file_copy(const char* source, const char* destination) {
         daw_save_file_abort(&save);
         return DAW_SAVE_FAILED;
     }
-    return daw_save_file_commit(&save);
+    return new_only ? daw_save_file_commit_new(&save) : daw_save_file_commit(&save);
+}
+
+// Replaces one backup from a complete checked source copy.
+DawSaveResult daw_save_file_copy(const char* source,const char* destination) {
+    return copy_file(source,destination,false);
+}
+// Publishes copied media only when the selected destination remains unoccupied.
+DawSaveResult daw_save_file_copy_new(const char* source,const char* destination) {
+    return copy_file(source,destination,true);
 }
 
 // Atomically links a prepared candidate without replacing any existing destination.

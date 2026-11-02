@@ -1,4 +1,5 @@
 #pragma once
+#include "daw/save_file.h"
 
 #include "config.h"
 #include "effects/effects_manager.h"
@@ -282,3 +283,8 @@ bool session_apply_document(struct AppState* state, const SessionDocument* doc);
 bool session_load_from_file(struct AppState* state, const char* path);
 bool session_apply_pending_master_fx(struct AppState* state);
 bool session_apply_pending_track_fx(struct AppState* state);
+
+// Preserves publication versus requested-sync acknowledgement for product callers.
+DawSaveResult session_document_write_result(const SessionDocument*, const char*, bool new_only);
+// Captures one synchronous snapshot and returns its precise publication outcome.
+DawSaveResult session_save_result(const struct AppState*, const char*);

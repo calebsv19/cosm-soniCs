@@ -149,6 +149,11 @@ static void test_project_ordering(void) {
     CHECK(file && fread(content, 1, sizeof(content) - 1, file) > 0 && fclose(file) == 0,
           "read retained project marker");
     CHECK(!strcmp(content, first_path), "failed marker did not retain earlier project");
+    fail_directory_sync=1;
+    CHECK(project_manager_save(state,"uncertain",true),"published project reported failed");
+    CHECK(state->project.last_save_result==DAW_SAVE_PUBLISHED,"project lost sync acknowledgement");
+    CHECK(strstr(state->project.path,"uncertain")!=NULL,"published path not adopted");
+    reset_faults();
     free(state);
 }
 
