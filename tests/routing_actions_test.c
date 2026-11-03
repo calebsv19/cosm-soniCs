@@ -124,6 +124,19 @@ int main(void) {
     CHECK(engine_bounce_range_to_buffer_with_options(state->engine, 0, 4096, &options, NULL, NULL, &restored) &&
           !memcmp(restored.data, dry.data, dry.frame_count * dry.channels * sizeof(float)), "undo exact original production audio");
     engine_bounce_buffer_free(&restored);
+    count = publications;
+    CHECK(daw_action_set_routing(state, &before, &before, &out) == DAW_ACTION_UNCHANGED, "absolute no-op with redo pending");
+    CHECK(daw_action_set_routing(state, &next, &next, &out) == DAW_ACTION_STALE_TARGET && publications == count,
+          "stale and unchanged edits never publish");
+    EngineRoutingSnapshot divergent = next;
+    divergent.tracks[0].sends[2].gain = .25f;
+    fail_publication = true;
+    CHECK(daw_action_set_routing(state, &before, &divergent, &out) == DAW_ACTION_ENGINE_REJECTED, "failed replacement with redo pending");
+    fail_publication = false;
+    out = capture(state);
+    CHECK(engine_routing_snapshot_equal(&before, &out) && publications == count + 1 &&
+          !state->undo.undo_count && state->undo.redo_count == 1 && !state->undo.active_drag_valid,
+          "publication rollback preserves graph and redo cursor");
     CHECK(daw_action_routing_history(state, &before, true, &out) == DAW_ACTION_APPLIED, "audio redo");
     CHECK(engine_bounce_range_to_buffer_with_options(state->engine, 0, 4096, &options, NULL, NULL, &restored) &&
           !memcmp(restored.data, wet.data, wet.frame_count * wet.channels * sizeof(float)), "redo exact accepted production audio");

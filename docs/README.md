@@ -116,11 +116,11 @@ Local MCP setup and tested tool scope: [tools/mcp/README.md](../tools/mcp/README
 
 - [MIDI expression](midi_expression.md): tempo-aware quantize/swing, velocity shape, deterministic variation and guarded native/MCP adoption.
 
-Guarded arrangement is documented in [arrangement](arrangement.md). The common action, MCP adapter and native MIDI duplicate/delete share exact content guards and one-step batch history; dedicated native move/trim controls and routing remain pending.
+Guarded arrangement is documented in [arrangement](arrangement.md). The common action, MCP adapter and native MIDI duplicate/delete share exact content guards and one-step batch history. The native Arrange form also supports exact moves and trims.
 
-- [Guarded shared returns](routing.md): complete routing storage, common creation/edit/history and five additive MCP tools; native routing controls remain pending.
+- [Guarded shared returns](routing.md): the Effects panel and guarded MCP tools share return creation, send editing and routing history.
 
-The five-stage creative-control development sequence is covered by [effects/composition/library](effect_chains.md), [MIDI expression](midi_expression.md), [arrangement](arrangement.md), [routing](routing.md) and [filtered modulation/presets](filtered_synth.md). The current Main Edit adapter registers 50 tools. Installed preset acceptance and voice-aware region automation are complete; see [user presets](user_presets.md) and [automation](automation.md). Public release and physical listening acceptance remain separate.
+The five-stage creative-control development sequence is covered by [effects/composition/library](effect_chains.md), [MIDI expression](midi_expression.md), [arrangement](arrangement.md), [routing](routing.md) and [filtered modulation/presets](filtered_synth.md). Use MCP tool discovery for the current adapter catalog. Installed preset acceptance and voice-aware region automation are complete; see [user presets](user_presets.md) and [automation](automation.md). Public release and physical listening acceptance remain separate.
 
 - [Automation model and editing](automation.md) — current Main Edit semantics and shared command behavior.
 

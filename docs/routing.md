@@ -20,9 +20,9 @@ Refresh explicitly captures external routing changes; stale Apply refuses while 
 
 ## Guards and recovery
 
-Four complete routing captures are retained per endpoint with exact-value token reuse. The guard covers project generation, ordered track identities, return roles and complete destination/level fields. It excludes mixer, effects, names and region content because ordinary routing restoration does not replace those settings; role conversion and creation undo separately validate the content they would affect. A changed topology, routing or project lifetime refuses stale tokens. An identical no-op creates no history.
+Four complete routing captures are retained per endpoint with exact-value token reuse. The guard covers project generation, ordered track identities, return roles and complete destination/level fields. It excludes mixer, effects, names and region content because ordinary routing restoration does not replace those settings; role conversion and creation undo separately validate the content they would affect. A changed topology, routing or project lifetime refuses stale tokens. An identical no-op preserves undo and redo. If engine publication fails, the previous graph and both history cursors remain available.
 
-Writes refuse conflicting playback, recording, Test, bounce and active authoring gestures. They use the existing opt-in same-user write endpoint and immutable 128-receipt ledger. After a lost response, recover with `request_status` using the same instance/request ID. Exact replay returns its historical result; use a fresh read to inspect current state. Client restart/configuration is required to discover the five additive tools, bringing the local server to 45 tools. Building source does not register this server in an existing chat.
+Writes refuse conflicting playback, recording, Test, bounce and active authoring gestures. They use the existing opt-in same-user write endpoint and immutable 128-receipt ledger. After a lost response, recover with `request_status` using the same instance/request ID. Exact replay returns its historical result; use a fresh read to inspect current state. Use tool discovery on the connected endpoint to inspect the available routing operations. Building source does not register this server in an existing chat.
 
 ## Persistence and rendering
 
@@ -36,7 +36,7 @@ Live/private offline plans own their return buffers and destination maps. Separa
 
 Actual native App_Run acceptance also creates a return and connects its send through MCP, configures and undoes return effects, verifies independent dry/wet ratios, then performs normal save and real restart with exact routing/metrics/plots/WAV parity. Source music is fixture-authored. Native routing authoring is covered by the focused form test and actual native input/painter harness. Listening acceptance and installed/global client adoption remain separate. Bus-to-bus routing, pre-fader sends and external sidechain source selection are not exposed by this initial routing graph.
 
-`test-routing-ui` covers native creation from both populated and empty projects, shared percentage text, unpublished staging, one-step application, stale/busy/invalid/duplicate-destination refusal, mismatched releases, compact forms and focus cleanup. The native Vulkan harness opens Routing through the Effects header, creates a return, types and applies a 50% source send, and paints source/return views with enclosing clip preservation and clean validation.
+`test-routing-ui` covers native creation from both populated and empty projects, shared percentage text, unpublished staging, one-step application, stale/busy/invalid/duplicate-destination refusal, mismatched releases, compact forms and focus cleanup. The focused test also undoes a native 50% send, submits a linear 0.5 gain through the control adapter from that same baseline and compares the full routing graph and history depths. The native Vulkan harness opens Routing through the Effects header, creates a return, types and applies a 50% source send, and paints source/return views with enclosing clip preservation and clean validation.
 
 ## Nested groups
 

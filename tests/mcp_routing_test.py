@@ -44,6 +44,9 @@ async def check(fixture,output):
                     sent=await call('edit_routing',**args);assert sent['ok'] and sent['tracks'][0]['sends'][3]['gain']==.5,sent
                     assert await call('edit_routing',**args)==sent
                     assert await call('request_status',instance=instance,request_id=args['request_id'])==sent
+                    collision=dict(args,edits=[dict(edit,gain=.25)])
+                    assert (await call('edit_routing',**collision))['code']=='request_id_conflict'
+                    assert (await call('get_routing'))['tracks']==sent['tracks']
                     wet=await call('analyze_composition',start_frame='0',end_frame='48000');assert wet['ok'] and abs(wet['metrics']['rms']/dry['metrics']['rms']-1.5)<1e-6
                     undone=await call('undo_routing',instance=instance,request_id=identity(),expected_routing=sent['expected_routing']);assert undone['ok']
                     restored=await call('analyze_composition',start_frame='0',end_frame='48000');assert restored['metrics']==dry['metrics'] and restored['plots']==dry['plots']
@@ -130,7 +133,7 @@ async def check(fixture,output):
         finally:
             if reader.poll() is None:reader.stdin.write('quit\n');reader.stdin.flush()
             reader.wait(timeout=10);assert reader.returncode==0
-    print('mcp_routing_test: success (61 tools, nested groups, empty creation, stable history, exact signal/audio reopening, guards, receipts and read-only)')
+    print(f'mcp_routing_test: success ({len(tools)} tools, nested groups, empty creation, stable history, exact signal/audio reopening, guards, receipts and read-only)')
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('--fixture',required=True);parser.add_argument('--output-root',required=True);args=parser.parse_args()
