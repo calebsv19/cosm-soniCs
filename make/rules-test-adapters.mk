@@ -109,3 +109,13 @@ $(SHARED_THEME_FONT_ADAPTER_TEST_BIN): $(SHARED_THEME_FONT_ADAPTER_TEST_SRCS) sr
 	$(HOST_CC) -std=c11 -Wall -Wextra -Wpedantic $(SDL2_CFLAGS) -Iinclude -I$(SHARED_ROOT)/core/core_theme/include -I$(SHARED_ROOT)/core/core_font/include -I$(SHARED_ROOT)/core/core_base/include \
 		tests/shared_theme_font_adapter_test.c src/ui/shared_theme_font_adapter.c src/session/save_file.c $(CORE_THEME_LIB) $(CORE_FONT_LIB) $(CORE_BASE_LIB) \
 		$(SDL2_LDFLAGS) -lSDL2 -o "$@"
+
+.PHONY: test-trace-pressure
+test-trace-pressure: $(TEST_BUILD_ROOT)/daw_trace_export_pressure_test
+	$(TEST_BUILD_ROOT)/daw_trace_export_pressure_test pressure
+	$(TEST_BUILD_ROOT)/daw_trace_export_pressure_test allocation
+	$(TEST_BUILD_ROOT)/daw_trace_export_pressure_test shutdown
+
+$(TEST_BUILD_ROOT)/daw_trace_export_pressure_test: tests/daw_trace_export_pressure_test.c src/export/daw_trace_export_async.c include/export/daw_trace_export_async.h $(CORE_WORKERS_LIB) $(CORE_QUEUE_LIB)
+	@mkdir -p "$(dir $@)"
+	$(HOST_CC) -std=c11 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Werror -Iinclude -I$(SHARED_ROOT)/core/core_workers/include -I$(SHARED_ROOT)/core/core_queue/include $< $(CORE_WORKERS_LIB) $(CORE_QUEUE_LIB) -lpthread -o "$@"

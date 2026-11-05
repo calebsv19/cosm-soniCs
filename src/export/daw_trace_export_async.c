@@ -11,14 +11,12 @@
 #define DAW_TRACE_ASYNC_COMPLETION_CAPACITY 64u
 #define DAW_TRACE_ASYNC_PATH_MAX 512u
 
+// Retains admitted inputs and their outcome until the owner consumes them.
 typedef struct DawTraceExportTask {
     char pack_path[DAW_TRACE_ASYNC_PATH_MAX];
     DawTraceDiagnostics diagnostics;
-} DawTraceExportTask;
-
-typedef struct DawTraceExportCompletion {
     bool ok;
-} DawTraceExportCompletion;
+} DawTraceExportTask;
 
 static CoreWorkers g_workers;
 static pthread_t g_worker_threads[DAW_TRACE_ASYNC_WORKER_COUNT];
@@ -27,27 +25,16 @@ static CoreQueueMutex g_completion_queue;
 static void* g_completion_backing[DAW_TRACE_ASYNC_COMPLETION_CAPACITY];
 static DawTraceExportAsyncStats g_stats;
 static bool g_initialized = false;
+static size_t g_outstanding;
 
+// Publishes the same admitted allocation, without a fallible outcome allocation.
 static void* daw_trace_export_worker_main(void* task_ctx) {
     DawTraceExportTask* task = (DawTraceExportTask*)task_ctx;
-    DawTraceExportCompletion* completion = NULL;
-    bool ok = false;
-    if (!task) {
-        return NULL;
-    }
-
-    completion = (DawTraceExportCompletion*)calloc(1u, sizeof(*completion));
-    if (!completion) {
-        free(task);
-        return NULL;
-    }
-
-    ok = daw_trace_export_diagnostics(task->pack_path, &task->diagnostics);
-    completion->ok = ok;
-    free(task);
-    return completion;
+    task->ok = daw_trace_export_diagnostics(task->pack_path, &task->diagnostics);
+    return task;
 }
 
+// Initializes a single-owner lane with bounded lifetime completion capacity.
 bool daw_trace_export_async_init(void) {
     if (g_initialized) {
         return true;
@@ -55,6 +42,7 @@ bool daw_trace_export_async_init(void) {
 
     memset(&g_workers, 0, sizeof(g_workers));
     memset(&g_stats, 0, sizeof(g_stats));
+    g_outstanding = 0;
     if (!core_queue_mutex_init_ex(&g_completion_queue,
                                   g_completion_backing,
                                   DAW_TRACE_ASYNC_COMPLETION_CAPACITY,
@@ -75,21 +63,16 @@ bool daw_trace_export_async_init(void) {
     return true;
 }
 
+// Joins producers, accounts every admitted outcome, then destroys the queue.
 void daw_trace_export_async_shutdown(void) {
-    void* item = NULL;
-    if (!g_initialized) {
-        return;
-    }
-
+    if (!g_initialized) return;
     core_workers_shutdown_with_mode(&g_workers, CORE_WORKERS_SHUTDOWN_DRAIN);
-    while (core_queue_mutex_pop(&g_completion_queue, &item)) {
-        DawTraceExportCompletion* completion = (DawTraceExportCompletion*)item;
-        free(completion);
-    }
+    (void)daw_trace_export_async_drain(DAW_TRACE_ASYNC_COMPLETION_CAPACITY);
     core_queue_mutex_destroy(&g_completion_queue);
     g_initialized = false;
 }
 
+// Reserves an outcome slot before accepting copied inputs into the worker pool.
 bool daw_trace_export_async_enqueue(const char* pack_path, const DawTraceDiagnostics* diagnostics) {
     DawTraceExportTask* task = NULL;
     size_t path_len = 0;
@@ -99,6 +82,11 @@ bool daw_trace_export_async_enqueue(const char* pack_path, const DawTraceDiagnos
 
     path_len = strnlen(pack_path, DAW_TRACE_ASYNC_PATH_MAX);
     if (path_len == 0 || path_len >= DAW_TRACE_ASYNC_PATH_MAX) {
+        return false;
+    }
+
+    if (g_outstanding >= DAW_TRACE_ASYNC_COMPLETION_CAPACITY) {
+        g_stats.rejected += 1u;
         return false;
     }
 
@@ -117,10 +105,12 @@ bool daw_trace_export_async_enqueue(const char* pack_path, const DawTraceDiagnos
         return false;
     }
 
+    g_outstanding += 1u;
     g_stats.submitted += 1u;
     return true;
 }
 
+// Accounts terminal outcomes and releases their lifetime reservations.
 size_t daw_trace_export_async_drain(size_t max_items) {
     size_t n = 0;
     void* item = NULL;
@@ -129,17 +119,19 @@ size_t daw_trace_export_async_drain(size_t max_items) {
     }
 
     while (n < max_items && core_queue_mutex_pop(&g_completion_queue, &item)) {
-        DawTraceExportCompletion* completion = (DawTraceExportCompletion*)item;
+        DawTraceExportTask* completion = (DawTraceExportTask*)item;
         g_stats.completed += 1u;
         if (!completion || !completion->ok) {
             g_stats.failed += 1u;
         }
         free(completion);
+        g_outstanding -= 1u;
         n += 1u;
     }
     return n;
 }
 
+// Reads owner-thread accounting, retained through shutdown until the next init.
 void daw_trace_export_async_snapshot(DawTraceExportAsyncStats* out) {
     if (!out) {
         return;

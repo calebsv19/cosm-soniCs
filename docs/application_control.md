@@ -172,3 +172,27 @@ The subsequent [instrument-control slice](instrument_controls.md) refines preset
 applicability, knob mapping and diagnostic plots. Capability reads gain additive
 `control_scale` metadata and supported-control lists; existing write signatures,
 physical values, target preconditions and history guarantees remain unchanged.
+
+## Diagnostic trace-export helper lifetime
+
+The optional `daw_trace_export_async` helper is compiled into the application;
+its current consumers are contract tests, with no desktop/control call site.
+All helper APIs belong to one serialized control owner and must stay off the
+audio callback. Requests copy the destination pathname and diagnostics values.
+The pool has 32 pending-task slots and one worker. Admission also reserves one
+of 64 lifetime outcome slots covering queued, running and completed-but-undrained
+requests. Either bound may refuse a request while earlier accepted work remains.
+
+The admitted allocation becomes its completion record. Worker completion needs
+no second allocation. Owner drain counts success/failure, frees that record and
+releases its reservation. Shutdown drains the pool, joins the worker, then
+accounts all remaining outcomes before destroying queue storage. Final aggregate
+statistics survive shutdown and reset on the next initialization. Active file
+export has no hard cancellation deadline. Artifact success and durability keep
+the existing synchronous exporter semantics; this helper adds no durable job ID,
+retry protocol, destination collision policy or rollback guarantee.
+
+`make test-trace-pressure` exercises the real owner and pool with controlled
+export completion, full/partial drains, allocation and pending-queue refusal,
+input copying, failure accounting and shutdown/restart. The separate
+`test-trace-async-contract` writes and reloads an actual trace pack.

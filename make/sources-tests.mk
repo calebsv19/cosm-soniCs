@@ -199,6 +199,7 @@ STABLE_TEST_TARGETS := test-dynamics-feedback test-live-stereo test-song-export 
 	test-pack-contract \
 	test-trace-contract \
 	test-trace-async-contract \
+	test-trace-pressure \
 	test-kitviz-adapter \
 	test-kitviz-fx-preview-adapter \
 	test-kitviz-meter-adapter \
