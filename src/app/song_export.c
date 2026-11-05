@@ -257,6 +257,10 @@ DawActionStatus daw_song_export_start(AppState* state, const DawMixSnapshot* exp
         daw_mix_snapshot_free(guard);
         return DAW_ACTION_ENGINE_REJECTED;
     }
+    // Failed admission must not evict an accepted receipt or expose an unaccepted job.
+    DawSongExportInfo previous_info = s->info;
+    uint64_t previous_done = atomic_load(&s->done), previous_total = atomic_load(&s->total);
+    int previous_phase = atomic_load(&s->phase);
     s->info = (DawSongExportInfo){.generation = guard->generation,
                                   .end = end,
                                   .tail = tail,
@@ -274,11 +278,14 @@ DawActionStatus daw_song_export_start(AppState* state, const DawMixSnapshot* exp
     atomic_store(&s->total, 0);
     atomic_store(&s->phase, JOB_QUEUED);
     if (!core_workers_submit(&owner->worker, run, s)) {
-        atomic_store(&s->phase, JOB_DONE);
         engine_export_free(capture);
         s->capture = NULL;
         daw_mix_snapshot_free(guard);
         s->guard = NULL;
+        s->info = previous_info;
+        atomic_store(&s->done, previous_done);
+        atomic_store(&s->total, previous_total);
+        atomic_store(&s->phase, previous_phase);
         rmdir(directory);
         return DAW_ACTION_ENGINE_REJECTED;
     }

@@ -168,7 +168,7 @@ AUDIO_RECORDING_TEST_DEPS := $(AUDIO_RECORDING_TEST_OBJS:.o=.d)
 TRACK_ROLE_TEST_DEPS := $(TRACK_ROLE_TEST_OBJS:.o=.d)
 ALL_DEPS := $(APP_DEPS) $(TIMER_HUD_DEPS) $(TEST_DEPS) $(CACHE_TEST_DEPS) $(OVERLAP_TEST_DEPS) $(TIMELINE_CONTRACT_TEST_DEPS) $(MIDI_MODEL_TEST_DEPS) $(MIDI_INSTRUMENT_RENDER_TEST_DEPS) $(TIMELINE_MIDI_REGION_TEST_DEPS) $(MIDI_EDITOR_SHELL_TEST_DEPS) $(SMOKE_TEST_DEPS) $(PACK_CONTRACT_TEST_DEPS) $(LAYOUT_SWEEP_TEST_DEPS) $(DATA_PATH_CONTRACT_TEST_DEPS) $(CONFIG_DIAGNOSTICS_TEST_DEPS) $(AUDIO_CAPTURE_DEVICE_TEST_DEPS) $(AUDIO_RECORDING_TEST_DEPS) $(TRACK_ROLE_TEST_DEPS) $(ENGINE_TEST_SUPPORT_DEPS)
 
-STABLE_TEST_TARGETS := test-dynamics-feedback test-live-stereo test-song-export test-comparison-player test-ab-comparison test-effect-automation test-mixer-automation test-loudness-analysis test-mix-capture \
+STABLE_TEST_TARGETS := test-media-process-lifetime test-mainthread-lifetime test-media-jobs-failure test-control-bridge-lifetime test-audio-callback-lifetime test-dynamics-feedback test-live-stereo test-song-export test-song-export-lifetime test-comparison-player test-ab-comparison test-effect-automation test-mixer-automation test-loudness-analysis test-mix-capture \
 	test-text-cache-lifetime \
 	test-eq-meter \
 	test-header-mixer \
@@ -179,7 +179,7 @@ STABLE_TEST_TARGETS := test-dynamics-feedback test-live-stereo test-song-export 
 	test-instrument-controls test-percussion-render test-instrument-articulation test-track-hat-choke \
 	test-application-instrument-action \
 	test-input-delivery \
-	test-media-preparation test-media-jobs test-media-import \
+	test-media-preparation test-media-jobs test-media-import test-media-jobs-lifetime \
 	test-mixer-publication test-midi-scheduling \
 	test-region-scheduling \
 	test-export-render \

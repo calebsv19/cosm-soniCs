@@ -10,13 +10,15 @@ typedef struct DawSongExportInfo {
     EngineBounceWavFormat format;
     bool normalize, verified, published, durable;
 } DawSongExportInfo;
-// Owns one shared worker, one active export and eight bounded completion records.
+// Owns one shared worker, one active export and eight rolling completion records.
 typedef struct DawSongExports DawSongExports;
 // Admits a whole-song captured production export against the exact current mix guard.
+// Only accepted work replaces retained records; failed submission preserves prior readback.
 DawActionStatus daw_song_export_start(struct AppState*, const DawMixSnapshot*,
                                       EngineBounceWavFormat, uint64_t tail, bool normalize,
                                       DawSongExportInfo*);
-// Reads an addressed retained job, or the latest job for a null identifier, on control.
+// Copies an addressed retained job, or the latest job for a null identifier, on control.
+// Copies survive owner shutdown; addressed lookup expires after eight newer admissions.
 bool daw_song_export_get(struct AppState*, const char* id, DawSongExportInfo*);
 // Requests cancellation before the atomic publication gate and reports late requests explicitly.
 const char* daw_song_export_cancel(struct AppState*, const char* id);

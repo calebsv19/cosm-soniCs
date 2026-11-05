@@ -42,7 +42,9 @@ void audio_media_jobs_destroy(AudioMediaJobs* jobs);
 uint64_t audio_media_jobs_submit(AudioMediaJobs* jobs, const AudioMediaRequest* request);
 // Cancels one admitted request, or every request when id is zero.
 void audio_media_jobs_cancel(AudioMediaJobs* jobs, uint64_t id);
-// Moves one ready result to the caller; canceled results never expose decoded storage.
+// Transfers one ready result and its samples to the caller, releasing the producer slot.
+// Caller-owned samples survive cancellation and owner destruction; adopt or free them.
+// Canceled results never expose decoded storage.
 bool audio_media_jobs_poll(AudioMediaJobs* jobs, AudioMediaResult* out);
-// Snapshots bounded queue/result ownership on the control thread.
+// Snapshots producer-owned slots on the control thread; transferred samples are excluded.
 AudioMediaJobStats audio_media_jobs_stats(const AudioMediaJobs* jobs);

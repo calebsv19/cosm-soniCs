@@ -883,3 +883,53 @@ $(TEST_BUILD_ROOT)/l1_persistence_test: tests/l1_persistence_test.c $(ENGINE_TES
 	@mkdir -p "$(dir $@)"
 	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(ENGINE_TEST_SUPPORT_OBJS),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
 test-stable: test-l1-persistence
+
+.PHONY: test-media-jobs-lifetime
+test-media-jobs-lifetime: $(TEST_BUILD_ROOT)/media_jobs_lifetime_test
+	$(TEST_BUILD_ROOT)/media_jobs_lifetime_test
+
+$(TEST_BUILD_ROOT)/media_jobs_lifetime_test: tests/media_jobs_lifetime_test.c src/audio/media_jobs.c include/audio/media_jobs.h $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(@D)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(filter-out $(APP_OBJ_DIR)/src/audio/media_jobs.o,$(ENGINE_TEST_SUPPORT_OBJS)),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-song-export-lifetime
+test-song-export-lifetime: $(TEST_BUILD_ROOT)/song_export_lifetime_test
+	$(TEST_BUILD_ROOT)/song_export_lifetime_test
+$(TEST_BUILD_ROOT)/song_export_lifetime_test: tests/song_export_lifetime_test.c src/app/song_export.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(@D)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(filter-out $(APP_OBJ_DIR)/src/app/song_export.o,$(ENGINE_TEST_SUPPORT_OBJS)),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-mainthread-lifetime
+test-mainthread-lifetime: $(TEST_BUILD_ROOT)/mainthread_lifetime_test
+	$(TEST_BUILD_ROOT)/mainthread_lifetime_test
+$(TEST_BUILD_ROOT)/mainthread_lifetime_test: tests/mainthread_lifetime_test.c src/core/loop/daw_mainthread_messages.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(@D)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(filter-out $(APP_OBJ_DIR)/src/core/loop/daw_mainthread_messages.o,$(ENGINE_TEST_SUPPORT_OBJS)),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-media-jobs-failure
+test-media-jobs-failure: $(TEST_BUILD_ROOT)/media_jobs_failure_test
+	$(TEST_BUILD_ROOT)/media_jobs_failure_test
+$(TEST_BUILD_ROOT)/media_jobs_failure_test: tests/media_jobs_failure_test.c src/audio/media_jobs.c src/audio/media_clip.c src/audio/resample.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(@D)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(filter-out $(APP_OBJ_DIR)/src/audio/media_jobs.o $(APP_OBJ_DIR)/src/audio/media_clip.o $(APP_OBJ_DIR)/src/audio/resample.o,$(ENGINE_TEST_SUPPORT_OBJS)),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-control-bridge-lifetime
+test-control-bridge-lifetime: $(TEST_BUILD_ROOT)/control_bridge_lifetime_test
+	$(TEST_BUILD_ROOT)/control_bridge_lifetime_test
+$(TEST_BUILD_ROOT)/control_bridge_lifetime_test: tests/control_bridge_lifetime_test.c src/app/control_bridge.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(@D)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(filter-out $(APP_OBJ_DIR)/src/app/control_bridge.o,$(ENGINE_TEST_SUPPORT_OBJS)),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-audio-callback-lifetime
+test-audio-callback-lifetime: $(TEST_BUILD_ROOT)/audio_callback_lifetime_test
+	$(TEST_BUILD_ROOT)/audio_callback_lifetime_test
+$(TEST_BUILD_ROOT)/audio_callback_lifetime_test: tests/audio_callback_lifetime_test.c src/audio/device_sdl.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(@D)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(filter-out $(APP_OBJ_DIR)/src/audio/device_sdl.o,$(ENGINE_TEST_SUPPORT_OBJS)),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)
+
+.PHONY: test-media-process-lifetime
+test-media-process-lifetime: $(TEST_BUILD_ROOT)/media_process_lifetime_test
+	$(TEST_BUILD_ROOT)/media_process_lifetime_test
+$(TEST_BUILD_ROOT)/media_process_lifetime_test: tests/media_process_lifetime_test.c src/audio/media_clip.c $(ENGINE_TEST_SUPPORT_OBJS) $(APP_SHARED_LIBS)
+	@mkdir -p "$(@D)"
+	$(HOST_CC) $(CPPFLAGS) $(CFLAGS) $(ARCH_FLAGS) $< $(foreach obj,$(filter-out $(APP_OBJ_DIR)/src/audio/media_clip.o,$(ENGINE_TEST_SUPPORT_OBJS)),"$(obj)") $(APP_SHARED_LIBS) -o "$@" $(LDFLAGS)

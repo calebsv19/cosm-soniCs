@@ -196,3 +196,83 @@ retry protocol, destination collision policy or rollback guarantee.
 export completion, full/partial drains, allocation and pending-queue refusal,
 input copying, failure accounting and shutdown/restart. The separate
 `test-trace-async-contract` writes and reloads an actual trace pack.
+
+## Media-job result ownership
+
+The four-slot media owner bounds queued, running and ready results. Poll transfers
+the result and its PCM allocation to the caller and immediately releases the
+producer slot. Transferred samples remain valid across cancellation, producer
+destruction and project replacement; the consumer must adopt or free them.
+Producer statistics exclude transferred PCM; engine/cache ownership has its own
+accounting. Cancellation cannot revoke an already transferred allocation.
+
+Successful project replacement advances the import generation and cancels old
+work. The control poll rejects old-generation results before registry, history
+or insertion effects. A failed replacement leaves the generation intact.
+Current-generation library probes may legitimately follow retirement of stale
+results, so stale-result checks must observe that boundary separately.
+
+`make test-media-jobs-lifetime` holds real decoded PCM while all four slots are
+reused, cancels and shuts down mixed ready/running/queued work, recreates the
+owner, and exercises real project replacement and subsequent import undo/redo.
+The test uses a decoder-entry barrier and the production cancellation predicate,
+with a watchdog only for failure detection. It does not use physical devices.
+
+## Song-export result and shutdown ownership
+
+The song-export owner allows one active job and retains eight rolling result
+records. Get returns a value copy, not a borrowed graph or slot pointer. Accepted
+new work may replace the oldest record; failed submission preserves all accepted
+readback and the latest-job selection. Copies and published files remain usable
+after owner shutdown, while in-memory lookup ends when the owner is destroyed.
+
+Cancellation wins only before the final progress callback moves the job into
+publication. Later requests report `publication_started`; shutdown joins that
+work and preserves its published file. A successful cancellation aborts the
+unpublished candidate. The control owner releases captured source plans/cache
+pins after the terminal fence or join, before the originating engine is retired.
+Provisional progress reaching its total is not a verified file receipt.
+
+`make test-song-export-lifetime` holds the real exporter before and after the
+publication gate and after file writing but before terminal readback. It covers
+eight retained outcomes, rejected submission rollback on full and fresh owners,
+rolling lookup expiry, copied results, cancellation, and shutdown/join with
+balanced captured-plan retirement. The independent decoder verifies published
+PCM after owner destruction. Existing song-export tests cover project replacement,
+immutable captures, native/control choices, encodings, tails and no-overwrite.
+
+## Worker and notification lifecycle qualification
+
+Main-thread notifications are invalidation hints, not accepted authoring commands.
+Their queue entry, coalescing bit and wake state are serialized together so a pop
+cannot leave a stale pending bit that suppresses a later notification. Allocation
+or full-queue refusal preserves prior entries. Wake failure leaves the readable
+queue predicate intact. Current engine producers attach a borrowed engine pointer; the handler never
+dereferences or frees it and reads current application state instead. Stop/join engine producers before
+reset or shutdown of this queue. Sequence numbers are diagnostics, not durable IDs.
+
+The main-thread job adapter executes borrowed contexts synchronously with a soft
+pre-execution budget. It has no current production enqueue call site. Reset/shutdown
+discard pending descriptors without executing or freeing caller contexts; callers
+retain ownership. Do not use that adapter for an accepted operation that requires
+a terminal receipt without adding the corresponding owner policy.
+
+The local control bridge serializes clients and dispatches only on the control
+owner. Shutdown wakes an undispatched request and joins the transport. Socket
+receive/send timeout is two seconds; a stalled reply can use two send-timeout
+opportunities (about four seconds observed) before shutdown completes. Delivered
+mutation receipts remain process-local; lost response is not evidence of no effect.
+
+Media-job failure tests exercise owner allocation, worker initialization/submission,
+and three decoder/resampler allocation boundaries with prior results retained.
+The FFmpeg fallback is spawned directly, cancelled/killed when requested or over
+its staging budget, then waited/reaped. A successful child exit still requires WAV
+validation. Native decoder and filesystem calls have no hard interruption deadline.
+
+L3 callback proof distinguishes copied commands, render-worker execution, queued
+PCM and device consumption. Exact ring wrap, shortage zero-fill, consumed-clock
+accounting and close quiescence are tested. Silent CoreAudio output checks at 64,
+256 and 1024 client frames qualify only that observed route/workload. They do not
+prove microphone alignment, audible quality or glitch-free operation under every
+load. Existing recording tests separately cover epochs, overflow gaps, bounded
+callback enqueue, journal failures/retry and worker shutdown.

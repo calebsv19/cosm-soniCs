@@ -122,14 +122,13 @@ bool daw_mainthread_message_queue_push(const DawMainThreadMessage* msg) {
         free(node);
         return true;
     }
-    stats_unlock();
-
+    // Queue publication and its coalescing/wake predicate share one owner lock.
     if (!core_queue_mutex_push(&g_queue, node)) {
+        stats_unlock();
         free(node);
         return false;
     }
 
-    stats_lock();
     g_pushed++;
     uint32_t depth = (uint32_t)core_queue_mutex_size(&g_queue);
     if (depth > g_high_watermark) g_high_watermark = depth;
@@ -165,11 +164,12 @@ bool daw_mainthread_message_queue_pop(DawMainThreadMessage* out) {
     if (!out || !g_queue_initialized) return false;
     memset(out, 0, sizeof(*out));
 
+    stats_lock();
     void* item = NULL;
-    if (!core_queue_mutex_pop(&g_queue, &item)) return false;
+    if (!core_queue_mutex_pop(&g_queue, &item)) { stats_unlock(); return false; }
 
     DawMainThreadMessageNode* node = (DawMainThreadMessageNode*)item;
-    if (!node) return false;
+    if (!node) { stats_unlock(); return false; }
 
     *out = node->msg;
 
@@ -177,7 +177,6 @@ bool daw_mainthread_message_queue_pop(DawMainThreadMessage* out) {
     uint64_t latency_ns = core_time_diff_ns(now_ns, node->enqueue_ns);
     free(node);
 
-    stats_lock();
     g_popped++;
     g_drain_latency_samples++;
     g_drain_latency_total_ns = core_time_add_ns(g_drain_latency_total_ns, latency_ns);
