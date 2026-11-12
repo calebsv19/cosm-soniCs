@@ -25,5 +25,6 @@ include make/rules-test-adapters.mk
 include make/rules-loop.mk
 include make/rules-vulkan-runtime.mk
 
+include make/build-identity.mk
 -include $(ALL_DEPS)
 endif

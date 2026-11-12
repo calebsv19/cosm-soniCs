@@ -12,9 +12,9 @@ $(SHARED_BUILD_DIR):
 	@mkdir -p "$@"
 
 define build_copy_static_lib
-$($(1)_LIB): FORCE | $(SHARED_BUILD_DIR)
-	$$(MAKE) MAKEOVERRIDES= BUILD_DIR=build -C $($(1)_DIR) clean $(2)
-	PKG_CONFIG_LIBDIR="$(TARGET_PKG_CONFIG_LIBDIR)" PKG_CONFIG="$(PKG_CONFIG)" $$(MAKE) MAKEOVERRIDES= BUILD_DIR=build -C $($(1)_DIR) CC="$$(SHARED_CC)" $(2)
+$($(1)_LIB): $(L4_STAMP) | $(SHARED_BUILD_DIR)
+	@rm -f "$$($(1)_LIB_SRC)"
+	PKG_CONFIG_LIBDIR="$(TARGET_PKG_CONFIG_LIBDIR)" PKG_CONFIG="$(PKG_CONFIG)" $$(MAKE) -B MAKEOVERRIDES= BUILD_DIR=build -C $($(1)_DIR) CC="python3 $(abspath tools/shared_compile.py) --target  $($(1)_LIB) -- $$(SHARED_CC)" $(2)
 	cp "$$($(1)_LIB_SRC)" "$$@"
 endef
 
