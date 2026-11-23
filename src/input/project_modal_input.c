@@ -1,6 +1,7 @@
 #include "input/project_modal_input.h"
 
 #include "app_state.h"
+#include "input/midi_editor_input.h"
 #include "ui/text_edit.h"
 #include "ui/project_modal_controls.h"
 #include "ui/transport_controls.h"
@@ -13,12 +14,19 @@ bool project_modal_input_active(const AppState* state) {
     return state && (state->project_prompt.active || state->project_load.active);
 }
 
+// Suspend background input while keeping authored playback and finite preview audio independent.
+static void take_modal_input(AppState* state) {
+    daw_text_cancel_composition(state);
+    midi_editor_input_finish_qwerty(state);
+    state->sound_ui.pressed = -1;
+}
+
 void project_modal_input_open_save_prompt(AppState* state) {
     if (!state) {
         return;
     }
     if (project_modal_input_active(state)) return;
-    daw_text_cancel_composition(state);
+    take_modal_input(state);
     state->project_prompt.active = true;
     state->project_prompt.publication_warning=false;
     state->project_prompt.error[0] = '\0';
@@ -30,6 +38,7 @@ void project_modal_input_open_save_prompt(AppState* state) {
     state->project_prompt.cursor = (int)strlen(state->project_prompt.buffer);
     daw_text_edit_begin(&state->project_prompt.text_edit, state->project_prompt.buffer,
         sizeof(state->project_prompt.buffer), &state->project_prompt.cursor, KIT_UI_TEXT_SINGLE_LINE);
+    daw_project_modal_controls_sync(state);
     daw_transport_controls_sync(&state->transport_ui, state);
     SDL_StartTextInput();
 }
@@ -42,6 +51,7 @@ void project_modal_input_close_save_prompt(AppState* state) {
     kit_ui_text_cancel_composition(&state->project_prompt.text_edit);
     state->project_prompt.buffer[0] = '\0';
     state->project_prompt.cursor = 0;
+    daw_project_modal_controls_sync(state);
     daw_transport_controls_sync(&state->transport_ui, state);
     daw_text_resume_input(state);
 }
@@ -147,7 +157,7 @@ bool project_modal_input_open_load_modal(AppState* state) {
         return false;
     }
     if (project_modal_input_active(state)) return false;
-    daw_text_cancel_composition(state);
+    take_modal_input(state);
     SDL_StopTextInput();
     state->project_load.active = true;
     state->project_load.error[0] = '\0';

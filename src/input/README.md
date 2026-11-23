@@ -44,6 +44,12 @@ Purpose: Translate SDL events and pointer state into engine/UI actions.
 
 Play/Stop and Space transport changes dispatch on SDL events so quick presses survive between frames. Save/load modals consume their complete event stream to prevent global recording or transport shortcuts from leaking through text entry. Other gesture polling remains subject to the S5 interaction audit.
 
+Opening a project modal suspends inspector text editing and cancels any pending
+Sound preview button press. Cancel returns to an eligible editor draft. The
+modal closes out held QWERTY notes and releases sustain, while project playback
+and already-started finite audio previews continue. File drops during the modal
+are ignored.
+
 S5 compound movement/slip previews share `timeline_apply_compound_preview`: derive absolute target states from complete initial history, publish once, then resolve selection/inspector indices by clip identity. Cross-track placement now shares the batch path; integrated overlap and generated-track history now use retained content; other compound edit entry points remain migration work; see the S5 ledger.
 
 Single/multi slide drops, including compound drops that append tracks, use retained content history and one placement/overlap publication. Only actual slide gestures trigger the destructive overlap pass; click-only selection and slip/ripple release do not. Native gesture acceptance remains open.

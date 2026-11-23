@@ -406,21 +406,29 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
         if(event->type==SDL_MOUSEBUTTONUP && event->button.button==SDL_BUTTON_LEFT)manager->window_wait_release=false;
         return;
     }
+    if (project_modal_input_active(state)) {
+        // SDL transfers the drop payload to the app even when the modal refuses the drop.
+        if (event->type == SDL_DROPFILE || event->type == SDL_DROPTEXT) {
+            SDL_free(event->drop.file);
+        } else {
+            (void)project_modal_input_handle_event(state, event);
+        }
+        return;
+    }
     if(daw_track_header_mixer_event(state,event))return;
-    daw_project_modal_controls_sync(state);
     if(daw_group_panel_event(state,event))return;
-    if (!project_modal_input_active(state) && automation_menu_event(state,event)) return;
-    if (!project_modal_input_active(state) && daw_live_meter_panel_event(state,event)) return;
-    if (!project_modal_input_active(state) && daw_song_export_panel_event(state,event)) return;
-    if (!project_modal_input_active(state) && daw_ab_panel_event(state,event)) return;
-    if (!project_modal_input_active(state) && daw_routing_panel_event(state,event)) return;
-    if (!project_modal_input_active(state) && daw_fx_library_panel_event(state,event)) return;
-    if (!project_modal_input_active(state) && daw_preset_panel_event(state, event)) return;
-    if (!project_modal_input_active(state) && daw_sound_panel_event(state, event)) return;
-    if (!project_modal_input_active(state) && daw_midi_arrangement_event(state, event)) return;
-    if (!project_modal_input_active(state) && daw_midi_pattern_event(state, event)) return;
+    if (automation_menu_event(state,event)) return;
+    if (daw_live_meter_panel_event(state,event)) return;
+    if (daw_song_export_panel_event(state,event)) return;
+    if (daw_ab_panel_event(state,event)) return;
+    if (daw_routing_panel_event(state,event)) return;
+    if (daw_fx_library_panel_event(state,event)) return;
+    if (daw_preset_panel_event(state, event)) return;
+    if (daw_sound_panel_event(state, event)) return;
+    if (daw_midi_arrangement_event(state, event)) return;
+    if (daw_midi_pattern_event(state, event)) return;
     // A divider owns its complete press-motion-release sequence before content dispatch.
-    if (!project_modal_input_active(state) && !state->undo.active_drag_valid &&
+    if (!state->undo.active_drag_valid &&
         !state->editor_controls.surface.interaction.pointer_owned) {
         if (event->type == SDL_MOUSEBUTTONDOWN && event->button.button == SDL_BUTTON_LEFT) {
             ui_layout_handle_pointer(state, 0, SDL_BUTTON(SDL_BUTTON_LEFT), event->button.x, event->button.y);
@@ -459,10 +467,6 @@ void input_manager_handle_event(InputManager* manager, AppState* state, const SD
         daw_transport_controls_sync(&state->transport_ui,state);
         input_manager_apply_authoring_preview_dirty(state);
         input_manager_save_authoring_accepted_preferences(state);
-        return;
-    }
-
-    if (project_modal_input_handle_event(state, event)) {
         return;
     }
 

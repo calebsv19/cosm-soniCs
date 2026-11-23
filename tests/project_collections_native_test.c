@@ -2,7 +2,13 @@
 #include <errno.h>
 #define _XOPEN_SOURCE 700
 #include "app_state.h"
+#include "audio/wav_writer.h"
+#include "engine/engine_internal.h"
+#include "input/inspector_input.h"
+#include "input/inspector_input_numeric_edit.h"
+#include "input/timeline_selection.h"
 #include "ui/font.h"
+#include "ui/layout.h"
 #include "ui/layout_modal_overlays.h"
 #include "ui/project_modal_controls.h"
 #include "input/project_modal_input.h"
@@ -36,9 +42,109 @@ static void click(AppState* s,int index) {
     DawProjectModalLayout l;daw_project_modal_layout(s,&l);SDL_Event e={.type=SDL_MOUSEBUTTONDOWN};e.button.button=SDL_BUTTON_LEFT;
     e.button.x=l.buttons[index].x+5;e.button.y=l.buttons[index].y+5;project_modal_input_handle_event(s,&e);e.type=SDL_MOUSEBUTTONUP;project_modal_input_handle_event(s,&e);
 }
+// Delivers the same key edges that the native window passes to the application router.
+static void key(AppState* s, Uint32 type, SDL_Keycode symbol, SDL_Keymod mod) {
+    SDL_Event e={.type=type};e.key.keysym.sym=symbol;e.key.keysym.scancode=SDL_GetScancodeFromKey(symbol);e.key.keysym.mod=mod;
+    input_manager_handle_event(&s->input_manager,s,&e);
+}
+// Replaces the current native text selection through the ordinary SDL text route.
+static void type_text(AppState* s,const char* text) {
+    key(s,SDL_KEYDOWN,SDLK_a,KMOD_GUI);
+    SDL_Event e={.type=SDL_TEXTINPUT};SDL_strlcpy(e.text.text,text,sizeof(e.text.text));
+    input_manager_handle_event(&s->input_manager,s,&e);
+}
+// Simulates an owned SDL file drop using a generated WAV in the fixture workspace.
+static void drop(AppState* s,const char* file) {
+    SDL_Event e={.type=SDL_DROPFILE};e.drop.file=SDL_strdup(file);assert(e.drop.file);
+    input_manager_handle_event(&s->input_manager,s,&e);
+}
+// Proves the modal boundary across an inspector draft, MIDI key ownership and audio import.
+static void modal_ownership(VkRenderer* renderer,AppState* s,const char* prefix) {
+    input_manager_init(&s->input_manager);inspector_input_init(s);
+    ui_init_panes(s);ui_layout_panes(s,1000,700);
+    int sample_rate=s->runtime_cfg.sample_rate,clip_index=-1;
+    float pcm[1024]={0};assert(wav_write_f32("l5-tone.wav",pcm,1024,1,sample_rate));
+    assert(engine_add_clip_to_track(s->engine,0,"l5-tone.wav",0,&clip_index));
+    const EngineClip* clip=&engine_get_tracks(s->engine)[0].clips[clip_index];
+    timeline_selection_set_single(s,0,clip_index);
+    inspector_input_show(s,0,clip_index,clip);
+    inspector_numeric_begin_edit(s,clip,&s->inspector.edit.editing_timeline_start);
+    type_text(s,"invalid");key(s,SDL_KEYDOWN,SDLK_RETURN,KMOD_NONE);
+    int undo=s->undo.undo_count;
+    assert(s->inspector.edit.editing_timeline_start && !strcmp(s->inspector.edit.timeline_start,"invalid"));
+    project_modal_input_open_save_prompt(s);
+    type_text(s,"Modal draft");
+    key(s,SDL_KEYDOWN,SDLK_SPACE,KMOD_NONE);
+    assert(!strcmp(s->project_prompt.buffer,"Modal draft"));
+    assert(!strcmp(s->inspector.edit.timeline_start,"invalid") && s->undo.undo_count==undo);
+    assert(!engine_transport_requested_playing(s->engine));
+    frame(renderer,s,prefix,"inspector-takeover");
+    key(s,SDL_KEYDOWN,SDLK_ESCAPE,KMOD_NONE);
+    assert(!project_modal_input_active(s) && SDL_IsTextInputActive());
+    type_text(s,"0.5");key(s,SDL_KEYDOWN,SDLK_RETURN,KMOD_NONE);
+    assert(!inspector_input_has_text_focus(s) && s->undo.undo_count==undo+1);
+    assert(engine_get_tracks(s->engine)[0].clips[0].timeline_start_frames==(uint64_t)(sample_rate/2));
+
+    int midi=-1;assert(engine_add_midi_clip_to_track(s->engine,0,2*sample_rate,sample_rate,&midi));
+    timeline_selection_set_single(s,0,midi);
+    s->midi_editor_ui.qwerty_test_enabled=true;
+    key(s,SDL_KEYDOWN,SDLK_SEMICOLON,KMOD_NONE);key(s,SDL_KEYDOWN,SDLK_z,KMOD_NONE);
+    assert(s->engine->midi_audition_pedal_down && s->midi_editor_ui.qwerty_active_notes[0].active);
+    assert(project_modal_input_open_load_modal(s));
+    key(s,SDL_KEYUP,SDLK_z,KMOD_NONE);key(s,SDL_KEYUP,SDLK_SEMICOLON,KMOD_NONE);
+    bool keys_released=!s->engine->midi_audition_pedal_down && !s->midi_editor_ui.qwerty_active_notes[0].active;
+    assert(!mkdir("l5-library",0700));
+    assert(realpath("l5-library",s->data_paths.library_copy_root));
+    const Pane* library=ui_layout_get_pane(s,3);assert(library && library->visible);
+    s->mouse_x=library->rect.x+3;s->mouse_y=library->rect.y+3;
+    drop(s,"l5-tone.wav");
+    bool drop_blocked=access("l5-library/l5-tone.wav",F_OK)!=0;
+    key(s,SDL_KEYDOWN,SDLK_ESCAPE,KMOD_NONE);
+    if(!drop_blocked)assert(!unlink("l5-library/l5-tone.wav"));
+    drop(s,"l5-tone.wav");assert(!access("l5-library/l5-tone.wav",F_OK));
+    if(keys_released) {
+        assert(s->midi_editor_ui.qwerty_test_enabled);
+        key(s,SDL_KEYDOWN,SDLK_z,KMOD_NONE);
+        assert(s->midi_editor_ui.qwerty_active_notes[0].active);
+        key(s,SDL_KEYUP,SDLK_z,KMOD_NONE);
+        assert(!s->midi_editor_ui.qwerty_active_notes[0].active);
+    }
+    engine_midi_audition_all_notes_off(s->engine);
+    memset(s->midi_editor_ui.qwerty_active_notes,0,sizeof(s->midi_editor_ui.qwerty_active_notes));
+    s->midi_editor_ui.qwerty_test_enabled=false;
+    s->midi_editor_ui.panel_mode=MIDI_REGION_PANEL_INSTRUMENT;
+    s->sound_ui.open=true;s->sound_ui.pressed=-1;s->sound_ui.listening=14;
+    assert(engine_start(s->engine));
+    int channels=s->engine->device.spec.channels;assert(channels>0);
+    float* preview=calloc((size_t)sample_rate*8*channels,sizeof(*preview));assert(preview);
+    assert(engine_preview_play(s->engine,preview,8*sample_rate,channels,sample_rate));
+    free(preview);
+    DawSoundPanelLayout sound;daw_sound_panel_layout(s,&sound);
+    SDL_Event pointer={.type=SDL_MOUSEBUTTONDOWN};
+    pointer.button.button=SDL_BUTTON_LEFT;pointer.button.x=sound.buttons[16].x+3;pointer.button.y=sound.buttons[16].y+3;
+    input_manager_handle_event(&s->input_manager,s,&pointer);
+    assert(s->sound_ui.pressed==16);
+    project_modal_input_open_save_prompt(s);
+    key(s,SDL_KEYDOWN,SDLK_ESCAPE,KMOD_NONE);assert(!project_modal_input_active(s));
+    pointer.type=SDL_MOUSEBUTTONUP;input_manager_handle_event(&s->input_manager,s,&pointer);
+    bool stale_preview_blocked=engine_preview_active(s->engine);
+    fprintf(stderr,"L5 soniCs modal releases audition=%d blocks drop=%d stale preview release blocked=%d\n",keys_released,drop_blocked,stale_preview_blocked);
+    assert(keys_released && drop_blocked && stale_preview_blocked);
+    pointer.type=SDL_MOUSEBUTTONDOWN;input_manager_handle_event(&s->input_manager,s,&pointer);
+    pointer.type=SDL_MOUSEBUTTONUP;input_manager_handle_event(&s->input_manager,s,&pointer);
+    assert(!engine_preview_active(s->engine));
+    assert(engine_transport_play(s->engine));
+    project_modal_input_open_save_prompt(s);
+    key(s,SDL_KEYDOWN,SDLK_SPACE,KMOD_NONE);
+    key(s,SDL_KEYDOWN,SDLK_ESCAPE,KMOD_NONE);
+    assert(!project_modal_input_active(s) && engine_transport_requested_playing(s->engine));
+    assert(engine_transport_stop(s->engine));
+    puts("PASS L5 soniCs: inspector rejection and resume, modal audition and drop isolation, fresh preview control and retained transport");
+}
 // Proves actual scoped browsing, version saves and empty-folder UI without touching user songs.
 int main(int argc,char** argv) {
-    assert(argc==3);assert(!SDL_Init(SDL_INIT_VIDEO|SDL_INIT_EVENTS) && !TTF_Init());
+    assert(argc==3);SDL_setenv("SDL_AUDIODRIVER","dummy",1);
+    assert(!SDL_Init(SDL_INIT_VIDEO|SDL_INIT_EVENTS|SDL_INIT_AUDIO) && !TTF_Init());
     SDL_Window* window=SDL_CreateWindow("soniCs collection proof",SDL_WINDOWPOS_CENTERED,SDL_WINDOWPOS_CENTERED,1000,700,SDL_WINDOW_VULKAN|SDL_WINDOW_ALLOW_HIGHDPI);assert(window);
     VkRenderer renderer={0};VkRendererConfig cfg;vk_renderer_config_set_defaults(&cfg);cfg.enable_validation=SDL_TRUE;assert(vk_renderer_init(&renderer,window,&cfg)==VK_SUCCESS);
     char font[4096],cwd[4096];assert(getcwd(cwd,sizeof(cwd)));snprintf(font,sizeof(font),"%s/include/fonts/Montserrat/Montserrat-Regular.ttf",cwd);
@@ -67,6 +173,7 @@ int main(int argc,char** argv) {
     assert(project_manager_load(s,s->project.path));
     assert(strstr(s->project.persistence_notice,"Recovered previous save"));
     frame(&renderer,s,argv[1],"recovered-backup");
+    modal_ownership(&renderer,s,argv[1]);
     ui_font_invalidate_cache((SDL_Renderer*)&renderer);ui_font_shutdown();engine_destroy(s->engine);undo_manager_free(&s->undo);
     tempo_map_free(&s->tempo_map);time_signature_map_free(&s->time_signature_map);free(s);vk_renderer_shutdown(&renderer);SDL_DestroyWindow(window);TTF_Quit();SDL_Quit();
     puts("project_collections_native_test: passed (actual collection/save controls, v001/v002, scoped and empty lists, folder cancel, compact geometry and clean Vulkan frames)");return 0;

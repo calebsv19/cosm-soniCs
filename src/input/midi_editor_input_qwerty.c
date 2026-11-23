@@ -186,6 +186,16 @@ void midi_editor_complete_all_qwerty_notes(AppState* state) {
     }
 }
 
+// Ends live keyboard input at the handoff without disarming the user's selected mode.
+void midi_editor_input_finish_qwerty(AppState* state) {
+    if (!state || !state->engine ||
+        (!state->midi_editor_ui.qwerty_test_enabled && !state->midi_editor_ui.qwerty_record_armed)) {
+        return;
+    }
+    midi_editor_complete_all_qwerty_notes(state);
+    (void)engine_midi_audition_pedal(state->engine, false);
+}
+
 bool midi_editor_begin_qwerty_note(AppState* state,
                                           const MidiEditorSelection* selection,
                                           SDL_Keycode key,

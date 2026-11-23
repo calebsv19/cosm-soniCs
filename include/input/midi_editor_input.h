@@ -10,6 +10,8 @@ struct InputManager;
 bool midi_editor_input_handle_event(struct InputManager* manager, struct AppState* state, const SDL_Event* event);
 void midi_editor_input_update(struct InputManager* manager, struct AppState* state, bool left_was_down, bool left_is_down);
 bool midi_editor_input_qwerty_capturing(const struct AppState* state);
+// Completes held keyboard notes and releases sustain when another UI owner takes focus.
+void midi_editor_input_finish_qwerty(struct AppState* state);
 void midi_editor_input_set_selected_clip(struct AppState* state,
                                          int track_index,
                                          int clip_index,
