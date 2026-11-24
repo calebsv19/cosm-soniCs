@@ -20,6 +20,85 @@ static void read_marker(char* p) {FILE* f=fopen("config/projects/last_project.tx
 static void choose(AppState* s,const char* label) {for(int i=0;i<s->project_collections.count;++i)if(!strcmp(label,s->project_collections.items[i].label)){assert(project_collections_select(s,i));return;}assert(0);}
 // Sends press/release to production modal input, including stale/mismatched activation cases.
 static void click(AppState* s,int button) {DawProjectModalLayout l;daw_project_modal_layout(s,&l);SDL_Event e={.type=SDL_MOUSEBUTTONDOWN};e.button.button=SDL_BUTTON_LEFT;e.button.x=l.buttons[button].x+5;e.button.y=l.buttons[button].y+5;project_modal_input_handle_event(s,&e);e.type=SDL_MOUSEBUTTONUP;project_modal_input_handle_event(s,&e);}
+// Reopens an unsorted saved MIDI project and checks the runtime clip bound to each view.
+static void check_midi_project_reopen(AppState* state) {
+    int later_index = -1;
+    assert(engine_add_midi_clip_to_track(state->engine, 0, 48000, 12000, &later_index));
+    assert(later_index == 1);
+    assert(engine_clip_set_name(state->engine, 0, later_index, "Later region"));
+
+    SessionDocument saved;
+    session_document_init(&saved);
+    assert(session_document_capture(state, &saved));
+    assert(saved.tracks[0].clip_count == 2);
+    SessionClip* clips = saved.tracks[0].clips;
+    SessionClip first = clips[0];
+    clips[0] = clips[1];
+    clips[1] = first;
+    clips[0].selected = true;
+    clips[1].selected = false;
+    saved.active_track_index = saved.selected_track_index = 0;
+    saved.selected_clip_index = 0;
+    saved.selection_count = 2;
+    saved.selection[0] = (SessionTimelineSelectionEntry){.track_index = 0, .clip_index = 0};
+    saved.selection[1] = (SessionTimelineSelectionEntry){.track_index = 0, .clip_index = 1};
+    saved.midi_editor.panel_mode = MIDI_REGION_PANEL_INSTRUMENT;
+    saved.midi_editor.viewport_track_index = 0;
+    saved.midi_editor.viewport_clip_index = 0;
+    saved.midi_editor.viewport_start_frame = 120;
+    saved.midi_editor.viewport_span_frames = 4800;
+    saved.midi_editor.pitch_viewport_track_index = 0;
+    saved.midi_editor.pitch_viewport_clip_index = 1;
+    saved.midi_editor.pitch_viewport_top_note = 84;
+    saved.midi_editor.pitch_viewport_row_count = 18;
+    const char* project = "out/projects/l6-midi-restore.json";
+    assert(session_document_write_file_new(&saved, project));
+    assert(project_manager_load(state, project));
+
+    const EngineTrack* tracks = engine_get_tracks(state->engine);
+    assert(tracks && tracks[0].clip_count == 2);
+    assert(tracks[0].clips[0].timeline_start_frames == 0);
+    assert(tracks[0].clips[1].timeline_start_frames == 48000);
+    const uint64_t earlier = tracks[0].clips[0].creation_index;
+    const uint64_t later = tracks[0].clips[1].creation_index;
+    assert(earlier != later);
+    assert(state->selected_track_index == 0 && state->selected_clip_index == 1);
+    assert(state->active_track_index == 0 && state->selection_count == 2);
+    assert(state->selection[0].track_index == 0 && state->selection[0].clip_index == 1);
+    assert(state->selection[1].track_index == 0 && state->selection[1].clip_index == 0);
+    assert(state->midi_editor_ui.panel_mode == MIDI_REGION_PANEL_INSTRUMENT);
+    assert(state->midi_editor_ui.selected_track_index == 0 && state->midi_editor_ui.selected_clip_index == 1);
+    assert(state->midi_editor_ui.selected_clip_creation_index == later);
+    assert(state->midi_editor_ui.viewport_track_index == 0 && state->midi_editor_ui.viewport_clip_index == 1);
+    assert(state->midi_editor_ui.viewport_clip_creation_index == later);
+    assert(state->midi_editor_ui.viewport_start_frame == 120 && state->midi_editor_ui.viewport_span_frames == 4800);
+    assert(state->midi_editor_ui.pitch_viewport_track_index == 0 && state->midi_editor_ui.pitch_viewport_clip_index == 0);
+    assert(state->midi_editor_ui.pitch_viewport_clip_creation_index == earlier);
+    assert(state->midi_editor_ui.pitch_viewport_top_note == 84 && state->midi_editor_ui.pitch_viewport_row_count == 18);
+
+    SessionDocument reopened;
+    session_document_init(&reopened);
+    assert(session_document_capture(state, &reopened));
+    assert(reopened.selected_clip_index == 1);
+    assert(reopened.midi_editor.viewport_clip_index == 1 && reopened.midi_editor.viewport_span_frames == 4800);
+    assert(reopened.midi_editor.pitch_viewport_clip_index == 0 && reopened.midi_editor.pitch_viewport_top_note == 84);
+    session_document_free(&reopened);
+
+    saved.midi_editor.viewport_clip_index = -1;
+    saved.midi_editor.pitch_viewport_clip_index = -1;
+    const char* unbound = "out/projects/l6-unbound-viewports.json";
+    assert(session_document_write_file_new(&saved, unbound));
+    assert(project_manager_load(state, unbound));
+    assert(state->midi_editor_ui.viewport_track_index == -1 && state->midi_editor_ui.viewport_clip_index == -1);
+    assert(state->midi_editor_ui.viewport_clip_creation_index == 0);
+    assert(state->midi_editor_ui.viewport_start_frame == 0 && state->midi_editor_ui.viewport_span_frames == 0);
+    assert(state->midi_editor_ui.pitch_viewport_track_index == -1 && state->midi_editor_ui.pitch_viewport_clip_index == -1);
+    assert(state->midi_editor_ui.pitch_viewport_clip_creation_index == 0);
+    assert(state->midi_editor_ui.pitch_viewport_top_note == 84 && state->midi_editor_ui.pitch_viewport_row_count == 18);
+    session_document_free(&saved);
+    puts("Project Open MIDI restore passed: ordered selection, distinct creation bindings, recapture and unbound fallbacks");
+}
+
 // Qualifies scoped lists, safe browsing, monotonic checkpoints, no-replace races and exact current saves.
 int main(void) {
     char oldcwd[4096];assert(getcwd(oldcwd,sizeof(oldcwd)));DAW_TEST_TEMP_PATH(root, "sonics-collection-test-XXXXXX");assert(mkdtemp(root));assert(!chdir(root));
@@ -71,6 +150,7 @@ int main(void) {
     assert(before_audio.frame_count==after_audio.frame_count && before_audio.channels==after_audio.channels);
     assert(!memcmp(before_audio.data,after_audio.data,(size_t)before_audio.frame_count*before_audio.channels*sizeof(float)));
     engine_bounce_buffer_free(&before_audio);engine_bounce_buffer_free(&after_audio);
+    check_midi_project_reopen(s);
     engine_destroy(s->engine);undo_manager_free(&s->undo);tempo_map_free(&s->tempo_map);time_signature_map_free(&s->time_signature_map);free(s);
     assert(!chdir(oldcwd));
     printf("project_collections_test: passed (isolated lists, browsing preserves song/markers, version suffixes, atomic no-replace, exact current save, modal releases and reload); fixture=%s\n",root);

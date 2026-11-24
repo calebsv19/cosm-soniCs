@@ -174,6 +174,7 @@ APP_SRCS := \
 	$(SRC_DIR)/session/session_io_read_parse_track_clips.c \
 	$(SRC_DIR)/session/session_io_read_parse_track_fx.c \
 	$(SRC_DIR)/session/session_apply.c \
+	$(SRC_DIR)/session/session_restore_clip_ui.c \
 	$(SRC_DIR)/session/session_automation.c \
 	$(SRC_DIR)/session/project_manager.c \
 	$(SRC_DIR)/session/project_collections.c \
